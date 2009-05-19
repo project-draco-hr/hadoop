@@ -1,0 +1,65 @@
+{
+  try {
+    if (!ProcfsBasedProcessTree.isAvailable()) {
+      System.out.println("ProcfsBasedProcessTree is not available on this system. Not testing");
+      return;
+    }
+  }
+ catch (  Exception e) {
+    LOG.info(StringUtils.stringifyException(e));
+    return;
+  }
+  Random rm=new Random();
+  File tempFile=new File(TEST_ROOT_DIR,this.getName() + "_shellScript_" + rm.nextInt()+ ".sh");
+  tempFile.deleteOnExit();
+  shellScript=TEST_ROOT_DIR + File.separator + tempFile.getName();
+  tempFile=new File(TEST_ROOT_DIR,this.getName() + "_pidFile_" + rm.nextInt()+ ".pid");
+  tempFile.deleteOnExit();
+  pidFile=TEST_ROOT_DIR + File.separator + tempFile.getName();
+  lowestDescendant=TEST_ROOT_DIR + File.separator + "lowestDescendantPidFile";
+  try {
+    FileWriter fWriter=new FileWriter(shellScript);
+    fWriter.write("# rogue task\n" + "sleep 1\n" + "echo hello\n"+ "if [ $1 -ne 0 ]\n"+ "then\n"+ " sh " + shellScript + " $(($1-1))\n"+ "else\n"+ " echo $$ > "+ lowestDescendant+ "\n"+ " while true\n do\n"+ "  sleep 5\n"+ " done\n"+ "fi");
+    fWriter.close();
+  }
+ catch (  IOException ioe) {
+    LOG.info("Error: " + ioe);
+    return;
+  }
+  Thread t=new RogueTaskThread();
+  t.start();
+  String pid=getRogueTaskPID();
+  LOG.info("Root process pid: " + pid);
+  ProcfsBasedProcessTree p=new ProcfsBasedProcessTree(pid,ProcessTree.isSetsidAvailable,ProcessTree.DEFAULT_SLEEPTIME_BEFORE_SIGKILL);
+  p=p.getProcessTree();
+  LOG.info("ProcessTree: " + p.toString());
+  File leaf=new File(lowestDescendant);
+  while (!leaf.exists()) {
+    try {
+      Thread.sleep(500);
+    }
+ catch (    InterruptedException ie) {
+      break;
+    }
+  }
+  p=p.getProcessTree();
+  LOG.info("ProcessTree: " + p.toString());
+  p.destroy(true);
+  if (ProcessTree.isSetsidAvailable) {
+    assertEquals(false,p.isAnyProcessInTreeAlive());
+  }
+ else {
+    assertFalse("ProcessTree must have been gone",p.isAlive());
+  }
+  try {
+    t.join(2000);
+    LOG.info("RogueTaskThread successfully joined.");
+  }
+ catch (  InterruptedException ie) {
+    LOG.info("Interrupted while joining RogueTaskThread.");
+  }
+  p=p.getProcessTree();
+  assertFalse("ProcessTree must have been gone",p.isAlive());
+  assertTrue("Cumulative vmem for the gone-process is " + p.getCumulativeVmem() + " . It should be zero.",p.getCumulativeVmem() == 0);
+  assertTrue(p.toString().equals("[ ]"));
+}
