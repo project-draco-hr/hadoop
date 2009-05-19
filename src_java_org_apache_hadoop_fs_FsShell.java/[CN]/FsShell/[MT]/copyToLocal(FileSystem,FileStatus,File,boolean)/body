@@ -1,0 +1,33 @@
+{
+  Path src=srcStatus.getPath();
+  if (!srcStatus.isDir()) {
+    if (dst.exists()) {
+      throw new IOException("Target " + dst + " already exists");
+    }
+    File tmp=FileUtil.createLocalTempFile(dst.getAbsoluteFile(),COPYTOLOCAL_PREFIX,true);
+    if (!FileUtil.copy(srcFS,src,tmp,false,srcFS.getConf())) {
+      throw new IOException("Failed to copy " + src + " to "+ dst);
+    }
+    if (!tmp.renameTo(dst)) {
+      throw new IOException("Failed to rename tmp file " + tmp + " to local destination \""+ dst+ "\".");
+    }
+    if (copyCrc) {
+      if (!(srcFS instanceof ChecksumFileSystem)) {
+        throw new IOException("Source file system does not have crc files");
+      }
+      ChecksumFileSystem csfs=(ChecksumFileSystem)srcFS;
+      File dstcs=FileSystem.getLocal(srcFS.getConf()).pathToFile(csfs.getChecksumFile(new Path(dst.getCanonicalPath())));
+      FileSystem fs=csfs.getRawFileSystem();
+      FileStatus status=csfs.getFileStatus(csfs.getChecksumFile(src));
+      copyToLocal(fs,status,dstcs,false);
+    }
+  }
+ else {
+    if (!dst.mkdirs()) {
+      throw new IOException("Failed to create local destination \"" + dst + "\".");
+    }
+    for (    FileStatus status : srcFS.listStatus(src)) {
+      copyToLocal(srcFS,status,new File(dst,status.getPath().getName()),copyCrc);
+    }
+  }
+}

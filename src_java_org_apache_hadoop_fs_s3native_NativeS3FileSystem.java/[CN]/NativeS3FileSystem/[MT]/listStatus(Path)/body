@@ -1,0 +1,37 @@
+{
+  Path absolutePath=makeAbsolute(f);
+  String key=pathToKey(absolutePath);
+  if (key.length() > 0) {
+    FileMetadata meta=store.retrieveMetadata(key);
+    if (meta != null) {
+      return new FileStatus[]{newFile(meta,absolutePath)};
+    }
+  }
+  URI pathUri=absolutePath.toUri();
+  Set<FileStatus> status=new TreeSet<FileStatus>();
+  String priorLastKey=null;
+  do {
+    PartialListing listing=store.list(key,S3_MAX_LISTING_LENGTH,priorLastKey);
+    for (    FileMetadata fileMetadata : listing.getFiles()) {
+      Path subpath=keyToPath(fileMetadata.getKey());
+      String relativePath=pathUri.relativize(subpath.toUri()).getPath();
+      if (relativePath.endsWith(FOLDER_SUFFIX)) {
+        status.add(newDirectory(new Path(absolutePath,relativePath.substring(0,relativePath.indexOf(FOLDER_SUFFIX)))));
+      }
+ else {
+        status.add(newFile(fileMetadata,subpath));
+      }
+    }
+    for (    String commonPrefix : listing.getCommonPrefixes()) {
+      Path subpath=keyToPath(commonPrefix);
+      String relativePath=pathUri.relativize(subpath.toUri()).getPath();
+      status.add(newDirectory(new Path(absolutePath,relativePath)));
+    }
+    priorLastKey=listing.getPriorLastKey();
+  }
+ while (priorLastKey != null);
+  if (status.isEmpty() && store.retrieveMetadata(key + FOLDER_SUFFIX) == null) {
+    return null;
+  }
+  return status.toArray(new FileStatus[0]);
+}

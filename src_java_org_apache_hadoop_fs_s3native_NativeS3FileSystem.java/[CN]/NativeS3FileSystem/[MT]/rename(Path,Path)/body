@@ -1,0 +1,51 @@
+{
+  String srcKey=pathToKey(makeAbsolute(src));
+  if (srcKey.length() == 0) {
+    return false;
+  }
+  String dstKey;
+  try {
+    boolean dstIsFile=existsAndIsFile(dst);
+    if (dstIsFile) {
+      return false;
+    }
+ else {
+      dstKey=pathToKey(makeAbsolute(new Path(dst,src.getName())));
+    }
+  }
+ catch (  FileNotFoundException e) {
+    dstKey=pathToKey(makeAbsolute(dst));
+    try {
+      if (!getFileStatus(dst.getParent()).isDir()) {
+        return false;
+      }
+    }
+ catch (    FileNotFoundException ex) {
+      return false;
+    }
+  }
+  try {
+    boolean srcIsFile=existsAndIsFile(src);
+    if (srcIsFile) {
+      store.rename(srcKey,dstKey);
+    }
+ else {
+      store.delete(srcKey + FOLDER_SUFFIX);
+      store.storeEmptyFile(dstKey + FOLDER_SUFFIX);
+      String priorLastKey=null;
+      do {
+        PartialListing listing=store.listAll(srcKey,S3_MAX_LISTING_LENGTH,priorLastKey);
+        for (        FileMetadata file : listing.getFiles()) {
+          store.rename(file.getKey(),dstKey + file.getKey().substring(srcKey.length()));
+        }
+        priorLastKey=listing.getPriorLastKey();
+      }
+ while (priorLastKey != null);
+    }
+    createParent(src);
+    return true;
+  }
+ catch (  FileNotFoundException e) {
+    return false;
+  }
+}

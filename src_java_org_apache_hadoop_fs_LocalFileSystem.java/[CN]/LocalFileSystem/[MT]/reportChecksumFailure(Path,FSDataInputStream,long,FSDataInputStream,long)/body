@@ -1,0 +1,38 @@
+{
+  try {
+    File f=((RawLocalFileSystem)fs).pathToFile(p).getCanonicalFile();
+    String device=new DF(f,getConf()).getMount();
+    File parent=f.getParentFile();
+    File dir=null;
+    while (parent != null && parent.canWrite() && parent.toString().startsWith(device)) {
+      dir=parent;
+      parent=parent.getParentFile();
+    }
+    if (dir == null) {
+      throw new IOException("not able to find the highest writable parent dir");
+    }
+    File badDir=new File(dir,"bad_files");
+    if (!badDir.mkdirs()) {
+      if (!badDir.isDirectory()) {
+        throw new IOException("Mkdirs failed to create " + badDir.toString());
+      }
+    }
+    String suffix="." + rand.nextInt();
+    File badFile=new File(badDir,f.getName() + suffix);
+    LOG.warn("Moving bad file " + f + " to "+ badFile);
+    in.close();
+    boolean b=f.renameTo(badFile);
+    if (!b) {
+      LOG.warn("Ignoring failure of renameTo");
+    }
+    File checkFile=((RawLocalFileSystem)fs).pathToFile(getChecksumFile(p));
+    b=checkFile.renameTo(new File(badDir,checkFile.getName() + suffix));
+    if (!b) {
+      LOG.warn("Ignoring failure of renameTo");
+    }
+  }
+ catch (  IOException e) {
+    LOG.warn("Error moving bad file " + p + ": "+ e);
+  }
+  return false;
+}

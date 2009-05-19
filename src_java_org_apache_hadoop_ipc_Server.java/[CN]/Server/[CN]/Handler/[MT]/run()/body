@@ -1,0 +1,46 @@
+{
+  LOG.info(getName() + ": starting");
+  SERVER.set(Server.this);
+  ByteArrayOutputStream buf=new ByteArrayOutputStream(10240);
+  while (running) {
+    try {
+      final Call call=callQueue.take();
+      if (LOG.isDebugEnabled())       LOG.debug(getName() + ": has #" + call.id+ " from "+ call.connection);
+      String errorClass=null;
+      String error=null;
+      Writable value=null;
+      CurCall.set(call);
+      try {
+        value=Subject.doAs(call.connection.user,new PrivilegedExceptionAction<Writable>(){
+          @Override public Writable run() throws Exception {
+            return call(call.connection.protocol,call.param,call.timestamp);
+          }
+        }
+);
+      }
+ catch (      PrivilegedActionException pae) {
+        Exception e=pae.getException();
+        LOG.info(getName() + ", call " + call+ ": error: "+ e,e);
+        errorClass=e.getClass().getName();
+        error=StringUtils.stringifyException(e);
+      }
+catch (      Throwable e) {
+        LOG.info(getName() + ", call " + call+ ": error: "+ e,e);
+        errorClass=e.getClass().getName();
+        error=StringUtils.stringifyException(e);
+      }
+      CurCall.set(null);
+      setupResponse(buf,call,(error == null) ? Status.SUCCESS : Status.ERROR,value,errorClass,error);
+      responder.doRespond(call);
+    }
+ catch (    InterruptedException e) {
+      if (running) {
+        LOG.info(getName() + " caught: " + StringUtils.stringifyException(e));
+      }
+    }
+catch (    Exception e) {
+      LOG.info(getName() + " caught: " + StringUtils.stringifyException(e));
+    }
+  }
+  LOG.info(getName() + ": exiting");
+}

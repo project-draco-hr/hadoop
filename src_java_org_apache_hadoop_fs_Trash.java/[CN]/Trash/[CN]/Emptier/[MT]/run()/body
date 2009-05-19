@@ -1,0 +1,48 @@
+{
+  if (interval == 0)   return;
+  long now=System.currentTimeMillis();
+  long end;
+  while (true) {
+    end=ceiling(now,interval);
+    try {
+      Thread.sleep(end - now);
+    }
+ catch (    InterruptedException e) {
+      break;
+    }
+    try {
+      now=System.currentTimeMillis();
+      if (now >= end) {
+        FileStatus[] homes=null;
+        try {
+          homes=fs.listStatus(HOMES);
+        }
+ catch (        IOException e) {
+          LOG.warn("Trash can't list homes: " + e + " Sleeping.");
+          continue;
+        }
+        if (homes == null)         continue;
+        for (        FileStatus home : homes) {
+          if (!home.isDir())           continue;
+          try {
+            Trash trash=new Trash(home.getPath(),conf);
+            trash.expunge();
+            trash.checkpoint();
+          }
+ catch (          IOException e) {
+            LOG.warn("Trash caught: " + e + ". Skipping "+ home.getPath()+ ".");
+          }
+        }
+      }
+    }
+ catch (    Exception e) {
+      LOG.warn("RuntimeException during Trash.Emptier.run() " + StringUtils.stringifyException(e));
+    }
+  }
+  try {
+    fs.close();
+  }
+ catch (  IOException e) {
+    LOG.warn("Trash cannot close FileSystem. " + StringUtils.stringifyException(e));
+  }
+}

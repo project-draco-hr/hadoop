@@ -1,0 +1,41 @@
+{
+  if (this.keys != null)   return;
+  this.count=0;
+  this.positions=new long[1024];
+  try {
+    int skip=INDEX_SKIP;
+    LongWritable position=new LongWritable();
+    WritableComparable lastKey=null;
+    long lastIndex=-1;
+    ArrayList<WritableComparable> keyBuilder=new ArrayList<WritableComparable>(1024);
+    while (true) {
+      WritableComparable k=comparator.newKey();
+      if (!index.next(k,position))       break;
+      if (lastKey != null && comparator.compare(lastKey,k) > 0)       throw new IOException("key out of order: " + k + " after "+ lastKey);
+      lastKey=k;
+      if (skip > 0) {
+        skip--;
+        continue;
+      }
+ else {
+        skip=INDEX_SKIP;
+      }
+      if (position.get() == lastIndex)       continue;
+      if (count == positions.length) {
+        positions=Arrays.copyOf(positions,positions.length * 2);
+      }
+      keyBuilder.add(k);
+      positions[count]=position.get();
+      count++;
+    }
+    this.keys=keyBuilder.toArray(new WritableComparable[count]);
+    positions=Arrays.copyOf(positions,count);
+  }
+ catch (  EOFException e) {
+    LOG.warn("Unexpected EOF reading " + index + " at entry #"+ count+ ".  Ignoring.");
+  }
+ finally {
+    indexClosed=true;
+    index.close();
+  }
+}

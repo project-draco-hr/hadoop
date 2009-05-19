@@ -1,0 +1,29 @@
+{
+  String policyFile=System.getProperty("hadoop.policy.file",HADOOP_POLICY_FILE);
+  Configuration policyConf=new Configuration(conf);
+  policyConf.addResource(policyFile);
+  Map<Principal,Set<Permission>> newPermissions=new HashMap<Principal,Set<Permission>>();
+  Set<Permission> newAllowPermissions=new HashSet<Permission>();
+  Service[] services=policyProvider.getServices();
+  if (services != null) {
+    for (    Service service : services) {
+      AccessControlList acl=new AccessControlList(policyConf.get(service.getServiceKey(),AccessControlList.WILDCARD_ACL_VALUE));
+      if (acl.allAllowed()) {
+        newAllowPermissions.add(service.getPermission());
+        if (LOG.isDebugEnabled()) {
+          LOG.debug("Policy - " + service.getPermission() + " * ");
+        }
+      }
+ else {
+        for (        String user : acl.getUsers()) {
+          addPermission(newPermissions,new User(user),service.getPermission());
+        }
+        for (        String group : acl.getGroups()) {
+          addPermission(newPermissions,new Group(group),service.getPermission());
+        }
+      }
+    }
+  }
+  allowedPermissions=newAllowPermissions;
+  permissions=newPermissions;
+}

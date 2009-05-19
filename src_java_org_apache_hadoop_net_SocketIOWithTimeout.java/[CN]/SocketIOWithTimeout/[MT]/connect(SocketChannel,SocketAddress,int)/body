@@ -1,0 +1,35 @@
+{
+  boolean blockingOn=channel.isBlocking();
+  if (blockingOn) {
+    channel.configureBlocking(false);
+  }
+  try {
+    if (channel.connect(endpoint)) {
+      return;
+    }
+    long timeoutLeft=timeout;
+    long endTime=(timeout > 0) ? (System.currentTimeMillis() + timeout) : 0;
+    while (true) {
+      int ret=selector.select((SelectableChannel)channel,SelectionKey.OP_CONNECT,timeoutLeft);
+      if (ret > 0 && channel.finishConnect()) {
+        return;
+      }
+      if (ret == 0 || (timeout > 0 && (timeoutLeft=(endTime - System.currentTimeMillis())) <= 0)) {
+        throw new SocketTimeoutException(timeoutExceptionString(channel,timeout,SelectionKey.OP_CONNECT));
+      }
+    }
+  }
+ catch (  IOException e) {
+    try {
+      channel.close();
+    }
+ catch (    IOException ignored) {
+    }
+    throw e;
+  }
+ finally {
+    if (blockingOn && channel.isOpen()) {
+      channel.configureBlocking(true);
+    }
+  }
+}

@@ -1,0 +1,38 @@
+{
+  SelectorInfo info=get(channel);
+  SelectionKey key=null;
+  int ret=0;
+  try {
+    while (true) {
+      long start=(timeout == 0) ? 0 : System.currentTimeMillis();
+      key=channel.register(info.selector,ops);
+      ret=info.selector.select(timeout);
+      if (ret != 0) {
+        return ret;
+      }
+      if (timeout > 0) {
+        timeout-=System.currentTimeMillis() - start;
+        if (timeout <= 0) {
+          return 0;
+        }
+      }
+      if (Thread.currentThread().isInterrupted()) {
+        throw new InterruptedIOException("Interruped while waiting for " + "IO on channel " + channel + ". "+ timeout+ " millis timeout left.");
+      }
+    }
+  }
+  finally {
+    if (key != null) {
+      key.cancel();
+    }
+    try {
+      info.selector.selectNow();
+    }
+ catch (    IOException e) {
+      LOG.info("Unexpected Exception while clearing selector : " + StringUtils.stringifyException(e));
+      info.close();
+      return ret;
+    }
+    release(info);
+  }
+}

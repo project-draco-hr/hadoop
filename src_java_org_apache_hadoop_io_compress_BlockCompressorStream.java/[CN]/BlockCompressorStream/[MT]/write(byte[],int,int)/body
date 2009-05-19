@@ -1,0 +1,43 @@
+{
+  if (compressor.finished()) {
+    throw new IOException("write beyond end of stream");
+  }
+  if (b == null) {
+    throw new NullPointerException();
+  }
+ else   if ((off < 0) || (off > b.length) || (len < 0)|| ((off + len) > b.length)) {
+    throw new IndexOutOfBoundsException();
+  }
+ else   if (len == 0) {
+    return;
+  }
+  long limlen=compressor.getBytesRead();
+  if (len + limlen > MAX_INPUT_SIZE && limlen > 0) {
+    finish();
+    compressor.reset();
+  }
+  if (len > MAX_INPUT_SIZE) {
+    rawWriteInt(len);
+    do {
+      int bufLen=Math.min(len,MAX_INPUT_SIZE);
+      compressor.setInput(b,off,bufLen);
+      compressor.finish();
+      while (!compressor.finished()) {
+        compress();
+      }
+      compressor.reset();
+      off+=bufLen;
+      len-=bufLen;
+    }
+ while (len > 0);
+    return;
+  }
+  compressor.setInput(b,off,len);
+  if (!compressor.needsInput()) {
+    rawWriteInt((int)compressor.getBytesRead());
+    do {
+      compress();
+    }
+ while (!compressor.needsInput());
+  }
+}
