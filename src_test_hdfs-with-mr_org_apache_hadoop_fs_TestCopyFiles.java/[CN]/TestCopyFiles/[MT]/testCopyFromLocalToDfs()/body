@@ -1,0 +1,23 @@
+{
+  MiniDFSCluster cluster=null;
+  try {
+    Configuration conf=new Configuration();
+    cluster=new MiniDFSCluster(conf,1,true,null);
+    final FileSystem hdfs=cluster.getFileSystem();
+    final String namenode=hdfs.getUri().toString();
+    if (namenode.startsWith("hdfs://")) {
+      MyFile[] files=createFiles(LOCAL_FS,TEST_ROOT_DIR + "/srcdat");
+      ToolRunner.run(new DistCp(conf),new String[]{"-log",namenode + "/logs","file:///" + TEST_ROOT_DIR + "/srcdat",namenode + "/destdat"});
+      assertTrue("Source and destination directories do not match.",checkFiles(cluster.getFileSystem(),"/destdat",files));
+      assertTrue("Log directory does not exist.",hdfs.exists(new Path(namenode + "/logs")));
+      deldir(hdfs,"/destdat");
+      deldir(hdfs,"/logs");
+      deldir(FileSystem.get(LOCAL_FS,conf),TEST_ROOT_DIR + "/srcdat");
+    }
+  }
+  finally {
+    if (cluster != null) {
+      cluster.shutdown();
+    }
+  }
+}

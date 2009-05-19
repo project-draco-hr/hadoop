@@ -1,0 +1,42 @@
+{
+  final Configuration conf=new Configuration();
+  MiniDFSCluster cluster=null;
+  try {
+    cluster=new MiniDFSCluster(conf,2,true,null);
+    final URI nnURI=FileSystem.getDefaultUri(conf);
+    final String nnUri=nnURI.toString();
+    final FileSystem fs=FileSystem.get(URI.create(nnUri),conf);
+    final DistCp distcp=new DistCp(conf);
+    final FsShell shell=new FsShell(conf);
+    final String srcrootdir="/src_root";
+    final String dstrootdir="/dst_root";
+{
+      createFiles(nnURI,srcrootdir);
+      String srcresults=execCmd(shell,"-lsr",srcrootdir);
+      srcresults=removePrefix(srcresults,srcrootdir);
+      System.out.println("srcresults=" + srcresults);
+      createFiles(nnURI,dstrootdir);
+      System.out.println("dstrootdir=" + dstrootdir);
+      shell.run(new String[]{"-lsr",dstrootdir});
+      ToolRunner.run(distcp,new String[]{"-delete","-update","-log","/log",nnUri + srcrootdir,nnUri + dstrootdir});
+      String dstresults=execCmd(shell,"-lsr",dstrootdir);
+      dstresults=removePrefix(dstresults,dstrootdir);
+      System.out.println("first dstresults=" + dstresults);
+      assertEquals(srcresults,dstresults);
+      create(fs,new Path(dstrootdir,"foo"));
+      create(fs,new Path(dstrootdir,"foobar"));
+      ToolRunner.run(distcp,new String[]{"-delete","-update","-log","/log2",nnUri + srcrootdir,nnUri + dstrootdir});
+      dstresults=execCmd(shell,"-lsr",dstrootdir);
+      dstresults=removePrefix(dstresults,dstrootdir);
+      System.out.println("second dstresults=" + dstresults);
+      assertEquals(srcresults,dstresults);
+      deldir(fs,dstrootdir);
+      deldir(fs,srcrootdir);
+    }
+  }
+  finally {
+    if (cluster != null) {
+      cluster.shutdown();
+    }
+  }
+}

@@ -1,0 +1,40 @@
+{
+  String namenode=null;
+  MiniDFSCluster dfs=null;
+  MiniMRCluster mr=null;
+  try {
+    Configuration conf=new Configuration();
+    dfs=new MiniDFSCluster(conf,3,true,null);
+    FileSystem fs=dfs.getFileSystem();
+    final FsShell shell=new FsShell(conf);
+    namenode=fs.getUri().toString();
+    mr=new MiniMRCluster(3,namenode,1);
+    MyFile[] files=createFiles(fs.getUri(),"/srcdat");
+    long totsize=0;
+    for (    MyFile f : files) {
+      totsize+=f.getSize();
+    }
+    Configuration job=mr.createJobConf();
+    job.setLong("distcp.bytes.per.map",totsize / 3);
+    ToolRunner.run(new DistCp(job),new String[]{"-m","100","-log",namenode + "/logs",namenode + "/srcdat",namenode + "/destdat"});
+    assertTrue("Source and destination directories do not match.",checkFiles(fs,"/destdat",files));
+    String logdir=namenode + "/logs";
+    System.out.println(execCmd(shell,"-lsr",logdir));
+    FileStatus[] logs=fs.listStatus(new Path(logdir));
+    assertTrue("Unexpected map count, logs.length=" + logs.length,logs.length == 5 || logs.length == 4);
+    deldir(fs,"/destdat");
+    deldir(fs,"/logs");
+    ToolRunner.run(new DistCp(job),new String[]{"-m","1","-log",namenode + "/logs",namenode + "/srcdat",namenode + "/destdat"});
+    System.out.println(execCmd(shell,"-lsr",logdir));
+    logs=fs.listStatus(new Path(namenode + "/logs"));
+    assertTrue("Unexpected map count, logs.length=" + logs.length,logs.length == 2);
+  }
+  finally {
+    if (dfs != null) {
+      dfs.shutdown();
+    }
+    if (mr != null) {
+      mr.shutdown();
+    }
+  }
+}

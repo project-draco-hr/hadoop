@@ -1,0 +1,68 @@
+{
+  Configuration sconf=new Configuration();
+  MiniDFSCluster cluster=new MiniDFSCluster(sconf,1,true,null);
+  final int nameNodePort=cluster.getNameNodePort();
+  FileSystem fs=cluster.getFileSystem();
+  assertTrue(fs instanceof DistributedFileSystem);
+  DistributedFileSystem directDfs=(DistributedFileSystem)fs;
+  Configuration cconf=new Configuration();
+  FileSystem.setDefaultUri(cconf,String.format("hdfs://localhost:%s/",nameNodePort + 10));
+  cconf.set("hadoop.rpc.socket.factory.class.default","org.apache.hadoop.ipc.DummySocketFactory");
+  cconf.set("hadoop.rpc.socket.factory.class.ClientProtocol","org.apache.hadoop.ipc.DummySocketFactory");
+  cconf.set("hadoop.rpc.socket.factory.class.JobSubmissionProtocol","org.apache.hadoop.ipc.DummySocketFactory");
+  fs=FileSystem.get(cconf);
+  assertTrue(fs instanceof DistributedFileSystem);
+  DistributedFileSystem dfs=(DistributedFileSystem)fs;
+  JobClient client=null;
+  MiniMRCluster mr=null;
+  try {
+    Path filePath=new Path("/dir");
+    assertFalse(directDfs.exists(filePath));
+    assertFalse(dfs.exists(filePath));
+    directDfs.mkdirs(filePath);
+    assertTrue(directDfs.exists(filePath));
+    assertTrue(dfs.exists(filePath));
+    fs=FileSystem.get(sconf);
+    mr=new MiniMRCluster(1,fs.getUri().toString(),1);
+    final int jobTrackerPort=mr.getJobTrackerPort();
+    JobConf jconf=new JobConf(cconf);
+    jconf.set("mapred.job.tracker",String.format("localhost:%d",jobTrackerPort + 10));
+    client=new JobClient(jconf);
+    JobStatus[] jobs=client.jobsToComplete();
+    assertTrue(jobs.length == 0);
+  }
+  finally {
+    try {
+      if (client != null)       client.close();
+    }
+ catch (    Exception ignored) {
+      ignored.printStackTrace();
+    }
+    try {
+      if (dfs != null)       dfs.close();
+    }
+ catch (    Exception ignored) {
+      ignored.printStackTrace();
+    }
+    try {
+      if (directDfs != null)       directDfs.close();
+    }
+ catch (    Exception ignored) {
+      ignored.printStackTrace();
+    }
+    try {
+      if (cluster != null)       cluster.shutdown();
+    }
+ catch (    Exception ignored) {
+      ignored.printStackTrace();
+    }
+    if (mr != null) {
+      try {
+        mr.shutdown();
+      }
+ catch (      Exception ignored) {
+        ignored.printStackTrace();
+      }
+    }
+  }
+}
