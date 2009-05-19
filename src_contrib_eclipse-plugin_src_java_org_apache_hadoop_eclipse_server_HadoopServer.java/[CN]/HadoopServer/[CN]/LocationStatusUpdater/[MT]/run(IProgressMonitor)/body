@@ -1,0 +1,39 @@
+{
+  if (client == null) {
+    try {
+      client=HadoopServer.this.getJobClient();
+    }
+ catch (    IOException ioe) {
+      client=null;
+      return new Status(Status.ERROR,Activator.PLUGIN_ID,0,"Cannot connect to the Map/Reduce location: " + HadoopServer.this.getLocationName(),ioe);
+    }
+  }
+  try {
+    Set<JobID> missingJobIds=new HashSet<JobID>(runningJobs.keySet());
+    JobStatus[] jstatus=client.jobsToComplete();
+    for (    JobStatus status : jstatus) {
+      JobID jobId=status.getJobID();
+      missingJobIds.remove(jobId);
+      HadoopJob hJob;
+synchronized (HadoopServer.this.runningJobs) {
+        hJob=runningJobs.get(jobId);
+        if (hJob == null) {
+          RunningJob running=client.getJob(jobId);
+          hJob=new HadoopJob(HadoopServer.this,jobId,running,status);
+          newJob(hJob);
+        }
+      }
+      updateJob(hJob,status);
+    }
+    for (    JobID jobId : missingJobIds) {
+      HadoopJob hJob=runningJobs.get(jobId);
+      if (!hJob.isCompleted())       updateJob(hJob,null);
+    }
+  }
+ catch (  IOException ioe) {
+    client=null;
+    return new Status(Status.ERROR,Activator.PLUGIN_ID,0,"Cannot retrieve running Jobs on location: " + HadoopServer.this.getLocationName(),ioe);
+  }
+  schedule(STATUS_OBSERVATION_DELAY);
+  return Status.OK_STATUS;
+}

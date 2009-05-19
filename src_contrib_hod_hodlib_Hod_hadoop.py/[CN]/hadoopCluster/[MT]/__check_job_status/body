@@ -1,0 +1,34 @@
+def __check_job_status(self):
+    failureCount = 0
+    status = False
+    state = 'Q'
+    userLimitsFirstFlag = True
+    while ((state == 'Q') or (state == False)):
+        if hodInterrupt.isSet():
+            raise HodInterruptException()
+        jobInfo = self.__nodePool.getJobInfo()
+        state = jobInfo['job_state']
+        self.__log.debug(('job state %s' % state))
+        if (state == False):
+            failureCount += 1
+            if (failureCount >= self.__cfg['hod']['job-status-query-failure-retries']):
+                self.__log.debug('Number of retries reached max limit while querying job status')
+                break
+            time.sleep(self.__cfg['hod']['job-command-failure-interval'])
+        elif (state != 'Q'):
+            break
+        else:
+            self.__log.debug('querying for job status after job-status-query-interval')
+            time.sleep(self.__cfg['hod']['job-status-query-interval'])
+        if (self.__cfg['hod'].has_key('job-feasibility-attr') and self.__cfg['hod']['job-feasibility-attr']):
+            (status, msg) = self.__isJobFeasible()
+            if (status == 'Never'):
+                self.__log.critical(((TORQUE_USER_LIMITS_EXCEEDED_MSG + msg) + 'This cluster cannot be allocated now.'))
+                return (-1)
+            elif (status == False):
+                if userLimitsFirstFlag:
+                    self.__log.critical((((TORQUE_USER_LIMITS_EXCEEDED_MSG + msg) + 'This cluster allocation will succeed only after other ') + 'clusters are deallocated.'))
+                    userLimitsFirstFlag = False
+    if (state and (state != 'C')):
+        status = True
+    return status

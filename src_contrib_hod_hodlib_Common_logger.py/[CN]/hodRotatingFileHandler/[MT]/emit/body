@@ -1,0 +1,23 @@
+def emit(self, record):
+    '\n        Emit a record.\n\n        If a formatter is specified, it is used to format the record.\n        The record is then written to the stream with a trailing newline\n        [N.B. this may be removed depending on feedback]. If exception\n        information is present, it is formatted using\n        traceback.print_exception and appended to the stream.\n\n        *****\n\n        THIS IS A HACK, when instances of hodLogger get passed to the child of\n        a child thread for some reason self.stream gets closed.  This version\n        of emit re-opens self.stream if it is closed.  After testing it appears\n        that self.stream is only closed once after the second thread is\n        initialized so there is not performance penalty to this hack.  This\n        problem only exists in python 2.4.\n\n        *****\n        '
+    try:
+        if self.shouldRollover(record):
+            self.doRollover()
+        try:
+            msg = self.format(record)
+            fs = '%s\n'
+            if (not hasattr(types, 'UnicodeType')):
+                self.stream.write((fs % msg))
+            else:
+                try:
+                    self.stream.write((fs % msg))
+                except UnicodeError:
+                    self.stream.write((fs % msg.encode('UTF-8')))
+                except ValueError:
+                    self.stream = open(self.baseFilename, self.mode)
+                    self.stream.write((fs % msg))
+            self.flush()
+        except:
+            self.handleError(record)
+    except:
+        self.handleError(record)

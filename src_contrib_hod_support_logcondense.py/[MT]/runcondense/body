@@ -1,0 +1,66 @@
+def runcondense():
+    import shutil
+    options = process_args()
+    filteredNames = []
+    deletedNamePrefixes = []
+    if (options.retain_masters_logs == 'true'):
+        filteredNames = ['jobtracker']
+        deletedNamePrefixes = ['*-tasktracker-*']
+    if ((options.dynamicdfs == 'true') and (options.retain_masters_logs == 'true')):
+        filteredNames.append('namenode')
+        deletedNamePrefixes.append('*-datanode-*')
+    filepath = ('%s/\\*/hod-logs/' % options.log)
+    cmd = getDfsCommand(options, ('-lsr ' + filepath))
+    (stdin, stdout, stderr) = popen3(cmd)
+    lastjobid = 'none'
+    toPurge = {}
+    for line in stdout:
+        try:
+            m = re.match('^.*\\s(.*)\n$', line)
+            filename = m.group(1)
+            if filename.startswith(options.log):
+                filename = filename[len(options.log):]
+                if (not filename.startswith('/')):
+                    filename = ('/' + filename)
+            else:
+                continue
+            k = re.match('/(.*)/hod-logs/(.*)/.*-.*-([0-9][0-9][0-9][0-9])([0-9][0-9])([0-9][0-9]).*$', filename)
+            if k:
+                username = k.group(1)
+                jobid = k.group(2)
+                datetimefile = datetime(int(k.group(3)), int(k.group(4)), int(k.group(5)))
+                datetimenow = datetime.utcnow()
+                diff = (datetimenow - datetimefile)
+                filedate = ((k.group(3) + k.group(4)) + k.group(5))
+                newdate = datetimenow.strftime('%Y%m%d')
+                print ('%s %s %s %d' % (filename, filedate, newdate, diff.days))
+                foundFilteredName = False
+                for name in filteredNames:
+                    if (filename.find(name) >= 0):
+                        foundFilteredName = True
+                        break
+                if foundFilteredName:
+                    continue
+                if (diff.days > options.days):
+                    desttodel = filename
+                    if (not toPurge.has_key(jobid)):
+                        toPurge[jobid] = ((((options.log.rstrip('/') + '/') + username) + '/hod-logs/') + jobid)
+        except Exception as e:
+            print  >> sys.stderr, e
+    for job in toPurge.keys():
+        try:
+            if (options.retain_masters_logs == 'false'):
+                cmd = getDfsCommand(options, ('-rmr ' + toPurge[job]))
+                print cmd
+                ret = os.system(cmd)
+                if (ret != 0):
+                    print  >> sys.stderr, ('Command failed to delete job directory ' + cmd)
+            else:
+                for prefix in deletedNamePrefixes:
+                    cmd = getDfsCommand(options, ((('-rm ' + toPurge[job]) + '/') + prefix))
+                    print cmd
+                    ret = os.system(cmd)
+                    if (ret != 0):
+                        print  >> sys.stderr, ('Command failed to delete file ' + cmd)
+        except Exception as e:
+            print  >> sys.stderr, e

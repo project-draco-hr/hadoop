@@ -1,0 +1,42 @@
+def __init_hadoop_service(self, serviceName, xmlrpcClient):
+    status = True
+    serviceAddress = None
+    serviceInfo = None
+    for i in range(0, 250):
+        try:
+            if hodInterrupt.isSet():
+                raise HodInterruptException()
+            serviceAddress = xmlrpcClient.getServiceAddr(serviceName)
+            if serviceAddress:
+                if (serviceAddress == 'not found'):
+                    time.sleep(1)
+                    if (((i + 1) % self.__cfg['hod']['job-status-query-interval']) == 0):
+                        if (not self.__check_job_status()):
+                            break
+                else:
+                    serviceInfo = xmlrpcClient.getURLs(serviceName)
+                    break
+        except HodInterruptException as h:
+            raise h
+        except:
+            self.__log.critical(("'%s': ringmaster xmlrpc error." % serviceName))
+            self.__log.debug(get_exception_string())
+            status = False
+            break
+    if ((serviceAddress == 'not found') or (not serviceAddress)):
+        self.__log.critical(("Failed to retrieve '%s' service address." % serviceName))
+        status = False
+    elif serviceAddress.startswith('Error: '):
+        errs = serviceAddress[len('Error: '):]
+        self.__log.critical(('Cluster could not be allocated because of the following errors.\n%s' % errs))
+        status = False
+    else:
+        try:
+            self.__svcrgyClient.registerService(self.__cfg['hodring']['userid'], self.jobId, self.__hostname, serviceName, 'grid', serviceInfo)
+        except HodInterruptException as h:
+            raise h
+        except:
+            self.__log.critical(("'%s': registry xmlrpc error." % serviceName))
+            self.__log.debug(get_exception_string())
+            status = False
+    return (status, serviceAddress, serviceInfo)

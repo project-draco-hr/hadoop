@@ -1,0 +1,121 @@
+def __init__(self, optionDef, usage, version, originalDir=None, withConfig=False, defaultConfig=None, defaultLocation=None, name=None):
+    'Constructs and options object.\n         \n           optionDef     - definition object\n           usage         - usage statement\n           version       - version string\n           withConfig    - used in conjunction with a configuration file\n           defaultConfig - default configuration file\n        \n        '
+    OptionParser.__init__(self, usage=usage)
+    baseConfig.__init__(self, optionDef, originalDir)
+    self.formatter = formatter(4, max_help_position=100, width=180, short_first=1)
+    self.__name = name
+    self.__version = version
+    self.__withConfig = withConfig
+    self.__defaultConfig = defaultConfig
+    self.__defaultLoc = defaultLocation
+    self.args = []
+    self.__optionList = []
+    self.__compoundOpts = []
+    self.__shortMap = {}
+    self.__alphaString = 'abcdefghijklmnopqrstuvxyzABCDEFGHIJKLMNOPQRSTUVXYZ1234567890'
+    self.__alpha = []
+    self.__parsedOptions = {}
+    self.__reserved = ['h']
+    self.__orig_grps = []
+    self.__orig_grp_lists = {}
+    self.__orig_option_list = []
+    self.__display_grps = []
+    self.__display_grp_lists = {}
+    self.__display_option_list = []
+    self.config = None
+    if self.__withConfig:
+        self.__reserved.append('c')
+    self.__reserved.append('v')
+    self.__gen_alpha()
+    for section in self._mySections:
+        if (self.__withConfig and (section == 'config')):
+            raise Exception("withConfig set 'config' cannot be used as a section name")
+        for option in self._configDef[section].keys():
+            if ('.' in option):
+                raise Exception("Options cannot contain: '.'")
+            elif (self.__withConfig and (option == 'config')):
+                raise Exception('With config set, option config is not allowed.')
+            elif (self.__withConfig and (option == 'verbose-help')):
+                raise Exception('With config set, option verbose-help is not allowed.')
+            self.__optionList.append(self.__splice_compound(section, option))
+    self.__build_short_map()
+    self.__add_options()
+    self.__init_display_options()
+    (self.__parsedOptions, self.args) = self.parse_args()
+    if (self.__name == 'hod'):
+        hodhelp = hodHelp()
+        _operation = getattr(self.__parsedOptions, 'hod.operation')
+        _script = getattr(self.__parsedOptions, 'hod.script')
+        nArgs = self.args.__len__()
+        if _operation:
+            if (nArgs != 0):
+                self.error('invalid syntax : command and operation(-o) cannot coexist')
+        elif ((nArgs == 0) and _script):
+            pass
+        elif (nArgs == 0):
+            print 'Usage: ', hodhelp.help()
+            sys.exit(0)
+        else:
+            cmdstr = self.args[0]
+            cmdlist = hodhelp.ops
+            if (cmdstr not in cmdlist):
+                print 'Usage: ', hodhelp.help()
+                sys.exit(2)
+            numNodes = None
+            clusterDir = None
+            if (cmdstr == 'allocate'):
+                clusterDir = getattr(self.__parsedOptions, 'hod.clusterdir')
+                numNodes = getattr(self.__parsedOptions, 'hod.nodecount')
+                if ((not clusterDir) or (not numNodes)):
+                    print hodhelp.usage(cmdstr)
+                    sys.exit(3)
+                cmdstr = ((((cmdstr + ' ') + clusterDir) + ' ') + numNodes)
+                setattr(self.__parsedOptions, 'hod.operation', cmdstr)
+            elif ((cmdstr == 'deallocate') or (cmdstr == 'info')):
+                clusterDir = getattr(self.__parsedOptions, 'hod.clusterdir')
+                if (not clusterDir):
+                    print hodhelp.usage(cmdstr)
+                    sys.exit(3)
+                cmdstr = ((cmdstr + ' ') + clusterDir)
+                setattr(self.__parsedOptions, 'hod.operation', cmdstr)
+            elif (cmdstr == 'list'):
+                setattr(self.__parsedOptions, 'hod.operation', cmdstr)
+                pass
+            elif (cmdstr == 'script'):
+                clusterDir = getattr(self.__parsedOptions, 'hod.clusterdir')
+                numNodes = getattr(self.__parsedOptions, 'hod.nodecount')
+                originalDir = getattr(self.__parsedOptions, 'hod.original-dir')
+                if (originalDir and clusterDir):
+                    self.remove_exit_code_file(originalDir, clusterDir)
+                if ((not _script) or (not clusterDir) or (not numNodes)):
+                    print hodhelp.usage(cmdstr)
+                    sys.exit(3)
+                pass
+            elif (cmdstr == 'help'):
+                if (nArgs == 1):
+                    self.print_help()
+                    sys.exit(0)
+                elif (nArgs != 2):
+                    self.print_help()
+                    sys.exit(3)
+                elif (self.args[1] == 'options'):
+                    self.print_options()
+                    sys.exit(0)
+                cmdstr = ((cmdstr + ' ') + self.args[1])
+                setattr(self.__parsedOptions, 'hod.operation', cmdstr)
+    if self.__withConfig:
+        self.config = self.__parsedOptions.config
+        if (not self.config):
+            self.error('configuration file must be specified')
+        if (not os.path.isabs(self.config)):
+            try:
+                origDir = getattr(self.__parsedOptions, 'hod.original-dir')
+                if (origDir is not None):
+                    self.config = os.path.join(origDir, self.config)
+                    self.__parsedOptions.config = self.config
+            except AttributeError as e:
+                self.error('hod.original-dir is not defined.                                   Cannot get current directory')
+        if (not os.path.exists(self.config)):
+            if (self.__defaultLoc and (not re.search('/', self.config))):
+                self.__parsedOptions.config = os.path.join(self.__defaultLoc, self.config)
+    self.__build_dict()

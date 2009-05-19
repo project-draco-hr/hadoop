@@ -1,0 +1,32 @@
+def getCommand(self, addr):
+    'This method is called by the\n    hodrings to get commands from\n    the ringmaster'
+    lock = self.cmdLock
+    cmdList = []
+    lock.acquire()
+    try:
+        try:
+            for v in self.serviceDict.itervalues():
+                if (not v.isExternal()):
+                    if v.isLaunchable(self.serviceDict):
+                        if ((not v.isMasterLaunched()) and (v.getMasterFailureCount() <= self.cfg['ringmaster']['max-master-failures'])):
+                            cmdList = v.getMasterCommands(self.serviceDict)
+                            v.setlaunchedMaster()
+                            v.setMasterAddress(addr)
+                            break
+            if (cmdList == []):
+                for s in self.serviceDict.itervalues():
+                    if (not v.isExternal()):
+                        if s.isMasterInitialized():
+                            cl = s.getWorkerCommands(self.serviceDict)
+                            cmdList.extend(cl)
+                        else:
+                            cmdList = []
+                            break
+        except:
+            self.log.debug(get_exception_string())
+    finally:
+        lock.release()
+        pass
+    cmd = (addr + pformat(cmdList))
+    self.log.debug(('getCommand returning ' + cmd))
+    return cmdList

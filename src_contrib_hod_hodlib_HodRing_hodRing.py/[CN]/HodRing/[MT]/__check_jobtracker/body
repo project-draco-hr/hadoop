@@ -1,0 +1,57 @@
+def __check_jobtracker(self, desc, id, pkgdir):
+    name = desc.getName()
+    if (name == 'jobtracker'):
+        self.log.debug('Waiting for jobtracker to initialise')
+        version = desc.getVersion()
+        self.log.debug(('jobtracker version : %s' % version))
+        hadoopCmd = self.getRunningValues()[id]
+        attrs = hadoopCmd.getFilledInKeyValues()
+        attrs = parseEquals(attrs)
+        jobTrackerAddr = attrs['mapred.job.tracker']
+        self.log.debug(('jobtracker rpc server : %s' % jobTrackerAddr))
+        if (version < 16):
+            jettyAddr = ((jobTrackerAddr.split(':')[0] + ':') + attrs['mapred.job.tracker.info.port'])
+        else:
+            jettyAddr = attrs['mapred.job.tracker.http.address']
+        self.log.debug(('Jobtracker jetty : %s' % jettyAddr))
+        defaultTimeout = socket.getdefaulttimeout()
+        socket.setdefaulttimeout(1)
+        sleepTime = 0.5
+        jettyStatus = False
+        jettyStatusmsg = ''
+        while (sleepTime <= 32):
+            if (not hadoopCmd.getCommandStatus()):
+                self.log.critical('Hadoop command found to have failed when checking for jobtracker status')
+                hadoopCmd.handleFailedCommand()
+                addnInfo = ''
+                if (hadoopCmd.stdErrContents is not ''):
+                    addnInfo = (' Information from stderr of the command:\n%s' % hadoopCmd.stdErrContents)
+                raise Exception(('Could not launch the %s using %s/bin/hadoop.%s' % (desc.getName(), pkgdir, addnInfo)))
+            try:
+                jettyConn = httplib.HTTPConnection(jettyAddr)
+                jettyConn.request('HEAD', '/jobtracker.jsp')
+                resp = jettyConn.getresponse()
+                if (resp.status != 200):
+                    jettyStatus = False
+                    jettyStatusmsg = ('Jetty gave a non-200 response to a HTTP-HEAD' + (' request. HTTP Status (Code, Msg): (%s, %s)' % (resp.status, resp.reason)))
+                    break
+                else:
+                    self.log.info(('Jetty returned a 200 status (%s)' % resp.reason))
+                    self.log.info('JobTracker successfully initialised')
+                    return
+            except socket.error:
+                self.log.debug(('Jetty gave a socket error. Sleeping for %s' % sleepTime))
+                time.sleep(sleepTime)
+                sleepTime = (sleepTime * 2)
+            except Exception as e:
+                jettyStatus = False
+                jettyStatusmsg = ('Process(possibly other than jetty) running on' + ' port assigned to jetty is returning invalid http response')
+                break
+        socket.setdefaulttimeout(defaultTimeout)
+        if (not jettyStatus):
+            self.log.critical('Jobtracker failed to initialise.')
+            if jettyStatusmsg:
+                self.log.critical(('Reason: %s' % jettyStatusmsg))
+            else:
+                self.log.critical('Reason: Jetty failed to give response')
+            raise Exception('JobTracker failed to initialise')

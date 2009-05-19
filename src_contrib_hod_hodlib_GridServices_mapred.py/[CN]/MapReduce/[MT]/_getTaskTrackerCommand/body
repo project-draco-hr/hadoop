@@ -1,0 +1,35 @@
+def _getTaskTrackerCommand(self, id, hdfs):
+    sd = self.serviceDesc
+    parentDirs = self.workDirs
+    workDirs = []
+    attrs = sd.getfinalAttrs().copy()
+    envs = sd.getEnvs().copy()
+    jt = self.masterAddr
+    if (jt == None):
+        raise ValueError, "Can't get job tracker address"
+    attrs['mapred.job.tracker'] = jt
+    attrs['fs.default.name'] = hdfs.getMasterAddrs()[0]
+    if (self.version < 16):
+        if ('tasktracker.http.port' not in attrs):
+            attrs['tasktracker.http.port'] = 'fillinport'
+    else:
+        if ('mapred.task.tracker.report.address' not in attrs):
+            attrs['mapred.task.tracker.report.address'] = 'fillinhostport'
+        if ('mapred.task.tracker.http.address' not in attrs):
+            attrs['mapred.task.tracker.http.address'] = 'fillinhostport'
+    pd = []
+    for dir in parentDirs:
+        dir = ((dir + '-') + id)
+        pd.append(dir)
+    parentDirs = pd
+    self._setWorkDirs(workDirs, envs, attrs, parentDirs, 'mapred-tt')
+    dict = {'name': 'tasktracker', }
+    dict['program'] = os.path.join('bin', 'hadoop')
+    dict['argv'] = ['tasktracker']
+    dict['envs'] = envs
+    dict['pkgdirs'] = sd.getPkgDirs()
+    dict['workdirs'] = workDirs
+    dict['final-attrs'] = attrs
+    dict['attrs'] = sd.getAttrs()
+    cmd = CommandDesc(dict)
+    return cmd

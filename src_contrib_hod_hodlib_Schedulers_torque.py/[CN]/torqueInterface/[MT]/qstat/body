@@ -1,0 +1,29 @@
+def qstat(self, jobID):
+    qstatInfo = None
+    qstatCommand = ('%s -f -1 %s' % (self.__qstat, jobID))
+    self.__log.debug(qstatCommand)
+    qstatProcess = simpleCommand('qstat', qstatCommand, env=self.__env)
+    qstatProcess.start()
+    qstatProcess.wait()
+    qstatProcess.join()
+    exitCode = qstatProcess.exit_code()
+    if (exitCode > 0):
+        self.__log.warn(('qstat error: %s' % qstatProcess.exit_status_string()))
+    else:
+        qstatInfo = {}
+        for line in qstatProcess.output():
+            line = line.rstrip()
+            if (line.find('=') != (-1)):
+                qstatMatch = reQstatLine.match(line)
+                if qstatMatch:
+                    key = qstatMatch.group(1)
+                    value = qstatMatch.group(2)
+                    qstatInfo[key] = value
+        if ('exec_host' in qstatInfo):
+            list = qstatInfo['exec_host'].split('+')
+            addrList = []
+            for item in list:
+                [head, end] = item.split('/', 1)
+                addrList.append(head)
+            qstatInfo['exec_host'] = addrList
+    return (qstatInfo, exitCode)

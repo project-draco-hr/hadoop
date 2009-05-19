@@ -1,0 +1,25 @@
+def __handle_invalid_cluster_directory(self, clusterDir, cleanUp=False):
+    if (not self.__userState.checkStateFile(CLUSTER_DATA_FILE, (os.R_OK,))):
+        self.__log.critical((INVALID_STATE_FILE_MSGS[0] % self.__userState.get_state_file()))
+        self.__opCode = 1
+        return
+    clusterList = self.__userState.read(CLUSTER_DATA_FILE)
+    if (clusterDir in clusterList.keys()):
+        self.__log.critical(("Cannot find information for cluster with id '%s' in previously allocated cluster directory '%s'." % (clusterList[clusterDir], clusterDir)))
+        if cleanUp:
+            self.__cluster.delete_job(clusterList[clusterDir])
+            self.__log.critical('Freeing resources allocated to the cluster.')
+            if (not self.__userState.checkStateFile(CLUSTER_DATA_FILE, (os.W_OK,))):
+                self.__log.critical((INVALID_STATE_FILE_MSGS[1] % self.__userState.get_state_file()))
+                self.__opCode = 1
+                return
+            self.__remove_cluster(clusterDir)
+        self.__opCode = 3
+    else:
+        if (not os.path.exists(clusterDir)):
+            self.__log.critical((('Invalid hod.clusterdir(--hod.clusterdir or -d). ' + clusterDir) + ' : No such directory'))
+        elif (not os.path.isdir(clusterDir)):
+            self.__log.critical((('Invalid hod.clusterdir(--hod.clusterdir or -d). ' + clusterDir) + ' : Not a directory'))
+        else:
+            self.__log.critical((('Invalid hod.clusterdir(--hod.clusterdir or -d). ' + clusterDir) + ' : Not tied to any allocated cluster.'))
+        self.__opCode = 15

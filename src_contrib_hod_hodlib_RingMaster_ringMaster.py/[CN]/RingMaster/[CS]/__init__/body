@@ -1,0 +1,94 @@
+def __init__(self, cfg, log, **kwds):
+    'starts nodepool and services'
+    self.download = False
+    self.httpServer = None
+    self.cfg = cfg
+    self.log = log
+    self.__hostname = local_fqdn()
+    self.workDirs = None
+    self.__jtMonitor = None
+    self.__idlenessDetected = False
+    self.__stopInProgress = False
+    self.__isStopped = False
+    self.__exitCode = 0
+    self.workers_per_ring = self.cfg['ringmaster']['workers_per_ring']
+    self.__initialize_signal_handlers()
+    sdd = self.cfg['servicedesc']
+    gsvc = None
+    for key in sdd:
+        gsvc = sdd[key]
+        break
+    npd = self.cfg['nodepooldesc']
+    self.np = NodePoolUtil.getNodePool(npd, cfg, log)
+    self.log.debug('Getting service ID.')
+    self.serviceId = self.np.getServiceId()
+    self.log.debug(('Got service ID: %s' % self.serviceId))
+    self.tarSrcLoc = None
+    if self.cfg['ringmaster'].has_key('hadoop-tar-ball'):
+        self.download = True
+        self.tarSrcLoc = self.cfg['ringmaster']['hadoop-tar-ball']
+    self.cd_to_tempdir()
+    if self.download:
+        self.__copy_tarball(os.getcwd())
+        self.basename = self.__find_tarball_in_dir(os.getcwd())
+        if (self.basename is None):
+            raise Exception(('Did not find tarball copied from %s in %s.' % (self.tarSrcLoc, os.getcwd())))
+    self.serviceAddr = to_http_url(self.cfg['ringmaster']['svcrgy-addr'])
+    self.log.debug(('Service registry @ %s' % self.serviceAddr))
+    self.serviceClient = hodXRClient(self.serviceAddr)
+    self.serviceDict = {}
+    try:
+        sdl = self.cfg['servicedesc']
+        workDirs = self.getWorkDirs(cfg)
+        hdfsDesc = sdl['hdfs']
+        hdfs = None
+        hadoopVers = hadoopVersion(self.__getHadoopDir(), self.cfg['hodring']['java-home'], self.log)
+        if ((hadoopVers['major'] == None) or (hadoopVers['minor'] == None)):
+            raise Exception(('Could not retrive the version of Hadoop.' + ' Check the Hadoop installation or the value of the hodring.java-home variable.'))
+        if hdfsDesc.isExternal():
+            hdfs = HdfsExternal(hdfsDesc, workDirs, version=int(hadoopVers['minor']))
+            hdfs.setMasterParams(self.cfg['gridservice-hdfs'])
+        else:
+            hdfs = Hdfs(hdfsDesc, workDirs, 0, version=int(hadoopVers['minor']), workers_per_ring=self.workers_per_ring)
+        self.serviceDict[hdfs.getName()] = hdfs
+        mrDesc = sdl['mapred']
+        mr = None
+        if mrDesc.isExternal():
+            mr = MapReduceExternal(mrDesc, workDirs, version=int(hadoopVers['minor']))
+            mr.setMasterParams(self.cfg['gridservice-mapred'])
+        else:
+            mr = MapReduce(mrDesc, workDirs, 1, version=int(hadoopVers['minor']), workers_per_ring=self.workers_per_ring)
+        self.serviceDict[mr.getName()] = mr
+    except:
+        self.log.critical(('Exception in creating Hdfs and Map/Reduce descriptor objects:                             %s.' % get_exception_error_string()))
+        self.log.debug(get_exception_string())
+        raise
+    ringMasterServer.startService(self.serviceDict, cfg, self.np, log, self)
+    self.rpcserver = ringMasterServer.getAddress()
+    self.httpAddress = None
+    self.tarAddress = None
+    hostname = socket.gethostname()
+    if self.download:
+        self.httpServer = threadedHTTPServer(hostname, self.cfg['ringmaster']['http-port-range'])
+        self.httpServer.serve_forever()
+        self.httpAddress = ('http://%s:%d/' % (self.httpServer.server_address[0], self.httpServer.server_address[1]))
+        self.tarAddress = ('%s%s' % (self.httpAddress, self.basename))
+        ringMasterServer.instance.logMasterSources.registerTarSource(hostname, self.tarAddress)
+    else:
+        self.log.debug('Download not set.')
+    self.log.debug(('%s %s %s %s %s' % (self.cfg['ringmaster']['userid'], self.serviceId, self.__hostname, 'ringmaster', 'hod')))
+    if self.cfg['ringmaster']['register']:
+        if self.httpAddress:
+            self.serviceClient.registerService(self.cfg['ringmaster']['userid'], self.serviceId, self.__hostname, 'ringmaster', 'hod', {'xrs': self.rpcserver, 'http': self.httpAddress, })
+        else:
+            self.serviceClient.registerService(self.cfg['ringmaster']['userid'], self.serviceId, self.__hostname, 'ringmaster', 'hod', {'xrs': self.rpcserver, })
+    self.log.debug(('Registered with serivce registry: %s.' % self.serviceAddr))
+    hodRingPath = os.path.join(cfg['ringmaster']['base-dir'], 'bin', 'hodring')
+    hodRingWorkDir = os.path.join(cfg['hodring']['temp-dir'], (('hodring' + '_') + getpass.getuser()))
+    self.cfg['hodring']['hodring'] = [hodRingWorkDir]
+    self.cfg['hodring']['svcrgy-addr'] = self.cfg['ringmaster']['svcrgy-addr']
+    self.cfg['hodring']['service-id'] = self.np.getServiceId()
+    self.cfg['hodring']['ringmaster-xrs-addr'] = self.__url_to_addr(self.rpcserver)
+    if (self.tarSrcLoc != None):
+        cfg['hodring']['download-addr'] = self.tarAddress
+    self.__init_job_tracker_monitor(ringMasterServer.instance.logMasterSources)

@@ -1,0 +1,29 @@
+def __run_hadoop_commands(self, restart=True):
+    id = 0
+    for desc in self._cfg['commanddesc']:
+        self.log.debug(pprint.pformat(desc.dict))
+        mrSysDir = getMapredSystemDirectory(self._cfg['mapred-system-dir-root'], self._cfg['userid'], self._cfg['service-id'])
+        self.log.debug(('mrsysdir is %s' % mrSysDir))
+        cmd = HadoopCommand(id, desc, self.__tempDir, self.__pkgDir, self._cfg['hadoop-port-range'], self.log, self._cfg['java-home'], mrSysDir, restart)
+        self.__hadoopLogDirs.append(cmd.logdir)
+        self.log.debug(('hadoop log directory: %s' % self.__hadoopLogDirs))
+        try:
+            if (self.__pkgDir == None):
+                pkgdir = desc.getPkgDirs()
+            else:
+                pkgdir = self.__pkgDir
+            self.log.debug(('This is the packcage dir %s ' % pkgdir))
+            if (not cmd.run(pkgdir)):
+                addnInfo = ''
+                if (cmd.stdErrContents is not ''):
+                    addnInfo = (' Information from stderr of the command:\n%s' % cmd.stdErrContents)
+                raise Exception(('Could not launch the %s using %s/bin/hadoop.%s' % (desc.getName(), pkgdir, addnInfo)))
+        except Exception as e:
+            self.log.debug(('Exception running hadoop command: %s\n%s' % (get_exception_error_string(), get_exception_string())))
+            self.__running[id] = cmd
+            raise Exception(e)
+        id += 1
+        if desc.isForeground():
+            continue
+        self.__running[(id - 1)] = cmd
+        self.__check_jobtracker(desc, (id - 1), pkgdir)

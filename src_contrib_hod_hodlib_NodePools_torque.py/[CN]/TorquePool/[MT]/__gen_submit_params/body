@@ -1,0 +1,86 @@
+def __gen_submit_params(self, nodeSet, walltime=None, qosLevel=None, account=None):
+    argList = []
+    stdinList = []
+    npd = self.nodePoolDesc
+
+    def gen_stdin_list():
+        stdinList.append('#!/bin/sh')
+        ringBin = os.path.join(self._cfg['hod']['base-dir'], 'bin', 'ringmaster')
+        ringArgs = [ringBin]
+        ringArgs.extend(self._cfg.get_args(exclude='hod'))
+        ringMasterCommand = args_to_string(ringArgs)
+        self._log.debug(('ringmaster cmd: %s' % ringMasterCommand))
+        stdinList.append(ringMasterCommand)
+
+    def gen_arg_list():
+
+        def process_qsub_attributes():
+            rawAttributes = self.nodePoolDesc.getAttrs()
+            resourceManagementExtensions = ''
+            if ('W:x' in rawAttributes):
+                resourceManagementExtensions = rawAttributes['W:x']
+            if qosLevel:
+                if (len(resourceManagementExtensions) > 0):
+                    resourceManagementExtensions += ';'
+                resourceManagementExtensions += ('QOS:%s' % qosLevel)
+            rawAttributes['W:x'] = resourceManagementExtensions
+            hostname = local_fqdn()
+            rawAttributes['l:nodes'] = ('%s' % nodeSet._getNumNodes())
+            if walltime:
+                rawAttributes['l:walltime'] = ('%s' % walltime)
+            cmds = {}
+            for key in rawAttributes:
+                value = rawAttributes[key]
+                if (key.find(':') == (-1)):
+                    raise ValueError, ('Syntax error: missing colon after %s in %s=%s' % (key, key, value))
+                [option, subOption] = key.split(':', 1)
+                if (not (option in cmds)):
+                    cmds[option] = {}
+                cmds[option][subOption] = value
+            opts = []
+            for k in cmds:
+                csv = []
+                nv = cmds[k]
+                for n in nv:
+                    v = nv[n]
+                    if (len(n) == 0):
+                        csv.append(v)
+                    else:
+                        csv.append(('%s=%s' % (n, v)))
+                opts.append(('-%s' % k))
+                opts.append(','.join(csv))
+            for option in cmds:
+                commandList = []
+                for subOption in cmds[option]:
+                    value = cmds[option][subOption]
+                    if (len(subOption) == 0):
+                        commandList.append(value)
+                    else:
+                        commandList.append(('%s=%s' % (subOption, value)))
+                opts.append(('-%s' % option))
+                opts.append(','.join(commandList))
+            return opts
+        pkgdir = npd.getPkgDir()
+        qsub = os.path.join(pkgdir, 'bin', 'qsub')
+        sdd = self._cfg['servicedesc']
+        gsvc = None
+        for key in sdd:
+            gsvc = sdd[key]
+            break
+        argList.extend(process_qsub_attributes())
+        argList.extend(('-N', (('"' + self._cfg['hod']['title']) + '"')))
+        argList.extend(('-r', 'n'))
+        if ('pbs-user' in self._cfg['resource_manager']):
+            argList.extend(('-u', self._cfg['resource_manager']['pbs-user']))
+        argList.extend(('-d', '/tmp/'))
+        if ('queue' in self._cfg['resource_manager']):
+            queue = self._cfg['resource_manager']['queue']
+            argList.extend(('-q', queue))
+        if self._cfg['resource_manager'].has_key('pbs-account'):
+            argList.extend(('-A', self._cfg['resource_manager']['pbs-account']))
+        if ('env-vars' in self._cfg['resource_manager']):
+            qsub_envs = self._cfg['resource_manager']['env-vars']
+            argList.extend(('-v', self.__keyValToString(qsub_envs)))
+    gen_arg_list()
+    gen_stdin_list()
+    return (argList, stdinList)

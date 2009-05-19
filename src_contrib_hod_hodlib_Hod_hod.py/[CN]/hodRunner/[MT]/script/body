@@ -1,0 +1,63 @@
+def script(self):
+    errorFlag = False
+    errorMsgs = []
+    scriptRet = 0
+    script = self.__cfg['hod']['script']
+    nodes = self.__cfg['hod']['nodecount']
+    clusterDir = self.__cfg['hod']['clusterdir']
+    if (not os.path.exists(script)):
+        errorFlag = True
+        errorMsgs.append((('Invalid script file (--hod.script or -s) : ' + script) + ' : No such file'))
+    elif (not os.path.isfile(script)):
+        errorFlag = True
+        errorMsgs.append((('Invalid script file (--hod.script or -s) : ' + script) + ' : Not a file.'))
+    else:
+        isExecutable = os.access(script, os.X_OK)
+        if (not isExecutable):
+            errorFlag = True
+            errorMsgs.append((('Invalid script file (--hod.script or -s) : ' + script) + ' : Not an executable.'))
+    if (not os.path.exists(clusterDir)):
+        try:
+            os.makedirs(clusterDir)
+        except OSError as err:
+            errorFlag = True
+            errorMsgs.append(('Could not create cluster directory. %s' % str(err)))
+    elif (not os.path.isdir(clusterDir)):
+        errorFlag = True
+        errorMsgs.append((('Invalid cluster directory (--hod.clusterdir or -d) : ' + clusterDir) + ' : Not a directory'))
+    if (int(self.__cfg['hod']['nodecount']) < 3):
+        errorFlag = True
+        errorMsgs.append(('Invalid nodecount (--hod.nodecount or -n) : ' + ('Must be >= 3. Given nodes: %s' % nodes)))
+    if errorFlag:
+        for msg in errorMsgs:
+            self.__log.critical(msg)
+        self.handle_script_exit_code(scriptRet, clusterDir)
+        sys.exit(3)
+    try:
+        self._op_allocate(('allocate', clusterDir, str(nodes)))
+        if (self.__opCode == 0):
+            if self.__cfg['hod'].has_key('script-wait-time'):
+                time.sleep(self.__cfg['hod']['script-wait-time'])
+                self.__log.debug(('Slept for %d time. Now going to run the script' % self.__cfg['hod']['script-wait-time']))
+            if hodInterrupt.isSet():
+                self.__log.debug('Hod interrupted - not executing script')
+            else:
+                scriptRunner = hadoopScript(clusterDir, self.__cfg['hod']['original-dir'])
+                self.__opCode = scriptRunner.run(script)
+                scriptRet = self.__opCode
+                self.__log.info(('Exit code from running the script: %d' % self.__opCode))
+        else:
+            self.__log.critical(('Error %d in allocating the cluster. Cannot run the script.' % self.__opCode))
+        if hodInterrupt.isSet():
+            hodInterrupt.setFlag(False)
+        if self._is_cluster_allocated(clusterDir):
+            self._op_deallocate(('deallocate', clusterDir))
+    except HodInterruptException as h:
+        self.__log.critical('Script failed because of a process interrupt.')
+        self.__opCode = HOD_INTERRUPTED_CODE
+    except:
+        self.__log.critical(('script: %s failed: %s' % (script, get_exception_error_string())))
+        self.__log.debug(get_exception_string())
+    self.__cleanup()
+    self.handle_script_exit_code(scriptRet, clusterDir)
+    return self.__opCode

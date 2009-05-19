@@ -1,0 +1,71 @@
+def start(self):
+    'Run and maintain hodring commands'
+    try:
+        if self._cfg.has_key('download-addr'):
+            self._http = threadedHTTPServer('', self._cfg['http-port-range'])
+            self.log.info('Starting http server...')
+            self._http.serve_forever()
+            self.log.debug(('http://%s:%d' % (self._http.server_address[0], self._http.server_address[1])))
+        hodBaseService.start(self)
+        ringXRAddress = None
+        if self._cfg.has_key('ringmaster-xrs-addr'):
+            ringXRAddress = ('http://%s:%s/' % (self._cfg['ringmaster-xrs-addr'][0], self._cfg['ringmaster-xrs-addr'][1]))
+            self.log.debug(('Ringmaster at %s' % ringXRAddress))
+        self.log.debug('Creating service registry XML-RPC client.')
+        serviceClient = hodXRClient(to_http_url(self._cfg['svcrgy-addr']))
+        if (ringXRAddress == None):
+            self.log.info('Did not get ringmaster XML-RPC address. Fetching information from service registry.')
+            ringList = serviceClient.getServiceInfo(self._cfg['userid'], self._cfg['service-id'], 'ringmaster', 'hod')
+            self.log.debug(pprint.pformat(ringList))
+            if len(ringList):
+                if isinstance(ringList, list):
+                    ringXRAddress = ringList[0]['xrs']
+            count = 0
+            while ((ringXRAddress == None) and (count < 3000)):
+                ringList = serviceClient.getServiceInfo(self._cfg['userid'], self._cfg['service-id'], 'ringmaster', 'hod')
+                if len(ringList):
+                    if isinstance(ringList, list):
+                        ringXRAddress = ringList[0]['xrs']
+                count = (count + 1)
+                time.sleep(0.2)
+        if (ringXRAddress == None):
+            raise Exception('Could not get ringmaster XML-RPC server address.')
+        self.log.debug('Creating ringmaster XML-RPC client.')
+        ringClient = hodXRClient(ringXRAddress)
+        id = ((self.hostname + '_') + str(os.getpid()))
+        if ('download-addr' in self._cfg):
+            self.__download_package(ringClient)
+        else:
+            self.log.debug('Did not find a download address.')
+        cmdlist = []
+        firstTime = True
+        increment = 0
+        hadoopStartupTime = 2
+        cmdlist = ringClient.getCommand(id)
+        while (cmdlist == []):
+            if firstTime:
+                sleepTime = (((increment + self._cfg['cmd-retry-initial-time']) + hadoopStartupTime) + random.uniform(0, self._cfg['cmd-retry-interval']))
+                firstTime = False
+            else:
+                sleepTime = ((increment + self._cfg['cmd-retry-initial-time']) + (+ random.uniform(0, self._cfg['cmd-retry-interval'])))
+            self.log.debug(('Did not get command list. Waiting for %s seconds.' % sleepTime))
+            time.sleep(sleepTime)
+            increment = (increment + 1)
+            cmdlist = ringClient.getCommand(id)
+        self.log.debug(pformat(cmdlist))
+        cmdDescs = []
+        for cmds in cmdlist:
+            cmdDescs.append(CommandDesc(cmds['dict'], self.log))
+        self._cfg['commanddesc'] = cmdDescs
+        self.log.info('Running hadoop commands...')
+        self.__run_hadoop_commands(False)
+        masterParams = []
+        for (k, cmd) in self.__running.iteritems():
+            masterParams.extend(cmd.filledInKeyVals)
+        self.log.debug('printing getparams')
+        self.log.debug(pformat(id))
+        self.log.debug(pformat(masterParams))
+        if (len(masterParams) > 0):
+            ringClient.addMasterParams(id, masterParams)
+    except Exception as e:
+        raise Exception(e)

@@ -1,0 +1,56 @@
+def __initialize_config_dict(self):
+    ' build a dictionary of config vars keyed by section name defined in\n           configDef, if options defined override config'
+    for section in self._mySections:
+        items = self.items(section)
+        self._dict[section] = {}
+        for keyValuePair in items:
+            newValue = reCommentHack.sub('', keyValuePair[1])
+            newValue = reCommentNewline.sub('', newValue)
+            self._dict[section][keyValuePair[0]] = newValue
+        if self._options:
+            for option in self._configDef[section].keys():
+                if self._options[section].has_key(option):
+                    compoundOpt = ('%s.%s' % (section, option))
+                    if ((compoundOpt == 'gridservice-mapred.final-server-params') or (compoundOpt == 'gridservice-hdfs.final-server-params') or (compoundOpt == 'gridservice-mapred.server-params') or (compoundOpt == 'gridservice-hdfs.server-params') or (compoundOpt == 'hod.client-params')):
+                        if ((compoundOpt == 'gridservice-mapred.final-server-params') or (compoundOpt == 'gridservice-hdfs.final-server-params')):
+                            overwrite = False
+                        else:
+                            overwrite = True
+                        if (not self._dict[section].has_key(option)):
+                            self._dict[section][option] = ''
+                        dictOpts = reKeyValList.split(self._dict[section][option])
+                        dictOptsKeyVals = {}
+                        for opt in dictOpts:
+                            if (opt != ''):
+                                if reKeyVal.search(opt):
+                                    (key, val) = reKeyVal.split(opt, 1)
+                                    dictOptsKeyVals[key] = val
+                                else:
+                                    dictOptsKeyVals[opt] = None
+                        cmdLineOpts = reKeyValList.split(self._options[section][option])
+                        for opt in cmdLineOpts:
+                            if reKeyVal.search(opt):
+                                (key, val) = reKeyVal.split(opt, 1)
+                            else:
+                                key = opt
+                                val = None
+                            if dictOptsKeyVals.has_key(key):
+                                if overwrite:
+                                    dictOptsKeyVals[key] = val
+                            else:
+                                dictOptsKeyVals[key] = val
+                        self._dict[section][option] = ''
+                        for key in dictOptsKeyVals:
+                            if (self._dict[section][option] == ''):
+                                if dictOptsKeyVals[key]:
+                                    self._dict[section][option] = ((key + '=') + dictOptsKeyVals[key])
+                                else:
+                                    self._dict[section][option] = key
+                            elif dictOptsKeyVals[key]:
+                                self._dict[section][option] = ((((self._dict[section][option] + ',') + key) + '=') + dictOptsKeyVals[key])
+                            else:
+                                self._dict[section][option] = ((self._dict[section][option] + ',') + key)
+                    elif (not self._dict[section].has_key(option)):
+                        self._dict[section][option] = self._options[section][option]
+                    elif (self._configDef[section][option]['default'] != self._options[section][option]):
+                        self._dict[section][option] = self._options[section][option]
