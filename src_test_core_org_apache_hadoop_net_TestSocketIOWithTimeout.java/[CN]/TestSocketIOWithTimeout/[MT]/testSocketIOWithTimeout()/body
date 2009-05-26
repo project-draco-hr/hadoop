@@ -1,0 +1,46 @@
+{
+  Pipe pipe=Pipe.open();
+  Pipe.SourceChannel source=pipe.source();
+  Pipe.SinkChannel sink=pipe.sink();
+  try {
+    InputStream in=new SocketInputStream(source,TIMEOUT);
+    OutputStream out=new SocketOutputStream(sink,TIMEOUT);
+    byte[] writeBytes=TEST_STRING.getBytes();
+    byte[] readBytes=new byte[writeBytes.length];
+    out.write(writeBytes);
+    doIO(null,out);
+    in.read(readBytes);
+    assertTrue(Arrays.equals(writeBytes,readBytes));
+    doIO(in,null);
+    in=new SocketInputStream(source,0);
+    Thread thread=new Thread(new ReadRunnable(in));
+    thread.start();
+    try {
+      Thread.sleep(1000);
+    }
+ catch (    InterruptedException ignored) {
+    }
+    thread.interrupt();
+    try {
+      thread.join();
+    }
+ catch (    InterruptedException e) {
+      throw new IOException("Unexpected InterruptedException : " + e);
+    }
+    assertTrue(source.isOpen());
+    assertTrue(sink.isOpen());
+    out.close();
+    assertFalse(sink.isOpen());
+    assertEquals(-1,in.read());
+    in.close();
+    assertFalse(source.isOpen());
+  }
+  finally {
+    if (source != null) {
+      source.close();
+    }
+    if (sink != null) {
+      sink.close();
+    }
+  }
+}
