@@ -3,49 +3,70 @@
   if (srcKey.length() == 0) {
     return false;
   }
+  final String debugPreamble="Renaming '" + src + "' to '"+ dst+ "' - ";
   String dstKey;
   try {
-    boolean dstIsFile=existsAndIsFile(dst);
+    boolean dstIsFile=!getFileStatus(dst).isDir();
     if (dstIsFile) {
+      LOG.debug(debugPreamble + "returning false as dst is an already existing file");
       return false;
     }
  else {
+      LOG.debug(debugPreamble + "using dst as output directory");
       dstKey=pathToKey(makeAbsolute(new Path(dst,src.getName())));
     }
   }
  catch (  FileNotFoundException e) {
+    LOG.debug(debugPreamble + "using dst as output destination");
     dstKey=pathToKey(makeAbsolute(dst));
     try {
       if (!getFileStatus(dst.getParent()).isDir()) {
+        LOG.debug(debugPreamble + "returning false as dst parent exists and is a file");
         return false;
       }
     }
  catch (    FileNotFoundException ex) {
+      LOG.debug(debugPreamble + "returning false as dst parent does not exist");
       return false;
     }
   }
+  boolean srcIsFile;
   try {
-    boolean srcIsFile=existsAndIsFile(src);
-    if (srcIsFile) {
-      store.rename(srcKey,dstKey);
-    }
- else {
-      store.delete(srcKey + FOLDER_SUFFIX);
-      store.storeEmptyFile(dstKey + FOLDER_SUFFIX);
-      String priorLastKey=null;
-      do {
-        PartialListing listing=store.listAll(srcKey,S3_MAX_LISTING_LENGTH,priorLastKey);
-        for (        FileMetadata file : listing.getFiles()) {
-          store.rename(file.getKey(),dstKey + file.getKey().substring(srcKey.length()));
-        }
-        priorLastKey=listing.getPriorLastKey();
-      }
- while (priorLastKey != null);
-    }
-    createParent(src);
-    return true;
+    srcIsFile=!getFileStatus(src).isDir();
   }
  catch (  FileNotFoundException e) {
+    LOG.debug(debugPreamble + "returning false as src does not exist");
     return false;
   }
+  if (srcIsFile) {
+    LOG.debug(debugPreamble + "src is file, so doing copy then delete in S3");
+    store.copy(srcKey,dstKey);
+    store.delete(srcKey);
+  }
+ else {
+    LOG.debug(debugPreamble + "src is directory, so copying contents");
+    store.storeEmptyFile(dstKey + FOLDER_SUFFIX);
+    List<String> keysToDelete=new ArrayList<String>();
+    String priorLastKey=null;
+    do {
+      PartialListing listing=store.list(srcKey,S3_MAX_LISTING_LENGTH,priorLastKey,true);
+      for (      FileMetadata file : listing.getFiles()) {
+        keysToDelete.add(file.getKey());
+        store.copy(file.getKey(),dstKey + file.getKey().substring(srcKey.length()));
+      }
+      priorLastKey=listing.getPriorLastKey();
+    }
+ while (priorLastKey != null);
+    LOG.debug(debugPreamble + "all files in src copied, now removing src files");
+    for (    String key : keysToDelete) {
+      store.delete(key);
+    }
+    try {
+      store.delete(srcKey + FOLDER_SUFFIX);
+    }
+ catch (    FileNotFoundException e) {
+    }
+    LOG.debug(debugPreamble + "done");
+  }
+  return true;
 }

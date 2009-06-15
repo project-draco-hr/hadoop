@@ -4,23 +4,35 @@
     status=getFileStatus(f);
   }
  catch (  FileNotFoundException e) {
+    LOG.debug("Delete called for '" + f + "' but file does not exist, so returning false");
     return false;
   }
   Path absolutePath=makeAbsolute(f);
   String key=pathToKey(absolutePath);
   if (status.isDir()) {
-    FileStatus[] contents=listStatus(f);
-    if (!recursive && contents.length > 0) {
-      throw new IOException("Directory " + f.toString() + " is not empty.");
+    if (!recurse && listStatus(f).length > 0) {
+      throw new IOException("Can not delete " + f + " at is a not empty directory and recurse option is false");
     }
-    for (    FileStatus p : contents) {
-      if (!delete(p.getPath(),recursive)) {
-        return false;
+    createParent(f);
+    LOG.debug("Deleting directory '" + f + "'");
+    String priorLastKey=null;
+    do {
+      PartialListing listing=store.list(key,S3_MAX_LISTING_LENGTH,priorLastKey,true);
+      for (      FileMetadata file : listing.getFiles()) {
+        store.delete(file.getKey());
       }
+      priorLastKey=listing.getPriorLastKey();
     }
-    store.delete(key + FOLDER_SUFFIX);
+ while (priorLastKey != null);
+    try {
+      store.delete(key + FOLDER_SUFFIX);
+    }
+ catch (    FileNotFoundException e) {
+    }
   }
  else {
+    LOG.debug("Deleting file '" + f + "'");
+    createParent(f);
     store.delete(key);
   }
   return true;

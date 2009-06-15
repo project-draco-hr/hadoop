@@ -1,0 +1,50 @@
+{
+  final FTPClient client=connect();
+  Path workDir=new Path(client.printWorkingDirectory());
+  Path absolute=makeAbsolute(workDir,file);
+  boolean overwrite=flag.contains(CreateFlag.OVERWRITE);
+  boolean create=flag.contains(CreateFlag.CREATE);
+  boolean append=flag.contains(CreateFlag.APPEND);
+  if (exists(client,file)) {
+    if (overwrite) {
+      delete(client,file);
+    }
+ else     if (append) {
+      return append(file,bufferSize,progress);
+    }
+ else {
+      disconnect(client);
+      throw new IOException("File already exists: " + file);
+    }
+  }
+ else {
+    if (append && !create)     throw new FileNotFoundException("File does not exist: " + file);
+  }
+  Path parent=absolute.getParent();
+  if (parent == null || !mkdirs(client,parent,FsPermission.getDefault())) {
+    parent=(parent == null) ? new Path("/") : parent;
+    disconnect(client);
+    throw new IOException("create(): Mkdirs failed to create: " + parent);
+  }
+  client.allocate(bufferSize);
+  client.changeWorkingDirectory(parent.toUri().getPath());
+  FSDataOutputStream fos=new FSDataOutputStream(client.storeFileStream(file.getName()),statistics){
+    @Override public void close() throws IOException {
+      super.close();
+      if (!client.isConnected()) {
+        throw new FTPException("Client not connected");
+      }
+      boolean cmdCompleted=client.completePendingCommand();
+      disconnect(client);
+      if (!cmdCompleted) {
+        throw new FTPException("Could not complete transfer, Reply Code - " + client.getReplyCode());
+      }
+    }
+  }
+;
+  if (!FTPReply.isPositivePreliminary(client.getReplyCode())) {
+    fos.close();
+    throw new IOException("Unable to create file: " + file + ", Aborting");
+  }
+  return fos;
+}
