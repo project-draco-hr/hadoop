@@ -1,0 +1,36 @@
+{
+  Path ncTFile=new Path(ROOT,"basic.tfile");
+  FSDataOutputStream fout=createFSOutput(ncTFile);
+  Writer writer=new Writer(fout,minBlockSize,codec,"memcmp",conf);
+  writeRecords(writer);
+  fout.close();
+  FSDataInputStream fin=fs.open(ncTFile);
+  Reader reader=new Reader(fs.open(ncTFile),fs.getFileStatus(ncTFile).getLen(),conf);
+  Scanner scanner=reader.createScanner();
+  readAllRecords(scanner);
+  scanner.seekTo(getSomeKey(50));
+  assertTrue("location lookup failed",scanner.seekTo(getSomeKey(50)));
+  byte[] readKey=readKey(scanner);
+  assertTrue("seeked key does not match",Arrays.equals(getSomeKey(50),readKey));
+  scanner.seekTo(new byte[0]);
+  byte[] val1=readValue(scanner);
+  scanner.seekTo(new byte[0]);
+  byte[] val2=readValue(scanner);
+  assertTrue(Arrays.equals(val1,val2));
+  scanner.lowerBound(getSomeKey(50));
+  assertTrue("locaton lookup failed",scanner.currentLocation.compareTo(reader.end()) < 0);
+  readKey=readKey(scanner);
+  assertTrue("seeked key does not match",Arrays.equals(readKey,getSomeKey(50)));
+  scanner.upperBound(getSomeKey(50));
+  assertTrue("location lookup failed",scanner.currentLocation.compareTo(reader.end()) < 0);
+  readKey=readKey(scanner);
+  assertTrue("seeked key does not match",Arrays.equals(readKey,getSomeKey(51)));
+  scanner.close();
+  scanner=reader.createScanner(getSomeKey(10),getSomeKey(60));
+  readAndCheckbytes(scanner,10,50);
+  assertFalse(scanner.advance());
+  scanner.close();
+  reader.close();
+  fin.close();
+  fs.delete(ncTFile,true);
+}

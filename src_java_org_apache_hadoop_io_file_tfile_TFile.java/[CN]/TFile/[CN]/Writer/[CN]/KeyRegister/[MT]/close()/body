@@ -1,0 +1,33 @@
+{
+  if (closed == true) {
+    return;
+  }
+  try {
+    ++errorCount;
+    byte[] key=currentKeyBufferOS.getBuffer();
+    int len=currentKeyBufferOS.size();
+    if (expectedLength >= 0 && expectedLength != len) {
+      throw new IOException("Incorrect key length: expected=" + expectedLength + " actual="+ len);
+    }
+    Utils.writeVInt(blkAppender,len);
+    blkAppender.write(key,0,len);
+    if (tfileIndex.getFirstKey() == null) {
+      tfileIndex.setFirstKey(key,0,len);
+    }
+    if (tfileMeta.isSorted()) {
+      byte[] lastKey=lastKeyBufferOS.getBuffer();
+      int lastLen=lastKeyBufferOS.size();
+      if (tfileMeta.getComparator().compare(key,0,len,lastKey,0,lastLen) < 0) {
+        throw new IOException("Keys are not added in sorted order");
+      }
+    }
+    BoundedByteArrayOutputStream tmp=currentKeyBufferOS;
+    currentKeyBufferOS=lastKeyBufferOS;
+    lastKeyBufferOS=tmp;
+    --errorCount;
+  }
+  finally {
+    closed=true;
+    state=State.END_KEY;
+  }
+}

@@ -1,0 +1,37 @@
+{
+  if ((state == State.CLOSED)) {
+    return;
+  }
+  try {
+    if (errorCount == 0) {
+      if (state != State.READY) {
+        throw new IllegalStateException("Cannot close TFile in the middle of key-value insertion.");
+      }
+      finishDataBlock(true);
+      BlockAppender outMeta=writerBCF.prepareMetaBlock(TFileMeta.BLOCK_NAME,COMPRESSION_NONE);
+      try {
+        tfileMeta.write(outMeta);
+      }
+  finally {
+        outMeta.close();
+      }
+      BlockAppender outIndex=writerBCF.prepareMetaBlock(TFileIndex.BLOCK_NAME);
+      try {
+        tfileIndex.write(outIndex);
+      }
+  finally {
+        outIndex.close();
+      }
+      if (writerBCF != null) {
+        writerBCF.close();
+        writerBCF=null;
+      }
+    }
+  }
+  finally {
+    IOUtils.cleanup(LOG,blkAppender,writerBCF);
+    blkAppender=null;
+    writerBCF=null;
+    state=State.CLOSED;
+  }
+}
