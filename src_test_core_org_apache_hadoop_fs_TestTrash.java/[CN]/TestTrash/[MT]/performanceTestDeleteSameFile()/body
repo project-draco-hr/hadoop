@@ -1,0 +1,47 @@
+{
+  Path base=TEST_DIR;
+  Configuration conf=new Configuration();
+  conf.setClass("fs.file.impl",TestLFS.class,FileSystem.class);
+  FileSystem fs=FileSystem.getLocal(conf);
+  conf.set("fs.default.name",fs.getUri().toString());
+  conf.set("fs.trash.interval","10");
+  FsShell shell=new FsShell();
+  shell.setConf(conf);
+  Path myPath=new Path(base,"test/mkdirs");
+  mkdir(fs,myPath);
+  Path myFile;
+  long start;
+  long first=0;
+  int retVal=0;
+  int factor=10;
+  myFile=new Path(base,"test/mkdirs/myFile");
+  String[] args=new String[]{"-rm",myFile.toString()};
+  int iters=1000;
+  for (int i=0; i < iters; i++) {
+    writeFile(fs,myFile);
+    start=System.currentTimeMillis();
+    try {
+      retVal=shell.run(args);
+    }
+ catch (    Exception e) {
+      System.err.println("Exception raised from Trash.run " + e.getLocalizedMessage());
+      throw new IOException(e.getMessage());
+    }
+    assertTrue(retVal == 0);
+    long iterTime=System.currentTimeMillis() - start;
+    if (i < 10) {
+      if (i == 0) {
+        first=iterTime;
+      }
+ else {
+        first=(first + iterTime) / 2;
+      }
+    }
+    int print_freq=iters / 10;
+    if (i > 10) {
+      if ((i % print_freq) == 0)       System.out.println("iteration=" + i + ";res ="+ retVal+ "; start="+ start+ "; iterTime = "+ iterTime+ " vs. firstTime="+ first);
+      long factoredTime=first * factor;
+      assertTrue(iterTime < factoredTime);
+    }
+  }
+}
