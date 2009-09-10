@@ -11,10 +11,26 @@
   if (this.in == null) {
     throw new IOException("stream closed");
   }
+  if (lazyInitialization) {
+    this.init();
+    this.lazyInitialization=false;
+  }
+  if (skipDecompression) {
+    changeStateToProcessABlock();
+    CBZip2InputStream.skipDecompression=false;
+  }
   final int hi=offs + len;
   int destOffs=offs;
-  for (int b; (destOffs < hi) && ((b=read0()) >= 0); ) {
+  int b=0;
+  for (; ((destOffs < hi) && ((b=read0())) >= 0); ) {
     dest[destOffs++]=(byte)b;
   }
-  return (destOffs == offs) ? -1 : (destOffs - offs);
+  int result=destOffs - offs;
+  if (result == 0) {
+    result=b;
+    skipResult=this.skipToNextMarker(CBZip2InputStream.BLOCK_DELIMITER,DELIMITER_BIT_LENGTH);
+    this.reportedBytesReadFromCompressedStream=this.bytesReadFromCompressedStream;
+    changeStateToProcessABlock();
+  }
+  return result;
 }

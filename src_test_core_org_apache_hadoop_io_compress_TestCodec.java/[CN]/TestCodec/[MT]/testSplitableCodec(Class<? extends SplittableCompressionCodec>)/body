@@ -1,0 +1,43 @@
+{
+  final long DEFLBYTES=2 * 1024 * 1024;
+  final Configuration conf=new Configuration();
+  final Random rand=new Random();
+  final long seed=rand.nextLong();
+  LOG.info("seed: " + seed);
+  rand.setSeed(seed);
+  SplittableCompressionCodec codec=ReflectionUtils.newInstance(codecClass,conf);
+  final FileSystem fs=FileSystem.getLocal(conf);
+  final FileStatus infile=fs.getFileStatus(writeSplitTestFile(fs,rand,codec,DEFLBYTES));
+  if (infile.getLen() > Integer.MAX_VALUE) {
+    fail("Unexpected compression: " + DEFLBYTES + " -> "+ infile.getLen());
+  }
+  final int flen=(int)infile.getLen();
+  final Text line=new Text();
+  final Decompressor dcmp=CodecPool.getDecompressor(codec);
+  try {
+    for (int pos=0; pos < infile.getLen(); pos+=rand.nextInt(flen / 8)) {
+      final SplitCompressionInputStream in=codec.createInputStream(fs.open(infile.getPath()),dcmp,pos,flen,SplittableCompressionCodec.READ_MODE.BYBLOCK);
+      if (in.getAdjustedStart() >= flen) {
+        break;
+      }
+      LOG.info("SAMPLE " + in.getAdjustedStart() + ","+ in.getAdjustedEnd());
+      final LineReader lreader=new LineReader(in);
+      lreader.readLine(line);
+      if (in.getPos() >= flen) {
+        break;
+      }
+      lreader.readLine(line);
+      final int seq1=readLeadingInt(line);
+      lreader.readLine(line);
+      if (in.getPos() >= flen) {
+        break;
+      }
+      final int seq2=readLeadingInt(line);
+      assertEquals("Mismatched lines",seq1 + 1,seq2);
+    }
+  }
+  finally {
+    CodecPool.returnDecompressor(dcmp);
+  }
+  fs.delete(infile.getPath().getParent(),true);
+}
