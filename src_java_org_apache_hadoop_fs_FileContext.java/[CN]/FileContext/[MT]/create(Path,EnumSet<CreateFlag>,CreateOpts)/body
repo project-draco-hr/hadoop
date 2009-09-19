@@ -1,72 +1,22 @@
 {
   Path absF=fixRelativePart(f);
   FileSystem fsOfAbsF=getFSofPath(absF);
-  int bufferSize=-1;
-  short replication=-1;
-  long blockSize=-1;
-  int bytesPerChecksum=-1;
   FsPermission permission=null;
-  Progressable progress=null;
-  for (  CreateOpts iOpt : opts) {
-    if (CreateOpts.BlockSize.class.isInstance(iOpt)) {
-      if (blockSize != -1) {
-        throw new IllegalArgumentException("multiple varargs of same kind");
+  if (opts != null) {
+    for (int i=0; i < opts.length; ++i) {
+      if (opts[i] instanceof CreateOpts.Perms) {
+        if (permission != null)         throw new IllegalArgumentException("multiple permissions varargs");
+        permission=((CreateOpts.Perms)opts[i]).getValue();
+        opts[i]=CreateOpts.perms(permission.applyUMask(umask));
       }
-      blockSize=((CreateOpts.BlockSize)iOpt).getValue();
-    }
- else     if (CreateOpts.BufferSize.class.isInstance(iOpt)) {
-      if (bufferSize != -1) {
-        throw new IllegalArgumentException("multiple varargs of same kind");
-      }
-      bufferSize=((CreateOpts.BufferSize)iOpt).getValue();
-    }
- else     if (CreateOpts.ReplicationFactor.class.isInstance(iOpt)) {
-      if (replication != -1) {
-        throw new IllegalArgumentException("multiple varargs of same kind");
-      }
-      replication=((CreateOpts.ReplicationFactor)iOpt).getValue();
-    }
- else     if (CreateOpts.BytesPerChecksum.class.isInstance(iOpt)) {
-      if (bytesPerChecksum != -1) {
-        throw new IllegalArgumentException("multiple varargs of same kind");
-      }
-      bytesPerChecksum=((CreateOpts.BytesPerChecksum)iOpt).getValue();
-    }
- else     if (CreateOpts.Perms.class.isInstance(iOpt)) {
-      if (permission != null) {
-        throw new IllegalArgumentException("multiple varargs of same kind");
-      }
-      permission=((CreateOpts.Perms)iOpt).getValue();
-    }
- else     if (CreateOpts.Progress.class.isInstance(iOpt)) {
-      if (progress != null) {
-        throw new IllegalArgumentException("multiple varargs of same kind");
-      }
-      progress=((CreateOpts.Progress)iOpt).getValue();
-    }
- else {
-      throw new IllegalArgumentException("Unkown CreateOpts of type " + iOpt.getClass().getName());
     }
   }
-  if (blockSize % bytesPerChecksum != 0) {
-    throw new IllegalArgumentException("blockSize should be a multiple of checksumsize");
-  }
-  FsServerDefaults ssDef=fsOfAbsF.getServerDefaults();
-  if (blockSize == -1) {
-    blockSize=ssDef.getBlockSize();
-  }
-  if (bufferSize == -1) {
-    bufferSize=ssDef.getFileBufferSize();
-  }
-  if (replication == -1) {
-    replication=ssDef.getReplication();
-  }
-  if (bytesPerChecksum == -1) {
-    bytesPerChecksum=ssDef.getBytesPerChecksum();
-  }
+  CreateOpts[] theOpts=opts;
   if (permission == null) {
-    permission=FsPermission.getDefault();
+    CreateOpts[] newOpts=new CreateOpts[opts.length + 1];
+    System.arraycopy(opts,0,newOpts,0,opts.length);
+    newOpts[opts.length]=CreateOpts.perms(FsPermission.getDefault().applyUMask(umask));
+    theOpts=newOpts;
   }
-  FsPermission absPerms=(permission == null ? FsPermission.getDefault() : permission).applyUMask(umask);
-  return fsOfAbsF.primitiveCreate(absF,absPerms,createFlag,bufferSize,replication,blockSize,progress,bytesPerChecksum);
+  return fsOfAbsF.primitiveCreate(absF,createFlag,theOpts);
 }
