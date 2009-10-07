@@ -1,9 +1,11 @@
 {
   Path[] parents=new Path[1];
   int level=0;
+  final Path pathPattern=fixRelativePart(inPathPattern);
   String filename=pathPattern.toUri().getPath();
   if ("".equals(filename) || Path.SEPARATOR.equals(filename)) {
-    return getFileStatus(new Path[]{pathPattern});
+    Path p=pathPattern.makeQualified(uri,null);
+    return getFileStatus(new Path[]{p});
   }
   String[] components=filename.split(Path.SEPARATOR);
   if (pathPattern.isAbsolute()) {
@@ -14,12 +16,16 @@
     parents[0]=new Path(Path.CUR_DIR);
   }
   boolean[] hasGlob=new boolean[]{false};
-  Path[] parentPaths=globPathsLevel(parents,components,level,hasGlob);
+  Path[] relParentPaths=globPathsLevel(parents,components,level,hasGlob);
   FileStatus[] results;
-  if (parentPaths == null || parentPaths.length == 0) {
+  if (relParentPaths == null || relParentPaths.length == 0) {
     results=null;
   }
  else {
+    Path[] parentPaths=new Path[relParentPaths.length];
+    for (int i=0; i < relParentPaths.length; i++) {
+      parentPaths[i]=relParentPaths[i].makeQualified(uri,null);
+    }
     GlobFilter fp=new GlobFilter(components[components.length - 1],filter);
     if (fp.hasPattern()) {
       results=listStatus(parentPaths,fp);
