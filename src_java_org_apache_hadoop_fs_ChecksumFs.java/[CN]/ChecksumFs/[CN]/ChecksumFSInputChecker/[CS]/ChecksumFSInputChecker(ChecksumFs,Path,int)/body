@@ -1,0 +1,24 @@
+{
+  super(file,fs.getFileStatus(file).getReplication());
+  this.datas=fs.getRawFs().open(file,bufferSize);
+  this.fs=fs;
+  Path sumFile=fs.getChecksumFile(file);
+  try {
+    int sumBufferSize=fs.getSumBufferSize(fs.getBytesPerSum(),bufferSize);
+    sums=fs.getRawFs().open(sumFile,sumBufferSize);
+    byte[] version=new byte[CHECKSUM_VERSION.length];
+    sums.readFully(version);
+    if (!Arrays.equals(version,CHECKSUM_VERSION)) {
+      throw new IOException("Not a checksum file: " + sumFile);
+    }
+    this.bytesPerSum=sums.readInt();
+    set(fs.verifyChecksum,new PureJavaCrc32(),bytesPerSum,4);
+  }
+ catch (  FileNotFoundException e) {
+    set(fs.verifyChecksum,null,1,0);
+  }
+catch (  IOException e) {
+    LOG.warn("Problem opening checksum file: " + file + ".  Ignoring exception: "+ StringUtils.stringifyException(e));
+    set(fs.verifyChecksum,null,1,0);
+  }
+}
