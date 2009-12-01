@@ -1,0 +1,36 @@
+def wait_for_hadoop(cluster, number, timeout=600):
+    start_time = time.time()
+    instances = cluster.check_running(MASTER, 1)
+    if (not instances):
+        return
+    master = instances[0]
+    print 'Waiting for jobtracker to start'
+    previous_running = 0
+    while True:
+        if ((time.time() - start_time) >= timeout):
+            raise TimeoutException()
+        try:
+            actual_running = _number_of_tasktrackers(master.public_ip, 1)
+            break
+        except IOError:
+            pass
+        sys.stdout.write('.')
+        sys.stdout.flush()
+        time.sleep(1)
+    print 
+    if (number > 0):
+        print ('Waiting for %d tasktrackers to start' % number)
+        while (actual_running < number):
+            if ((time.time() - start_time) >= timeout):
+                raise TimeoutException()
+            try:
+                actual_running = _number_of_tasktrackers(master.public_ip, 5, 2)
+                if (actual_running != previous_running):
+                    sys.stdout.write(('%d' % actual_running))
+                sys.stdout.write('.')
+                sys.stdout.flush()
+                time.sleep(1)
+                previous_running = actual_running
+            except IOError:
+                raise TimeoutException()
+        print 

@@ -1,0 +1,23 @@
+def launch_slaves(cluster, number, image_id, size_id, key_name, public_key, user_data_file_template=None, placement=None, user_packages=None, auto_shutdown=None, env_strings=[]):
+    if (user_data_file_template == None):
+        user_data_file_template = _get_default_user_data_file_template(cluster)
+    instances = cluster.check_running(MASTER, 1)
+    if (not instances):
+        return
+    master = instances[0]
+    ebs_mappings = ''
+    storage = cluster.get_storage()
+    if storage.has_any_storage((SLAVE,)):
+        ebs_mappings = storage.get_mappings_string_for_role(SLAVE)
+    replacements = {'%ENV%': build_env_string(env_strings, {'USER_PACKAGES': user_packages, 'AUTO_SHUTDOWN': auto_shutdown, 'EBS_MAPPINGS': ebs_mappings, 'MASTER_HOST': master.public_ip, }), }
+    instance_user_data = InstanceUserData(user_data_file_template, replacements)
+    instance_ids = cluster.launch_instances(SLAVE, number, image_id, size_id, instance_user_data, key_name=key_name, public_key=public_key, placement=placement)
+    print 'Waiting for slaves to start'
+    try:
+        cluster.wait_for_instances(instance_ids)
+        print 'Slaves started'
+    except TimeoutException:
+        print 'Timeout while waiting for slave instances to start.'
+        return
+    print 
+    cluster.print_status((SLAVE,))
