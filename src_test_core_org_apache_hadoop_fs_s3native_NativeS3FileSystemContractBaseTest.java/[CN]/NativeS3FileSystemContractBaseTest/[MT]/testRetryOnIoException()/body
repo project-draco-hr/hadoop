@@ -1,0 +1,56 @@
+{
+class TestInputStream extends InputStream {
+    boolean shouldThrow=false;
+    int throwCount=0;
+    int pos=0;
+    byte[] bytes;
+    public TestInputStream(){
+      bytes=new byte[256];
+      for (int i=0; i < 256; i++) {
+        bytes[i]=(byte)i;
+      }
+    }
+    @Override public int read() throws IOException {
+      shouldThrow=!shouldThrow;
+      if (shouldThrow) {
+        throwCount++;
+        throw new IOException();
+      }
+      return pos++;
+    }
+    @Override public int read(    byte[] b,    int off,    int len) throws IOException {
+      shouldThrow=!shouldThrow;
+      if (shouldThrow) {
+        throwCount++;
+        throw new IOException();
+      }
+      int sizeToRead=Math.min(len,256 - pos);
+      for (int i=0; i < sizeToRead; i++) {
+        b[i]=bytes[pos + i];
+      }
+      pos+=sizeToRead;
+      return sizeToRead;
+    }
+  }
+  final InputStream is=new TestInputStream();
+class MockNativeFileSystemStore extends Jets3tNativeFileSystemStore {
+    @Override public InputStream retrieve(    String key,    long byteRangeStart) throws IOException {
+      return is;
+    }
+  }
+  NativeS3FsInputStream stream=new NativeS3FsInputStream(new MockNativeFileSystemStore(),null,is,"");
+  byte[] result=new byte[256];
+  for (int i=0; i < 128; i++) {
+    result[i]=(byte)stream.read();
+  }
+  for (int i=128; i < 256; i+=8) {
+    byte[] temp=new byte[8];
+    int read=stream.read(temp,0,8);
+    assertEquals(8,read);
+    System.arraycopy(temp,0,result,i,8);
+  }
+  for (int i=0; i < 256; i++) {
+    assertEquals((byte)i,result[i]);
+  }
+  assertEquals(144,((TestInputStream)is).throwCount);
+}
