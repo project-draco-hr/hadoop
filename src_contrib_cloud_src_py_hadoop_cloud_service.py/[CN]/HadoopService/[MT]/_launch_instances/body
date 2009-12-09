@@ -1,0 +1,23 @@
+def _launch_instances(self, instance_template):
+    it = instance_template
+    user_data_file_template = it.user_data_file_template
+    if (it.user_data_file_template == None):
+        user_data_file_template = self._get_default_user_data_file_template()
+    ebs_mappings = ''
+    storage = self.cluster.get_storage()
+    for role in it.roles:
+        if storage.has_any_storage((role,)):
+            ebs_mappings = storage.get_mappings_string_for_role(role)
+    replacements = {'%ENV%': build_env_string(it.env_strings, {'ROLES': ','.join(it.roles), 'USER_PACKAGES': it.user_packages, 'AUTO_SHUTDOWN': it.auto_shutdown, 'EBS_MAPPINGS': ebs_mappings, }), }
+    instance_user_data = InstanceUserData(user_data_file_template, replacements)
+    instance_ids = self.cluster.launch_instances(it.roles, it.number, it.image_id, it.size_id, instance_user_data, key_name=it.key_name, public_key=it.public_key, placement=it.placement)
+    print ('Waiting for %s instances in role %s to start' % (it.number, ','.join(it.roles)))
+    try:
+        self.cluster.wait_for_instances(instance_ids)
+        print ('%s instances started' % ','.join(it.roles))
+    except TimeoutException:
+        print ('Timeout while waiting for %s instance to start.' % ','.join(it.roles))
+        return
+    print 
+    self.cluster.print_status(it.roles[0])
+    return self.cluster.get_instances_in_role(it.roles[0], 'running')

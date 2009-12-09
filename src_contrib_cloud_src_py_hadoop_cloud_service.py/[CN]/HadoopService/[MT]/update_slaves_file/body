@@ -1,0 +1,15 @@
+def update_slaves_file(self, config_dir, ssh_options, private_key):
+    instances = self.cluster.check_running(NAMENODE, 1)
+    if (not instances):
+        sys.exit(1)
+    master = instances[0]
+    slaves = self.cluster.get_instances_in_role(DATANODE, 'running')
+    cluster_dir = os.path.join(config_dir, self.cluster.name)
+    slaves_file = os.path.join(cluster_dir, 'slaves')
+    with open(slaves_file, 'w') as f:
+        for slave in slaves:
+            f.write((slave.public_ip + '\n'))
+    subprocess.call(('scp %s -r %s root@%s:/etc/hadoop/conf' % (ssh_options, slaves_file, master.public_ip)), shell=True)
+    subprocess.call(('scp %s -r %s root@%s:/root/.ssh/id_rsa' % (ssh_options, private_key, master.public_ip)), shell=True)
+    for slave in slaves:
+        subprocess.call(('scp %s -r %s root@%s:/root/.ssh/id_rsa' % (ssh_options, private_key, slave.public_ip)), shell=True)
