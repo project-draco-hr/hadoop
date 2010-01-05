@@ -1,0 +1,31 @@
+{
+  Configuration conf=new Configuration();
+  LocalFileSystem localFs=FileSystem.getLocal(conf);
+  Path testPath=new Path(TEST_ROOT_DIR,"testtruncatedcrc");
+  FSDataOutputStream fout=localFs.create(testPath);
+  fout.write("testing truncation".getBytes());
+  fout.close();
+  Path checksumFile=localFs.getChecksumFile(testPath);
+  FileSystem rawFs=localFs.getRawFileSystem();
+  FSDataInputStream checksumStream=rawFs.open(checksumFile);
+  byte buf[]=new byte[8192];
+  int read=checksumStream.read(buf,0,buf.length);
+  checksumStream.close();
+  FSDataOutputStream replaceStream=rawFs.create(checksumFile);
+  replaceStream.write(buf,0,read - 1);
+  replaceStream.close();
+  try {
+    TestLocalFileSystem.readFile(localFs,testPath,1024);
+    fail("Did not throw a ChecksumException when reading truncated " + "crc file");
+  }
+ catch (  ChecksumException ie) {
+  }
+  try {
+    localFs.setVerifyChecksum(false);
+    String str=TestLocalFileSystem.readFile(localFs,testPath,1024);
+    assertTrue("read","testing truncation".equals(str));
+  }
+  finally {
+    localFs.setVerifyChecksum(true);
+  }
+}
