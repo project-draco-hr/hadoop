@@ -1,0 +1,29 @@
+{
+  Configuration conf=new Configuration();
+  conf.setBoolean("hadoop.native.lib",false);
+  assertFalse("ZlibFactory is using native libs against request",ZlibFactory.isNativeZlibLoaded(conf));
+  Compressor zlibCompressor=ZlibFactory.getZlibCompressor(conf);
+  assertNotNull("zlibCompressor is null!",zlibCompressor);
+  assertTrue("ZlibFactory returned unexpected deflator",zlibCompressor instanceof BuiltInZlibDeflater);
+  CodecPool.returnCompressor(zlibCompressor);
+  CompressionCodecFactory ccf=new CompressionCodecFactory(conf);
+  CompressionCodec codec=ccf.getCodec(new Path("foo.gz"));
+  assertTrue("Codec for .gz file is not GzipCodec",codec instanceof GzipCodec);
+  final String msg="This is the message we are going to compress.";
+  final String tmpDir=System.getProperty("test.build.data","/tmp/");
+  final String fileName=new Path(new Path(tmpDir),"testGzipCodecWrite.txt.gz").toString();
+  BufferedWriter w=null;
+  Compressor gzipCompressor=CodecPool.getCompressor(codec);
+  if (null != gzipCompressor) {
+    OutputStream os=new CompressorStream(new FileOutputStream(fileName),gzipCompressor);
+    w=new BufferedWriter(new OutputStreamWriter(os));
+    w.write(msg);
+    w.close();
+    CodecPool.returnCompressor(gzipCompressor);
+    verifyGzipFile(fileName,msg);
+  }
+  w=new BufferedWriter(new OutputStreamWriter(codec.createOutputStream(new FileOutputStream(fileName))));
+  w.write(msg);
+  w.close();
+  verifyGzipFile(fileName,msg);
+}

@@ -1,0 +1,24 @@
+{
+  Configuration conf=new Configuration();
+  conf.setBoolean("hadoop.native.lib",false);
+  assertFalse("ZlibFactory is using native libs against request",ZlibFactory.isNativeZlibLoaded(conf));
+  Decompressor zlibDecompressor=ZlibFactory.getZlibDecompressor(conf);
+  assertNotNull("zlibDecompressor is null!",zlibDecompressor);
+  assertTrue("ZlibFactory returned unexpected inflator",zlibDecompressor instanceof BuiltInZlibInflater);
+  CompressionCodecFactory ccf=new CompressionCodecFactory(conf);
+  CompressionCodec codec=ccf.getCodec(new Path("foo.gz"));
+  assertTrue("Codec for .gz file is not GzipCodec",codec instanceof GzipCodec);
+  Decompressor codecDecompressor=codec.createDecompressor();
+  if (null != codecDecompressor) {
+    fail("Got non-null codecDecompressor: " + codecDecompressor);
+  }
+  Decompressor poolDecompressor=CodecPool.getDecompressor(codec);
+  if (null != poolDecompressor) {
+    fail("Got non-null poolDecompressor: " + poolDecompressor);
+  }
+  CodecPool.returnDecompressor(zlibDecompressor);
+  poolDecompressor=CodecPool.getDecompressor(codec);
+  if (null != poolDecompressor) {
+    fail("Second time, got non-null poolDecompressor: " + poolDecompressor);
+  }
+}

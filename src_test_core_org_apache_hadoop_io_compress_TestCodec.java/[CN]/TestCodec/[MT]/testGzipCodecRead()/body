@@ -1,0 +1,25 @@
+{
+  Configuration conf=new Configuration();
+  conf.setBoolean("hadoop.native.lib",false);
+  assertFalse("ZlibFactory is using native libs against request",ZlibFactory.isNativeZlibLoaded(conf));
+  Decompressor zlibDecompressor=ZlibFactory.getZlibDecompressor(conf);
+  assertNotNull("zlibDecompressor is null!",zlibDecompressor);
+  assertTrue("ZlibFactory returned unexpected inflator",zlibDecompressor instanceof BuiltInZlibInflater);
+  CodecPool.returnDecompressor(zlibDecompressor);
+  String tmpDir=System.getProperty("test.build.data","/tmp/");
+  Path f=new Path(new Path(tmpDir),"testGzipCodecRead.txt.gz");
+  BufferedWriter bw=new BufferedWriter(new OutputStreamWriter(new GZIPOutputStream(new FileOutputStream(f.toString()))));
+  final String msg="This is the message in the file!";
+  bw.write(msg);
+  bw.close();
+  CompressionCodecFactory ccf=new CompressionCodecFactory(conf);
+  CompressionCodec codec=ccf.getCodec(f);
+  Decompressor decompressor=CodecPool.getDecompressor(codec);
+  FileSystem fs=FileSystem.getLocal(conf);
+  InputStream is=fs.open(f);
+  is=codec.createInputStream(is,decompressor);
+  BufferedReader br=new BufferedReader(new InputStreamReader(is));
+  String line=br.readLine();
+  assertEquals("Didn't get the same message back!",msg,line);
+  br.close();
+}
