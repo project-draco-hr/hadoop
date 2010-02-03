@@ -23,13 +23,30 @@ catch (      IOException ie) {
         handleConnectionFailure(ioFailures++,maxRetries,ie);
       }
     }
+    InputStream inStream=NetUtils.getInputStream(socket);
+    OutputStream outStream=NetUtils.getOutputStream(socket);
+    writeRpcHeader(outStream);
+    if (useSasl) {
+      final InputStream in2=inStream;
+      final OutputStream out2=outStream;
+      remoteId.getTicket().doAs(new PrivilegedExceptionAction<Object>(){
+        @Override public Object run() throws IOException {
+          saslRpcClient=new SaslRpcClient(authMethod,token,serverPrincipal);
+          saslRpcClient.saslConnect(in2,out2);
+          return null;
+        }
+      }
+);
+      inStream=saslRpcClient.getInputStream(inStream);
+      outStream=saslRpcClient.getOutputStream(outStream);
+    }
     if (doPing) {
-      this.in=new DataInputStream(new BufferedInputStream(new PingInputStream(NetUtils.getInputStream(socket))));
+      this.in=new DataInputStream(new BufferedInputStream(new PingInputStream(inStream)));
     }
  else {
-      this.in=new DataInputStream(new BufferedInputStream(NetUtils.getInputStream(socket)));
+      this.in=new DataInputStream(new BufferedInputStream(inStream));
     }
-    this.out=new DataOutputStream(new BufferedOutputStream(NetUtils.getOutputStream(socket)));
+    this.out=new DataOutputStream(new BufferedOutputStream(outStream));
     writeHeader();
     touch();
     start();

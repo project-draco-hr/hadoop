@@ -1,0 +1,53 @@
+{
+  if (!saslContextEstablished) {
+    if (saslServer == null) {
+switch (authMethod) {
+case DIGEST:
+        saslServer=Sasl.createSaslServer(AuthMethod.DIGEST.getMechanismName(),null,SaslRpcServer.SASL_DEFAULT_REALM,SaslRpcServer.SASL_PROPS,new SaslDigestCallbackHandler(secretManager));
+      break;
+default :
+    UserGroupInformation current=UserGroupInformation.getCurrentUser();
+  String fullName=current.getUserName();
+if (LOG.isDebugEnabled()) LOG.debug("Kerberos principal name is " + fullName);
+final String names[]=SaslRpcServer.splitKerberosName(fullName);
+if (names.length != 3) {
+throw new IOException("Kerberos principal name does NOT have the expected " + "hostname part: " + fullName);
+}
+current.doAs(new PrivilegedExceptionAction<Object>(){
+@Override public Object run() throws IOException {
+saslServer=Sasl.createSaslServer(AuthMethod.KERBEROS.getMechanismName(),names[0],names[1],SaslRpcServer.SASL_PROPS,new SaslGssCallbackHandler());
+return null;
+}
+}
+);
+}
+if (saslServer == null) throw new IOException("Unable to find SASL server implementation for " + authMethod.getMechanismName());
+if (LOG.isDebugEnabled()) LOG.debug("Created SASL server with mechanism = " + authMethod.getMechanismName());
+}
+if (LOG.isDebugEnabled()) LOG.debug("Have read input token of size " + saslToken.length + " for processing by saslServer.evaluateResponse()");
+byte[] replyToken=saslServer.evaluateResponse(saslToken);
+if (replyToken != null) {
+if (LOG.isDebugEnabled()) LOG.debug("Will send token of size " + replyToken.length + " from saslServer.");
+saslCall.connection=this;
+saslResponse.reset();
+DataOutputStream out=new DataOutputStream(saslResponse);
+out.writeInt(replyToken.length);
+out.write(replyToken,0,replyToken.length);
+saslCall.setResponse(ByteBuffer.wrap(saslResponse.toByteArray()));
+responder.doRespond(saslCall);
+}
+if (saslServer.isComplete()) {
+if (LOG.isDebugEnabled()) {
+LOG.debug("SASL server context established. Negotiated QoP is " + saslServer.getNegotiatedProperty(Sasl.QOP));
+}
+user=UserGroupInformation.createRemoteUser(saslServer.getAuthorizationID());
+LOG.info("SASL server successfully authenticated client: " + user);
+saslContextEstablished=true;
+}
+}
+ else {
+if (LOG.isDebugEnabled()) LOG.debug("Have read input token of size " + saslToken.length + " for processing by saslServer.unwrap()");
+byte[] plaintextData=saslServer.unwrap(saslToken,0,saslToken.length);
+processUnwrappedData(plaintextData);
+}
+}

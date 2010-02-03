@@ -5,57 +5,61 @@
       count=channelRead(channel,dataLengthBuffer);
       if (count < 0 || dataLengthBuffer.remaining() > 0)       return count;
     }
-    if (!versionRead) {
-      ByteBuffer versionBuffer=ByteBuffer.allocate(1);
-      count=channelRead(channel,versionBuffer);
-      if (count <= 0) {
+    if (!rpcHeaderRead) {
+      if (rpcHeaderBuffer == null) {
+        rpcHeaderBuffer=ByteBuffer.allocate(2);
+      }
+      count=channelRead(channel,rpcHeaderBuffer);
+      if (count < 0 || rpcHeaderBuffer.remaining() > 0) {
         return count;
       }
-      int version=versionBuffer.get(0);
+      int version=rpcHeaderBuffer.get(0);
+      byte[] method=new byte[]{rpcHeaderBuffer.get(1)};
+      authMethod=AuthMethod.read(new DataInputStream(new ByteArrayInputStream(method)));
+      if (authMethod == null) {
+        throw new IOException("Unable to read authentication method");
+      }
+      if (UserGroupInformation.isSecurityEnabled() && authMethod == AuthMethod.SIMPLE) {
+        throw new IOException("Authentication is required");
+      }
+      if (!UserGroupInformation.isSecurityEnabled() && authMethod != AuthMethod.SIMPLE) {
+        throw new IOException("Authentication is not supported");
+      }
+      if (authMethod != AuthMethod.SIMPLE) {
+        useSasl=true;
+      }
       dataLengthBuffer.flip();
       if (!HEADER.equals(dataLengthBuffer) || version != CURRENT_VERSION) {
         LOG.warn("Incorrect header or version mismatch from " + hostAddress + ":"+ remotePort+ " got version "+ version+ " expected version "+ CURRENT_VERSION);
         return -1;
       }
       dataLengthBuffer.clear();
-      versionRead=true;
+      rpcHeaderBuffer=null;
+      rpcHeaderRead=true;
       continue;
     }
     if (data == null) {
       dataLengthBuffer.flip();
       dataLength=dataLengthBuffer.getInt();
-      if (dataLength == Client.PING_CALL_ID) {
+      if (!useSasl && dataLength == Client.PING_CALL_ID) {
         dataLengthBuffer.clear();
         return 0;
       }
       data=ByteBuffer.allocate(dataLength);
-      incRpcCount();
     }
     count=channelRead(channel,data);
     if (data.remaining() == 0) {
       dataLengthBuffer.clear();
       data.flip();
-      if (headerRead) {
-        processData();
-        data=null;
-        return count;
+      boolean isHeaderRead=headerRead;
+      if (useSasl) {
+        saslReadAndProcess(data.array());
       }
  else {
-        processHeader();
-        headerRead=true;
-        data=null;
-        try {
-          authorize(user,header);
-          if (LOG.isDebugEnabled()) {
-            LOG.debug("Successfully authorized " + header);
-          }
-        }
- catch (        AuthorizationException ae) {
-          authFailedCall.connection=this;
-          setupResponse(authFailedResponse,authFailedCall,Status.FATAL,null,ae.getClass().getName(),ae.getMessage());
-          responder.doRespond(authFailedCall);
-          return -1;
-        }
+        processOneRpc(data.array());
+      }
+      data=null;
+      if (!isHeaderRead) {
         continue;
       }
     }

@@ -7,6 +7,41 @@
   UserGroupInformation ticket=remoteId.getTicket();
   Class<?> protocol=remoteId.getProtocol();
   header=new ConnectionHeader(protocol == null ? null : protocol.getName(),ticket);
+  this.useSasl=UserGroupInformation.isSecurityEnabled();
+  if (useSasl && protocol != null) {
+    TokenInfo tokenInfo=protocol.getAnnotation(TokenInfo.class);
+    if (tokenInfo != null) {
+      TokenSelector<? extends TokenIdentifier> tokenSelector=null;
+      try {
+        tokenSelector=tokenInfo.value().newInstance();
+      }
+ catch (      InstantiationException e) {
+        throw new IOException(e.toString());
+      }
+catch (      IllegalAccessException e) {
+        throw new IOException(e.toString());
+      }
+      InetSocketAddress addr=remoteId.getAddress();
+      token=tokenSelector.selectToken(new Text(addr.getAddress().getHostAddress() + ":" + addr.getPort()),ticket.getTokens());
+    }
+    KerberosInfo krbInfo=protocol.getAnnotation(KerberosInfo.class);
+    if (krbInfo != null) {
+      String serverKey=krbInfo.value();
+      if (serverKey != null) {
+        serverPrincipal=conf.get(serverKey);
+      }
+    }
+  }
+  if (!useSasl) {
+    authMethod=AuthMethod.SIMPLE;
+  }
+ else   if (token != null) {
+    authMethod=AuthMethod.DIGEST;
+  }
+ else {
+    authMethod=AuthMethod.KERBEROS;
+  }
+  if (LOG.isDebugEnabled())   LOG.debug("Use " + authMethod + " authentication for protocol "+ protocol.getSimpleName());
   this.setName("IPC Client (" + socketFactory.hashCode() + ") connection to "+ remoteId.getAddress().toString()+ " from "+ ((ticket == null) ? "an unknown user" : ticket.getUserName()));
   this.setDaemon(true);
 }
