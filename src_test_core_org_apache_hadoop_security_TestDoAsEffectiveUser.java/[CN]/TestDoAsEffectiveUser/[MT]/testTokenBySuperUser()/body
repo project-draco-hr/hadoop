@@ -1,0 +1,36 @@
+{
+  TestTokenSecretManager sm=new TestTokenSecretManager();
+  final Configuration newConf=new Configuration();
+  newConf.set(CommonConfigurationKeys.HADOOP_SECURITY_AUTHENTICATION,"kerberos");
+  UserGroupInformation.setConfiguration(newConf);
+  final Server server=RPC.getServer(TestProtocol.class,new TestImpl(),ADDRESS,0,5,true,newConf,sm);
+  server.start();
+  final UserGroupInformation current=UserGroupInformation.createUserForTesting(REAL_USER_NAME,GROUP_NAMES);
+  final InetSocketAddress addr=NetUtils.getConnectAddress(server);
+  TestTokenIdentifier tokenId=new TestTokenIdentifier(new Text(current.getUserName()),new Text("SomeSuperUser"));
+  Token<TestTokenIdentifier> token=new Token<TestTokenIdentifier>(tokenId,sm);
+  Text host=new Text(addr.getAddress().getHostAddress() + ":" + addr.getPort());
+  token.setService(host);
+  current.addToken(token);
+  String retVal=current.doAs(new PrivilegedExceptionAction<String>(){
+    @Override public String run() throws Exception {
+      try {
+        proxy=(TestProtocol)RPC.getProxy(TestProtocol.class,TestProtocol.versionID,addr,newConf);
+        String ret=proxy.aMethod();
+        return ret;
+      }
+ catch (      Exception e) {
+        e.printStackTrace();
+        throw e;
+      }
+ finally {
+        server.stop();
+        if (proxy != null) {
+          RPC.stopProxy(proxy);
+        }
+      }
+    }
+  }
+);
+  Assert.assertEquals(REAL_USER_NAME + " via SomeSuperUser",retVal);
+}

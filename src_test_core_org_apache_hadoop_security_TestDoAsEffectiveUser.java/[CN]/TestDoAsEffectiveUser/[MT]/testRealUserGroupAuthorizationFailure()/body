@@ -1,0 +1,30 @@
+{
+  final Configuration conf=new Configuration();
+  conf.setStrings(ProxyUsers.getProxySuperuserIpConfKey(REAL_USER_SHORT_NAME),"127.0.0.1","127.0.1.1","localhost");
+  conf.setStrings(ProxyUsers.getProxySuperuserGroupConfKey(REAL_USER_SHORT_NAME),"group3");
+  Server server=RPC.getServer(TestProtocol.class,new TestImpl(),ADDRESS,0,2,false,conf,null);
+  try {
+    server.start();
+    final InetSocketAddress addr=NetUtils.getConnectAddress(server);
+    UserGroupInformation realUserUgi=UserGroupInformation.createRemoteUser(REAL_USER_NAME);
+    UserGroupInformation proxyUserUgi=UserGroupInformation.createProxyUserForTesting(PROXY_USER_NAME,realUserUgi,GROUP_NAMES);
+    String retVal=proxyUserUgi.doAs(new PrivilegedExceptionAction<String>(){
+      public String run() throws IOException {
+        proxy=(TestProtocol)RPC.getProxy(TestProtocol.class,TestProtocol.versionID,addr,conf);
+        String ret=proxy.aMethod();
+        return ret;
+      }
+    }
+);
+    Assert.fail("The RPC must have failed " + retVal);
+  }
+ catch (  Exception e) {
+    e.printStackTrace();
+  }
+ finally {
+    server.stop();
+    if (proxy != null) {
+      RPC.stopProxy(proxy);
+    }
+  }
+}
