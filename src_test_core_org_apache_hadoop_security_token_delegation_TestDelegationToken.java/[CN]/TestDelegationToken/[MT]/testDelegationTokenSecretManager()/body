@@ -1,0 +1,28 @@
+{
+  TestDelegationTokenSecretManager dtSecretManager=new TestDelegationTokenSecretManager(24 * 60 * 60* 1000,3 * 1000,1 * 1000,3600000);
+  try {
+    dtSecretManager.startThreads();
+    Token<TestDelegationTokenIdentifier> token=generateDelegationToken(dtSecretManager,"SomeUser","JobTracker");
+    Assert.assertFalse(dtSecretManager.renewToken(token,"FakeRenewer"));
+    Assert.assertTrue(dtSecretManager.renewToken(token,"JobTracker"));
+    TestDelegationTokenIdentifier identifier=new TestDelegationTokenIdentifier();
+    byte[] tokenId=token.getIdentifier();
+    identifier.readFields(new DataInputStream(new ByteArrayInputStream(tokenId)));
+    Assert.assertTrue(null != dtSecretManager.retrievePassword(identifier));
+    Log.info("Sleep to expire the token");
+    Thread.sleep(2000);
+    try {
+      dtSecretManager.retrievePassword(identifier);
+      Assert.fail("Token should have expired");
+    }
+ catch (    InvalidToken e) {
+    }
+    Assert.assertTrue(dtSecretManager.renewToken(token,"JobTracker"));
+    Log.info("Sleep beyond the max lifetime");
+    Thread.sleep(2000);
+    Assert.assertFalse(dtSecretManager.renewToken(token,"JobTracker"));
+  }
+  finally {
+    dtSecretManager.stopThreads();
+  }
+}
