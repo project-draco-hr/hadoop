@@ -3,23 +3,19 @@
   DataInputStream in=new DataInputStream(buf);
   TokenIdent id=createIdentifier();
   id.readFields(in);
-  if (id.getRenewer() == null) {
-    LOG.warn("Renewer is null: Invalid Identifier");
-    return false;
-  }
   if (id.getUser() == null) {
-    LOG.warn("owner is null: Invalid Identifier");
-    return false;
+    throw new InvalidToken("Token with no owner");
   }
   String owner=id.getUser().getUserName();
-  String renewer=id.getRenewer().toString();
-  if (!canceller.equals(owner) && !canceller.equals(renewer)) {
-    LOG.warn(canceller + " is not authorized to cancel the token");
-    return false;
+  Text renewer=id.getRenewer();
+  if (!canceller.equals(owner) && (renewer == null || !canceller.equals(renewer.toString()))) {
+    throw new AccessControlException(canceller + " is not authorized to cancel the token");
   }
   DelegationTokenInformation info=null;
 synchronized (currentTokens) {
     info=currentTokens.remove(id);
   }
-  return info != null;
+  if (info == null) {
+    throw new InvalidToken("Token not found");
+  }
 }

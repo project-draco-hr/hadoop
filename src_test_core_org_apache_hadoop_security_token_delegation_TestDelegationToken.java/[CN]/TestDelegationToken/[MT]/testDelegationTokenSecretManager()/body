@@ -1,15 +1,22 @@
 {
-  TestDelegationTokenSecretManager dtSecretManager=new TestDelegationTokenSecretManager(24 * 60 * 60* 1000,3 * 1000,1 * 1000,3600000);
+  final TestDelegationTokenSecretManager dtSecretManager=new TestDelegationTokenSecretManager(24 * 60 * 60* 1000,3 * 1000,1 * 1000,3600000);
   try {
     dtSecretManager.startThreads();
-    Token<TestDelegationTokenIdentifier> token=generateDelegationToken(dtSecretManager,"SomeUser","JobTracker");
-    Assert.assertFalse(dtSecretManager.renewToken(token,"FakeRenewer"));
-    Assert.assertTrue(dtSecretManager.renewToken(token,"JobTracker"));
+    final Token<TestDelegationTokenIdentifier> token=generateDelegationToken(dtSecretManager,"SomeUser","JobTracker");
+    shouldThrow(new PrivilegedExceptionAction<Object>(){
+      public Object run() throws Exception {
+        dtSecretManager.renewToken(token,"FakeRenewer");
+        return null;
+      }
+    }
+,AccessControlException.class);
+    long time=dtSecretManager.renewToken(token,"JobTracker");
+    assertTrue("renew time is in future",time > System.currentTimeMillis());
     TestDelegationTokenIdentifier identifier=new TestDelegationTokenIdentifier();
     byte[] tokenId=token.getIdentifier();
     identifier.readFields(new DataInputStream(new ByteArrayInputStream(tokenId)));
     Assert.assertTrue(null != dtSecretManager.retrievePassword(identifier));
-    Log.info("Sleep to expire the token");
+    LOG.info("Sleep to expire the token");
     Thread.sleep(2000);
     try {
       dtSecretManager.retrievePassword(identifier);
@@ -17,10 +24,16 @@
     }
  catch (    InvalidToken e) {
     }
-    Assert.assertTrue(dtSecretManager.renewToken(token,"JobTracker"));
-    Log.info("Sleep beyond the max lifetime");
+    dtSecretManager.renewToken(token,"JobTracker");
+    LOG.info("Sleep beyond the max lifetime");
     Thread.sleep(2000);
-    Assert.assertFalse(dtSecretManager.renewToken(token,"JobTracker"));
+    shouldThrow(new PrivilegedExceptionAction<Object>(){
+      public Object run() throws Exception {
+        dtSecretManager.renewToken(token,"JobTracker");
+        return null;
+      }
+    }
+,InvalidToken.class);
   }
   finally {
     dtSecretManager.stopThreads();

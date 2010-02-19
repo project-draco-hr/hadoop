@@ -1,11 +1,23 @@
 {
-  TestDelegationTokenSecretManager dtSecretManager=new TestDelegationTokenSecretManager(24 * 60 * 60* 1000,10 * 1000,1 * 1000,3600000);
+  final TestDelegationTokenSecretManager dtSecretManager=new TestDelegationTokenSecretManager(24 * 60 * 60* 1000,10 * 1000,1 * 1000,3600000);
   try {
     dtSecretManager.startThreads();
-    Token<TestDelegationTokenIdentifier> token=generateDelegationToken(dtSecretManager,"SomeUser","JobTracker");
-    Assert.assertFalse(dtSecretManager.cancelToken(token,"FakeCanceller"));
-    Assert.assertTrue(dtSecretManager.cancelToken(token,"JobTracker"));
-    Assert.assertFalse(dtSecretManager.renewToken(token,"JobTracker"));
+    final Token<TestDelegationTokenIdentifier> token=generateDelegationToken(dtSecretManager,"SomeUser","JobTracker");
+    shouldThrow(new PrivilegedExceptionAction<Object>(){
+      public Object run() throws Exception {
+        dtSecretManager.renewToken(token,"FakeCanceller");
+        return null;
+      }
+    }
+,AccessControlException.class);
+    dtSecretManager.cancelToken(token,"JobTracker");
+    shouldThrow(new PrivilegedExceptionAction<Object>(){
+      public Object run() throws Exception {
+        dtSecretManager.renewToken(token,"JobTracker");
+        return null;
+      }
+    }
+,InvalidToken.class);
   }
   finally {
     dtSecretManager.stopThreads();
