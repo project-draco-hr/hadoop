@@ -11,7 +11,13 @@
       if (LOG.isDebugEnabled())       LOG.debug("Have sent token of size " + saslToken.length + " from initSASLContext.");
     }
     if (!saslClient.isComplete()) {
-      saslToken=new byte[inStream.readInt()];
+      int len=inStream.readInt();
+      if (len == SaslRpcServer.SWITCH_TO_SIMPLE_AUTH) {
+        if (LOG.isDebugEnabled())         LOG.debug("Server asks us to fall back to simple auth.");
+        saslClient.dispose();
+        return false;
+      }
+      saslToken=new byte[len];
       if (LOG.isDebugEnabled())       LOG.debug("Will read input token of size " + saslToken.length + " for processing by initSASLContext");
       inStream.readFully(saslToken);
     }
@@ -32,9 +38,14 @@
     if (LOG.isDebugEnabled()) {
       LOG.debug("SASL client context established. Negotiated QoP: " + saslClient.getNegotiatedProperty(Sasl.QOP));
     }
+    return true;
   }
  catch (  IOException e) {
-    saslClient.dispose();
+    try {
+      saslClient.dispose();
+    }
+ catch (    SaslException ignored) {
+    }
     throw e;
   }
 }
