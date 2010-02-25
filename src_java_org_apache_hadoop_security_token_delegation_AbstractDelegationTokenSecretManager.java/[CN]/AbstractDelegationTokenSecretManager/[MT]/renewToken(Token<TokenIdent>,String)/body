@@ -4,11 +4,6 @@
   DataInputStream in=new DataInputStream(buf);
   TokenIdent id=createIdentifier();
   id.readFields(in);
-synchronized (currentTokens) {
-    if (currentTokens.get(id) == null) {
-      throw new InvalidToken("Renewal request for unknown token");
-    }
-  }
   if (id.getMaxDate() < now) {
     throw new InvalidToken("User " + renewer + " tried to renew an expired token");
   }
@@ -18,10 +13,7 @@ synchronized (currentTokens) {
   if (!id.getRenewer().toString().equals(renewer)) {
     throw new AccessControlException("Client " + renewer + " tries to renew a token with "+ "renewer specified as "+ id.getRenewer());
   }
-  DelegationKey key=null;
-synchronized (this) {
-    key=allKeys.get(id.getMasterKeyId());
-  }
+  DelegationKey key=allKeys.get(id.getMasterKeyId());
   if (key == null) {
     throw new InvalidToken("Unable to find master key for keyId=" + id.getMasterKeyId() + " from cache. Failed to renew an unexpired token"+ " with sequenceNumber="+ id.getSequenceNumber());
   }
@@ -29,9 +21,11 @@ synchronized (this) {
   if (!Arrays.equals(password,token.getPassword())) {
     throw new AccessControlException("Client " + renewer + " is trying to renew a token with "+ "wrong password");
   }
-  DelegationTokenInformation info=new DelegationTokenInformation(Math.min(id.getMaxDate(),now + tokenRenewInterval),password);
-synchronized (currentTokens) {
-    currentTokens.put(id,info);
+  long renewTime=Math.min(id.getMaxDate(),now + tokenRenewInterval);
+  DelegationTokenInformation info=new DelegationTokenInformation(renewTime,password);
+  if (currentTokens.get(id) == null) {
+    throw new InvalidToken("Renewal request for unknown token");
   }
-  return info.getRenewDate();
+  currentTokens.put(id,info);
+  return renewTime;
 }
