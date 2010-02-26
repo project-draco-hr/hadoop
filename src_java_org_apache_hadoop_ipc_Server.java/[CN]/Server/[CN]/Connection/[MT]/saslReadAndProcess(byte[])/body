@@ -3,7 +3,7 @@
     if (saslServer == null) {
 switch (authMethod) {
 case DIGEST:
-        saslServer=Sasl.createSaslServer(AuthMethod.DIGEST.getMechanismName(),null,SaslRpcServer.SASL_DEFAULT_REALM,SaslRpcServer.SASL_PROPS,new SaslDigestCallbackHandler(secretManager));
+        saslServer=Sasl.createSaslServer(AuthMethod.DIGEST.getMechanismName(),null,SaslRpcServer.SASL_DEFAULT_REALM,SaslRpcServer.SASL_PROPS,new SaslDigestCallbackHandler(secretManager,this));
       break;
 default :
     UserGroupInformation current=UserGroupInformation.getCurrentUser();
@@ -31,6 +31,8 @@ replyToken=saslServer.evaluateResponse(saslToken);
 }
  catch (SaslException se) {
 rpcMetrics.authenticationFailures.inc();
+String clientIP=this.toString();
+auditLOG.warn(AUTH_FAILED_FOR + clientIP + ":"+ attemptingUser,se);
 throw se;
 }
 if (replyToken != null) {
@@ -49,6 +51,8 @@ LOG.debug("SASL server context established. Negotiated QoP is " + saslServer.get
 }
 user=getAuthorizedUgi(saslServer.getAuthorizationID());
 LOG.info("SASL server successfully authenticated client: " + user);
+rpcMetrics.authenticationSuccesses.inc();
+auditLOG.info(AUTH_SUCCESSFULL_FOR + user);
 saslContextEstablished=true;
 }
 }
