@@ -1,7 +1,18 @@
 {
-  FileSystem fs=map.get(key);
-  if (fs == null) {
-    fs=createFileSystem(uri,conf);
+  FileSystem fs;
+synchronized (this) {
+    fs=map.get(key);
+  }
+  if (fs != null) {
+    return fs;
+  }
+  fs=createFileSystem(uri,conf);
+synchronized (this) {
+    FileSystem oldfs=map.get(key);
+    if (oldfs != null) {
+      fs.close();
+      return oldfs;
+    }
     if (map.isEmpty() && !clientFinalizer.isAlive()) {
       Runtime.getRuntime().addShutdownHook(clientFinalizer);
     }
@@ -10,6 +21,6 @@
     if (conf.getBoolean("fs.automatic.close",true)) {
       toAutoClose.add(key);
     }
+    return fs;
   }
-  return fs;
 }
