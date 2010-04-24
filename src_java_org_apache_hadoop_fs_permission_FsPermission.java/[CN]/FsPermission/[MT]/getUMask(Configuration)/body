@@ -2,14 +2,24 @@
   int umask=DEFAULT_UMASK;
   if (conf != null) {
     String confUmask=conf.get(UMASK_LABEL);
-    if (confUmask != null) {
-      try {
-        if (conf.deprecatedKeyWasSet(DEPRECATED_UMASK_LABEL))         umask=Integer.parseInt(confUmask);
- else         return new FsPermission(confUmask);
+    int oldUmask=conf.getInt(DEPRECATED_UMASK_LABEL,Integer.MIN_VALUE);
+    try {
+      if (confUmask != null) {
+        umask=new UmaskParser(confUmask).getUMask();
       }
- catch (      IllegalArgumentException iae) {
-        String type=iae instanceof NumberFormatException ? "decimal" : "octal or symbolic";
-        throw new IllegalArgumentException("Unable to parse " + confUmask + " as "+ type+ " umask.");
+    }
+ catch (    IllegalArgumentException iae) {
+      String type=iae instanceof NumberFormatException ? "decimal" : "octal or symbolic";
+      String error="Unable to parse configuration " + UMASK_LABEL + " with value "+ confUmask+ " as "+ type+ " umask.";
+      LOG.warn(error);
+      if (oldUmask == Integer.MIN_VALUE) {
+        throw new IllegalArgumentException(error);
+      }
+    }
+    if (oldUmask != Integer.MIN_VALUE) {
+      if (umask != oldUmask) {
+        LOG.warn(DEPRECATED_UMASK_LABEL + " configuration key is deprecated. " + "Convert to "+ UMASK_LABEL+ ", using octal or symbolic umask "+ "specifications.");
+        umask=oldUmask;
       }
     }
   }
