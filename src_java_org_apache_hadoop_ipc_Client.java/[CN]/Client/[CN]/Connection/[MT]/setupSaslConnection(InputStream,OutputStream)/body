@@ -4,19 +4,25 @@
     return saslRpcClient.saslConnect(in2,out2);
   }
  catch (  javax.security.sasl.SaslException je) {
-    if (authMethod == AuthMethod.KERBEROS && UserGroupInformation.isLoginKeytabBased()) {
-      UserGroupInformation.getCurrentUser().reloginFromKeytab();
+    UserGroupInformation loginUser=UserGroupInformation.getLoginUser();
+    UserGroupInformation currentUser=UserGroupInformation.getCurrentUser();
+    UserGroupInformation realUser=currentUser.getRealUser();
+    if (authMethod == AuthMethod.KERBEROS && UserGroupInformation.isLoginKeytabBased() && ((currentUser != null && currentUser.equals(loginUser)) || (realUser != null && realUser.equals(loginUser)))) {
       try {
+        loginUser.reloginFromKeytab();
         disposeSasl();
         saslRpcClient=new SaslRpcClient(authMethod,token,serverPrincipal);
         return saslRpcClient.saslConnect(in2,out2);
       }
  catch (      javax.security.sasl.SaslException jee) {
-        UserGroupInformation.setLastUnsuccessfulAuthenticationAttemptTime(System.currentTimeMillis());
-        LOG.warn("Couldn't setup connection for " + UserGroupInformation.getCurrentUser().getUserName() + " to "+ serverPrincipal+ " even after relogin.");
+        LOG.warn("Couldn't setup connection for " + loginUser.getUserName() + " to "+ serverPrincipal+ " even after relogin.");
         throw jee;
       }
+catch (      IOException ie) {
+        ie.initCause(je);
+        throw ie;
+      }
     }
- else     throw je;
+    throw je;
   }
 }
