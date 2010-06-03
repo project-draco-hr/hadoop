@@ -1,10 +1,14 @@
 {
+  if (conf == null) {
+    refreshSuperUserGroupsConfiguration(newConf);
+  }
   if (user.getRealUser() == null) {
     return;
   }
   boolean groupAuthorized=false;
+  boolean ipAuthorized=false;
   UserGroupInformation superUser=user.getRealUser();
-  Collection<String> allowedUserGroups=conf.getStringCollection(getProxySuperuserGroupConfKey(superUser.getShortUserName()));
+  Collection<String> allowedUserGroups=proxyGroups.get(getProxySuperuserGroupConfKey(superUser.getShortUserName()));
   if (!allowedUserGroups.isEmpty()) {
     for (    String group : user.getGroupNames()) {
       if (allowedUserGroups.contains(group)) {
@@ -16,7 +20,7 @@
   if (!groupAuthorized) {
     throw new AuthorizationException("User: " + superUser.getUserName() + " is not allowed to impersonate "+ user.getUserName());
   }
-  Collection<String> ipList=conf.getStringCollection(getProxySuperuserIpConfKey(superUser.getShortUserName()));
+  Collection<String> ipList=proxyHosts.get(getProxySuperuserIpConfKey(superUser.getShortUserName()));
   if (!ipList.isEmpty()) {
     for (    String allowedHost : ipList) {
       InetAddress hostAddr;
@@ -27,9 +31,11 @@
         continue;
       }
       if (hostAddr.getHostAddress().equals(remoteAddress)) {
-        return;
+        ipAuthorized=true;
       }
     }
   }
-  throw new AuthorizationException("Unauthorized connection for super-user: " + superUser.getUserName() + " from IP "+ remoteAddress);
+  if (!ipAuthorized) {
+    throw new AuthorizationException("Unauthorized connection for super-user: " + superUser.getUserName() + " from IP "+ remoteAddress);
+  }
 }
