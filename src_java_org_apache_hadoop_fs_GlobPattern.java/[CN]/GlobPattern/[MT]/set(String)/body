@@ -1,0 +1,76 @@
+{
+  StringBuilder regex=new StringBuilder();
+  int setOpen=0;
+  int curlyOpen=0;
+  int len=glob.length();
+  hasWildcard=false;
+  for (int i=0; i < len; i++) {
+    char c=glob.charAt(i);
+switch (c) {
+case BACKSLASH:
+      if (++i >= len) {
+        error("Missing escaped character",glob,i);
+      }
+    regex.append(c).append(glob.charAt(i));
+  continue;
+case '.':
+case '$':
+case '(':
+case ')':
+case '|':
+case '+':
+regex.append(BACKSLASH);
+break;
+case '*':
+regex.append('.');
+hasWildcard=true;
+break;
+case '?':
+regex.append('.');
+hasWildcard=true;
+continue;
+case '{':
+regex.append("(?:");
+curlyOpen++;
+hasWildcard=true;
+continue;
+case ',':
+regex.append(curlyOpen > 0 ? '|' : c);
+continue;
+case '}':
+if (curlyOpen > 0) {
+curlyOpen--;
+regex.append(")");
+continue;
+}
+break;
+case '[':
+if (setOpen > 0) {
+error("Unclosed character class",glob,i);
+}
+setOpen++;
+hasWildcard=true;
+break;
+case '^':
+if (setOpen == 0) {
+regex.append(BACKSLASH);
+}
+break;
+case '!':
+regex.append(setOpen > 0 && '[' == glob.charAt(i - 1) ? '^' : '!');
+continue;
+case ']':
+setOpen=0;
+break;
+default :
+}
+regex.append(c);
+}
+if (setOpen > 0) {
+error("Unclosed character class",glob,len);
+}
+if (curlyOpen > 0) {
+error("Unclosed group",glob,len);
+}
+compiled=Pattern.compile(regex.toString());
+}
