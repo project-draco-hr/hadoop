@@ -1,12 +1,36 @@
 {
   int n=0;
   while ((n=decompressor.decompress(b,off,len)) == 0) {
-    if (decompressor.finished() || decompressor.needsDictionary()) {
+    if (decompressor.needsDictionary()) {
       eof=true;
       return -1;
     }
-    if (decompressor.needsInput()) {
-      getCompressedData();
+    if (decompressor.finished()) {
+      int nRemaining=decompressor.getRemaining();
+      if (nRemaining == 0) {
+        int m=getCompressedData();
+        if (m == -1) {
+          eof=true;
+          return -1;
+        }
+        decompressor.reset();
+        decompressor.setInput(buffer,0,m);
+        lastBytesSent=m;
+      }
+ else {
+        decompressor.reset();
+        int leftoverOffset=lastBytesSent - nRemaining;
+        assert(leftoverOffset >= 0);
+        decompressor.setInput(buffer,leftoverOffset,nRemaining);
+      }
+    }
+ else     if (decompressor.needsInput()) {
+      int m=getCompressedData();
+      if (m == -1) {
+        throw new EOFException("Unexpected end of input stream");
+      }
+      decompressor.setInput(buffer,0,m);
+      lastBytesSent=m;
     }
   }
   return n;

@@ -1,0 +1,87 @@
+{
+  if (userBufLen <= 0) {
+    return;
+  }
+  if (state == GzipStateLabel.HEADER_BASIC) {
+    int n=Math.min(userBufLen,10 - localBufOff);
+    checkAndCopyBytesToLocal(n);
+    if (localBufOff >= 10) {
+      processBasicHeader();
+      localBufOff=0;
+      state=GzipStateLabel.HEADER_EXTRA_FIELD;
+    }
+  }
+  if (userBufLen <= 0) {
+    return;
+  }
+  if (state == GzipStateLabel.HEADER_EXTRA_FIELD) {
+    if (hasExtraField) {
+      if (numExtraFieldBytesRemaining < 0) {
+        int n=Math.min(userBufLen,2 - localBufOff);
+        checkAndCopyBytesToLocal(n);
+        if (localBufOff >= 2) {
+          numExtraFieldBytesRemaining=readUShortLE(localBuf,0);
+          localBufOff=0;
+        }
+      }
+      if (numExtraFieldBytesRemaining > 0 && userBufLen > 0) {
+        int n=Math.min(userBufLen,numExtraFieldBytesRemaining);
+        checkAndSkipBytes(n);
+        numExtraFieldBytesRemaining-=n;
+      }
+      if (numExtraFieldBytesRemaining == 0) {
+        state=GzipStateLabel.HEADER_FILENAME;
+      }
+    }
+ else {
+      state=GzipStateLabel.HEADER_FILENAME;
+    }
+  }
+  if (userBufLen <= 0) {
+    return;
+  }
+  if (state == GzipStateLabel.HEADER_FILENAME) {
+    if (hasFilename) {
+      boolean doneWithFilename=checkAndSkipBytesUntilNull();
+      if (!doneWithFilename) {
+        return;
+      }
+    }
+    state=GzipStateLabel.HEADER_COMMENT;
+  }
+  if (userBufLen <= 0) {
+    return;
+  }
+  if (state == GzipStateLabel.HEADER_COMMENT) {
+    if (hasComment) {
+      boolean doneWithComment=checkAndSkipBytesUntilNull();
+      if (!doneWithComment) {
+        return;
+      }
+    }
+    state=GzipStateLabel.HEADER_CRC;
+  }
+  if (userBufLen <= 0) {
+    return;
+  }
+  if (state == GzipStateLabel.HEADER_CRC) {
+    if (hasHeaderCRC) {
+      assert(localBufOff < 2);
+      int n=Math.min(userBufLen,2 - localBufOff);
+      copyBytesToLocal(n);
+      if (localBufOff >= 2) {
+        long headerCRC=readUShortLE(localBuf,0);
+        if (headerCRC != (crc.getValue() & 0xffff)) {
+          throw new IOException("gzip header CRC failure");
+        }
+        localBufOff=0;
+        crc.reset();
+        state=GzipStateLabel.DEFLATE_STREAM;
+      }
+    }
+ else {
+      crc.reset();
+      state=GzipStateLabel.DEFLATE_STREAM;
+    }
+  }
+}

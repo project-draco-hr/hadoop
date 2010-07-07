@@ -1,0 +1,38 @@
+{
+  if (userBufLen <= 0) {
+    return;
+  }
+  if (state == GzipStateLabel.TRAILER_CRC) {
+    assert(localBufOff < 4);
+    int n=Math.min(userBufLen,4 - localBufOff);
+    copyBytesToLocal(n);
+    if (localBufOff >= 4) {
+      long streamCRC=readUIntLE(localBuf,0);
+      if (streamCRC != crc.getValue()) {
+        throw new IOException("gzip stream CRC failure");
+      }
+      localBufOff=0;
+      crc.reset();
+      state=GzipStateLabel.TRAILER_SIZE;
+    }
+  }
+  if (userBufLen <= 0) {
+    return;
+  }
+  if (state == GzipStateLabel.TRAILER_SIZE) {
+    assert(localBufOff < 4);
+    int n=Math.min(userBufLen,4 - localBufOff);
+    copyBytesToLocal(n);
+    if (localBufOff >= 4) {
+      long inputSize=readUIntLE(localBuf,0);
+      if (inputSize != (inflater.getBytesWritten() & 0xffffffff)) {
+        throw new IOException("stored gzip size doesn't match decompressed size");
+      }
+      localBufOff=0;
+      state=GzipStateLabel.FINISHED;
+    }
+  }
+  if (state == GzipStateLabel.FINISHED) {
+    return;
+  }
+}
