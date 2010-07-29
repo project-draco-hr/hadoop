@@ -1,0 +1,61 @@
+{
+  return new Iterator<LocatedFileStatus>(){
+    private LinkedList<FileStatus> fileStats=new LinkedList<FileStatus>();
+    private Stack<FileStatus> dirStats=new Stack<FileStatus>();
+{
+      list(f);
+    }
+    @Override public boolean hasNext(){
+      if (fileStats.isEmpty()) {
+        listDir();
+      }
+      return !fileStats.isEmpty();
+    }
+    /** 
+ * list at least one directory until file list is not empty
+ */
+    private void listDir(){
+      while (fileStats.isEmpty() && !dirStats.isEmpty()) {
+        FileStatus dir=dirStats.pop();
+        list(dir.getPath());
+      }
+    }
+    /** 
+ * List the given path
+ * @param dirPath a path
+ */
+    private void list(    Path dirPath){
+      try {
+        FileStatus[] stats=listStatus(dirPath);
+        for (        FileStatus stat : stats) {
+          if (stat.isFile()) {
+            fileStats.add(stat);
+          }
+ else           if (recursive) {
+            dirStats.push(stat);
+          }
+        }
+      }
+ catch (      IOException ioe) {
+        throw (RuntimeException)new RuntimeException().initCause(ioe);
+      }
+    }
+    @Override public LocatedFileStatus next(){
+      if (!hasNext()) {
+        throw new NoSuchElementException();
+      }
+      FileStatus status=fileStats.remove();
+      try {
+        BlockLocation[] locs=getFileBlockLocations(status,0,status.getLen());
+        return new LocatedFileStatus(status,locs);
+      }
+ catch (      IOException ioe) {
+        throw (RuntimeException)new RuntimeException().initCause(ioe);
+      }
+    }
+    @Override public void remove(){
+      throw new UnsupportedOperationException("Remove is not supported");
+    }
+  }
+;
+}

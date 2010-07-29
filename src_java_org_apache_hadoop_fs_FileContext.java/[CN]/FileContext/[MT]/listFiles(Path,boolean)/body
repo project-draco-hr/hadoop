@@ -1,0 +1,58 @@
+{
+  return new Iterator<LocatedFileStatus>(){
+    private Stack<Path> dirs=new Stack<Path>();
+    private Stack<Path> symLinks=new Stack<Path>();
+    Iterator<LocatedFileStatus> itor=listLocatedStatus(f);
+    LocatedFileStatus curFile;
+    @Override public boolean hasNext(){
+      try {
+        while (curFile == null) {
+          if (itor.hasNext()) {
+            handleFileStat(itor.next());
+          }
+ else           if (!dirs.isEmpty()) {
+            Path dirPath=dirs.pop();
+            itor=listLocatedStatus(dirPath);
+          }
+ else           if (!symLinks.isEmpty()) {
+            Path symLink=symLinks.pop();
+            FileStatus stat=getFileStatus(symLink);
+            if (stat.isFile() || (recursive && stat.isDirectory())) {
+              itor=listLocatedStatus(stat.getPath());
+            }
+          }
+ else {
+            return false;
+          }
+        }
+        return true;
+      }
+ catch (      IOException ioe) {
+        throw (RuntimeException)new RuntimeException().initCause(ioe);
+      }
+    }
+    private void handleFileStat(    LocatedFileStatus stat) throws IOException {
+      if (stat.isFile()) {
+        curFile=stat;
+      }
+ else       if (stat.isSymlink()) {
+        symLinks.push(stat.getSymlink());
+      }
+ else       if (recursive) {
+        dirs.push(stat.getPath());
+      }
+    }
+    @Override public LocatedFileStatus next(){
+      if (hasNext()) {
+        LocatedFileStatus result=curFile;
+        curFile=null;
+        return result;
+      }
+      throw new java.util.NoSuchElementException("No more entry in " + f);
+    }
+    @Override public void remove(){
+      throw new UnsupportedOperationException("Remove is not supported");
+    }
+  }
+;
+}
