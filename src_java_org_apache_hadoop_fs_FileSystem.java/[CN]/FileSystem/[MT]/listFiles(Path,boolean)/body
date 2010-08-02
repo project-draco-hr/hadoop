@@ -1,10 +1,8 @@
 {
   return new Iterator<LocatedFileStatus>(){
-    private LinkedList<FileStatus> fileStats=new LinkedList<FileStatus>();
-    private Stack<FileStatus> dirStats=new Stack<FileStatus>();
-{
-      list(f);
-    }
+    private Stack<Iterator<LocatedFileStatus>> itors=new Stack<Iterator<LocatedFileStatus>>();
+    Iterator<LocatedFileStatus> curItor=listLocatedStatus(f);
+    LocatedFileStatus curFile;
     /** 
  * {@inheritDoc}
  * @return {@inheritDog} 
@@ -12,34 +10,36 @@
  * the IOException is set as the cause of the RuntimeException
  */
     @Override public boolean hasNext(){
-      if (fileStats.isEmpty()) {
-        listDir();
+      while (curFile == null) {
+        if (curItor.hasNext()) {
+          handleFileStat(curItor.next());
+        }
+ else         if (!itors.empty()) {
+          curItor=itors.pop();
+        }
+ else {
+          return false;
+        }
       }
-      return !fileStats.isEmpty();
+      return true;
     }
     /** 
- * list at least one directory until file list is not empty
+ * Process the input stat.
+ * If it is a file, return the file stat.
+ * If it is a directory, tranverse the directory if recursive is true;
+ * ignore it if recursive is false.
+ * @param stat input status
+ * @throws RuntimeException if any io error occurs; the io exception
+ * is set as the cause of RuntimeException
  */
-    private void listDir(){
-      while (fileStats.isEmpty() && !dirStats.isEmpty()) {
-        FileStatus dir=dirStats.pop();
-        list(dir.getPath());
-      }
-    }
-    /** 
- * List the given path
- * @param dirPath a path
- */
-    private void list(    Path dirPath){
+    private void handleFileStat(    LocatedFileStatus stat){
       try {
-        FileStatus[] stats=listStatus(dirPath);
-        for (        FileStatus stat : stats) {
-          if (stat.isFile()) {
-            fileStats.add(stat);
-          }
- else           if (recursive) {
-            dirStats.push(stat);
-          }
+        if (stat.isFile()) {
+          curFile=stat;
+        }
+ else         if (recursive) {
+          itors.push(curItor);
+          curItor=listLocatedStatus(stat.getPath());
         }
       }
  catch (      IOException ioe) {
@@ -54,17 +54,12 @@
  * @exception {@inheritDoc}
  */
     @Override public LocatedFileStatus next(){
-      if (!hasNext()) {
-        throw new NoSuchElementException();
+      if (hasNext()) {
+        LocatedFileStatus result=curFile;
+        curFile=null;
+        return result;
       }
-      FileStatus status=fileStats.remove();
-      try {
-        BlockLocation[] locs=getFileBlockLocations(status,0,status.getLen());
-        return new LocatedFileStatus(status,locs);
-      }
- catch (      IOException ioe) {
-        throw (RuntimeException)new RuntimeException().initCause(ioe);
-      }
+      throw new java.util.NoSuchElementException("No more entry in " + f);
     }
     @Override public void remove(){
       throw new UnsupportedOperationException("Remove is not supported");
