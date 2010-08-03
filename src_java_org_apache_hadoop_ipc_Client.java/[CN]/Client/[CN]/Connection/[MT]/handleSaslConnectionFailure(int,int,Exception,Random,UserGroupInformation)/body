@@ -1,0 +1,33 @@
+{
+  ugi.doAs(new PrivilegedExceptionAction<Object>(){
+    public Object run() throws IOException, InterruptedException {
+      final short MAX_BACKOFF=5000;
+      closeConnection();
+      disposeSasl();
+      if (shouldAuthenticateOverKrb()) {
+        if (currRetries < maxRetries) {
+          LOG.debug("Exception encountered while connecting to " + "the server : " + ex);
+          if (UserGroupInformation.isLoginKeytabBased()) {
+            UserGroupInformation.getLoginUser().reloginFromKeytab();
+          }
+ else {
+            UserGroupInformation.getLoginUser().reloginFromTicketCache();
+          }
+          Thread.sleep((rand.nextInt(MAX_BACKOFF) + 1));
+          return null;
+        }
+ else {
+          String msg="Couldn't setup connection for " + UserGroupInformation.getLoginUser().getUserName() + " to "+ serverPrincipal;
+          LOG.warn(msg);
+          throw (IOException)new IOException(msg).initCause(ex);
+        }
+      }
+ else {
+        LOG.warn("Exception encountered while connecting to " + "the server : " + ex);
+      }
+      if (ex instanceof RemoteException)       throw (RemoteException)ex;
+      throw new IOException(ex);
+    }
+  }
+);
+}
