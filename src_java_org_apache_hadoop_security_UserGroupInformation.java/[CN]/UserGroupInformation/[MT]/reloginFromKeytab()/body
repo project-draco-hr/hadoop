@@ -8,16 +8,22 @@
   if (!hasSufficientTimeElapsed(now)) {
     return;
   }
+  long start=0;
   user.setLastLogin(now);
   try {
     LOG.info("Initiating logout for " + getUserName());
     login.logout();
     login=new LoginContext(HadoopConfiguration.KEYTAB_KERBEROS_CONFIG_NAME,getSubject());
     LOG.info("Initiating re-login for " + keytabPrincipal);
+    start=System.currentTimeMillis();
     login.login();
+    metrics.loginSuccess.inc(System.currentTimeMillis() - start);
     setLogin(login);
   }
  catch (  LoginException le) {
+    if (start > 0) {
+      metrics.loginFailure.inc(System.currentTimeMillis() - start);
+    }
     throw new IOException("Login failure for " + keytabPrincipal + " from keytab "+ keytabFile,le);
   }
 }
