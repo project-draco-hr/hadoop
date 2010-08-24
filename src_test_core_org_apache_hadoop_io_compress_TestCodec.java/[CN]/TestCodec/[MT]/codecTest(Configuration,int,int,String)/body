@@ -16,9 +16,6 @@
     key.write(data);
     value.write(data);
   }
-  DataInputBuffer originalData=new DataInputBuffer();
-  DataInputStream originalIn=new DataInputStream(new BufferedInputStream(originalData));
-  originalData.reset(data.getData(),0,data.getLength());
   LOG.info("Generated " + count + " records");
   DataOutputBuffer compressedDataBuffer=new DataOutputBuffer();
   CompressionOutputStream deflateFilter=codec.createOutputStream(compressedDataBuffer);
@@ -31,6 +28,9 @@
   deCompressedDataBuffer.reset(compressedDataBuffer.getData(),0,compressedDataBuffer.getLength());
   CompressionInputStream inflateFilter=codec.createInputStream(deCompressedDataBuffer);
   DataInputStream inflateIn=new DataInputStream(new BufferedInputStream(inflateFilter));
+  DataInputBuffer originalData=new DataInputBuffer();
+  originalData.reset(data.getData(),0,data.getLength());
+  DataInputStream originalIn=new DataInputStream(new BufferedInputStream(originalData));
   for (int i=0; i < count; ++i) {
     RandomDatum k1=new RandomDatum();
     RandomDatum v1=new RandomDatum();
@@ -42,5 +42,15 @@
     v2.readFields(inflateIn);
     assertTrue("original and compressed-then-decompressed-output not equal",k1.equals(k2) && v1.equals(v2));
   }
+  originalData.reset(data.getData(),0,data.getLength());
+  deCompressedDataBuffer.reset(compressedDataBuffer.getData(),0,compressedDataBuffer.getLength());
+  inflateFilter=codec.createInputStream(deCompressedDataBuffer);
+  originalIn=new DataInputStream(new BufferedInputStream(originalData));
+  int expected;
+  do {
+    expected=originalIn.read();
+    assertEquals("Inflated stream read by byte does not match",expected,inflateFilter.read());
+  }
+ while (expected != -1);
   LOG.info("SUCCESS! Completed checking " + count + " records");
 }
