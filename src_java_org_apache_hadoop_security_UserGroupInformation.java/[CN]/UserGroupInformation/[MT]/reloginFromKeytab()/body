@@ -1,24 +1,30 @@
 {
   if (!isSecurityEnabled() || user.getAuthenticationMethod() != AuthenticationMethod.KERBEROS || !isKeytab)   return;
+  KerberosTicket tgt=getTGT();
+  if (tgt == null) {
+    return;
+  }
+  if (System.currentTimeMillis() < getRefreshTime(tgt)) {
+    return;
+  }
   LoginContext login=getLogin();
   if (login == null || keytabFile == null) {
     throw new IOException("loginUserFromKeyTab must be done first");
   }
   long now=System.currentTimeMillis();
-  if (!hasSufficientTimeElapsed(now)) {
-    return;
-  }
   long start=0;
   user.setLastLogin(now);
   try {
     LOG.info("Initiating logout for " + getUserName());
-    login.logout();
-    login=new LoginContext(HadoopConfiguration.KEYTAB_KERBEROS_CONFIG_NAME,getSubject());
-    LOG.info("Initiating re-login for " + keytabPrincipal);
-    start=System.currentTimeMillis();
-    login.login();
-    metrics.loginSuccess.inc(System.currentTimeMillis() - start);
-    setLogin(login);
+synchronized (UserGroupInformation.class) {
+      login.logout();
+      login=new LoginContext(HadoopConfiguration.KEYTAB_KERBEROS_CONFIG_NAME,getSubject());
+      LOG.info("Initiating re-login for " + keytabPrincipal);
+      start=System.currentTimeMillis();
+      login.login();
+      metrics.loginSuccess.inc(System.currentTimeMillis() - start);
+      setLogin(login);
+    }
   }
  catch (  LoginException le) {
     if (start > 0) {
