@@ -1,0 +1,28 @@
+{
+  KeyClassOption keyClassOption=Options.getOption(KeyClassOption.class,opts);
+  ComparatorOption comparatorOption=Options.getOption(ComparatorOption.class,opts);
+  if ((keyClassOption == null) == (comparatorOption == null)) {
+    throw new IllegalArgumentException("key class or comparator option " + "must be set");
+  }
+  this.indexInterval=conf.getInt(INDEX_INTERVAL,this.indexInterval);
+  Class<? extends WritableComparable> keyClass;
+  if (keyClassOption == null) {
+    this.comparator=comparatorOption.getValue();
+    keyClass=comparator.getKeyClass();
+  }
+ else {
+    keyClass=(Class<? extends WritableComparable>)keyClassOption.getValue();
+    this.comparator=WritableComparator.get(keyClass);
+  }
+  this.lastKey=comparator.newKey();
+  FileSystem fs=dirName.getFileSystem(conf);
+  if (!fs.mkdirs(dirName)) {
+    throw new IOException("Mkdirs failed to create directory " + dirName);
+  }
+  Path dataFile=new Path(dirName,DATA_FILE_NAME);
+  Path indexFile=new Path(dirName,INDEX_FILE_NAME);
+  SequenceFile.Writer.Option[] dataOptions=Options.prependOptions(opts,SequenceFile.Writer.file(dataFile),SequenceFile.Writer.keyClass(keyClass));
+  this.data=SequenceFile.createWriter(conf,dataOptions);
+  SequenceFile.Writer.Option[] indexOptions=Options.prependOptions(opts,SequenceFile.Writer.file(indexFile),SequenceFile.Writer.keyClass(keyClass),SequenceFile.Writer.valueClass(LongWritable.class),SequenceFile.Writer.compressionType(CompressionType.BLOCK));
+  this.index=SequenceFile.createWriter(conf,indexOptions);
+}

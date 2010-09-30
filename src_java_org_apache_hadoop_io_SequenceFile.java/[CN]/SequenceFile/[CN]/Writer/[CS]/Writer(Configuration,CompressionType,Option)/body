@@ -1,0 +1,47 @@
+{
+  this.compress=compressionType;
+  BlockSizeOption blockSizeOption=Options.getOption(BlockSizeOption.class,opts);
+  BufferSizeOption bufferSizeOption=Options.getOption(BufferSizeOption.class,opts);
+  ReplicationOption replicationOption=Options.getOption(ReplicationOption.class,opts);
+  ProgressableOption progressOption=Options.getOption(ProgressableOption.class,opts);
+  FileOption fileOption=Options.getOption(FileOption.class,opts);
+  StreamOption streamOption=Options.getOption(StreamOption.class,opts);
+  KeyClassOption keyClassOption=Options.getOption(KeyClassOption.class,opts);
+  ValueClassOption valueClassOption=Options.getOption(ValueClassOption.class,opts);
+  CompressionCodecOption compressionCodecOption=Options.getOption(CompressionCodecOption.class,opts);
+  MetadataOption metadataOption=Options.getOption(MetadataOption.class,opts);
+  if ((fileOption == null) == (streamOption == null)) {
+    throw new IllegalArgumentException("file or stream must be specified");
+  }
+  if (fileOption == null && (blockSizeOption != null || bufferSizeOption != null || replicationOption != null || progressOption != null)) {
+    throw new IllegalArgumentException("file modifier options not " + "compatible with stream");
+  }
+  FSDataOutputStream out;
+  boolean ownStream=fileOption != null;
+  if (ownStream) {
+    Path p=fileOption.getValue();
+    FileSystem fs=p.getFileSystem(conf);
+    int bufferSize=bufferSizeOption == null ? getBufferSize(conf) : bufferSizeOption.getValue();
+    short replication=replicationOption == null ? fs.getDefaultReplication() : (short)replicationOption.getValue();
+    long blockSize=blockSizeOption == null ? fs.getDefaultBlockSize() : blockSizeOption.getValue();
+    Progressable progress=progressOption == null ? null : progressOption.getValue();
+    out=fs.create(p,false,bufferSize,replication,blockSize,progress);
+  }
+ else {
+    out=streamOption.getValue();
+  }
+  Class<?> keyClass=keyClassOption == null ? Object.class : keyClassOption.getValue();
+  Class<?> valueClass=valueClassOption == null ? Object.class : valueClassOption.getValue();
+  Metadata metadata=metadataOption == null ? new Metadata() : metadataOption.getValue();
+  CompressionCodec codec;
+  if (compressionType == CompressionType.NONE) {
+    codec=null;
+  }
+ else {
+    codec=compressionCodecOption == null ? new DefaultCodec() : compressionCodecOption.getValue();
+  }
+  if (codec != null && (codec instanceof GzipCodec) && !NativeCodeLoader.isNativeCodeLoaded() && !ZlibFactory.isNativeZlibLoaded(conf)) {
+    throw new IllegalArgumentException("SequenceFile doesn't work with " + "GzipCodec without native-hadoop " + "code!");
+  }
+  init(conf,out,ownStream,keyClass,valueClass,codec,metadata);
+}
