@@ -1,0 +1,24 @@
+{
+  AccessControlList acl=protocolToAcl.get(protocol);
+  if (acl == null) {
+    throw new AuthorizationException("Protocol " + protocol + " is not known.");
+  }
+  KerberosInfo krbInfo=protocol.getAnnotation(KerberosInfo.class);
+  String clientPrincipal=null;
+  if (krbInfo != null) {
+    String clientKey=krbInfo.clientPrincipal();
+    if (clientKey != null && !clientKey.equals("")) {
+      try {
+        clientPrincipal=SecurityUtil.getServerPrincipal(conf.get(clientKey),addr);
+      }
+ catch (      IOException e) {
+        throw (AuthorizationException)new AuthorizationException("Can't figure out Kerberos principal name for connection from " + addr + " for user="+ user+ " protocol="+ protocol).initCause(e);
+      }
+    }
+  }
+  if ((clientPrincipal != null && !clientPrincipal.equals(user.getUserName())) || !acl.isUserAllowed(user)) {
+    AUDITLOG.warn(AUTHZ_FAILED_FOR + user + " for protocol="+ protocol+ ", expected client Kerberos principal is "+ clientPrincipal);
+    throw new AuthorizationException("User " + user + " is not authorized for protocol "+ protocol+ ", expected client Kerberos principal is "+ clientPrincipal);
+  }
+  AUDITLOG.info(AUTHZ_SUCCESSFULL_FOR + user + " for protocol="+ protocol);
+}
