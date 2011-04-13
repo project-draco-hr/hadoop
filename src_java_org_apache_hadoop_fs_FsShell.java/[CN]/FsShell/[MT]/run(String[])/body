@@ -1,4 +1,6 @@
 {
+  commandFactory.setConf(getConf());
+  commandFactory.registerCommands(FsCommand.class);
   if (argv.length < 1) {
     printUsage("");
     return -1;
@@ -45,7 +47,21 @@ catch (  IOException e) {
   }
   exitCode=0;
   try {
-    if ("-put".equals(cmd) || "-copyFromLocal".equals(cmd)) {
+    Command instance=commandFactory.getInstance(cmd);
+    if (instance != null) {
+      try {
+        exitCode=instance.run(Arrays.copyOfRange(argv,i,argv.length));
+      }
+ catch (      Exception e) {
+        exitCode=-1;
+        LOG.debug("Error",e);
+        instance.displayError(e);
+        if (e instanceof IllegalArgumentException) {
+          printUsage(cmd);
+        }
+      }
+    }
+ else     if ("-put".equals(cmd) || "-copyFromLocal".equals(cmd)) {
       Path[] srcs=new Path[argv.length - 2];
       for (int j=0; i < argv.length - 1; )       srcs[j++]=new Path(argv[i++]);
       copyFromLocal(srcs,argv[i++]);
@@ -121,11 +137,6 @@ catch (  IOException e) {
     }
  else     if ("-dus".equals(cmd)) {
       dus(argv,i);
-    }
- else     if ("-count".equals(cmd)) {
-      Count runner=ReflectionUtils.newInstance(Count.class,getConf());
-      runner.setCommandName(cmd);
-      exitCode=runner.run(Arrays.copyOfRange(argv,1,argv.length));
     }
  else     if ("-mkdir".equals(cmd)) {
       exitCode=doall(cmd,argv,i);
