@@ -4,6 +4,18 @@
     if (verbose)     log("Call: " + call);
     Method method=protocol.getMethod(call.getMethodName(),call.getParameterClasses());
     method.setAccessible(true);
+    if (call.getRpcVersion() != writableRpcVersion) {
+      throw new IOException("WritableRpc version mismatch, client side version=" + call.getRpcVersion() + ", server side version="+ writableRpcVersion);
+    }
+    if (!method.getDeclaringClass().equals(VersionedProtocol.class)) {
+      long clientVersion=call.getProtocolVersion();
+      ProtocolSignature serverInfo=((VersionedProtocol)instance).getProtocolSignature(protocol.getCanonicalName(),call.getProtocolVersion(),call.getClientMethodsHash());
+      long serverVersion=serverInfo.getVersion();
+      if (serverVersion != clientVersion) {
+        LOG.warn("Version mismatch: client version=" + clientVersion + ", server version="+ serverVersion);
+        throw new RPC.VersionMismatch(protocol.getName(),clientVersion,serverVersion);
+      }
+    }
     long startTime=System.currentTimeMillis();
     Object value=method.invoke(instance,call.getParameters());
     int processingTime=(int)(System.currentTimeMillis() - startTime);
