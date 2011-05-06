@@ -1,0 +1,35 @@
+{
+  if (pluginLoader != null)   return pluginLoader;
+  final ClassLoader defaultLoader=getClass().getClassLoader();
+  Object purls=super.getProperty(PLUGIN_URLS_KEY);
+  if (purls == null)   return defaultLoader;
+  Iterable<String> jars=SPLITTER.split((String)purls);
+  int len=Iterables.size(jars);
+  if (len > 0) {
+    final URL[] urls=new URL[len];
+    try {
+      int i=0;
+      for (      String jar : jars) {
+        LOG.debug(jar);
+        urls[i++]=new URL(jar);
+      }
+    }
+ catch (    Exception e) {
+      throw new MetricsConfigException(e);
+    }
+    if (LOG.isDebugEnabled()) {
+      LOG.debug("using plugin jars: " + Iterables.toString(jars));
+    }
+    pluginLoader=doPrivileged(new PrivilegedAction<ClassLoader>(){
+      @Override public ClassLoader run(){
+        return new URLClassLoader(urls,defaultLoader);
+      }
+    }
+);
+    return pluginLoader;
+  }
+  if (parent instanceof MetricsConfig) {
+    return ((MetricsConfig)parent).getPluginLoader();
+  }
+  return defaultLoader;
+}
