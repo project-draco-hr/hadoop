@@ -1,0 +1,49 @@
+{
+  final Path srcPath=new Path(src);
+  if (!srcPath.isAbsoluteAndSchemeAuthorityNull()) {
+    throw new IOException("ViewFs:Non absolute mount name in config:" + src);
+  }
+  final String[] srcPaths=breakIntoPathComponents(src);
+  INodeDir<T> curInode=root;
+  int i;
+  for (i=1; i < srcPaths.length - 1; i++) {
+    final String iPath=srcPaths[i];
+    INode<T> nextInode=curInode.resolveInternal(iPath);
+    if (nextInode == null) {
+      INodeDir<T> newDir=curInode.addDir(iPath,aUgi);
+      newDir.InodeDirFs=getTargetFileSystem(newDir);
+      nextInode=newDir;
+    }
+    if (nextInode instanceof INodeLink) {
+      throw new FileAlreadyExistsException("Path " + nextInode.fullPath + " already exists as link");
+    }
+ else {
+      assert(nextInode instanceof INodeDir);
+      curInode=(INodeDir<T>)nextInode;
+    }
+  }
+  String iPath=srcPaths[i];
+  if (curInode.resolveInternal(iPath) != null) {
+    StringBuilder strB=new StringBuilder(srcPaths[0]);
+    for (int j=1; j <= i; ++j) {
+      strB.append('/').append(srcPaths[j]);
+    }
+    throw new FileAlreadyExistsException("Path " + strB + " already exists as dir; cannot create link here");
+  }
+  final INodeLink<T> newLink;
+  final String fullPath=curInode.fullPath + (curInode == root ? "" : "/") + iPath;
+  if (isLinkMerge) {
+    String[] targetsList=StringUtils.getStrings(target);
+    URI[] targetsListURI=new URI[targetsList.length];
+    int k=0;
+    for (    String itarget : targetsList) {
+      targetsListURI[k++]=new URI(itarget);
+    }
+    newLink=new INodeLink<T>(fullPath,aUgi,getTargetFileSystem(targetsListURI),targetsListURI);
+  }
+ else {
+    newLink=new INodeLink<T>(fullPath,aUgi,getTargetFileSystem(new URI(target)),new URI(target));
+  }
+  curInode.addLink(iPath,newLink);
+  mountPoints.add(new MountPoint<T>(src,newLink));
+}

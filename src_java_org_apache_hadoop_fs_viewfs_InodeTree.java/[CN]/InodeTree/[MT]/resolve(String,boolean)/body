@@ -1,0 +1,51 @@
+{
+  String[] path=breakIntoPathComponents(p);
+  if (path.length <= 1) {
+    ResolveResult<T> res=new ResolveResult<T>(ResultKind.isInternalDir,root.InodeDirFs,root.fullPath,SlashPath);
+    return res;
+  }
+  INodeDir<T> curInode=root;
+  int i;
+  for (i=1; i < path.length - (resolveLastComponent ? 0 : 1); i++) {
+    INode<T> nextInode=curInode.resolveInternal(path[i]);
+    if (nextInode == null) {
+      StringBuilder failedAt=new StringBuilder(path[0]);
+      for (int j=1; j <= i; ++j) {
+        failedAt.append('/').append(path[j]);
+      }
+      throw (new FileNotFoundException(failedAt.toString()));
+    }
+    if (nextInode instanceof INodeLink) {
+      final INodeLink<T> link=(INodeLink<T>)nextInode;
+      final Path remainingPath;
+      if (i >= path.length - 1) {
+        remainingPath=SlashPath;
+      }
+ else {
+        StringBuilder remainingPathStr=new StringBuilder("/" + path[i + 1]);
+        for (int j=i + 2; j < path.length; ++j) {
+          remainingPathStr.append('/').append(path[j]);
+        }
+        remainingPath=new Path(remainingPathStr.toString());
+      }
+      final ResolveResult<T> res=new ResolveResult<T>(ResultKind.isExternalDir,link.targetFileSystem,nextInode.fullPath,remainingPath);
+      return res;
+    }
+ else     if (nextInode instanceof INodeDir) {
+      curInode=(INodeDir<T>)nextInode;
+    }
+  }
+  Path remainingPath;
+  if (resolveLastComponent) {
+    remainingPath=SlashPath;
+  }
+ else {
+    StringBuilder remainingPathStr=new StringBuilder("/" + path[i]);
+    for (int j=i + 1; j < path.length; ++j) {
+      remainingPathStr.append('/').append(path[j]);
+    }
+    remainingPath=new Path(remainingPathStr.toString());
+  }
+  final ResolveResult<T> res=new ResolveResult<T>(ResultKind.isInternalDir,curInode.InodeDirFs,curInode.fullPath,remainingPath);
+  return res;
+}

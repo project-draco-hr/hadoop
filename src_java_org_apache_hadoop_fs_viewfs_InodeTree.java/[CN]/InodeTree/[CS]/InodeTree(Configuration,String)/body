@@ -1,0 +1,37 @@
+{
+  String vName=viewName;
+  if (vName == null) {
+    vName=Constants.CONFIG_VIEWFS_DEFAULT_MOUNT_TABLE;
+  }
+  root=new INodeDir<T>("/",UserGroupInformation.getCurrentUser());
+  root.InodeDirFs=getTargetFileSystem(root);
+  root.isRoot=true;
+  final String mtPrefix=Constants.CONFIG_VIEWFS_PREFIX + "." + vName+ ".";
+  final String linkPrefix=Constants.CONFIG_VIEWFS_LINK + ".";
+  final String linkMergePrefix=Constants.CONFIG_VIEWFS_LINK_MERGE + ".";
+  boolean gotMountTableEntry=false;
+  final UserGroupInformation ugi=UserGroupInformation.getCurrentUser();
+  for (  Entry<String,String> si : config) {
+    final String key=si.getKey();
+    if (key.startsWith(mtPrefix)) {
+      gotMountTableEntry=true;
+      boolean isMergeLink=false;
+      String src=key.substring(mtPrefix.length());
+      if (src.startsWith(linkPrefix)) {
+        src=src.substring(linkPrefix.length());
+      }
+ else       if (src.startsWith(linkMergePrefix)) {
+        isMergeLink=true;
+        src=src.substring(linkMergePrefix.length());
+      }
+ else {
+        throw new IOException("ViewFs: Cannot initialize: Invalid entry in Mount table in config: " + src);
+      }
+      final String target=si.getValue();
+      createLink(src,target,isMergeLink,ugi);
+    }
+  }
+  if (!gotMountTableEntry) {
+    throw new IOException("ViewFs: Cannot initialize: Empty Mount table in config for " + vName == null ? "viewfs:///" : ("viewfs://" + vName + "/"));
+  }
+}
