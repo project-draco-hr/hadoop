@@ -1,13 +1,17 @@
 {
-  Configuration conf=new Configuration();
-  conf.set("fs.default.name",fs.getUri().toString());
+  FileSystem fs=FileSystem.get(conf);
   conf.set(FS_TRASH_INTERVAL_KEY,"0");
   assertFalse(new Trash(conf).isEnabled());
   conf.set(FS_TRASH_INTERVAL_KEY,"10");
   assertTrue(new Trash(conf).isEnabled());
   FsShell shell=new FsShell();
   shell.setConf(conf);
-  Path trashRoot=null;
+  if (trashRoot == null) {
+    trashRoot=shell.getCurrentTrashDir();
+  }
+  if (trashRootFs == null) {
+    trashRootFs=fs;
+  }
   Path myPath=new Path(base,"test/mkdirs");
   mkdir(fs,myPath);
   Path myFile=new Path(base,"test/mkdirs/myFile");
@@ -36,8 +40,7 @@
       System.err.println("Exception raised from Trash.run " + e.getLocalizedMessage());
     }
     assertTrue(val == 0);
-    trashRoot=shell.getCurrentTrashDir();
-    checkTrash(fs,trashRoot,myFile);
+    checkTrash(trashRootFs,trashRoot,fs.makeQualified(myFile));
   }
   writeFile(fs,myFile);
 {
@@ -84,7 +87,7 @@
 {
     Path toErase=new Path(trashRoot,"toErase");
     int retVal=-1;
-    writeFile(fs,toErase);
+    writeFile(trashRootFs,toErase);
     try {
       retVal=shell.run(new String[]{"-rm",toErase.toString()});
     }
@@ -92,8 +95,8 @@
       System.err.println("Exception raised from Trash.run " + e.getLocalizedMessage());
     }
     assertTrue(retVal == 0);
-    checkNotInTrash(fs,trashRoot,toErase.toString());
-    checkNotInTrash(fs,trashRoot,toErase.toString() + ".1");
+    checkNotInTrash(trashRootFs,trashRoot,toErase.toString());
+    checkNotInTrash(trashRootFs,trashRoot,toErase.toString() + ".1");
   }
 {
     String[] args=new String[1];
@@ -107,7 +110,7 @@
     }
     assertTrue(val == 0);
   }
-  checkNotInTrash(fs,trashRoot,new Path(base,"test/mkdirs/myFile").toString());
+  checkNotInTrash(trashRootFs,trashRoot,new Path(base,"test/mkdirs/myFile").toString());
   mkdir(fs,myPath);
   writeFile(fs,myFile);
 {
@@ -122,7 +125,7 @@
       System.err.println("Exception raised from Trash.run " + e.getLocalizedMessage());
     }
     assertTrue(val == 0);
-    checkTrash(fs,trashRoot,myFile);
+    checkTrash(trashRootFs,trashRoot,myFile);
     args=new String[2];
     args[0]="-rmr";
     args[1]=myPath.toString();
@@ -134,7 +137,7 @@
       System.err.println("Exception raised from Trash.run " + e.getLocalizedMessage());
     }
     assertTrue(val == 0);
-    checkTrash(fs,trashRoot,myPath);
+    checkTrash(trashRootFs,trashRoot,myPath);
   }
 {
     String[] args=new String[2];
@@ -148,7 +151,7 @@
       System.err.println("Exception raised from Trash.run " + e.getLocalizedMessage());
     }
     assertEquals("exit code",1,val);
-    assertTrue(fs.exists(trashRoot));
+    assertTrue(trashRootFs.exists(trashRoot));
   }
   mkdir(fs,myPath);
   writeFile(fs,myFile);
@@ -165,7 +168,7 @@
  catch (    Exception e) {
       System.err.println("Exception raised from Trash.run " + e.getLocalizedMessage());
     }
-    assertFalse(fs.exists(trashRoot));
+    assertFalse("Expected TrashRoot (" + trashRoot + ") to exist in file system:"+ trashRootFs.getUri(),trashRootFs.exists(trashRoot));
     assertFalse(fs.exists(myFile));
     assertTrue(val == 0);
   }
@@ -184,7 +187,7 @@
  catch (    Exception e) {
       System.err.println("Exception raised from Trash.run " + e.getLocalizedMessage());
     }
-    assertFalse(fs.exists(trashRoot));
+    assertFalse(trashRootFs.exists(trashRoot));
     assertFalse(fs.exists(myPath));
     assertFalse(fs.exists(myFile));
     assertTrue(val == 0);
