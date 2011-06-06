@@ -1,51 +1,29 @@
 {
-  commandFactory.setConf(getConf());
-  commandFactory.registerCommands(FsCommand.class);
-  if (argv.length < 1) {
-    printUsage("");
-    return -1;
-  }
+  init();
   int exitCode=-1;
-  int i=0;
-  String cmd=argv[i++];
-  try {
-    init();
+  if (argv.length < 1) {
+    printUsage(System.err);
   }
- catch (  RPC.VersionMismatch v) {
-    LOG.debug("Version mismatch",v);
-    System.err.println("Version Mismatch between client and server" + "... command aborted.");
-    return exitCode;
-  }
-catch (  IOException e) {
-    LOG.debug("Error",e);
-    System.err.println("Bad connection to FS. Command aborted. Exception: " + e.getLocalizedMessage());
-    return exitCode;
-  }
-  try {
-    Command instance=commandFactory.getInstance(cmd);
-    if (instance != null) {
-      exitCode=instance.run(Arrays.copyOfRange(argv,i,argv.length));
-    }
- else     if ("-help".equals(cmd)) {
-      if (i < argv.length) {
-        printHelp(argv[i]);
-      }
  else {
-        printHelp("");
+    String cmd=argv[0];
+    Command instance=null;
+    try {
+      instance=commandFactory.getInstance(cmd);
+      if (instance == null) {
+        throw new UnknownCommandException();
+      }
+      exitCode=instance.run(Arrays.copyOfRange(argv,1,argv.length));
+    }
+ catch (    IllegalArgumentException e) {
+      displayError(cmd,e.getLocalizedMessage());
+      if (instance != null) {
+        printInstanceUsage(System.err,instance);
       }
     }
- else {
-      System.err.println(cmd + ": Unknown command");
-      printUsage("");
-    }
-  }
- catch (  Exception e) {
-    exitCode=1;
-    LOG.debug("Error",e);
-    displayError(cmd,e);
-    if (e instanceof IllegalArgumentException) {
-      exitCode=-1;
-      printUsage(cmd);
+catch (    Exception e) {
+      LOG.debug("Error",e);
+      displayError(cmd,"Fatal internal error");
+      e.printStackTrace(System.err);
     }
   }
   return exitCode;
