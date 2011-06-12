@@ -1,0 +1,98 @@
+{
+  TTClient ttClient=null;
+  FileStatus filesStatus[]=null;
+  String localTaskDir=null;
+  TaskInfo taskInfo=null;
+  TaskID tID=null;
+  boolean isTempFolderExists=false;
+  Path inputDir=new Path("input");
+  Path outputDir=new Path("output");
+  Configuration conf=new Configuration(cluster.getConf());
+  JobConf jconf=new JobConf(conf);
+  jconf.setJobName("Task Failed job");
+  jconf.setJarByClass(UtilsForTests.class);
+  jconf.setMapperClass(FailedMapperClass.class);
+  jconf.setNumMapTasks(1);
+  jconf.setNumReduceTasks(0);
+  jconf.setMaxMapAttempts(1);
+  cleanup(inputDir,conf);
+  cleanup(outputDir,conf);
+  createInput(inputDir,conf);
+  FileInputFormat.setInputPaths(jconf,inputDir);
+  FileOutputFormat.setOutputPath(jconf,outputDir);
+  RunningJob runJob=jobClient.submitJob(jconf);
+  JobID id=runJob.getID();
+  JobInfo jInfo=remoteJTClient.getJobInfo(id);
+  int counter=0;
+  while (counter < 60) {
+    if (jInfo.getStatus().getRunState() == JobStatus.RUNNING) {
+      break;
+    }
+ else {
+      UtilsForTests.waitFor(1000);
+      jInfo=remoteJTClient.getJobInfo(id);
+    }
+    counter++;
+  }
+  Assert.assertTrue("Job has not been started for 1 min.",counter != 60);
+  JobStatus[] jobStatus=jobClient.getAllJobs();
+  String userName=jobStatus[0].getUsername();
+  TaskInfo[] taskInfos=remoteJTClient.getTaskInfo(id);
+  for (  TaskInfo taskinfo : taskInfos) {
+    if (!taskinfo.isSetupOrCleanup()) {
+      taskInfo=taskinfo;
+      break;
+    }
+  }
+  tID=TaskID.downgrade(taskInfo.getTaskID());
+  FinishTaskControlAction action=new FinishTaskControlAction(tID);
+  String[] taskTrackers=taskInfo.getTaskTrackers();
+  counter=0;
+  while (counter < 30) {
+    if (taskTrackers.length != 0) {
+      break;
+    }
+    UtilsForTests.waitFor(1000);
+    taskInfo=remoteJTClient.getTaskInfo(taskInfo.getTaskID());
+    taskTrackers=taskInfo.getTaskTrackers();
+    counter++;
+  }
+  Assert.assertTrue("Task tracker not found.",taskTrackers.length != 0);
+  String hostName=taskTrackers[0].split("_")[1];
+  hostName=hostName.split(":")[0];
+  ttClient=cluster.getTTClient(hostName);
+  ttClient.getProxy().sendAction(action);
+  counter=0;
+  while (counter < 60) {
+    if (taskInfo.getTaskStatus().length > 0) {
+      if (taskInfo.getTaskStatus()[0].getRunState() == TaskStatus.State.RUNNING) {
+        break;
+      }
+    }
+    UtilsForTests.waitFor(1000);
+    taskInfo=remoteJTClient.getTaskInfo(taskInfo.getTaskID());
+    counter++;
+  }
+  Assert.assertTrue("Task has not been started for 1 min.",counter != 60);
+  String localDirs[]=ttClient.getMapredLocalDirs();
+  TaskAttemptID taskAttID=new TaskAttemptID(tID,0);
+  for (  String localDir : localDirs) {
+    localTaskDir=localDir + "/" + TaskTracker.getLocalTaskDir(userName,id.toString(),taskAttID.toString());
+    filesStatus=ttClient.listStatus(localTaskDir,true);
+    if (filesStatus.length > 0) {
+      isTempFolderExists=true;
+      break;
+    }
+  }
+  taskInfo=remoteJTClient.getTaskInfo(taskInfo.getTaskID());
+  Assert.assertTrue("Task Attempt directory " + taskAttID + " has not been found while task was running.",isTempFolderExists);
+  counter=0;
+  while (counter < 30) {
+    UtilsForTests.waitFor(1000);
+    taskInfo=remoteJTClient.getTaskInfo(tID);
+    counter++;
+  }
+  Assert.assertEquals("Task status has not been changed to FAILED.",taskInfo.getTaskStatus()[0].getRunState(),TaskStatus.State.FAILED);
+  filesStatus=ttClient.listStatus(localTaskDir,true);
+  Assert.assertTrue("Temporary folder has not been cleanup.",filesStatus.length == 0);
+}

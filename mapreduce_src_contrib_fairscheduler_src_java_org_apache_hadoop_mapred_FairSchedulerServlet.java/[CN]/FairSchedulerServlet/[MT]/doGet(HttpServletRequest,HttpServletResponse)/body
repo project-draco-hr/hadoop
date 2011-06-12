@@ -1,0 +1,53 @@
+{
+  boolean advancedView=request.getParameter("advanced") != null;
+  if (JSPUtil.privateActionsAllowed(jobTracker.conf) && request.getParameter("setPool") != null) {
+    Collection<JobInProgress> runningJobs=getInitedJobs();
+    PoolManager poolMgr=null;
+synchronized (scheduler) {
+      poolMgr=scheduler.getPoolManager();
+    }
+    String pool=request.getParameter("setPool");
+    String jobId=request.getParameter("jobid");
+    for (    JobInProgress job : runningJobs) {
+      if (job.getProfile().getJobID().toString().equals(jobId)) {
+synchronized (scheduler) {
+          poolMgr.setPool(job,pool);
+        }
+        scheduler.update();
+        break;
+      }
+    }
+    response.sendRedirect("/scheduler" + (advancedView ? "?advanced" : ""));
+    return;
+  }
+  if (JSPUtil.privateActionsAllowed(jobTracker.conf) && request.getParameter("setPriority") != null) {
+    Collection<JobInProgress> runningJobs=getInitedJobs();
+    JobPriority priority=JobPriority.valueOf(request.getParameter("setPriority"));
+    String jobId=request.getParameter("jobid");
+    for (    JobInProgress job : runningJobs) {
+      if (job.getProfile().getJobID().toString().equals(jobId)) {
+        job.setPriority(priority);
+        scheduler.update();
+        break;
+      }
+    }
+    response.sendRedirect("/scheduler" + (advancedView ? "?advanced" : ""));
+    return;
+  }
+  response.setContentType("text/html");
+  ByteArrayOutputStream baos=new ByteArrayOutputStream();
+  PrintWriter out=new PrintWriter(baos);
+  String hostname=StringUtils.simpleHostname(jobTracker.getJobTrackerMachine());
+  out.print("<html><head>");
+  out.printf("<title>%s Fair Scheduler Admininstration</title>\n",hostname);
+  out.print("<link rel=\"stylesheet\" type=\"text/css\" " + "href=\"/static/hadoop.css\">\n");
+  out.print("</head><body>\n");
+  out.printf("<h1><a href=\"/jobtracker.jsp\">%s</a> " + "Fair Scheduler Administration</h1>\n",hostname);
+  showPools(out,advancedView);
+  showJobs(out,advancedView);
+  out.print("</body></html>\n");
+  out.close();
+  OutputStream servletOut=response.getOutputStream();
+  baos.writeTo(servletOut);
+  servletOut.close();
+}

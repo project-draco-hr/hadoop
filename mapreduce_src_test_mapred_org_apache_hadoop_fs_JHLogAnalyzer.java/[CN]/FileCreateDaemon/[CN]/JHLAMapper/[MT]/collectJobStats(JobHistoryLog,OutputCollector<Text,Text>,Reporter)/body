@@ -1,0 +1,46 @@
+{
+  if (jh == null)   return;
+  if (jh.tasks == null)   return;
+  if (jh.SUBMIT_TIME <= 0)   throw new IOException("Job " + jh.JOBID + " SUBMIT_TIME = "+ jh.SUBMIT_TIME);
+  if (usersIncluded != null && !usersIncluded.contains(jh.USER))   return;
+  if (usersExcluded != null && usersExcluded.contains(jh.USER))   return;
+  int numAttempts=0;
+  long totalTime=0;
+  boolean jobSuccess=jh.isSuccessful();
+  long jobWaitTime=jh.LAUNCH_TIME - jh.SUBMIT_TIME;
+  for (  TaskHistoryLog th : jh.tasks.values()) {
+    if (th.attempts == null)     continue;
+    long attemptSubmitTime=jh.LAUNCH_TIME;
+    boolean taskSuccess=jobSuccess && th.isSuccessful();
+    for (    TaskAttemptHistoryLog tah : th.attempts.values()) {
+      boolean success=taskSuccess && tah.isSuccessful();
+      if (tah.START_TIME == 0) {
+        LOG.error("Start time 0 for task attempt " + tah.TASK_ATTEMPT_ID);
+        continue;
+      }
+      if (tah.FINISH_TIME < tah.START_TIME) {
+        LOG.error("Finish time " + tah.FINISH_TIME + " is less than "+ "Start time "+ tah.START_TIME+ " for task attempt "+ tah.TASK_ATTEMPT_ID);
+        tah.FINISH_TIME=tah.START_TIME;
+      }
+      if (!"MAP".equals(th.TASK_TYPE) && !"REDUCE".equals(th.TASK_TYPE) && !"CLEANUP".equals(th.TASK_TYPE)&& !"SETUP".equals(th.TASK_TYPE)) {
+        LOG.error("Unexpected TASK_TYPE = " + th.TASK_TYPE + " for attempt "+ tah.TASK_ATTEMPT_ID);
+      }
+      collectPerIntervalStats(output,attemptSubmitTime,tah.START_TIME,th.TASK_TYPE,StatSeries.STAT_LAUNCHED_PENDING_SLOT_TIME);
+      collectPerIntervalStats(output,attemptSubmitTime - jobWaitTime,tah.START_TIME,th.TASK_TYPE,StatSeries.STAT_SUBMIT_PENDING_SLOT_TIME);
+      if (success)       collectPerIntervalStats(output,tah.START_TIME,tah.FINISH_TIME,th.TASK_TYPE,StatSeries.STAT_ALL_SLOT_TIME);
+ else       collectPerIntervalStats(output,tah.START_TIME,tah.FINISH_TIME,th.TASK_TYPE,StatSeries.STAT_ALL_SLOT_TIME,StatSeries.STAT_FAILED_SLOT_TIME);
+      totalTime+=(tah.FINISH_TIME - tah.START_TIME);
+      numAttempts++;
+      if (numAttempts % 500 == 0) {
+        reporter.setStatus("Processing " + jh.JOBID + " at "+ numAttempts);
+      }
+      attemptSubmitTime=tah.FINISH_TIME;
+    }
+  }
+  LOG.info("Total    Maps = " + jh.TOTAL_MAPS + "  Reduces = "+ jh.TOTAL_REDUCES);
+  LOG.info("Finished Maps = " + jh.FINISHED_MAPS + "  Reduces = "+ jh.FINISHED_REDUCES);
+  LOG.info("numAttempts = " + numAttempts);
+  LOG.info("totalTime   = " + totalTime);
+  LOG.info("averageAttemptTime = " + (numAttempts == 0 ? 0 : totalTime / numAttempts));
+  LOG.info("jobTotalTime = " + (jh.FINISH_TIME <= jh.SUBMIT_TIME ? 0 : jh.FINISH_TIME - jh.SUBMIT_TIME));
+}

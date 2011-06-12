@@ -1,0 +1,31 @@
+{
+  int numMaps, numReds;
+  JobConf conf=new JobConf();
+  conf.setSpeculativeExecution(false);
+  conf.setMaxTaskFailuresPerTracker(1);
+  conf.setBoolean(JobContext.SETUP_CLEANUP_NEEDED,false);
+  TaskAttemptID[] taskAttemptID=new TaskAttemptID[3];
+  numMaps=1;
+  numReds=1;
+  conf.setNumMapTasks(numMaps);
+  conf.setNumReduceTasks(numReds);
+  conf.setBoolean(JobContext.SETUP_CLEANUP_NEEDED,false);
+  FakeJobInProgress job1=new FakeJobInProgress(conf,jobTracker);
+  job1.setClusterSize(trackers.length);
+  job1.initTasks();
+  jobTracker.addJob(job1.getJobID(),job1);
+  taskAttemptID[0]=job1.findMapTask(trackers[0]);
+  job1.failTask(taskAttemptID[0]);
+  taskAttemptID[1]=job1.findMapTask(trackers[1]);
+  job1.finishTask(taskAttemptID[1]);
+  taskAttemptID[2]=job1.findReduceTask(trackers[0]);
+  job1.failTask(taskAttemptID[2]);
+  taskAttemptID[2]=job1.findReduceTask(trackers[2]);
+  job1.finishTask(taskAttemptID[2]);
+  jobTracker.finalizeJob(job1);
+  assertEquals("Mismatch in number of failed map tasks",1,mi.numMapTasksFailed);
+  assertEquals("Mismatch in number of failed reduce tasks",1,mi.numReduceTasksFailed);
+  assertEquals("Mismatch in number of blacklisted trackers",1,mi.numTrackersBlackListed);
+  assertEquals("Mismatch in blacklisted map slots",mi.numBlackListedMapSlots,(mapSlotsPerTracker * mi.numTrackersBlackListed));
+  assertEquals("Mismatch in blacklisted reduce slots",mi.numBlackListedReduceSlots,(reduceSlotsPerTracker * mi.numTrackersBlackListed));
+}

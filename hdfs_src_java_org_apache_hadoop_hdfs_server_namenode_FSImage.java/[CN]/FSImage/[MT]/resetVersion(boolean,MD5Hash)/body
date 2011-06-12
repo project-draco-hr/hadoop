@@ -1,0 +1,27 @@
+{
+  storage.layoutVersion=FSConstants.LAYOUT_VERSION;
+  if (renewCheckpointTime)   storage.setCheckpointTime(now());
+  storage.setImageDigest(newImageDigest);
+  ArrayList<StorageDirectory> al=null;
+  for (Iterator<StorageDirectory> it=storage.dirIterator(); it.hasNext(); ) {
+    StorageDirectory sd=it.next();
+    if (!sd.getStorageDirType().isOfType(NameNodeDirType.EDITS)) {
+      File editsFile=NNStorage.getStorageFile(sd,NameNodeFile.EDITS);
+      if (editsFile.exists() && !editsFile.delete())       throw new IOException("Cannot delete edits file " + editsFile.getCanonicalPath());
+    }
+    if (!sd.getStorageDirType().isOfType(NameNodeDirType.IMAGE)) {
+      File imageFile=NNStorage.getStorageFile(sd,NameNodeFile.IMAGE);
+      if (imageFile.exists() && !imageFile.delete())       throw new IOException("Cannot delete image file " + imageFile.getCanonicalPath());
+    }
+    try {
+      sd.write();
+    }
+ catch (    IOException e) {
+      LOG.error("Cannot write file " + sd.getRoot(),e);
+      if (al == null)       al=new ArrayList<StorageDirectory>(1);
+      al.add(sd);
+    }
+  }
+  if (al != null)   storage.reportErrorsOnDirectories(al);
+  ckptState=FSImage.CheckpointStates.START;
+}

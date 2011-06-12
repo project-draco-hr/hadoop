@@ -1,0 +1,52 @@
+{
+  byte[] buffer=new byte[bufferSize];
+  input.mark(bufferSize + 1);
+  int actualRead=input.read(buffer);
+  int mostRecentRead=actualRead;
+  while (actualRead < bufferSize && mostRecentRead > 0) {
+    mostRecentRead=input.read(buffer,actualRead,bufferSize - actualRead);
+    if (mostRecentRead > 0) {
+      actualRead+=mostRecentRead;
+    }
+  }
+  if (actualRead < markerBytes.length) {
+    input.reset();
+    return null;
+  }
+  for (int i=0; i < markerBytes.length; ++i) {
+    if (markerBytes[i] != buffer[i]) {
+      input.reset();
+      return null;
+    }
+  }
+  for (int i=markerBytes.length; i < actualRead; ++i) {
+    if (buffer[i] == endMarkerBytes[0]) {
+      input.reset();
+      if (input.read(buffer,0,markerBytes.length) < markerBytes.length) {
+        throw new IOException("Can't reread bytes I've read before.");
+      }
+      if (input.read(buffer,0,i - markerBytes.length) < i - markerBytes.length) {
+        throw new IOException("Can't reread bytes I've read before.");
+      }
+      if (input.read(fileEndMarkerBuffer) < fileEndMarkerBuffer.length) {
+        input.reset();
+        return null;
+      }
+      for (int j=0; j < endMarkerBytes.length; ++j) {
+        if (endMarkerBytes[j] != fileEndMarkerBuffer[j]) {
+          input.reset();
+          return null;
+        }
+      }
+      return new String(buffer,0,i - markerBytes.length);
+    }
+    if (buffer[i] == '\n') {
+      return null;
+    }
+  }
+  input.reset();
+  if (actualRead < bufferSize) {
+    return null;
+  }
+  return nextFileName(bufferSize * 2);
+}

@@ -1,0 +1,64 @@
+{
+  final Configuration CONF=new HdfsConfiguration();
+  final short REPLICATION_FACTOR=(short)2;
+  final int DEFAULT_BLOCK_SIZE=1024;
+  final Random r=new Random();
+  CONF.setLong(DFSConfigKeys.DFS_BLOCK_SIZE_KEY,DEFAULT_BLOCK_SIZE);
+  MiniDFSCluster cluster=new MiniDFSCluster.Builder(CONF).numDataNodes(REPLICATION_FACTOR).build();
+  try {
+    cluster.waitActive();
+    FileSystem fs=cluster.getFileSystem();
+    FSDataOutputStream out=fs.create(new Path("/tmp.txt"),REPLICATION_FACTOR);
+    byte[] data=new byte[1024];
+    long fileLen=2 * DEFAULT_BLOCK_SIZE;
+    long bytesToWrite=fileLen;
+    while (bytesToWrite > 0) {
+      r.nextBytes(data);
+      int bytesToWriteNext=(1024 < bytesToWrite) ? 1024 : (int)bytesToWrite;
+      out.write(data,0,bytesToWriteNext);
+      bytesToWrite-=bytesToWriteNext;
+    }
+    out.close();
+    List<LocatedBlock> locatedBlocks;
+    DatanodeInfo[] dataNodes=null;
+    boolean notWritten;
+    do {
+      final DFSClient dfsclient=new DFSClient(NameNode.getAddress(CONF),CONF);
+      locatedBlocks=dfsclient.getNamenode().getBlockLocations("/tmp.txt",0,fileLen).getLocatedBlocks();
+      assertEquals(2,locatedBlocks.size());
+      notWritten=false;
+      for (int i=0; i < 2; i++) {
+        dataNodes=locatedBlocks.get(i).getLocations();
+        if (dataNodes.length != REPLICATION_FACTOR) {
+          notWritten=true;
+          try {
+            Thread.sleep(10);
+          }
+ catch (          InterruptedException e) {
+          }
+          break;
+        }
+      }
+    }
+ while (notWritten);
+    InetSocketAddress addr=new InetSocketAddress("localhost",cluster.getNameNodePort());
+    NamenodeProtocol namenode=(NamenodeProtocol)RPC.getProxy(NamenodeProtocol.class,NamenodeProtocol.versionID,addr,UserGroupInformation.getCurrentUser(),CONF,NetUtils.getDefaultSocketFactory(CONF));
+    BlockWithLocations[] locs;
+    locs=namenode.getBlocks(dataNodes[0],fileLen).getBlocks();
+    assertEquals(locs.length,2);
+    assertEquals(locs[0].getDatanodes().length,2);
+    assertEquals(locs[1].getDatanodes().length,2);
+    locs=namenode.getBlocks(dataNodes[0],DEFAULT_BLOCK_SIZE).getBlocks();
+    assertEquals(locs.length,1);
+    assertEquals(locs[0].getDatanodes().length,2);
+    locs=namenode.getBlocks(dataNodes[0],1).getBlocks();
+    assertEquals(locs.length,1);
+    assertEquals(locs[0].getDatanodes().length,2);
+    getBlocksWithException(namenode,dataNodes[0],0);
+    getBlocksWithException(namenode,dataNodes[0],-1);
+    getBlocksWithException(namenode,new DatanodeInfo(),2);
+  }
+  finally {
+    cluster.shutdown();
+  }
+}

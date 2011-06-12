@@ -1,0 +1,44 @@
+{
+  TreeMap<TaskAttemptID,TaskInProgress> tasksToClose=new TreeMap<TaskAttemptID,TaskInProgress>();
+  tasksToClose.putAll(tasks);
+  for (  TaskInProgress tip : tasksToClose.values()) {
+    tip.jobHasFinished(false);
+  }
+  this.running=false;
+  if (asyncDiskService != null) {
+    asyncDiskService.cleanupAllVolumes();
+    asyncDiskService.shutdown();
+    try {
+      if (!asyncDiskService.awaitTermination(10000)) {
+        asyncDiskService.shutdownNow();
+        asyncDiskService=null;
+      }
+    }
+ catch (    InterruptedException e) {
+      asyncDiskService.shutdownNow();
+      asyncDiskService=null;
+    }
+  }
+  this.mapEventsFetcher.interrupt();
+  this.mapLauncher.interrupt();
+  this.reduceLauncher.interrupt();
+  this.distributedCacheManager.stopCleanupThread();
+  jvmManager.stop();
+  RPC.stopProxy(jobClient);
+  for (boolean done=false; !done; ) {
+    try {
+      this.mapEventsFetcher.join();
+      done=true;
+    }
+ catch (    InterruptedException e) {
+    }
+  }
+  if (taskReportServer != null) {
+    taskReportServer.stop();
+    taskReportServer=null;
+  }
+  if (healthChecker != null) {
+    healthChecker.stop();
+    healthChecker=null;
+  }
+}

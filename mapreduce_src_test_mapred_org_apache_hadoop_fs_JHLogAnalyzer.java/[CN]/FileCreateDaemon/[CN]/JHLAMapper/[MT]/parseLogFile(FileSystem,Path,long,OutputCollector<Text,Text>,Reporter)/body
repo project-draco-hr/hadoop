@@ -1,0 +1,63 @@
+{
+  InputStream in=null;
+  try {
+    FSDataInputStream stm=fs.open(filePath);
+    stm.seek(offset);
+    in=stm;
+    LOG.info("Opened " + filePath);
+    reporter.setStatus("Opened " + filePath);
+    if (compressionClass != null) {
+      CompressionCodec codec=(CompressionCodec)ReflectionUtils.newInstance(compressionClass,new Configuration());
+      in=codec.createInputStream(stm);
+      LOG.info("Codec created " + filePath);
+      reporter.setStatus("Codec created " + filePath);
+    }
+    BufferedReader reader=new BufferedReader(new InputStreamReader(in));
+    LOG.info("Reader created " + filePath);
+    long processed=0L;
+    if (jobDelimiterPattern != null) {
+      for (String line=reader.readLine(); line != null; line=reader.readLine()) {
+        if ((stm.getPos() - processed) > 100000) {
+          processed=stm.getPos();
+          reporter.setStatus("Processing " + filePath + " at "+ processed);
+        }
+        if (isEndOfJobLog(line))         break;
+      }
+    }
+    JobHistoryLog jh=new JobHistoryLog();
+    int jobLineCount=0;
+    for (String line=readLine(reader); line != null; line=readLine(reader)) {
+      jobLineCount++;
+      if ((stm.getPos() - processed) > 20000) {
+        processed=stm.getPos();
+        long numTasks=(jh.tasks == null ? 0 : jh.tasks.size());
+        String txt="Processing " + filePath + " at "+ processed+ " # tasks = "+ numTasks;
+        reporter.setStatus(txt);
+        LOG.info(txt);
+      }
+      if (isEndOfJobLog(line)) {
+        if (jh.JOBID != null) {
+          LOG.info("Finished parsing job: " + jh.JOBID + " line count = "+ jobLineCount);
+          collectJobStats(jh,output,reporter);
+          LOG.info("Collected stats for job: " + jh.JOBID);
+        }
+        jh=new JobHistoryLog();
+        jobLineCount=0;
+      }
+ else       jh.parseLine(line);
+    }
+    if (jh.JOBID == null) {
+      LOG.error("JOBID = NULL in " + filePath + " at "+ processed);
+      return;
+    }
+    collectJobStats(jh,output,reporter);
+  }
+ catch (  Exception ie) {
+    LOG.error("JHLAMapper.parseLogFile",ie);
+    reporter.setStatus("JHLAMapper.parseLogFile failed " + StringUtils.stringifyException(ie));
+    throw new IOException("Job failed.",ie);
+  }
+ finally {
+    if (in != null)     in.close();
+  }
+}

@@ -1,0 +1,36 @@
+{
+  Configuration jobConf=job.getConfiguration();
+  Path jobDir=new Path(JOB_DIR_LABEL + getRandomId());
+  Path inDir=new Path(jobDir,"in");
+  Path outDir=new Path(jobDir,"out");
+  FileInputFormat.setInputPaths(job,inDir);
+  FileOutputFormat.setOutputPath(job,outDir);
+  Path opList=new Path(inDir,NAME);
+  Configuration tmp=new Configuration(jobConf);
+  tmp.setInt("dfs.blocks.size",OP_LIST_BLOCK_SIZE);
+  FileSystem fs=opList.getFileSystem(tmp);
+  int opCount=0, synCount=0;
+  SequenceFile.Writer opWriter=null;
+  try {
+    opWriter=SequenceFile.createWriter(jobConf,Writer.file(opList),Writer.keyClass(Text.class),Writer.valueClass(PolicyInfo.class),Writer.compression(SequenceFile.CompressionType.NONE));
+    for (    RaidPolicyPathPair p : raidPolicyPathPairList) {
+      java.util.Collections.shuffle(p.srcPaths);
+      for (      FileStatus st : p.srcPaths) {
+        opWriter.append(new Text(st.getPath().toString()),p.policy);
+        opCount++;
+        if (++synCount > SYNC_FILE_MAX) {
+          opWriter.sync();
+          synCount=0;
+        }
+      }
+    }
+  }
+  finally {
+    if (opWriter != null) {
+      opWriter.close();
+    }
+    fs.setReplication(opList,OP_LIST_REPLICATION);
+  }
+  raidPolicyPathPairList.clear();
+  LOG.info("Number of files=" + opCount);
+}

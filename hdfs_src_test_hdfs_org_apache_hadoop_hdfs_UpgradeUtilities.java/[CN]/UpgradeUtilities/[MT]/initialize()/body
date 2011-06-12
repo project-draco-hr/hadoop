@@ -1,0 +1,46 @@
+{
+  createEmptyDirs(new String[]{TEST_ROOT_DIR.toString()});
+  Configuration config=new HdfsConfiguration();
+  config.set(DFSConfigKeys.DFS_NAMENODE_NAME_DIR_KEY,namenodeStorage.toString());
+  config.set(DFSConfigKeys.DFS_NAMENODE_EDITS_DIR_KEY,namenodeStorage.toString());
+  config.set(DFSConfigKeys.DFS_DATANODE_DATA_DIR_KEY,datanodeStorage.toString());
+  MiniDFSCluster cluster=null;
+  try {
+    createEmptyDirs(new String[]{datanodeStorage.toString()});
+    DFSTestUtil.formatNameNode(config);
+    cluster=new MiniDFSCluster.Builder(config).numDataNodes(1).startupOption(StartupOption.REGULAR).format(false).manageDataDfsDirs(false).manageNameDfsDirs(false).build();
+    NameNode namenode=cluster.getNameNode();
+    namenodeStorageNamespaceID=namenode.versionRequest().getNamespaceID();
+    namenodeStorageFsscTime=namenode.versionRequest().getCTime();
+    namenodeStorageClusterID=namenode.versionRequest().getClusterID();
+    namenodeStorageBlockPoolID=namenode.versionRequest().getBlockPoolID();
+    FileSystem fs=FileSystem.get(config);
+    Path baseDir=new Path("/TestUpgrade");
+    fs.mkdirs(baseDir);
+    int bufferSize=4096;
+    byte[] buffer=new byte[bufferSize];
+    for (int i=0; i < bufferSize; i++)     buffer[i]=(byte)('0' + i % 50);
+    writeFile(fs,new Path(baseDir,"file1"),buffer,bufferSize);
+    writeFile(fs,new Path(baseDir,"file2"),buffer,bufferSize);
+    namenode.setSafeMode(SafeModeAction.SAFEMODE_ENTER);
+    namenode.saveNamespace();
+    namenode.setSafeMode(SafeModeAction.SAFEMODE_LEAVE);
+    writeFile(fs,new Path(baseDir,"file3"),buffer,bufferSize);
+    writeFile(fs,new Path(baseDir,"file4"),buffer,bufferSize);
+  }
+  finally {
+    if (cluster != null)     cluster.shutdown();
+    FileUtil.fullyDelete(new File(namenodeStorage,"in_use.lock"));
+    FileUtil.fullyDelete(new File(datanodeStorage,"in_use.lock"));
+  }
+  namenodeStorageChecksum=checksumContents(NAME_NODE,new File(namenodeStorage,"current"));
+  File dnCurDir=new File(datanodeStorage,"current");
+  datanodeStorageChecksum=checksumContents(DATA_NODE,dnCurDir);
+  String bpid=cluster.getNamesystem(0).getBlockPoolId();
+  File bpCurDir=new File(BlockPoolSliceStorage.getBpRoot(bpid,dnCurDir),"current");
+  blockPoolStorageChecksum=checksumContents(DATA_NODE,bpCurDir);
+  File bpCurFinalizeDir=new File(BlockPoolSliceStorage.getBpRoot(bpid,dnCurDir),"current/" + DataStorage.STORAGE_DIR_FINALIZED);
+  blockPoolFinalizedStorageChecksum=checksumContents(DATA_NODE,bpCurFinalizeDir);
+  File bpCurRbwDir=new File(BlockPoolSliceStorage.getBpRoot(bpid,dnCurDir),"current/" + DataStorage.STORAGE_DIR_RBW);
+  blockPoolRbwStorageChecksum=checksumContents(DATA_NODE,bpCurRbwDir);
+}

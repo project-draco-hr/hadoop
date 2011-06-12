@@ -1,0 +1,33 @@
+{
+  final int readSize=pattern.length * 16 * 1024* 1024;
+  if (readSize > Integer.MAX_VALUE) {
+    throw new IOException("A single read is too large " + readSize);
+  }
+  byte[] b=new byte[readSize];
+  long bytesToRead=fileSize;
+  byte[] compb=new byte[readSize];
+  if (verifyData) {
+    for (int j=0; j < readSize; j++) {
+      compb[j]=pattern[j % pattern.length];
+    }
+  }
+  FSDataInputStream stm=fs.open(name);
+  while (bytesToRead > 0) {
+    int thisread=(int)Math.min(readSize,bytesToRead);
+    stm.readFully(b,0,thisread);
+    if (verifyData) {
+      if (thisread == readSize) {
+        assertTrue("file is corrupted at or after byte " + (fileSize - bytesToRead),Arrays.equals(b,compb));
+      }
+ else {
+        for (int k=0; k < thisread; k++) {
+          assertTrue("file is corrupted at or after byte " + (fileSize - bytesToRead),b[k] == compb[k]);
+        }
+      }
+    }
+    LOG.debug("Before update: to read: " + bytesToRead + "; read already: "+ thisread);
+    bytesToRead-=thisread;
+    LOG.debug("After  update: to read: " + bytesToRead + "; read already: "+ thisread);
+  }
+  stm.close();
+}

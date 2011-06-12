@@ -1,0 +1,18 @@
+{
+  final float MAX_ALLOWED_FAILED_FETCH_ATTEMPT_PERCENT=0.5f;
+  final float MIN_REQUIRED_PROGRESS_PERCENT=0.5f;
+  final float MAX_ALLOWED_STALL_TIME_PERCENT=0.5f;
+  long totalFailures=failedShuffleCounter.getValue();
+  int doneMaps=totalMaps - remainingMaps;
+  boolean reducerHealthy=(((float)totalFailures / (totalFailures + doneMaps)) < MAX_ALLOWED_FAILED_FETCH_ATTEMPT_PERCENT);
+  boolean reducerProgressedEnough=(((float)doneMaps / totalMaps) >= MIN_REQUIRED_PROGRESS_PERCENT);
+  int stallDuration=(int)(System.currentTimeMillis() - lastProgressTime);
+  int shuffleProgressDuration=(int)(lastProgressTime - startTime);
+  int minShuffleRunDuration=(shuffleProgressDuration > maxMapRuntime) ? shuffleProgressDuration : maxMapRuntime;
+  boolean reducerStalled=(((float)stallDuration / minShuffleRunDuration) >= MAX_ALLOWED_STALL_TIME_PERCENT);
+  if ((failureCounts.size() >= maxFailedUniqueFetches || failureCounts.size() == (totalMaps - doneMaps)) && !reducerHealthy && (!reducerProgressedEnough || reducerStalled)) {
+    LOG.fatal("Shuffle failed with too many fetch failures " + "and insufficient progress!");
+    String errorMsg="Exceeded MAX_FAILED_UNIQUE_FETCHES; bailing-out.";
+    reporter.reportException(new IOException(errorMsg));
+  }
+}

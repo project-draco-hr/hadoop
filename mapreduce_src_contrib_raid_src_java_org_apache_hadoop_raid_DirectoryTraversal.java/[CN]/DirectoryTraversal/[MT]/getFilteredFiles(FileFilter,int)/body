@@ -1,0 +1,35 @@
+{
+  List<FileStatus> filtered=new ArrayList<FileStatus>();
+  Semaphore slots=new Semaphore(numThreads);
+  while (true) {
+synchronized (filtered) {
+      if (filtered.size() >= limit)       break;
+    }
+    FilterFileWorkItem work=null;
+    try {
+      Node next=getNextDirectoryNode();
+      if (next == null) {
+        break;
+      }
+      work=new FilterFileWorkItem(filter,next,filtered,slots);
+      slots.acquire();
+    }
+ catch (    InterruptedException ie) {
+      break;
+    }
+catch (    IOException e) {
+      break;
+    }
+    executor.execute(work);
+  }
+  try {
+    slots.acquire(numThreads);
+    if (doneTraversal()) {
+      executor.shutdown();
+      executor.awaitTermination(1,TimeUnit.HOURS);
+    }
+  }
+ catch (  InterruptedException ie) {
+  }
+  return filtered;
+}

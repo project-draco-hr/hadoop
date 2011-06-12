@@ -1,0 +1,40 @@
+{
+  Configuration conf=new HdfsConfiguration();
+  final int BLOCK_SIZE=6 * 1024;
+  conf.setInt(DFSConfigKeys.DFS_BLOCK_SIZE_KEY,BLOCK_SIZE);
+  MiniDFSCluster cluster=new MiniDFSCluster.Builder(conf).numDataNodes(3).build();
+  cluster.waitActive();
+  FileSystem fs=cluster.getFileSystem();
+  DFSAdmin admin=new DFSAdmin(conf);
+  try {
+    Path dir=new Path("/test");
+    boolean exceededQuota=false;
+    ContentSummary c;
+    final int FILE_SIZE=1024;
+    final int QUOTA_SIZE=32 * (int)fs.getDefaultBlockSize();
+    assertEquals(6 * 1024,fs.getDefaultBlockSize());
+    assertEquals(192 * 1024,QUOTA_SIZE);
+    assertTrue(fs.mkdirs(dir));
+    runCommand(admin,false,"-setSpaceQuota",Integer.toString(QUOTA_SIZE),dir.toString());
+    for (int i=0; i < 59; i++) {
+      Path file=new Path("/test/test" + i);
+      DFSTestUtil.createFile(fs,file,FILE_SIZE,(short)3,1L);
+      DFSTestUtil.waitReplication(fs,file,(short)3);
+    }
+    c=fs.getContentSummary(dir);
+    assertEquals("Invalid space consumed",59 * FILE_SIZE * 3,c.getSpaceConsumed());
+    assertEquals("Invalid space consumed",QUOTA_SIZE - (59 * FILE_SIZE * 3),3 * (fs.getDefaultBlockSize() - FILE_SIZE));
+    try {
+      Path file=new Path("/test/test59");
+      DFSTestUtil.createFile(fs,file,FILE_SIZE,(short)3,1L);
+      DFSTestUtil.waitReplication(fs,file,(short)3);
+    }
+ catch (    QuotaExceededException e) {
+      exceededQuota=true;
+    }
+    assertTrue("Quota not exceeded",exceededQuota);
+  }
+  finally {
+    cluster.shutdown();
+  }
+}

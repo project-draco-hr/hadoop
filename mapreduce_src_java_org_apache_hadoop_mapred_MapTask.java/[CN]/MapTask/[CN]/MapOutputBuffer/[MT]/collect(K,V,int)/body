@@ -1,0 +1,71 @@
+{
+  reporter.progress();
+  if (key.getClass() != keyClass) {
+    throw new IOException("Type mismatch in key from map: expected " + keyClass.getName() + ", received "+ key.getClass().getName());
+  }
+  if (value.getClass() != valClass) {
+    throw new IOException("Type mismatch in value from map: expected " + valClass.getName() + ", received "+ value.getClass().getName());
+  }
+  if (partition < 0 || partition >= partitions) {
+    throw new IOException("Illegal partition for " + key + " ("+ partition+ ")");
+  }
+  checkSpillException();
+  bufferRemaining-=METASIZE;
+  if (bufferRemaining <= 0) {
+    spillLock.lock();
+    try {
+      do {
+        if (!spillInProgress) {
+          final int kvbidx=4 * kvindex;
+          final int kvbend=4 * kvend;
+          final int bUsed=distanceTo(kvbidx,bufindex);
+          final boolean bufsoftlimit=bUsed >= softLimit;
+          if ((kvbend + METASIZE) % kvbuffer.length != equator - (equator % METASIZE)) {
+            resetSpill();
+            bufferRemaining=Math.min(distanceTo(bufindex,kvbidx) - 2 * METASIZE,softLimit - bUsed) - METASIZE;
+            continue;
+          }
+ else           if (bufsoftlimit && kvindex != kvend) {
+            startSpill();
+            final int avgRec=(int)(mapOutputByteCounter.getCounter() / mapOutputRecordCounter.getCounter());
+            final int distkvi=distanceTo(bufindex,kvbidx);
+            final int newPos=(bufindex + Math.max(2 * METASIZE - 1,Math.min(distkvi / 2,distkvi / (METASIZE + avgRec) * METASIZE))) % kvbuffer.length;
+            setEquator(newPos);
+            bufmark=bufindex=newPos;
+            final int serBound=4 * kvend;
+            bufferRemaining=Math.min(distanceTo(bufend,newPos),Math.min(distanceTo(newPos,serBound),softLimit)) - 2 * METASIZE;
+          }
+        }
+      }
+ while (false);
+    }
+  finally {
+      spillLock.unlock();
+    }
+  }
+  try {
+    int keystart=bufindex;
+    keySerializer.serialize(key);
+    if (bufindex < keystart) {
+      bb.shiftBufferedKey();
+      keystart=0;
+    }
+    final int valstart=bufindex;
+    valSerializer.serialize(value);
+    bb.write(b0,0,0);
+    int valend=bb.markRecord();
+    mapOutputRecordCounter.increment(1);
+    mapOutputByteCounter.increment(distanceTo(keystart,valend,bufvoid));
+    kvmeta.put(kvindex + INDEX,kvindex);
+    kvmeta.put(kvindex + PARTITION,partition);
+    kvmeta.put(kvindex + KEYSTART,keystart);
+    kvmeta.put(kvindex + VALSTART,valstart);
+    kvindex=(kvindex - NMETA + kvmeta.capacity()) % kvmeta.capacity();
+  }
+ catch (  MapBufferTooSmallException e) {
+    LOG.info("Record too large for in-memory buffer: " + e.getMessage());
+    spillSingleRecord(key,value,partition);
+    mapOutputRecordCounter.increment(1);
+    return;
+  }
+}

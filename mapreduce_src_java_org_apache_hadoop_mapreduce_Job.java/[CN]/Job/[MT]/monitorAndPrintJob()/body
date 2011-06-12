@@ -1,0 +1,30 @@
+{
+  String lastReport=null;
+  Job.TaskStatusFilter filter;
+  Configuration clientConf=cluster.getConf();
+  filter=Job.getTaskOutputFilter(clientConf);
+  JobID jobId=getJobID();
+  LOG.info("Running job: " + jobId);
+  int eventCounter=0;
+  boolean profiling=getProfileEnabled();
+  IntegerRanges mapRanges=getProfileTaskRange(true);
+  IntegerRanges reduceRanges=getProfileTaskRange(false);
+  int progMonitorPollIntervalMillis=Job.getProgressPollInterval(clientConf);
+  while (!isComplete()) {
+    Thread.sleep(progMonitorPollIntervalMillis);
+    String report=(" map " + StringUtils.formatPercent(mapProgress(),0) + " reduce "+ StringUtils.formatPercent(reduceProgress(),0));
+    if (!report.equals(lastReport)) {
+      LOG.info(report);
+      lastReport=report;
+    }
+    TaskCompletionEvent[] events=getTaskCompletionEvents(eventCounter,10);
+    eventCounter+=events.length;
+    printTaskEvents(events,filter,profiling,mapRanges,reduceRanges);
+  }
+  Counters counters=getCounters();
+  if (counters != null) {
+    LOG.info(counters.toString());
+  }
+  LOG.info("Job " + jobId + " completed with status: "+ getStatus().getState());
+  return isSuccessful();
+}

@@ -1,0 +1,67 @@
+{
+  JvmManagerForType mapJvmManager=jvmManager.getJvmManagerForType(TaskType.MAP);
+  JobConf taskConf=new JobConf(ttConf);
+  TaskAttemptID attemptID=new TaskAttemptID("test",0,TaskType.MAP,0,0);
+  Task task=new MapTask(null,attemptID,0,null,1);
+  task.setConf(taskConf);
+  TaskInProgress tip=tt.new TaskInProgress(task,taskConf);
+  File pidFile=new File(TEST_DIR,"pid");
+  final TaskRunner taskRunner=task.createRunner(tt,tip);
+  final Vector<String> vargs=new Vector<String>(2);
+  vargs.add(writeScript("SLEEP","sleep 60\n",pidFile).getAbsolutePath());
+  final File workDir=new File(TEST_DIR,"work");
+  workDir.mkdir();
+  final File stdout=new File(TEST_DIR,"stdout");
+  final File stderr=new File(TEST_DIR,"stderr");
+  Thread launcher=new Thread(){
+    public void run(){
+      try {
+        taskRunner.launchJvmAndWait(null,vargs,stdout,stderr,100,workDir,null);
+      }
+ catch (      InterruptedException e) {
+        e.printStackTrace();
+        return;
+      }
+    }
+  }
+;
+  launcher.start();
+  for (int i=0; i < 10; i++) {
+    if (pidFile.exists()) {
+      break;
+    }
+    UtilsForTests.waitFor(100);
+  }
+  assertTrue("pidFile is not present",pidFile.exists());
+  BufferedReader in=new BufferedReader(new FileReader(pidFile));
+  String pid=in.readLine();
+  in.close();
+  JVMId jvmid=mapJvmManager.runningTaskToJvm.get(taskRunner);
+  jvmManager.setPidToJvm(jvmid,pid);
+  final JvmRunner jvmRunner=mapJvmManager.jvmIdToRunner.get(jvmid);
+  Thread killer=new Thread(){
+    public void run(){
+      jvmRunner.kill();
+    }
+  }
+;
+  killer.start();
+  Thread.sleep(100);
+  taskRunner.kill();
+  assertTrue(jvmRunner.killed);
+  attemptID=new TaskAttemptID("test",0,TaskType.MAP,0,1);
+  task=new MapTask(null,attemptID,0,null,1);
+  task.setConf(taskConf);
+  tip=tt.new TaskInProgress(task,taskConf);
+  TaskRunner taskRunner2=task.createRunner(tt,tip);
+  Vector<String> vargs2=new Vector<String>(1);
+  vargs2.add(writeScript("LS","ls",pidFile).getAbsolutePath());
+  File workDir2=new File(TEST_DIR,"work2");
+  workDir.mkdir();
+  File stdout2=new File(TEST_DIR,"stdout2");
+  File stderr2=new File(TEST_DIR,"stderr2");
+  taskRunner2.launchJvmAndWait(null,vargs2,stdout2,stderr2,100,workDir2,null);
+  killer.join();
+  jvmRunner.join();
+  launcher.join();
+}

@@ -1,0 +1,28 @@
+{
+  NNStorage stg=fsn.getFSImage().getStorage();
+  assertEquals("Some StorageDirectories failed Upgrade",numImageDirs,stg.getNumStorageDirs(NameNodeDirType.IMAGE));
+  assertTrue("Not enough fsimage copies in MiniDFSCluster " + "to test parallel write",numImageDirs > 1);
+  Iterator<StorageDirectory> iter=stg.dirIterator(NameNodeDirType.IMAGE);
+  List<Long> checksums=new ArrayList<Long>();
+  while (iter.hasNext()) {
+    StorageDirectory sd=iter.next();
+    File fsImage=NNStorage.getStorageFile(sd,NameNodeFile.IMAGE);
+    PureJavaCrc32 crc=new PureJavaCrc32();
+    FileInputStream in=new FileInputStream(fsImage);
+    byte[] buff=new byte[4096];
+    int read=0;
+    while ((read=in.read(buff)) != -1) {
+      crc.update(buff,0,read);
+    }
+    long val=crc.getValue();
+    checksums.add(val);
+  }
+  assertEquals(numImageDirs,checksums.size());
+  PureJavaCrc32 crc=new PureJavaCrc32();
+  long emptyCrc=crc.getValue();
+  assertTrue("Empty fsimage file",checksums.get(0) != emptyCrc);
+  for (int i=1; i < numImageDirs; i++) {
+    assertEquals(checksums.get(i - 1),checksums.get(i));
+  }
+  return checksums.get(0);
+}

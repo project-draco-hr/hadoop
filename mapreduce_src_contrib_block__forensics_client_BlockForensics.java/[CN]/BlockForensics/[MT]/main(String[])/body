@@ -1,0 +1,47 @@
+{
+  if (System.getenv("HADOOP_PREFIX") == null) {
+    System.err.println("The environmental variable HADOOP_PREFIX is undefined");
+    System.exit(1);
+  }
+  if (args.length < 4) {
+    System.out.println("Usage: java BlockForensics [http://namenode:port/" + "corrupt_replicas_xml.jsp] [sleep time between " + "requests (in milliseconds)] [mapred jar location] "+ "[hdfs input path]");
+    return;
+  }
+  int sleepTime=30000;
+  try {
+    sleepTime=Integer.parseInt(args[1]);
+  }
+ catch (  NumberFormatException e) {
+    System.out.println("The sleep time entered is invalid, " + "using default value: " + sleepTime + "ms");
+  }
+  Set<Long> blockIds=new TreeSet<Long>();
+  while (true) {
+    InputStream xml=new URL(args[0]).openConnection().getInputStream();
+    DocumentBuilderFactory fact=DocumentBuilderFactory.newInstance();
+    DocumentBuilder builder=fact.newDocumentBuilder();
+    Document doc=builder.parse(xml);
+    NodeList corruptReplicaNodes=doc.getElementsByTagName("block_id");
+    List<Long> searchBlockIds=new LinkedList<Long>();
+    for (int i=0; i < corruptReplicaNodes.getLength(); i++) {
+      Long blockId=new Long(corruptReplicaNodes.item(i).getFirstChild().getNodeValue());
+      if (!blockIds.contains(blockId)) {
+        blockIds.add(blockId);
+        searchBlockIds.add(blockId);
+      }
+    }
+    if (searchBlockIds.size() > 0) {
+      String blockIdsStr=BlockForensics.join(searchBlockIds,",");
+      System.out.println("\nSearching for: " + blockIdsStr);
+      String tmpDir=new String("/tmp-block-forensics-" + Integer.toString(new Random().nextInt(Integer.MAX_VALUE)));
+      System.out.println("Using temporary dir: " + tmpDir);
+      BlockForensics.runHadoopCmd("fs","-rmr",tmpDir);
+      BlockForensics.runHadoopCmd("jar",args[2],args[3],tmpDir,blockIdsStr);
+      BlockForensics.runHadoopCmd("fs","-cat",tmpDir + "/part*");
+      BlockForensics.runHadoopCmd("fs","-rmr",tmpDir);
+      int sleepSecs=(int)(sleepTime / 1000.);
+      System.out.print("Sleeping for " + sleepSecs + " second"+ (sleepSecs == 1 ? "" : "s")+ ".");
+    }
+    System.out.print(".");
+    Thread.sleep(sleepTime);
+  }
+}

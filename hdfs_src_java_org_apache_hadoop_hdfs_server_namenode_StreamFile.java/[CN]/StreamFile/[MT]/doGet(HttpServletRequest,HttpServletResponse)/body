@@ -1,0 +1,50 @@
+{
+  final String path=request.getPathInfo() != null ? request.getPathInfo() : "/";
+  final String filename=JspHelper.validatePath(path);
+  if (filename == null) {
+    response.setContentType("text/plain");
+    PrintWriter out=response.getWriter();
+    out.print("Invalid input");
+    return;
+  }
+  Enumeration<?> reqRanges=request.getHeaders("Range");
+  if (reqRanges != null && !reqRanges.hasMoreElements())   reqRanges=null;
+  DFSClient dfs;
+  try {
+    dfs=getDFSClient(request);
+  }
+ catch (  InterruptedException e) {
+    response.sendError(400,e.getMessage());
+    return;
+  }
+  final DFSInputStream in=dfs.open(filename);
+  final long fileLen=in.getFileLength();
+  OutputStream os=response.getOutputStream();
+  try {
+    if (reqRanges != null) {
+      List<?> ranges=InclusiveByteRange.satisfiableRanges(reqRanges,fileLen);
+      StreamFile.sendPartialData(in,os,response,fileLen,ranges);
+    }
+ else {
+      response.setHeader("Content-Disposition","attachment; filename=\"" + filename + "\"");
+      response.setContentType("application/octet-stream");
+      response.setHeader(CONTENT_LENGTH,"" + fileLen);
+      StreamFile.writeTo(in,os,0L,fileLen);
+    }
+  }
+ catch (  IOException e) {
+    if (LOG.isDebugEnabled()) {
+      LOG.debug("response.isCommitted()=" + response.isCommitted(),e);
+    }
+    throw e;
+  }
+ finally {
+    try {
+      in.close();
+      os.close();
+    }
+  finally {
+      dfs.close();
+    }
+  }
+}

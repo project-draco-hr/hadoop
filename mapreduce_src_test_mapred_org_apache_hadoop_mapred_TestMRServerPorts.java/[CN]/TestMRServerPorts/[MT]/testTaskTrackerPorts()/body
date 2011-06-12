@@ -1,0 +1,36 @@
+{
+  NameNode nn=null;
+  DataNode dn=null;
+  JobTracker jt=null;
+  JTRunner runner=null;
+  try {
+    nn=hdfs.startNameNode();
+    setDataNodePorts(hdfs.getConfig());
+    dn=hdfs.startDataNode(2,hdfs.getConfig());
+    JobConf conf2=new JobConf(hdfs.getConfig());
+    runner=new JTRunner();
+    jt=startJobTracker(conf2,runner);
+    conf2.set(TTConfig.TT_REPORT_ADDRESS,FileSystem.getDefaultUri(hdfs.getConfig()).toString());
+    conf2.set(TTConfig.TT_HTTP_ADDRESS,THIS_HOST);
+    boolean started=canStartTaskTracker(conf2);
+    assertFalse(started);
+    conf2.set(TTConfig.TT_REPORT_ADDRESS,THIS_HOST);
+    conf2.set(TTConfig.TT_HTTP_ADDRESS,hdfs.getConfig().get("dfs.http.address"));
+    started=canStartTaskTracker(conf2);
+    assertFalse(started);
+    conf2.set(TTConfig.TT_REPORT_ADDRESS,THIS_HOST);
+    conf2.set(TTConfig.TT_HTTP_ADDRESS,THIS_HOST);
+    started=canStartTaskTracker(conf2);
+    assertTrue(started);
+  }
+  finally {
+    if (jt != null) {
+      jt.fs.close();
+      jt.stopTracker();
+      runner.interrupt();
+      runner.join();
+    }
+    hdfs.stopDataNode(dn);
+    hdfs.stopNameNode(nn);
+  }
+}

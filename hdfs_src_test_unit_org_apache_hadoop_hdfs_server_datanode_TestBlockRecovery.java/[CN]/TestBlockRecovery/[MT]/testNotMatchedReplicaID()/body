@@ -1,0 +1,24 @@
+{
+  if (LOG.isDebugEnabled()) {
+    LOG.debug("Running " + GenericTestUtils.getMethodName());
+  }
+  ReplicaInPipelineInterface replicaInfo=dn.data.createRbw(block);
+  BlockWriteStreams streams=null;
+  try {
+    streams=replicaInfo.createStreams(true,0,0);
+    streams.checksumOut.write('a');
+    dn.data.initReplicaRecovery(new RecoveringBlock(block,null,RECOVERY_ID + 1));
+    try {
+      dn.syncBlock(rBlock,initBlockRecords(dn));
+      fail("Sync should fail");
+    }
+ catch (    IOException e) {
+      e.getMessage().startsWith("Cannot recover ");
+    }
+    DatanodeProtocol namenode=dn.getBPNamenode(POOL_ID);
+    verify(namenode,never()).commitBlockSynchronization(any(ExtendedBlock.class),anyLong(),anyLong(),anyBoolean(),anyBoolean(),any(DatanodeID[].class));
+  }
+  finally {
+    streams.close();
+  }
+}

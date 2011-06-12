@@ -1,0 +1,43 @@
+{
+  FileStatus[] files=listStatus(job);
+  job.setLong(NUM_INPUT_FILES,files.length);
+  long totalSize=0;
+  for (  FileStatus file : files) {
+    if (file.isDirectory()) {
+      throw new IOException("Not a file: " + file.getPath());
+    }
+    totalSize+=file.getLen();
+  }
+  long goalSize=totalSize / (numSplits == 0 ? 1 : numSplits);
+  long minSize=Math.max(job.getLong(org.apache.hadoop.mapreduce.lib.input.FileInputFormat.SPLIT_MINSIZE,1),minSplitSize);
+  ArrayList<FileSplit> splits=new ArrayList<FileSplit>(numSplits);
+  NetworkTopology clusterMap=new NetworkTopology();
+  for (  FileStatus file : files) {
+    Path path=file.getPath();
+    FileSystem fs=path.getFileSystem(job);
+    long length=file.getLen();
+    BlockLocation[] blkLocations=fs.getFileBlockLocations(file,0,length);
+    if ((length != 0) && isSplitable(fs,path)) {
+      long blockSize=file.getBlockSize();
+      long splitSize=computeSplitSize(goalSize,minSize,blockSize);
+      long bytesRemaining=length;
+      while (((double)bytesRemaining) / splitSize > SPLIT_SLOP) {
+        String[] splitHosts=getSplitHosts(blkLocations,length - bytesRemaining,splitSize,clusterMap);
+        splits.add(makeSplit(path,length - bytesRemaining,splitSize,splitHosts));
+        bytesRemaining-=splitSize;
+      }
+      if (bytesRemaining != 0) {
+        splits.add(makeSplit(path,length - bytesRemaining,bytesRemaining,blkLocations[blkLocations.length - 1].getHosts()));
+      }
+    }
+ else     if (length != 0) {
+      String[] splitHosts=getSplitHosts(blkLocations,0,length,clusterMap);
+      splits.add(makeSplit(path,0,length,splitHosts));
+    }
+ else {
+      splits.add(makeSplit(path,0,length,new String[0]));
+    }
+  }
+  LOG.debug("Total # of splits: " + splits.size());
+  return splits.toArray(new FileSplit[splits.size()]);
+}

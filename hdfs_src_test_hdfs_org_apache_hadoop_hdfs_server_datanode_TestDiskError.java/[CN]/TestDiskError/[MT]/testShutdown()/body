@@ -1,0 +1,28 @@
+{
+  if (System.getProperty("os.name").startsWith("Windows")) {
+    return;
+  }
+  cluster.startDataNodes(conf,2,true,null,null);
+  cluster.waitActive();
+  final int dnIndex=0;
+  String bpid=cluster.getNamesystem().getBlockPoolId();
+  File storageDir=MiniDFSCluster.getStorageDir(dnIndex,0);
+  File dir1=MiniDFSCluster.getRbwDir(storageDir,bpid);
+  storageDir=MiniDFSCluster.getStorageDir(dnIndex,1);
+  File dir2=MiniDFSCluster.getRbwDir(storageDir,bpid);
+  try {
+    assertTrue("Couldn't chmod local vol",dir1.setReadOnly());
+    assertTrue("Couldn't chmod local vol",dir2.setReadOnly());
+    DataNode dn=cluster.getDataNodes().get(dnIndex);
+    for (int i=0; dn.isDatanodeUp(); i++) {
+      Path fileName=new Path("/test.txt" + i);
+      DFSTestUtil.createFile(fs,fileName,1024,(short)2,1L);
+      DFSTestUtil.waitReplication(fs,fileName,(short)2);
+      fs.delete(fileName,true);
+    }
+  }
+  finally {
+    dir1.setWritable(true);
+    dir2.setWritable(true);
+  }
+}

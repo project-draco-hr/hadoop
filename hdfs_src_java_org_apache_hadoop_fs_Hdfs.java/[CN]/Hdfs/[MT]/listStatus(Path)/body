@@ -1,0 +1,32 @@
+{
+  String src=getUriPath(f);
+  DirectoryListing thisListing=dfs.listPaths(src,HdfsFileStatus.EMPTY_NAME);
+  if (thisListing == null) {
+    throw new FileNotFoundException("File " + f + " does not exist.");
+  }
+  HdfsFileStatus[] partialListing=thisListing.getPartialListing();
+  if (!thisListing.hasMore()) {
+    FileStatus[] stats=new FileStatus[partialListing.length];
+    for (int i=0; i < partialListing.length; i++) {
+      stats[i]=makeQualified(partialListing[i],f);
+    }
+    return stats;
+  }
+  int totalNumEntries=partialListing.length + thisListing.getRemainingEntries();
+  ArrayList<FileStatus> listing=new ArrayList<FileStatus>(totalNumEntries);
+  for (  HdfsFileStatus fileStatus : partialListing) {
+    listing.add(makeQualified(fileStatus,f));
+  }
+  do {
+    thisListing=dfs.listPaths(src,thisListing.getLastName());
+    if (thisListing == null) {
+      throw new FileNotFoundException("File " + f + " does not exist.");
+    }
+    partialListing=thisListing.getPartialListing();
+    for (    HdfsFileStatus fileStatus : partialListing) {
+      listing.add(makeQualified(fileStatus,f));
+    }
+  }
+ while (thisListing.hasMore());
+  return listing.toArray(new FileStatus[listing.size()]);
+}

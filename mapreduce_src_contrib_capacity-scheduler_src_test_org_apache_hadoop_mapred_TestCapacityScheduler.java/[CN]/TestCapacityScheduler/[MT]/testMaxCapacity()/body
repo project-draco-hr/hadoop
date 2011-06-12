@@ -1,0 +1,26 @@
+{
+  this.setUp(4,1,1);
+  taskTrackerManager.addQueues(new String[]{"default"});
+  ArrayList<FakeQueueInfo> queues=new ArrayList<FakeQueueInfo>();
+  queues.add(new FakeQueueInfo("default",25.0f,false,1));
+  taskTrackerManager.setFakeQueues(queues);
+  scheduler.start();
+  scheduler.getRoot().getChildren().get(0).getQueueSchedulingContext().setMaxCapacityPercent(50.0f);
+  FakeJobInProgress fjob1=taskTrackerManager.submitJob(JobStatus.PREP,4,4,"default","user");
+  taskTrackerManager.initJob(fjob1);
+  HashMap<String,String> expectedStrings=new HashMap<String,String>();
+  expectedStrings.put(MAP,"attempt_test_0001_m_000001_0 on tt1");
+  expectedStrings.put(REDUCE,"attempt_test_0001_r_000001_0 on tt1");
+  List<Task> task1=checkMultipleTaskAssignment(taskTrackerManager,scheduler,"tt1",expectedStrings);
+  expectedStrings.put(MAP,"attempt_test_0001_m_000002_0 on tt2");
+  expectedStrings.put(REDUCE,"attempt_test_0001_r_000002_0 on tt2");
+  List<Task> task2=checkMultipleTaskAssignment(taskTrackerManager,scheduler,"tt2",expectedStrings);
+  List<Task> task3=scheduler.assignTasks(tracker("tt3"));
+  assertNull(task3);
+  for (  Task task : task1) {
+    taskTrackerManager.finishTask(task.getTaskID().toString(),fjob1);
+  }
+  expectedStrings.put(MAP,"attempt_test_0001_m_000003_0 on tt1");
+  expectedStrings.put(REDUCE,"attempt_test_0001_r_000003_0 on tt1");
+  task2=checkMultipleTaskAssignment(taskTrackerManager,scheduler,"tt1",expectedStrings);
+}

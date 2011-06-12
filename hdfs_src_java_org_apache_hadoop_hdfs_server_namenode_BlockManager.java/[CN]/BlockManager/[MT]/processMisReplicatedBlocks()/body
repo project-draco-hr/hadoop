@@ -1,0 +1,34 @@
+{
+  long nrInvalid=0, nrOverReplicated=0, nrUnderReplicated=0;
+  namesystem.writeLock();
+  try {
+    neededReplications.clear();
+    for (    BlockInfo block : blocksMap.getBlocks()) {
+      INodeFile fileINode=block.getINode();
+      if (fileINode == null) {
+        nrInvalid++;
+        addToInvalidates(block);
+        continue;
+      }
+      short expectedReplication=fileINode.getReplication();
+      NumberReplicas num=countNodes(block);
+      int numCurrentReplica=num.liveReplicas();
+      if (isNeededReplication(block,expectedReplication,numCurrentReplica)) {
+        if (neededReplications.add(block,numCurrentReplica,num.decommissionedReplicas(),expectedReplication)) {
+          nrUnderReplicated++;
+        }
+      }
+      if (numCurrentReplica > expectedReplication) {
+        nrOverReplicated++;
+        processOverReplicatedBlock(block,expectedReplication,null,null);
+      }
+    }
+  }
+  finally {
+    namesystem.writeUnlock();
+  }
+  FSNamesystem.LOG.info("Total number of blocks = " + blocksMap.size());
+  FSNamesystem.LOG.info("Number of invalid blocks = " + nrInvalid);
+  FSNamesystem.LOG.info("Number of under-replicated blocks = " + nrUnderReplicated);
+  FSNamesystem.LOG.info("Number of  over-replicated blocks = " + nrOverReplicated);
+}

@@ -1,0 +1,42 @@
+{
+  TaskAttemptID[] taskAttemptID=new TaskAttemptID[3];
+  TaskTrackerStatus[] status=new TaskTrackerStatus[trackers.length];
+  status[0]=getTTStatus(trackers[0],new ArrayList<TaskStatus>());
+  status[1]=getTTStatus(trackers[1],new ArrayList<TaskStatus>());
+  status[2]=getTTStatus(trackers[2],new ArrayList<TaskStatus>());
+  for (int i=0; i < trackers.length; i++) {
+    FakeObjectUtilities.sendHeartBeat(jobTracker,status[i],false,false,trackers[i],responseId);
+  }
+  responseId++;
+  assertEquals("Mismatch in number of trackers",trackers.length,mi.numTrackers);
+  int numMaps=2;
+  int numReds=1;
+  JobConf conf=new JobConf();
+  conf.setSpeculativeExecution(false);
+  conf.setNumMapTasks(numMaps);
+  conf.setNumReduceTasks(numReds);
+  conf.setMaxTaskFailuresPerTracker(1);
+  conf.setBoolean(JobContext.SETUP_CLEANUP_NEEDED,false);
+  FakeJobInProgress job=new FakeJobInProgress(conf,jobTracker);
+  assertTrue(mi.numJobsPreparing == 1);
+  job.setClusterSize(trackers.length);
+  job.initTasks();
+  jobTracker.addJob(job.getJobID(),job);
+  taskAttemptID[0]=job.findMapTask(trackers[0]);
+  taskAttemptID[1]=job.findMapTask(trackers[1]);
+  taskAttemptID[2]=job.findReduceTask(trackers[2]);
+  job.finishTask(taskAttemptID[0]);
+  job.finishTask(taskAttemptID[1]);
+  job.finishTask(taskAttemptID[2]);
+  jobTracker.finalizeJob(job);
+  assertTrue("Mismatch in map tasks launched",mi.numMapTasksLaunched == numMaps);
+  assertTrue("Mismatch in map tasks completed",mi.numMapTasksCompleted == numMaps);
+  assertTrue("Mismatch in map tasks failed",mi.numMapTasksFailed == 0);
+  assertTrue("Mismatch in reduce tasks launched",mi.numReduceTasksLaunched == numReds);
+  assertTrue("Mismatch in reduce tasks completed",mi.numReduceTasksCompleted == numReds);
+  assertTrue("Mismatch in reduce tasks failed",mi.numReduceTasksFailed == 0);
+  assertTrue("Mismatch in num Jobs submitted",mi.numJobsSubmitted == 1);
+  assertTrue("Mismatch in num map slots",mi.numMapSlots == (mapSlotsPerTracker * trackers.length));
+  assertTrue("Mismatch in num reduce slots",mi.numReduceSlots == (reduceSlotsPerTracker * trackers.length));
+  assertTrue("No heartbeats were recorded, but at least one was sent.",mi.numHeartbeats > 0);
+}

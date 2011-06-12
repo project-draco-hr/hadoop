@@ -1,0 +1,91 @@
+{
+  CommandLine cmdLine=null;
+  try {
+    cmdLine=parser.parse(allOptions,argv_);
+  }
+ catch (  Exception oe) {
+    LOG.error(oe.getMessage());
+    exitUsage(argv_.length > 0 && "-info".equals(argv_[0]));
+  }
+  if (cmdLine != null) {
+    detailedUsage_=cmdLine.hasOption("info");
+    if (cmdLine.hasOption("help") || detailedUsage_) {
+      printUsage=true;
+      return;
+    }
+    verbose_=cmdLine.hasOption("verbose");
+    background_=cmdLine.hasOption("background");
+    debug_=cmdLine.hasOption("debug") ? debug_ + 1 : debug_;
+    String[] values=cmdLine.getOptionValues("input");
+    if (values != null && values.length > 0) {
+      for (      String input : values) {
+        inputSpecs_.add(input);
+      }
+    }
+    output_=cmdLine.getOptionValue("output");
+    mapCmd_=cmdLine.getOptionValue("mapper");
+    comCmd_=cmdLine.getOptionValue("combiner");
+    redCmd_=cmdLine.getOptionValue("reducer");
+    lazyOutput_=cmdLine.hasOption("lazyOutput");
+    values=cmdLine.getOptionValues("file");
+    if (values != null && values.length > 0) {
+      LOG.warn("-file option is deprecated, please use generic option" + " -files instead.");
+      StringBuilder unpackRegex=new StringBuilder(config_.getPattern(MRJobConfig.JAR_UNPACK_PATTERN,JobConf.UNPACK_JAR_PATTERN_DEFAULT).pattern());
+      for (      String file : values) {
+        packageFiles_.add(file);
+        String fname=new File(file).getName();
+        unpackRegex.append("|(?:").append(Pattern.quote(fname)).append(")");
+      }
+      config_.setPattern(MRJobConfig.JAR_UNPACK_PATTERN,Pattern.compile(unpackRegex.toString()));
+      validate(packageFiles_);
+    }
+    String fsName=cmdLine.getOptionValue("dfs");
+    if (null != fsName) {
+      LOG.warn("-dfs option is deprecated, please use -fs instead.");
+      config_.set("fs.default.name",fsName);
+    }
+    additionalConfSpec_=cmdLine.getOptionValue("additionalconfspec");
+    inputFormatSpec_=cmdLine.getOptionValue("inputformat");
+    outputFormatSpec_=cmdLine.getOptionValue("outputformat");
+    numReduceTasksSpec_=cmdLine.getOptionValue("numReduceTasks");
+    partitionerSpec_=cmdLine.getOptionValue("partitioner");
+    inReaderSpec_=cmdLine.getOptionValue("inputreader");
+    mapDebugSpec_=cmdLine.getOptionValue("mapdebug");
+    reduceDebugSpec_=cmdLine.getOptionValue("reducedebug");
+    ioSpec_=cmdLine.getOptionValue("io");
+    String[] car=cmdLine.getOptionValues("cacheArchive");
+    if (null != car && car.length > 0) {
+      LOG.warn("-cacheArchive option is deprecated, please use -archives instead.");
+      for (      String s : car) {
+        cacheArchives=(cacheArchives == null) ? s : cacheArchives + "," + s;
+      }
+    }
+    String[] caf=cmdLine.getOptionValues("cacheFile");
+    if (null != caf && caf.length > 0) {
+      LOG.warn("-cacheFile option is deprecated, please use -files instead.");
+      for (      String s : caf) {
+        cacheFiles=(cacheFiles == null) ? s : cacheFiles + "," + s;
+      }
+    }
+    String[] jobconf=cmdLine.getOptionValues("jobconf");
+    if (null != jobconf && jobconf.length > 0) {
+      LOG.warn("-jobconf option is deprecated, please use -D instead.");
+      for (      String s : jobconf) {
+        String[] parts=s.split("=",2);
+        config_.set(parts[0],parts[1]);
+      }
+    }
+    String[] cmd=cmdLine.getOptionValues("cmdenv");
+    if (null != cmd && cmd.length > 0) {
+      for (      String s : cmd) {
+        if (addTaskEnvironment_.length() > 0) {
+          addTaskEnvironment_+=" ";
+        }
+        addTaskEnvironment_+=s;
+      }
+    }
+  }
+ else {
+    exitUsage(argv_.length > 0 && "-info".equals(argv_[0]));
+  }
+}

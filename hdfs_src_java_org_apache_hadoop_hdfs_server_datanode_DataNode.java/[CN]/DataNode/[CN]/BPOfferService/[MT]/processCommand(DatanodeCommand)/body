@@ -1,0 +1,51 @@
+{
+  if (cmd == null)   return true;
+  final BlockCommand bcmd=cmd instanceof BlockCommand ? (BlockCommand)cmd : null;
+switch (cmd.getAction()) {
+case DatanodeProtocol.DNA_TRANSFER:
+    transferBlocks(bcmd.getBlockPoolId(),bcmd.getBlocks(),bcmd.getTargets());
+  metrics.incrBlocksReplicated(bcmd.getBlocks().length);
+break;
+case DatanodeProtocol.DNA_INVALIDATE:
+Block toDelete[]=bcmd.getBlocks();
+try {
+if (blockScanner != null) {
+blockScanner.deleteBlocks(bcmd.getBlockPoolId(),toDelete);
+}
+data.invalidate(bcmd.getBlockPoolId(),toDelete);
+}
+ catch (IOException e) {
+checkDiskError();
+throw e;
+}
+metrics.incrBlocksRemoved(toDelete.length);
+break;
+case DatanodeProtocol.DNA_SHUTDOWN:
+shouldServiceRun=false;
+return false;
+case DatanodeProtocol.DNA_REGISTER:
+LOG.info("DatanodeCommand action: DNA_REGISTER");
+if (shouldRun && shouldServiceRun) {
+register();
+}
+break;
+case DatanodeProtocol.DNA_FINALIZE:
+storage.finalizeUpgrade(((DatanodeCommand.Finalize)cmd).getBlockPoolId());
+break;
+case UpgradeCommand.UC_ACTION_START_UPGRADE:
+processDistributedUpgradeCommand((UpgradeCommand)cmd);
+break;
+case DatanodeProtocol.DNA_RECOVERBLOCK:
+recoverBlocks(((BlockRecoveryCommand)cmd).getRecoveringBlocks());
+break;
+case DatanodeProtocol.DNA_ACCESSKEYUPDATE:
+LOG.info("DatanodeCommand action: DNA_ACCESSKEYUPDATE");
+if (isBlockTokenEnabled) {
+blockPoolTokenSecretManager.setKeys(blockPoolId,((KeyUpdateCommand)cmd).getExportedKeys());
+}
+break;
+default :
+LOG.warn("Unknown DatanodeCommand action: " + cmd.getAction());
+}
+return true;
+}

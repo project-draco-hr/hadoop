@@ -1,0 +1,89 @@
+{
+  Configuration conf=job.getConfiguration();
+  if (!(conf.getBoolean(Job.USED_GENERIC_PARSER,false))) {
+    LOG.warn("Use GenericOptionsParser for parsing the arguments. " + "Applications should implement Tool for the same.");
+  }
+  String files=conf.get("tmpfiles");
+  String libjars=conf.get("tmpjars");
+  String archives=conf.get("tmparchives");
+  String jobJar=job.getJar();
+  LOG.debug("default FileSystem: " + jtFs.getUri());
+  if (jtFs.exists(submitJobDir)) {
+    throw new IOException("Not submitting job. Job directory " + submitJobDir + " already exists!! This is unexpected.Please check what's there in"+ " that directory");
+  }
+  submitJobDir=jtFs.makeQualified(submitJobDir);
+  submitJobDir=new Path(submitJobDir.toUri().getPath());
+  FsPermission mapredSysPerms=new FsPermission(JobSubmissionFiles.JOB_DIR_PERMISSION);
+  FileSystem.mkdirs(jtFs,submitJobDir,mapredSysPerms);
+  Path filesDir=JobSubmissionFiles.getJobDistCacheFiles(submitJobDir);
+  Path archivesDir=JobSubmissionFiles.getJobDistCacheArchives(submitJobDir);
+  Path libjarsDir=JobSubmissionFiles.getJobDistCacheLibjars(submitJobDir);
+  if (files != null) {
+    FileSystem.mkdirs(jtFs,filesDir,mapredSysPerms);
+    String[] fileArr=files.split(",");
+    for (    String tmpFile : fileArr) {
+      URI tmpURI=null;
+      try {
+        tmpURI=new URI(tmpFile);
+      }
+ catch (      URISyntaxException e) {
+        throw new IllegalArgumentException(e);
+      }
+      Path tmp=new Path(tmpURI);
+      Path newPath=copyRemoteFiles(filesDir,tmp,conf,replication);
+      try {
+        URI pathURI=getPathURI(newPath,tmpURI.getFragment());
+        DistributedCache.addCacheFile(pathURI,conf);
+      }
+ catch (      URISyntaxException ue) {
+        throw new IOException("Failed to create uri for " + tmpFile,ue);
+      }
+      DistributedCache.createSymlink(conf);
+    }
+  }
+  if (libjars != null) {
+    FileSystem.mkdirs(jtFs,libjarsDir,mapredSysPerms);
+    String[] libjarsArr=libjars.split(",");
+    for (    String tmpjars : libjarsArr) {
+      Path tmp=new Path(tmpjars);
+      Path newPath=copyRemoteFiles(libjarsDir,tmp,conf,replication);
+      DistributedCache.addFileToClassPath(new Path(newPath.toUri().getPath()),conf);
+    }
+  }
+  if (archives != null) {
+    FileSystem.mkdirs(jtFs,archivesDir,mapredSysPerms);
+    String[] archivesArr=archives.split(",");
+    for (    String tmpArchives : archivesArr) {
+      URI tmpURI;
+      try {
+        tmpURI=new URI(tmpArchives);
+      }
+ catch (      URISyntaxException e) {
+        throw new IllegalArgumentException(e);
+      }
+      Path tmp=new Path(tmpURI);
+      Path newPath=copyRemoteFiles(archivesDir,tmp,conf,replication);
+      try {
+        URI pathURI=getPathURI(newPath,tmpURI.getFragment());
+        DistributedCache.addCacheArchive(pathURI,conf);
+      }
+ catch (      URISyntaxException ue) {
+        throw new IOException("Failed to create uri for " + tmpArchives,ue);
+      }
+      DistributedCache.createSymlink(conf);
+    }
+  }
+  if (jobJar != null) {
+    if ("".equals(job.getJobName())) {
+      job.setJobName(new Path(jobJar).getName());
+    }
+    copyJar(new Path(jobJar),JobSubmissionFiles.getJobJar(submitJobDir),replication);
+    job.setJar(JobSubmissionFiles.getJobJar(submitJobDir).toString());
+  }
+ else {
+    LOG.warn("No job jar file set.  User classes may not be found. " + "See Job or Job#setJar(String).");
+  }
+  ClientDistributedCacheManager.determineTimestamps(conf);
+  ClientDistributedCacheManager.determineCacheVisibilities(conf);
+  ClientDistributedCacheManager.getDelegationTokens(conf,job.getCredentials());
+}

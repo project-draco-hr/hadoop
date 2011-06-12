@@ -1,0 +1,33 @@
+{
+  Path p=stat.getPath();
+  FileSystem srcFs=p.getFileSystem(conf);
+  BlockLocation[] locations=srcFs.getFileBlockLocations(stat,0,stat.getLen());
+  if (locations.length <= 2) {
+    return;
+  }
+  long diskSpace=0;
+  for (  BlockLocation l : locations) {
+    diskSpace+=(l.getLength() * stat.getReplication());
+  }
+  statistics.numProcessedBlocks+=locations.length;
+  statistics.processedSize+=diskSpace;
+  generateParityFile(conf,stat,reporter,srcFs,destPath,code,locations,metaRepl,stripeLength);
+  if (!doSimulate) {
+    if (srcFs.setReplication(p,(short)targetRepl) == false) {
+      LOG.error("Error in reducing relication factor of file " + p + " to "+ targetRepl);
+      statistics.remainingSize+=diskSpace;
+      return;
+    }
+  }
+  diskSpace=0;
+  for (  BlockLocation l : locations) {
+    diskSpace+=(l.getLength() * targetRepl);
+  }
+  statistics.remainingSize+=diskSpace;
+  int numMeta=locations.length / stripeLength;
+  if (locations.length % stripeLength != 0) {
+    numMeta++;
+  }
+  statistics.numMetaBlocks+=(numMeta * metaRepl);
+  statistics.metaSize+=(numMeta * metaRepl * stat.getBlockSize());
+}

@@ -1,0 +1,49 @@
+{
+  InputStream trace=null;
+  ioPath=ioPath.makeQualified(ioPath.getFileSystem(conf));
+  try {
+    Path scratchDir=new Path(ioPath,conf.get(GRIDMIX_OUT_DIR,"gridmix"));
+    Runtime.getRuntime().addShutdownHook(sdh);
+    CountDownLatch startFlag=new CountDownLatch(1);
+    try {
+      startThreads(conf,traceIn,ioPath,scratchDir,startFlag,userResolver);
+      Path inputDir=getGridmixInputDataPath(ioPath);
+      if (genbytes > 0) {
+        writeInputData(genbytes,inputDir);
+      }
+      GenerateData.publishDataStatistics(inputDir,genbytes,conf);
+      submitter.refreshFilePool();
+      int exitCode=setupEmulation(conf,traceIn,scratchDir,ioPath,generate);
+      if (exitCode != 0) {
+        return exitCode;
+      }
+      factory.start();
+      statistics.start();
+    }
+ catch (    Throwable e) {
+      LOG.error("Startup failed",e);
+      if (factory != null)       factory.abort();
+    }
+ finally {
+      startFlag.countDown();
+    }
+    if (factory != null) {
+      factory.join(Long.MAX_VALUE);
+      final Throwable badTraceException=factory.error();
+      if (null != badTraceException) {
+        LOG.error("Error in trace",badTraceException);
+        throw new IOException("Error in trace",badTraceException);
+      }
+      submitter.shutdown();
+      submitter.join(Long.MAX_VALUE);
+      monitor.shutdown();
+      monitor.join(Long.MAX_VALUE);
+      statistics.shutdown();
+      statistics.join(Long.MAX_VALUE);
+    }
+  }
+  finally {
+    IOUtils.cleanup(LOG,trace);
+  }
+  return 0;
+}

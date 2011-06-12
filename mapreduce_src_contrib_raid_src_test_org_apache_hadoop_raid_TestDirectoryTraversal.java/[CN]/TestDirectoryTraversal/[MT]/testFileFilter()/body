@@ -1,0 +1,29 @@
+{
+  mySetup();
+  try {
+    Path topDir=new Path(TEST_DIR + "/testFileFilter");
+    int targetRepl=1;
+    createTestTree(topDir);
+    Path file=new Path(topDir.toString() + "/a/f1");
+    FileStatus stat=fs.getFileStatus(file);
+    PolicyInfo info=new PolicyInfo("testFileFilter",conf);
+    info.setSrcPath(topDir.toString());
+    info.setErasureCode("rs");
+    info.setDescription("test policy");
+    info.setProperty("targetReplication","1");
+    info.setProperty("metaReplication","1");
+    DirectoryTraversal.FileFilter timeBasedXORFilter=new RaidFilter.TimeBasedFilter(conf,RaidNode.xorDestinationPath(conf),targetRepl,System.currentTimeMillis(),0);
+    DirectoryTraversal.FileFilter timeBasedRSFilter=new RaidFilter.TimeBasedFilter(conf,RaidNode.rsDestinationPath(conf),targetRepl,System.currentTimeMillis(),0);
+    DirectoryTraversal.FileFilter preferenceForRSFilter=new RaidFilter.PreferenceFilter(conf,RaidNode.rsDestinationPath(conf),RaidNode.xorDestinationPath(conf),1,System.currentTimeMillis(),0);
+    assertTrue(timeBasedXORFilter.check(stat));
+    assertTrue(timeBasedRSFilter.check(stat));
+    assertTrue(preferenceForRSFilter.check(stat));
+    RaidNode.doRaid(conf,info,stat,new RaidNode.Statistics(),Reporter.NULL);
+    assertTrue(timeBasedXORFilter.check(stat));
+    assertFalse(timeBasedRSFilter.check(stat));
+    assertFalse(preferenceForRSFilter.check(stat));
+  }
+  finally {
+    myTearDown();
+  }
+}

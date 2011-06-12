@@ -1,0 +1,28 @@
+{
+  Map<TaskTracker,FallowSlotInfo> map=(type == TaskType.MAP) ? trackersReservedForMaps : trackersReservedForReduces;
+  long now=System.currentTimeMillis();
+  FallowSlotInfo info=map.get(taskTracker);
+  int reservedSlots=0;
+  if (info == null) {
+    info=new FallowSlotInfo(now,numSlots);
+    reservedSlots=numSlots;
+  }
+ else {
+    if (info.getNumSlots() != numSlots) {
+      Enum<JobCounter> counter=(type == TaskType.MAP) ? JobCounter.FALLOW_SLOTS_MILLIS_MAPS : JobCounter.FALLOW_SLOTS_MILLIS_REDUCES;
+      long fallowSlotMillis=(now - info.getTimestamp()) * info.getNumSlots();
+      jobCounters.incrCounter(counter,fallowSlotMillis);
+      reservedSlots=numSlots - info.getNumSlots();
+      info.setTimestamp(now);
+      info.setNumSlots(numSlots);
+    }
+  }
+  map.put(taskTracker,info);
+  if (type == TaskType.MAP) {
+    jobtracker.getInstrumentation().addReservedMapSlots(reservedSlots);
+  }
+ else {
+    jobtracker.getInstrumentation().addReservedReduceSlots(reservedSlots);
+  }
+  jobtracker.incrementReservations(type,reservedSlots);
+}

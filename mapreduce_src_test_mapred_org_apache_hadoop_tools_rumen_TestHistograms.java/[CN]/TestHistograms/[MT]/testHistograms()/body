@@ -1,0 +1,30 @@
+{
+  final Configuration conf=new Configuration();
+  final FileSystem lfs=FileSystem.getLocal(conf);
+  final Path rootInputDir=new Path(System.getProperty("test.tools.input.dir","")).makeQualified(lfs);
+  final Path rootInputFile=new Path(rootInputDir,"rumen/histogram-tests");
+  FileStatus[] tests=lfs.listStatus(rootInputFile);
+  for (int i=0; i < tests.length; ++i) {
+    Path filePath=tests[i].getPath();
+    String fileName=filePath.getName();
+    if (fileName.startsWith("input")) {
+      String testName=fileName.substring("input".length());
+      Path goldFilePath=new Path(rootInputFile,"gold" + testName);
+      assertTrue("Gold file dies not exist",lfs.exists(goldFilePath));
+      LoggedDiscreteCDF newResult=histogramFileToCDF(filePath,lfs);
+      System.out.println("Testing a Histogram for " + fileName);
+      FSDataInputStream goldStream=lfs.open(goldFilePath);
+      JsonObjectMapperParser<LoggedDiscreteCDF> parser=new JsonObjectMapperParser<LoggedDiscreteCDF>(goldStream,LoggedDiscreteCDF.class);
+      try {
+        LoggedDiscreteCDF dcdf=parser.getNext();
+        dcdf.deepCompare(newResult,new TreePath(null,"<root>"));
+      }
+ catch (      DeepInequalityException e) {
+        fail(e.path.toString());
+      }
+ finally {
+        parser.close();
+      }
+    }
+  }
+}

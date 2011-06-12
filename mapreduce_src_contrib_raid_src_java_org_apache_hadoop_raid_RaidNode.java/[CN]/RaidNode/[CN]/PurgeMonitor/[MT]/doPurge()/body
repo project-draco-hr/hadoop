@@ -1,0 +1,44 @@
+{
+  long prevExec=0;
+  while (running) {
+    while (now() < prevExec + configMgr.getPeriodicity()) {
+      Thread.sleep(SLEEP_TIME);
+    }
+    LOG.info("Started purge scan");
+    prevExec=now();
+    Path destPref=xorDestinationPath(conf);
+    FileSystem destFs=destPref.getFileSystem(conf);
+    purgeDirectories(destFs,destPref);
+    destPref=rsDestinationPath(conf);
+    destFs=destPref.getFileSystem(conf);
+    purgeDirectories(destFs,destPref);
+    for (    PolicyList category : configMgr.getAllPolicies()) {
+      for (      PolicyInfo info : category.getAll()) {
+        try {
+          destPref=getDestinationPath(info.getErasureCode(),conf);
+          destFs=destPref.getFileSystem(conf);
+          Path[] srcPaths=info.getSrcPathExpanded();
+          if (srcPaths != null) {
+            for (            Path srcPath : srcPaths) {
+              Path destPath=getOriginalParityFile(destPref,srcPath);
+              FileSystem srcFs=info.getSrcPath().getFileSystem(conf);
+              FileStatus stat=null;
+              try {
+                stat=destFs.getFileStatus(destPath);
+              }
+ catch (              FileNotFoundException e) {
+              }
+              if (stat != null) {
+                LOG.info("Purging obsolete parity files for policy " + info.getName() + " "+ destPath);
+                recursePurge(info.getErasureCode(),srcFs,destFs,destPref.toUri().getPath(),stat);
+              }
+            }
+          }
+        }
+ catch (        Exception e) {
+          LOG.warn("Ignoring Exception while processing policy " + info.getName() + " "+ StringUtils.stringifyException(e));
+        }
+      }
+    }
+  }
+}

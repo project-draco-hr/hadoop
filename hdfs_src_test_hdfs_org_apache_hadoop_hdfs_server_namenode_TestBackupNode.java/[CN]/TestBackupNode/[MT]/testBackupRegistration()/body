@@ -1,0 +1,42 @@
+{
+  Configuration conf1=new HdfsConfiguration();
+  Configuration conf2=null;
+  MiniDFSCluster cluster=null;
+  BackupNode backup1=null;
+  BackupNode backup2=null;
+  try {
+    cluster=new MiniDFSCluster.Builder(conf1).numDataNodes(0).build();
+    conf1.set(DFSConfigKeys.DFS_NAMENODE_BACKUP_ADDRESS_KEY,"0.0.0.0:7771");
+    conf1.set(DFSConfigKeys.DFS_NAMENODE_BACKUP_HTTP_ADDRESS_KEY,"0.0.0.0:7775");
+    backup1=startBackupNode(conf1,StartupOption.BACKUP,1);
+    conf2=new HdfsConfiguration(conf1);
+    conf2.set(DFSConfigKeys.DFS_NAMENODE_BACKUP_ADDRESS_KEY,"0.0.0.0:7772");
+    conf2.set(DFSConfigKeys.DFS_NAMENODE_BACKUP_HTTP_ADDRESS_KEY,"0.0.0.0:7776");
+    try {
+      backup2=startBackupNode(conf2,StartupOption.BACKUP,2);
+      backup2.stop();
+      backup2=null;
+      assertTrue("Only one backup node should be able to start",false);
+    }
+ catch (    IOException e) {
+      assertTrue(e.getLocalizedMessage().contains("Registration is not allowed"));
+    }
+    backup1.stop();
+    backup1=null;
+    try {
+      backup2=startBackupNode(conf2,StartupOption.BACKUP,2);
+    }
+ catch (    IOException e) {
+      assertTrue("Backup node 2 should be able to start",false);
+    }
+  }
+ catch (  IOException e) {
+    LOG.error("Error in TestBackupNode:",e);
+    assertTrue(e.getLocalizedMessage(),false);
+  }
+ finally {
+    if (backup1 != null)     backup1.stop();
+    if (backup2 != null)     backup2.stop();
+    if (cluster != null)     cluster.shutdown();
+  }
+}

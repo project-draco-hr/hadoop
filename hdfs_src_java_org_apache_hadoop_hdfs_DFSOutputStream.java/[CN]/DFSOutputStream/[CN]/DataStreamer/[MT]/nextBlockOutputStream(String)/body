@@ -1,0 +1,32 @@
+{
+  LocatedBlock lb=null;
+  DatanodeInfo[] nodes=null;
+  int count=conf.getInt(DFSConfigKeys.DFS_CLIENT_BLOCK_WRITE_RETRIES_KEY,DFSConfigKeys.DFS_CLIENT_BLOCK_WRITE_RETRIES_DEFAULT);
+  boolean success=false;
+  do {
+    hasError=false;
+    lastException=null;
+    errorIndex=-1;
+    success=false;
+    long startTime=System.currentTimeMillis();
+    DatanodeInfo[] w=excludedNodes.toArray(new DatanodeInfo[excludedNodes.size()]);
+    lb=locateFollowingBlock(startTime,w.length > 0 ? w : null);
+    block=lb.getBlock();
+    block.setNumBytes(0);
+    accessToken=lb.getBlockToken();
+    nodes=lb.getLocations();
+    success=createBlockOutputStream(nodes,0L,false);
+    if (!success) {
+      DFSClient.LOG.info("Abandoning block " + block);
+      dfsClient.namenode.abandonBlock(block,src,dfsClient.clientName);
+      block=null;
+      DFSClient.LOG.info("Excluding datanode " + nodes[errorIndex]);
+      excludedNodes.add(nodes[errorIndex]);
+    }
+  }
+ while (!success && --count >= 0);
+  if (!success) {
+    throw new IOException("Unable to create new block.");
+  }
+  return nodes;
+}

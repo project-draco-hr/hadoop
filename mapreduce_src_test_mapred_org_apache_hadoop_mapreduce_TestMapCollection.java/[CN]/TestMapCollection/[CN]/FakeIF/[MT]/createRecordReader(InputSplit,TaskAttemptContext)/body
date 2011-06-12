@@ -1,0 +1,36 @@
+{
+  return new RecordReader<KeyWritable,ValWritable>(){
+    private RecordFactory factory;
+    private final KeyWritable key=new KeyWritable();
+    private final ValWritable val=new ValWritable();
+    private int current;
+    private int records;
+    @Override public void initialize(    InputSplit split,    TaskAttemptContext context){
+      final Configuration conf=context.getConfiguration();
+      key.setConf(conf);
+      val.setConf(conf);
+      factory=ReflectionUtils.newInstance(conf.getClass("test.mapcollection.class",FixedRecordFactory.class,RecordFactory.class),conf);
+      assertNotNull(factory);
+      current=0;
+      records=conf.getInt("test.spillmap.records",100);
+    }
+    @Override public boolean nextKeyValue(){
+      key.setLength(factory.keyLen(current));
+      val.setLength(factory.valLen(current));
+      return current++ < records;
+    }
+    @Override public KeyWritable getCurrentKey(){
+      return key;
+    }
+    @Override public ValWritable getCurrentValue(){
+      return val;
+    }
+    @Override public float getProgress(){
+      return (float)current / records;
+    }
+    @Override public void close(){
+      assertEquals("Unexpected count",records,current - 1);
+    }
+  }
+;
+}

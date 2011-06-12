@@ -1,0 +1,59 @@
+{
+  Configuration conf=new HdfsConfiguration();
+  conf.setInt(DFSConfigKeys.DFS_NAMENODE_HEARTBEAT_RECHECK_INTERVAL_KEY,2000);
+  conf.setInt(DFSConfigKeys.DFS_HEARTBEAT_INTERVAL_KEY,1);
+  conf.setInt(DFSConfigKeys.DFS_NAMENODE_REPLICATION_PENDING_TIMEOUT_SEC_KEY,2);
+  conf.setInt(DFSConfigKeys.DFS_CLIENT_SOCKET_TIMEOUT_KEY,5000);
+  int myMaxNodes=5;
+  System.out.println("SimpleTest starting with DataNode to Kill " + datanodeToKill);
+  MiniDFSCluster cluster=new MiniDFSCluster.Builder(conf).numDataNodes(myMaxNodes).build();
+  cluster.waitActive();
+  FileSystem fs=cluster.getFileSystem();
+  short repl=3;
+  Path filename=new Path("simpletest.dat");
+  try {
+    System.out.println("SimpleTest creating file " + filename);
+    FSDataOutputStream stm=createFile(fs,filename,repl);
+    DFSOutputStream dfstream=(DFSOutputStream)(stm.getWrappedStream());
+    dfstream.setChunksPerPacket(5);
+    dfstream.setArtificialSlowdown(3000);
+    final long myseed=AppendTestUtil.nextLong();
+    byte[] buffer=AppendTestUtil.randomBytes(myseed,fileSize);
+    int mid=fileSize / 4;
+    stm.write(buffer,0,mid);
+    DatanodeInfo[] targets=dfstream.getPipeline();
+    int count=5;
+    while (count-- > 0 && targets == null) {
+      try {
+        System.out.println("SimpleTest: Waiting for pipeline to be created.");
+        Thread.sleep(1000);
+      }
+ catch (      InterruptedException e) {
+      }
+      targets=dfstream.getPipeline();
+    }
+    if (targets == null) {
+      int victim=AppendTestUtil.nextInt(myMaxNodes);
+      System.out.println("SimpleTest stopping datanode random " + victim);
+      cluster.stopDataNode(victim);
+    }
+ else {
+      int victim=datanodeToKill;
+      System.out.println("SimpleTest stopping datanode " + targets[victim].getName());
+      cluster.stopDataNode(targets[victim].getName());
+    }
+    System.out.println("SimpleTest stopping datanode complete");
+    stm.write(buffer,mid,fileSize - mid);
+    stm.close();
+    checkFile(fs,filename,repl,numBlocks,fileSize,myseed);
+  }
+ catch (  Throwable e) {
+    System.out.println("Simple Workload exception " + e);
+    e.printStackTrace();
+    assertTrue(e.toString(),false);
+  }
+ finally {
+    fs.close();
+    cluster.shutdown();
+  }
+}

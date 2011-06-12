@@ -1,0 +1,69 @@
+{
+  fs.delete(archivePath,true);
+  Configuration conf=mapred.createJobConf();
+  HadoopArchives har=new HadoopArchives(conf);
+{
+    String[] args=new String[6];
+    args[0]="-archiveName";
+    args[1]="foo1.har";
+    args[2]="-p";
+    args[3]=fs.getHomeDirectory().toString();
+    args[4]="test";
+    args[5]=archivePath.toString();
+    int ret=ToolRunner.run(har,args);
+    assertTrue("failed test",ret == 0);
+    Path finalPath=new Path(archivePath,"foo1.har");
+    Path fsPath=new Path(inputPath.toUri().getPath());
+    Path filePath=new Path(finalPath,"test");
+    Path harPath=new Path("har://" + filePath.toUri().getPath());
+    assertTrue(fs.exists(new Path(finalPath,"_index")));
+    assertTrue(fs.exists(new Path(finalPath,"_masterindex")));
+    assertTrue(fs.exists(new Path(finalPath,"part-0")));
+    assertTrue(!fs.exists(new Path(finalPath,"part-1")));
+    assertTrue(!fs.exists(new Path(finalPath,"part-2")));
+    assertTrue(!fs.exists(new Path(finalPath,"_logs")));
+    FileStatus[] statuses=fs.listStatus(finalPath);
+    args=new String[2];
+    args[0]="-ls";
+    args[1]=harPath.toString();
+    FsShell shell=new FsShell(conf);
+    ret=ToolRunner.run(shell,args);
+    assertTrue(ret == 0);
+    checkBytes(harPath,conf);
+    checkProperties(harPath,conf);
+    checkBlockSize(fs,finalPath,512 * 1024 * 1024l);
+  }
+{
+    String[] args=new String[8];
+    args[0]="-Dhar.block.size=512";
+    args[1]="-Dhar.partfile.size=1";
+    args[2]="-archiveName";
+    args[3]="foo.har";
+    args[4]="-p";
+    args[5]=fs.getHomeDirectory().toString();
+    args[6]="test";
+    args[7]=archivePath.toString();
+    int ret=ToolRunner.run(har,args);
+    assertTrue("failed test",ret == 0);
+    Path finalPath=new Path(archivePath,"foo.har");
+    Path fsPath=new Path(inputPath.toUri().getPath());
+    Path filePath=new Path(finalPath,"test");
+    Path harPath=new Path("har://" + filePath.toUri().getPath());
+    assertTrue(fs.exists(new Path(finalPath,"_index")));
+    assertTrue(fs.exists(new Path(finalPath,"_masterindex")));
+    assertTrue(fs.exists(new Path(finalPath,"part-0")));
+    assertTrue(fs.exists(new Path(finalPath,"part-1")));
+    assertTrue(fs.exists(new Path(finalPath,"part-2")));
+    assertTrue(!fs.exists(new Path(finalPath,"_logs")));
+    FileStatus[] statuses=fs.listStatus(finalPath);
+    args=new String[2];
+    args[0]="-ls";
+    args[1]=harPath.toString();
+    FsShell shell=new FsShell(conf);
+    ret=ToolRunner.run(shell,args);
+    assertTrue(ret == 0);
+    checkBytes(harPath,conf);
+    checkProperties(harPath,conf);
+    checkBlockSize(fs,finalPath,512);
+  }
+}

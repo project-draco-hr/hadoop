@@ -1,0 +1,37 @@
+{
+  try {
+    startFlag.await();
+    if (Thread.currentThread().isInterrupted()) {
+      return;
+    }
+  }
+ catch (  InterruptedException ie) {
+    LOG.error("Statistics Error while waiting for other threads to get ready ",ie);
+    return;
+  }
+  while (!shutdown) {
+    lock.lock();
+    try {
+      jobCompleted.await(jtPollingInterval,TimeUnit.MILLISECONDS);
+    }
+ catch (    InterruptedException ie) {
+      if (!shutdown) {
+        LOG.error("Statistics interrupt while waiting for completion of " + "a job.",ie);
+      }
+      return;
+    }
+ finally {
+      lock.unlock();
+    }
+    if (clusterStatlisteners.size() > 0) {
+      try {
+        ClusterStatus clusterStatus=cluster.getClusterStatus();
+        updateAndNotifyClusterStatsListeners(clusterStatus);
+      }
+ catch (      IOException e) {
+        LOG.error("Statistics io exception while polling JT ",e);
+        return;
+      }
+    }
+  }
+}

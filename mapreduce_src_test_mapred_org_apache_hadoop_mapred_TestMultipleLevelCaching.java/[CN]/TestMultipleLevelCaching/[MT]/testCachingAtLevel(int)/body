@@ -1,0 +1,35 @@
+{
+  String namenode=null;
+  MiniDFSCluster dfs=null;
+  MiniMRCluster mr=null;
+  FileSystem fileSys=null;
+  String testName="TestMultiLevelCaching";
+  try {
+    final int taskTrackers=1;
+    String rack1=getRack(0,level);
+    String rack2=getRack(1,level);
+    Configuration conf=new Configuration();
+    dfs=new MiniDFSCluster(conf,1,true,new String[]{rack1},new String[]{"host1.com"});
+    dfs.waitActive();
+    fileSys=dfs.getFileSystem();
+    if (!fileSys.mkdirs(inDir)) {
+      throw new IOException("Mkdirs failed to create " + inDir.toString());
+    }
+    UtilsForTests.writeFile(dfs.getNameNode(),conf,new Path(inDir + "/file"),(short)1);
+    namenode=(dfs.getFileSystem()).getUri().getHost() + ":" + (dfs.getFileSystem()).getUri().getPort();
+    JobConf jc=new JobConf();
+    jc.setInt(JTConfig.JT_TASKCACHE_LEVELS,level + 2);
+    mr=new MiniMRCluster(taskTrackers,namenode,1,new String[]{rack2},new String[]{"host2.com"},jc);
+    launchJobAndTestCounters(testName,mr,fileSys,inDir,outputPath,1,1,0,0);
+    mr.shutdown();
+  }
+  finally {
+    if (null != fileSys) {
+      fileSys.delete(inDir,true);
+      fileSys.delete(outputPath,true);
+    }
+    if (dfs != null) {
+      dfs.shutdown();
+    }
+  }
+}

@@ -1,0 +1,41 @@
+{
+  final long duration=split.getLength();
+  long sleepInterval=context.getConfiguration().getLong(GRIDMIX_SLEEP_INTERVAL,5);
+  final long RINTERVAL=TimeUnit.MILLISECONDS.convert(sleepInterval,TimeUnit.SECONDS);
+  if (RINTERVAL <= 0) {
+    throw new IOException("Invalid " + GRIDMIX_SLEEP_INTERVAL + ": "+ RINTERVAL);
+  }
+  return new RecordReader<LongWritable,LongWritable>(){
+    long start=-1;
+    long slept=0L;
+    long sleep=0L;
+    final LongWritable key=new LongWritable();
+    final LongWritable val=new LongWritable();
+    @Override public boolean nextKeyValue() throws IOException {
+      if (start == -1) {
+        start=System.currentTimeMillis();
+      }
+      slept+=sleep;
+      sleep=Math.min(duration - slept,RINTERVAL);
+      key.set(slept + sleep + start);
+      val.set(duration - slept);
+      return slept < duration;
+    }
+    @Override public float getProgress() throws IOException {
+      return slept / ((float)duration);
+    }
+    @Override public LongWritable getCurrentKey(){
+      return key;
+    }
+    @Override public LongWritable getCurrentValue(){
+      return val;
+    }
+    @Override public void close() throws IOException {
+      final String msg="Slept for " + duration;
+      LOG.info(msg);
+    }
+    public void initialize(    InputSplit split,    TaskAttemptContext ctxt){
+    }
+  }
+;
+}

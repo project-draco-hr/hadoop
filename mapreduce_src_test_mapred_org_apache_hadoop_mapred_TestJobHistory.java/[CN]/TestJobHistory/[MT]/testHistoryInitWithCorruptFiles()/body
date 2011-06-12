@@ -1,0 +1,44 @@
+{
+  MiniMRCluster mr=null;
+  try {
+    JobConf conf=new JobConf();
+    Path historyDir=new Path(System.getProperty("test.build.data","."),"history");
+    conf.set(JTConfig.JT_JOBHISTORY_LOCATION,historyDir.toString());
+    conf.setUser("user");
+    FileSystem localFs=FileSystem.getLocal(conf);
+    if (localFs.exists(historyDir)) {
+      boolean deleted=localFs.delete(historyDir,true);
+      LOG.info(historyDir + " deleted " + deleted);
+    }
+    mr=new MiniMRCluster(0,"file:///",3,null,null,conf);
+    JobTracker jt=mr.getJobTrackerRunner().getJobTracker();
+    JobHistory jh=jt.getJobHistory();
+    final JobID jobId=JobID.forName("job_200809171136_0001");
+    jh.setupEventWriter(jobId,conf);
+    Map<JobACL,AccessControlList> jobACLs=new HashMap<JobACL,AccessControlList>();
+    JobSubmittedEvent jse=new JobSubmittedEvent(jobId,"job","user",12345,"path",jobACLs,"default");
+    jh.logEvent(jse,jobId);
+    jh.closeWriter(jobId);
+    String historyFileName=jobId.toString() + "_" + "user";
+    Path historyFilePath=new Path(historyDir.toString(),historyFileName);
+    RawLocalFileSystem fs=(RawLocalFileSystem)FileSystem.getLocal(conf).getRaw();
+    FSDataOutputStream out=fs.create(historyFilePath,true);
+    byte[] corruptData=new byte[32];
+    new Random().nextBytes(corruptData);
+    out.write(corruptData,0,32);
+    out.close();
+    mr.stopJobTracker();
+    mr.startJobTracker();
+    jt=mr.getJobTrackerRunner().getJobTracker();
+    assertNotNull("JobTracker did not come up",jt);
+    jh=jt.getJobHistory();
+    assertNotNull("JobHistory did not get initialized correctly",jh);
+    assertEquals("Files in logDir did not move to DONE folder",1,historyDir.getFileSystem(conf).listStatus(historyDir).length);
+  }
+  finally {
+    if (mr != null) {
+      cleanupLocalFiles(mr);
+      mr.shutdown();
+    }
+  }
+}

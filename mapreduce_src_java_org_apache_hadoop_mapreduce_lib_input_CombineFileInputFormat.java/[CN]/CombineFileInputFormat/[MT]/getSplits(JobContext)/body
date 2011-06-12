@@ -1,0 +1,58 @@
+{
+  long minSizeNode=0;
+  long minSizeRack=0;
+  long maxSize=0;
+  Configuration conf=job.getConfiguration();
+  if (minSplitSizeNode != 0) {
+    minSizeNode=minSplitSizeNode;
+  }
+ else {
+    minSizeNode=conf.getLong(SPLIT_MINSIZE_PERNODE,0);
+  }
+  if (minSplitSizeRack != 0) {
+    minSizeRack=minSplitSizeRack;
+  }
+ else {
+    minSizeRack=conf.getLong(SPLIT_MINSIZE_PERRACK,0);
+  }
+  if (maxSplitSize != 0) {
+    maxSize=maxSplitSize;
+  }
+ else {
+    maxSize=conf.getLong("mapreduce.input.fileinputformat.split.maxsize",0);
+  }
+  if (minSizeNode != 0 && maxSize != 0 && minSizeNode > maxSize) {
+    throw new IOException("Minimum split size pernode " + minSizeNode + " cannot be larger than maximum split size "+ maxSize);
+  }
+  if (minSizeRack != 0 && maxSize != 0 && minSizeRack > maxSize) {
+    throw new IOException("Minimum split size per rack" + minSizeRack + " cannot be larger than maximum split size "+ maxSize);
+  }
+  if (minSizeRack != 0 && minSizeNode > minSizeRack) {
+    throw new IOException("Minimum split size per node" + minSizeNode + " cannot be smaller than minimum split "+ "size per rack "+ minSizeRack);
+  }
+  Path[] paths=FileUtil.stat2Paths(listStatus(job).toArray(new FileStatus[0]));
+  List<InputSplit> splits=new ArrayList<InputSplit>();
+  if (paths.length == 0) {
+    return splits;
+  }
+  List<Path> newpaths=new LinkedList<Path>();
+  for (int i=0; i < paths.length; i++) {
+    Path p=new Path(paths[i].toUri().getPath());
+    newpaths.add(p);
+  }
+  paths=null;
+  for (  MultiPathFilter onepool : pools) {
+    ArrayList<Path> myPaths=new ArrayList<Path>();
+    for (Iterator<Path> iter=newpaths.iterator(); iter.hasNext(); ) {
+      Path p=iter.next();
+      if (onepool.accept(p)) {
+        myPaths.add(p);
+        iter.remove();
+      }
+    }
+    getMoreSplits(job,myPaths.toArray(new Path[myPaths.size()]),maxSize,minSizeNode,minSizeRack,splits);
+  }
+  getMoreSplits(job,newpaths.toArray(new Path[newpaths.size()]),maxSize,minSizeNode,minSizeRack,splits);
+  rackToNodes.clear();
+  return splits;
+}

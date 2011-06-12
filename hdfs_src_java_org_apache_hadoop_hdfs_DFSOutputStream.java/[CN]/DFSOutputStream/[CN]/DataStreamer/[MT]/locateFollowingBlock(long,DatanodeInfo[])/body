@@ -1,0 +1,40 @@
+{
+  int retries=conf.getInt(DFSConfigKeys.DFS_CLIENT_BLOCK_WRITE_LOCATEFOLLOWINGBLOCK_RETRIES_KEY,DFSConfigKeys.DFS_CLIENT_BLOCK_WRITE_LOCATEFOLLOWINGBLOCK_RETRIES_DEFAULT);
+  long sleeptime=400;
+  while (true) {
+    long localstart=System.currentTimeMillis();
+    while (true) {
+      try {
+        return dfsClient.namenode.addBlock(src,dfsClient.clientName,block,excludedNodes);
+      }
+ catch (      RemoteException e) {
+        IOException ue=e.unwrapRemoteException(FileNotFoundException.class,AccessControlException.class,NSQuotaExceededException.class,DSQuotaExceededException.class,UnresolvedPathException.class);
+        if (ue != e) {
+          throw ue;
+        }
+        if (NotReplicatedYetException.class.getName().equals(e.getClassName())) {
+          if (retries == 0) {
+            throw e;
+          }
+ else {
+            --retries;
+            DFSClient.LOG.info(StringUtils.stringifyException(e));
+            if (System.currentTimeMillis() - localstart > 5000) {
+              DFSClient.LOG.info("Waiting for replication for " + (System.currentTimeMillis() - localstart) / 1000 + " seconds");
+            }
+            try {
+              DFSClient.LOG.warn("NotReplicatedYetException sleeping " + src + " retries left "+ retries);
+              Thread.sleep(sleeptime);
+              sleeptime*=2;
+            }
+ catch (            InterruptedException ie) {
+            }
+          }
+        }
+ else {
+          throw e;
+        }
+      }
+    }
+  }
+}

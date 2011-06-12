@@ -1,0 +1,32 @@
+{
+  PrintStream bak=null;
+  try {
+    final FileSystem fs=root.getFileSystem(conf);
+    fs.mkdirs(root);
+    OutputStream zout=new GZIPOutputStream(fs.create(new Path(root,"file.gz")));
+    Random r=new Random();
+    ByteArrayOutputStream file=new ByteArrayOutputStream();
+    for (int i=0; i < 1024; ++i) {
+      char c=Character.forDigit(r.nextInt(26) + 10,36);
+      file.write(c);
+      zout.write(c);
+    }
+    zout.close();
+    bak=System.out;
+    ByteArrayOutputStream out=new ByteArrayOutputStream();
+    System.setOut(new PrintStream(out));
+    String[] argv=new String[2];
+    argv[0]="-text";
+    argv[1]=new Path(root,"file.gz").toString();
+    int ret=ToolRunner.run(new FsShell(conf),argv);
+    assertEquals("'-text " + argv[1] + " returned "+ ret,0,ret);
+    file.reset();
+    out.reset();
+    assertTrue("Output doesn't match input",Arrays.equals(file.toByteArray(),out.toByteArray()));
+  }
+  finally {
+    if (null != bak) {
+      System.setOut(bak);
+    }
+  }
+}

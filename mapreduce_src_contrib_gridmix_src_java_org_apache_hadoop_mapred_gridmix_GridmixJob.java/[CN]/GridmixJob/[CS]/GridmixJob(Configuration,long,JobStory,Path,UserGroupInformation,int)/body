@@ -1,0 +1,38 @@
+{
+  this.ugi=ugi;
+  this.jobdesc=jobdesc;
+  this.seq=seq;
+  ((StringBuilder)nameFormat.get().out()).setLength(JOB_NAME_PREFIX.length());
+  try {
+    job=this.ugi.doAs(new PrivilegedExceptionAction<Job>(){
+      public Job run() throws IOException {
+        String jobId=null == jobdesc.getJobID() ? "<unknown>" : jobdesc.getJobID().toString();
+        Job ret=new Job(conf,nameFormat.get().format("%06d",seq).toString());
+        ret.getConfiguration().setInt(GRIDMIX_JOB_SEQ,seq);
+        ret.getConfiguration().set(Gridmix.ORIGINAL_JOB_ID,jobId);
+        ret.getConfiguration().set(Gridmix.ORIGINAL_JOB_NAME,jobdesc.getName());
+        if (conf.getBoolean(GRIDMIX_USE_QUEUE_IN_TRACE,false)) {
+          setJobQueue(ret,jobdesc.getQueueName());
+        }
+ else {
+          setJobQueue(ret,conf.get(GRIDMIX_DEFAULT_QUEUE));
+        }
+        if (canEmulateCompression()) {
+          if (CompressionEmulationUtil.isCompressionEmulationEnabled(conf)) {
+            CompressionEmulationUtil.configureCompressionEmulation(jobdesc.getJobConf(),ret.getConfiguration());
+          }
+        }
+        if (conf.getBoolean(GRIDMIX_HIGHRAM_EMULATION_ENABLE,true)) {
+          configureHighRamProperties(jobdesc.getJobConf(),ret.getConfiguration());
+        }
+        return ret;
+      }
+    }
+);
+  }
+ catch (  InterruptedException e) {
+    throw new IOException(e);
+  }
+  submissionTimeNanos=TimeUnit.NANOSECONDS.convert(submissionMillis,TimeUnit.MILLISECONDS);
+  outdir=new Path(outRoot,"" + seq);
+}

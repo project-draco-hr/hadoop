@@ -1,0 +1,56 @@
+{
+  String hostToInclude=getHostname(1);
+  Configuration conf=new Configuration();
+  File file=new File("hosts.exclude");
+  file.delete();
+  FileOutputStream out=new FileOutputStream(file);
+  LOG.info("Writing excluded nodes to log file " + file.toString());
+  BufferedWriter writer=null;
+  try {
+    writer=new BufferedWriter(new OutputStreamWriter(out));
+    writer.write(hostToInclude + "\n");
+  }
+  finally {
+    if (writer != null) {
+      writer.close();
+    }
+    out.close();
+  }
+  startCluster(2,1,1,UserGroupInformation.getLoginUser(),conf);
+  file.delete();
+  out=new FileOutputStream(file);
+  LOG.info("Clearing hosts.exclude file " + file.toString());
+  writer=null;
+  try {
+    writer=new BufferedWriter(new OutputStreamWriter(out));
+    writer.write("\n");
+  }
+  finally {
+    if (writer != null) {
+      writer.close();
+    }
+    out.close();
+  }
+  file.deleteOnExit();
+  conf=mr.createJobConf(new JobConf(conf));
+  AdminOperationsProtocol client=getClient(conf,owner);
+  try {
+    client.refreshNodes();
+  }
+ catch (  IOException ioe) {
+  }
+  mr.startTaskTracker(hostToInclude,null,2,1);
+  while (jt.taskTrackers().size() < 2) {
+    UtilsForTests.waitFor(100);
+  }
+  assertEquals("Excluded node count is incorrect",0,jt.getClusterStatus(false).getNumExcludedNodes());
+  boolean seen=false;
+  for (  TaskTrackerStatus status : jt.taskTrackers()) {
+    if (status.getHost().equals(hostToInclude)) {
+      seen=true;
+      break;
+    }
+  }
+  assertTrue("Tracker from excluded host doesnt exist",seen);
+  stopCluster();
+}

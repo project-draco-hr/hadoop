@@ -1,0 +1,37 @@
+{
+  SortedMap<Long,String> origSubmissionTime=new TreeMap<Long,String>();
+  SortedMap<Long,String> simuSubmissionTime=new TreeMap<Long,String>();
+  GridmixJobStory gjs=new GridmixJobStory(path,conf);
+  final Iterator<JobID> ite=jobids.iterator();
+  File destFolder=new File(System.getProperty("java.io.tmpdir") + "/gridmix-st/");
+  destFolder.mkdir();
+  while (ite.hasNext()) {
+    JobID simuJobId=ite.next();
+    JobHistoryParser.JobInfo jhInfo=getSimulatedJobHistory(simuJobId);
+    Assert.assertNotNull("Job history not found.",jhInfo);
+    Counters counters=jhInfo.getTotalCounters();
+    JobConf simuJobConf=getSimulatedJobConf(simuJobId,destFolder);
+    String origJobId=simuJobConf.get(origJobIdKey);
+    LOG.info("OriginalJobID<->CurrentJobID:" + origJobId + "<->"+ simuJobId);
+    if (userResolverVal == null) {
+      userResolverVal=simuJobConf.get(usrResolver);
+    }
+    ZombieJob zombieJob=gjs.getZombieJob(JobID.forName(origJobId));
+    Map<String,Long> mapJobCounters=getJobMapCounters(zombieJob);
+    Map<String,Long> reduceJobCounters=getJobReduceCounters(zombieJob);
+    if (simuJobConf.get(jobSubKey).contains("REPLAY")) {
+      origSubmissionTime.put(zombieJob.getSubmissionTime(),origJobId.toString() + "^" + simuJobId);
+      simuSubmissionTime.put(jhInfo.getSubmitTime(),origJobId.toString() + "^" + simuJobId);
+      ;
+    }
+    LOG.info("Verifying the job <" + simuJobId + "> and wait for a while...");
+    verifySimulatedJobSummary(zombieJob,jhInfo,simuJobConf);
+    verifyJobMapCounters(counters,mapJobCounters,simuJobConf);
+    verifyJobReduceCounters(counters,reduceJobCounters,simuJobConf);
+    verifyCompressionEmulation(zombieJob.getJobConf(),simuJobConf,counters,reduceJobCounters,mapJobCounters);
+    verifyDistributeCache(zombieJob,simuJobConf);
+    setJobDistributedCacheInfo(simuJobId.toString(),simuJobConf,zombieJob.getJobConf());
+    LOG.info("Done.");
+  }
+  verifyDistributedCacheBetweenJobs(simuAndOrigJobsInfo);
+}

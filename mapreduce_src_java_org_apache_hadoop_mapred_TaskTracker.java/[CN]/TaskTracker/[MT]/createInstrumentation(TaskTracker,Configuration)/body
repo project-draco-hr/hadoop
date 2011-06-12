@@ -1,0 +1,27 @@
+{
+  try {
+    Class<?>[] instrumentationClasses=getInstrumentationClasses(conf);
+    if (instrumentationClasses.length == 0) {
+      LOG.error("Empty string given for " + TT_INSTRUMENTATION + " property -- will use default instrumentation class instead");
+      return new TaskTrackerMetricsInst(tt);
+    }
+ else     if (instrumentationClasses.length == 1) {
+      Class<?> cls=instrumentationClasses[0];
+      java.lang.reflect.Constructor<?> c=cls.getConstructor(new Class[]{TaskTracker.class});
+      return (TaskTrackerInstrumentation)c.newInstance(tt);
+    }
+ else {
+      List<TaskTrackerInstrumentation> instrumentations=new ArrayList<TaskTrackerInstrumentation>();
+      for (      Class<?> cls : instrumentationClasses) {
+        java.lang.reflect.Constructor<?> c=cls.getConstructor(new Class[]{TaskTracker.class});
+        TaskTrackerInstrumentation inst=(TaskTrackerInstrumentation)c.newInstance(tt);
+        instrumentations.add(inst);
+      }
+      return new CompositeTaskTrackerInstrumentation(tt,instrumentations);
+    }
+  }
+ catch (  Exception e) {
+    LOG.error("Failed to initialize TaskTracker metrics",e);
+    return new TaskTrackerMetricsInst(tt);
+  }
+}

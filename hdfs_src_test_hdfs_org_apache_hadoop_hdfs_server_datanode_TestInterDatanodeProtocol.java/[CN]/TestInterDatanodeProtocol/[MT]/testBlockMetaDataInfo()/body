@@ -1,0 +1,35 @@
+{
+  Configuration conf=new HdfsConfiguration();
+  MiniDFSCluster cluster=null;
+  try {
+    cluster=new MiniDFSCluster.Builder(conf).numDataNodes(3).build();
+    cluster.waitActive();
+    DistributedFileSystem dfs=(DistributedFileSystem)cluster.getFileSystem();
+    String filestr="/foo";
+    Path filepath=new Path(filestr);
+    DFSTestUtil.createFile(dfs,filepath,1024L,(short)3,0L);
+    assertTrue(dfs.getClient().exists(filestr));
+    LocatedBlock locatedblock=getLastLocatedBlock(dfs.getClient().getNamenode(),filestr);
+    DatanodeInfo[] datanodeinfo=locatedblock.getLocations();
+    assertTrue(datanodeinfo.length > 0);
+    DataNode datanode=cluster.getDataNode(datanodeinfo[0].getIpcPort());
+    InterDatanodeProtocol idp=DataNode.createInterDataNodeProtocolProxy(datanodeinfo[0],conf,datanode.socketTimeout);
+    assertTrue(datanode != null);
+    if (datanode.blockScanner != null) {
+      datanode.blockScanner.shutdown();
+    }
+    ExtendedBlock b=locatedblock.getBlock();
+    InterDatanodeProtocol.LOG.info("b=" + b + ", "+ b.getClass());
+    checkMetaInfo(b,datanode);
+    long recoveryId=b.getGenerationStamp() + 1;
+    idp.initReplicaRecovery(new RecoveringBlock(b,locatedblock.getLocations(),recoveryId));
+    ExtendedBlock newblock=new ExtendedBlock(b.getBlockPoolId(),b.getBlockId(),b.getNumBytes() / 2,b.getGenerationStamp() + 1);
+    idp.updateReplicaUnderRecovery(b,recoveryId,newblock.getNumBytes());
+    checkMetaInfo(newblock,datanode);
+  }
+  finally {
+    if (cluster != null) {
+      cluster.shutdown();
+    }
+  }
+}

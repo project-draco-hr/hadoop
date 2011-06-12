@@ -1,0 +1,25 @@
+{
+  assertTrue("Not HDFS:" + fileSys.getUri(),fileSys instanceof DistributedFileSystem);
+  DFSClient.DFSDataInputStream dis=(DFSClient.DFSDataInputStream)((DistributedFileSystem)fileSys).open(name);
+  Collection<LocatedBlock> dinfo=dis.getAllBlocks();
+  for (  LocatedBlock blk : dinfo) {
+    int hasdown=0;
+    int firstDecomNodeIndex=-1;
+    DatanodeInfo[] nodes=blk.getLocations();
+    for (int j=0; j < nodes.length; j++) {
+      if (nodes[j].getName().equals(downnode)) {
+        hasdown++;
+        LOG.info("Block " + blk.getBlock() + " replica "+ nodes[j].getName()+ " is decommissioned.");
+      }
+      if (nodes[j].isDecommissioned()) {
+        if (firstDecomNodeIndex == -1) {
+          firstDecomNodeIndex=j;
+        }
+        continue;
+      }
+      assertEquals("Decom node is not at the end",firstDecomNodeIndex,-1);
+    }
+    LOG.info("Block " + blk.getBlock() + " has "+ hasdown+ " decommissioned replica.");
+    assertEquals("Number of replicas for block " + blk.getBlock(),Math.min(numDatanodes,repl + hasdown),nodes.length);
+  }
+}

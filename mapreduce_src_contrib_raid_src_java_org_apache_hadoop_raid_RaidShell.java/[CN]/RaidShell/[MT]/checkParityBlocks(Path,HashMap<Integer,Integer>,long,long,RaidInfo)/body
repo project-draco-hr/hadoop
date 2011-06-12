@@ -1,0 +1,40 @@
+{
+  BlockLocation[] containerBlocks=getParityBlocks(filePath,blockSize,fileStripes,raidInfo);
+  long parityStripeLength=blockSize * ((long)raidInfo.parityBlocksPerStripe);
+  long parityFileLength=parityStripeLength * fileStripes;
+  long parityBlocksFound=0L;
+  for (  BlockLocation cb : containerBlocks) {
+    if (cb.getLength() % blockSize != 0) {
+      throw new IOException("container block size is not " + "multiple of parity block size");
+    }
+    int blocksInContainer=(int)(cb.getLength() / blockSize);
+    LOG.debug("found container with offset " + cb.getOffset() + ", length "+ cb.getLength());
+    for (long offset=cb.getOffset(); offset < cb.getOffset() + cb.getLength(); offset+=blockSize) {
+      long block=offset / blockSize;
+      int stripe=(int)(offset / parityStripeLength);
+      if (stripe < 0) {
+        continue;
+      }
+      if (stripe >= fileStripes) {
+        break;
+      }
+      parityBlocksFound++;
+      if (cb.isCorrupt() || (cb.getNames().length == 0 && cb.getLength() > 0)) {
+        LOG.debug("parity file for " + filePath.toString() + " corrupt in block "+ block+ ", stripe "+ stripe+ "/"+ fileStripes);
+        if (corruptBlocksPerStripe.get(stripe) == null) {
+          corruptBlocksPerStripe.put(stripe,1);
+        }
+ else {
+          corruptBlocksPerStripe.put(stripe,corruptBlocksPerStripe.get(stripe) + 1);
+        }
+      }
+ else {
+        LOG.debug("parity file for " + filePath.toString() + " OK in block "+ block+ ", stripe "+ stripe+ "/"+ fileStripes);
+      }
+    }
+  }
+  long parityBlocksExpected=raidInfo.parityBlocksPerStripe * fileStripes;
+  if (parityBlocksFound != parityBlocksExpected) {
+    throw new IOException("expected " + parityBlocksExpected + " parity blocks but got "+ parityBlocksFound);
+  }
+}

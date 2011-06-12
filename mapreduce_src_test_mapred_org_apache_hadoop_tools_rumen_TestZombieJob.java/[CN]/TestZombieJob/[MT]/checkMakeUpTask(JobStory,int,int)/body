@@ -1,0 +1,52 @@
+{
+  TaskAttemptInfo taInfo=null;
+  Histogram sampleSucceeded=new Histogram();
+  Histogram sampleFailed=new Histogram();
+  List<Integer> sampleAttempts=new ArrayList<Integer>();
+  for (int i=0; i < 100000; i++) {
+    int attemptId=0;
+    while (true) {
+      taInfo=job.getMapTaskAttemptInfoAdjusted(taskNumber,attemptId,1);
+      if (taInfo.getRunState() == State.SUCCEEDED) {
+        sampleSucceeded.enter(taInfo.getRuntime());
+        break;
+      }
+      sampleFailed.enter(taInfo.getRuntime());
+      attemptId++;
+    }
+    sampleAttempts.add(attemptId);
+  }
+  int[] countTries=new int[]{0,0,0,0};
+  for (  int attempts : sampleAttempts) {
+    assertTrue(attempts < 4);
+    countTries[attempts]++;
+  }
+  for (int i=0; i < 4; i++) {
+    int count=countTries[i];
+    double p=(double)count / sampleAttempts.size();
+    assertTrue(expectedPs[i] - p < epsilon);
+  }
+  long[] expectedCDF=succeededCDF;
+  LoggedDiscreteCDF cdf=new LoggedDiscreteCDF();
+  cdf.setCDF(sampleSucceeded,attemptTimesPercentiles,100);
+  assertRuntimeEqual(cdf.getMinimum(),expectedCDF[0]);
+  assertRuntimeEqual(cdf.getMaximum(),expectedCDF[4]);
+  for (int i=0; i < 3; i++) {
+    LoggedSingleRelativeRanking ranking=cdf.getRankings().get(i);
+    assertRuntimeEqual(expectedCDF[i + 1],ranking.getDatum());
+  }
+  expectedCDF=failedCDF;
+  cdf=new LoggedDiscreteCDF();
+  cdf.setCDF(sampleFailed,attemptTimesPercentiles,100);
+  System.out.println("generated failed map runtime distribution");
+  System.out.println(cdf.getNumberValues() + ": " + cdf.getMinimum()+ "--"+ cdf.getMaximum());
+  for (  LoggedSingleRelativeRanking ranking : cdf.getRankings()) {
+    System.out.println("   " + ranking.getRelativeRanking() + ":"+ ranking.getDatum());
+  }
+  assertRuntimeEqual(cdf.getMinimum(),expectedCDF[0]);
+  assertRuntimeEqual(cdf.getMaximum(),expectedCDF[4]);
+  for (int i=0; i < 3; i++) {
+    LoggedSingleRelativeRanking ranking=cdf.getRankings().get(i);
+    assertRuntimeEqual(expectedCDF[i + 1],ranking.getDatum());
+  }
+}

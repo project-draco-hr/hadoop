@@ -1,0 +1,62 @@
+{
+  boolean ret=true;
+  short replicationFactor=1;
+  long blockSize=128 * 1024 * 1024;
+  int bufferSize=4096;
+  Configuration conf=new HdfsConfiguration();
+  conf.setInt(DFSConfigKeys.DFS_DATANODE_MAX_RECEIVER_THREADS_KEY,xcievers);
+  conf.setInt(DFSConfigKeys.DFS_CLIENT_MAX_BLOCK_ACQUIRE_FAILURES_KEY,retries);
+  conf.setInt(DFSConfigKeys.DFS_CLIENT_RETRY_WINDOW_BASE,timeWin);
+  conf.setInt(DFSConfigKeys.DFS_DATANODE_SOCKET_REUSE_KEEPALIVE_KEY,0);
+  MiniDFSCluster cluster=new MiniDFSCluster.Builder(conf).numDataNodes(replicationFactor).build();
+  cluster.waitActive();
+  FileSystem fs=cluster.getFileSystem();
+  Path file1=new Path("test_data.dat");
+  file1=file1.makeQualified(fs.getUri(),fs.getWorkingDirectory());
+  try {
+    FSDataOutputStream stm=fs.create(file1,true,bufferSize,replicationFactor,blockSize);
+    assertTrue(file1 + " should be a file",fs.getFileStatus(file1).isFile());
+    System.out.println("Path : \"" + file1 + "\"");
+    LOG.info("Path : \"" + file1 + "\"");
+    byte[] buffer=AppendTestUtil.randomBytes(System.currentTimeMillis(),fileLen);
+    stm.write(buffer,0,fileLen);
+    stm.close();
+    long len=fs.getFileStatus(file1).getLen();
+    assertTrue(file1 + " should be of size " + fileLen+ " but found to be of size "+ len,len == fileLen);
+    byte[] read_buf=new byte[fileLen];
+    InputStream in=fs.open(file1,fileLen);
+    IOUtils.readFully(in,read_buf,0,fileLen);
+    assert(Arrays.equals(buffer,read_buf));
+    in.close();
+    read_buf=null;
+    MessageDigest m=MessageDigest.getInstance("SHA");
+    m.update(buffer,0,fileLen);
+    byte[] hash_sha=m.digest();
+    Thread[] readers=new Thread[threads];
+    Counter counter=new Counter(0);
+    for (int i=0; i < threads; ++i) {
+      DFSClientReader reader=new DFSClientReader(file1,cluster,hash_sha,fileLen,counter);
+      readers[i]=new Thread(reader);
+      readers[i].start();
+    }
+    for (int i=0; i < threads; ++i) {
+      readers[i].join();
+    }
+    if (counter.get() == threads)     ret=true;
+ else     ret=false;
+  }
+ catch (  InterruptedException e) {
+    System.out.println("Thread got InterruptedException.");
+    e.printStackTrace();
+    ret=false;
+  }
+catch (  Exception e) {
+    e.printStackTrace();
+    ret=false;
+  }
+ finally {
+    fs.delete(file1,false);
+    cluster.shutdown();
+  }
+  return ret;
+}

@@ -1,0 +1,22 @@
+{
+  final JobTrackerInstrumentation metrics=jobtracker.getInstrumentation();
+  if (this.status.getRunState() == JobStatus.RUNNING || this.status.getRunState() == JobStatus.PREP) {
+    changeStateTo(JobStatus.SUCCEEDED);
+    this.status.setCleanupProgress(1.0f);
+    if (maps.length == 0) {
+      this.status.setMapProgress(1.0f);
+    }
+    if (reduces.length == 0) {
+      this.status.setReduceProgress(1.0f);
+    }
+    this.finishTime=JobTracker.getClock().getTime();
+    this.status.setFinishTime(this.finishTime);
+    LOG.info("Job " + this.status.getJobID() + " has completed successfully.");
+    JobSummary.logJobSummary(this,jobtracker.getClusterStatus(false));
+    JobFinishedEvent jfe=new JobFinishedEvent(this.status.getJobID(),this.finishTime,this.finishedMapTasks,this.finishedReduceTasks,failedMapTasks,failedReduceTasks,new org.apache.hadoop.mapreduce.Counters(getMapCounters()),new org.apache.hadoop.mapreduce.Counters(getReduceCounters()),new org.apache.hadoop.mapreduce.Counters(getCounters()));
+    jobHistory.logEvent(jfe,this.status.getJobID());
+    jobHistory.closeWriter(this.status.getJobID());
+    garbageCollect();
+    metrics.completeJob(this.conf,this.status.getJobID());
+  }
+}

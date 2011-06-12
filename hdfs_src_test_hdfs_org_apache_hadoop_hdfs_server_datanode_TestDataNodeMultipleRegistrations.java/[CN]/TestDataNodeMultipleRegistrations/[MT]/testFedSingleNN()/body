@@ -1,0 +1,36 @@
+{
+  MiniDFSCluster cluster=new MiniDFSCluster.Builder(conf).nameNodePort(9927).build();
+  try {
+    NameNode nn1=cluster.getNameNode();
+    assertNotNull("cannot create nn1",nn1);
+    String bpid1=nn1.getFSImage().getBlockPoolID();
+    String cid1=nn1.getFSImage().getClusterID();
+    int lv1=nn1.getFSImage().getLayoutVersion();
+    LOG.info("nn1: lv=" + lv1 + ";cid="+ cid1+ ";bpid="+ bpid1+ ";uri="+ nn1.getNameNodeAddress());
+    DataNode dn=cluster.getDataNodes().get(0);
+    Collection<VolumeInfo> volInfos=((FSDataset)dn.data).getVolumeInfo();
+    assertNotNull("No volumes in the fsdataset",volInfos);
+    int i=0;
+    for (    VolumeInfo vi : volInfos) {
+      LOG.info("vol " + i++ + ";dir="+ vi.directory+ ";fs= "+ vi.freeSpace);
+    }
+    assertEquals("number of volumes is wrong",2,volInfos.size());
+    for (    BPOfferService bpos : dn.getAllBpOs()) {
+      LOG.info("reg: bpid=" + "; name=" + bpos.bpRegistration.name + "; sid="+ bpos.bpRegistration.storageID+ "; nna="+ bpos.nnAddr);
+    }
+    BPOfferService bpos1=dn.getAllBpOs()[0];
+    bpos1.lastBlockReport=0;
+    bpos1.blockReport();
+    assertEquals("wrong nn address",bpos1.nnAddr,nn1.getNameNodeAddress());
+    assertEquals("wrong bpid",bpos1.getBlockPoolId(),bpid1);
+    assertEquals("wrong cid",dn.getClusterId(),cid1);
+    cluster.shutdown();
+    assertEquals(0,dn.getAllBpOs().length);
+    cluster=null;
+  }
+  finally {
+    if (cluster != null) {
+      cluster.shutdown();
+    }
+  }
+}

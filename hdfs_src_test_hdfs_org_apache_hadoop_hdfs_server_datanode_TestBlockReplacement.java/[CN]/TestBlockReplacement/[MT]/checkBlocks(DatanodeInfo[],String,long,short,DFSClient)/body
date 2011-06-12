@@ -1,0 +1,41 @@
+{
+  boolean notDone;
+  final long TIMEOUT=20000L;
+  long starttime=System.currentTimeMillis();
+  long failtime=starttime + TIMEOUT;
+  do {
+    try {
+      Thread.sleep(100);
+    }
+ catch (    InterruptedException e) {
+    }
+    List<LocatedBlock> blocks=client.getNamenode().getBlockLocations(fileName,0,fileLen).getLocatedBlocks();
+    assertEquals(1,blocks.size());
+    DatanodeInfo[] nodes=blocks.get(0).getLocations();
+    notDone=(nodes.length != replFactor);
+    if (notDone) {
+      LOG.info("Expected replication factor is " + replFactor + " but the real replication factor is "+ nodes.length);
+    }
+ else {
+      List<DatanodeInfo> nodeLocations=Arrays.asList(nodes);
+      for (      DatanodeInfo node : includeNodes) {
+        if (!nodeLocations.contains(node)) {
+          notDone=true;
+          LOG.info("Block is not located at " + node.getName());
+          break;
+        }
+      }
+    }
+    if (System.currentTimeMillis() > failtime) {
+      String expectedNodesList="";
+      String currentNodesList="";
+      for (      DatanodeInfo dn : includeNodes)       expectedNodesList+=dn.getName() + ", ";
+      for (      DatanodeInfo dn : nodes)       currentNodesList+=dn.getName() + ", ";
+      LOG.info("Expected replica nodes are: " + expectedNodesList);
+      LOG.info("Current actual replica nodes are: " + currentNodesList);
+      throw new TimeoutException("Did not achieve expected replication to expected nodes " + "after more than " + TIMEOUT + " msec.  See logs for details.");
+    }
+  }
+ while (notDone);
+  LOG.info("Achieved expected replication values in " + (System.currentTimeMillis() - starttime) + " msec.");
+}

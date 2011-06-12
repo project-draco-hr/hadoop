@@ -1,0 +1,74 @@
+{
+  Path resFileName=RESULT_FILE;
+  Configuration conf=new Configuration();
+  try {
+    conf.setInt("test.io.file.buffer.size",0);
+    Path historyDir=DEFAULT_HISTORY_DIR;
+    String testFile=null;
+    boolean cleanup=false;
+    boolean initControlFiles=true;
+    for (int i=0; i < args.length; i++) {
+      if (args[i].equalsIgnoreCase("-historyDir")) {
+        historyDir=new Path(args[++i]);
+      }
+ else       if (args[i].equalsIgnoreCase("-resFile")) {
+        resFileName=new Path(args[++i]);
+      }
+ else       if (args[i].equalsIgnoreCase("-usersIncluded")) {
+        conf.set("jhla.users.included",args[++i]);
+      }
+ else       if (args[i].equalsIgnoreCase("-usersExcluded")) {
+        conf.set("jhla.users.excluded",args[++i]);
+      }
+ else       if (args[i].equalsIgnoreCase("-gzip")) {
+        conf.set("jhla.compression.class",GzipCodec.class.getCanonicalName());
+      }
+ else       if (args[i].equalsIgnoreCase("-jobDelimiter")) {
+        conf.set("jhla.job.delimiter.pattern",args[++i]);
+      }
+ else       if (args[i].equalsIgnoreCase("-jobDelimiterLength")) {
+        conf.setInt("jhla.job.delimiter.length",Integer.parseInt(args[++i]));
+      }
+ else       if (args[i].equalsIgnoreCase("-noInit")) {
+        initControlFiles=false;
+      }
+ else       if (args[i].equalsIgnoreCase("-test")) {
+        testFile=args[++i];
+      }
+ else       if (args[i].equalsIgnoreCase("-clean")) {
+        cleanup=true;
+      }
+ else       if (args[i].equalsIgnoreCase("-jobQueue")) {
+        conf.set("mapred.job.queue.name",args[++i]);
+      }
+ else       if (args[i].startsWith("-Xmx")) {
+        conf.set("mapred.child.java.opts",args[i]);
+      }
+ else {
+        printUsage();
+      }
+    }
+    if (cleanup) {
+      cleanup(conf);
+      return;
+    }
+    if (testFile != null) {
+      LOG.info("Start JHLA test ============ ");
+      LocalFileSystem lfs=FileSystem.getLocal(conf);
+      conf.set("fs.default.name","file:///");
+      JHLAMapper map=new JHLAMapper(conf);
+      map.parseLogFile(lfs,new Path(testFile),0L,new LoggingCollector(),Reporter.NULL);
+      return;
+    }
+    FileSystem fs=FileSystem.get(conf);
+    if (initControlFiles)     createControlFile(fs,historyDir);
+    long tStart=System.currentTimeMillis();
+    runJHLA(JHLAMapper.class,OUTPUT_DIR,conf);
+    long execTime=System.currentTimeMillis() - tStart;
+    analyzeResult(fs,0,execTime,resFileName);
+  }
+ catch (  IOException e) {
+    System.err.print(StringUtils.stringifyException(e));
+    System.exit(-1);
+  }
+}

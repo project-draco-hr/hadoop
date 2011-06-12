@@ -1,0 +1,25 @@
+{
+  int numTaskTrackers=clusterStatus.getTaskTrackers();
+  int totalTasks=(isMapTask) ? clusterStatus.getMapTasks() : clusterStatus.getReduceTasks();
+  int totalTaskCapacity=isMapTask ? clusterStatus.getMaxMapTasks() : clusterStatus.getMaxReduceTasks();
+  Collection<JobInProgress> jobQueue=jobQueueJobInProgressListener.getJobQueue();
+  boolean exceededPadding=false;
+synchronized (jobQueue) {
+    int totalNeededTasks=0;
+    for (    JobInProgress job : jobQueue) {
+      if (job.getStatus().getRunState() != JobStatus.RUNNING || job.numReduceTasks == 0) {
+        continue;
+      }
+      totalNeededTasks+=isMapTask ? job.desiredMaps() : job.desiredReduces();
+      int padding=0;
+      if (numTaskTrackers > MIN_CLUSTER_SIZE_FOR_PADDING) {
+        padding=Math.min(maxTaskTrackerSlots,(int)(totalNeededTasks * padFraction));
+      }
+      if (totalTasks + padding >= totalTaskCapacity) {
+        exceededPadding=true;
+        break;
+      }
+    }
+  }
+  return exceededPadding;
+}

@@ -1,0 +1,76 @@
+{
+  if (plugins != null) {
+    for (    ServicePlugin p : plugins) {
+      try {
+        p.stop();
+        LOG.info("Stopped plug-in " + p);
+      }
+ catch (      Throwable t) {
+        LOG.warn("ServicePlugin " + p + " could not be stopped",t);
+      }
+    }
+  }
+  shutdownPeriodicScanners();
+  if (infoServer != null) {
+    try {
+      infoServer.stop();
+    }
+ catch (    Exception e) {
+      LOG.warn("Exception shutting down DataNode",e);
+    }
+  }
+  if (ipcServer != null) {
+    ipcServer.stop();
+  }
+  this.shouldRun=false;
+  if (dataXceiverServer != null) {
+    ((DataXceiverServer)this.dataXceiverServer.getRunnable()).kill();
+    this.dataXceiverServer.interrupt();
+    if (this.threadGroup != null) {
+      int sleepMs=2;
+      while (true) {
+        this.threadGroup.interrupt();
+        LOG.info("Waiting for threadgroup to exit, active threads is " + this.threadGroup.activeCount());
+        if (this.threadGroup.activeCount() == 0) {
+          break;
+        }
+        try {
+          Thread.sleep(sleepMs);
+        }
+ catch (        InterruptedException e) {
+        }
+        sleepMs=sleepMs * 3 / 2;
+        if (sleepMs > 1000) {
+          sleepMs=1000;
+        }
+      }
+    }
+    try {
+      this.dataXceiverServer.join();
+    }
+ catch (    InterruptedException ie) {
+    }
+  }
+  if (blockPoolManager != null) {
+    try {
+      this.blockPoolManager.shutDownAll();
+    }
+ catch (    InterruptedException ie) {
+      LOG.warn("Received exception in BlockPoolManager#shutDownAll: ",ie);
+    }
+  }
+  if (storage != null) {
+    try {
+      this.storage.unlockAll();
+    }
+ catch (    IOException ie) {
+      LOG.warn("Exception when unlocking storage: " + ie,ie);
+    }
+  }
+  if (data != null) {
+    data.shutdown();
+  }
+  if (metrics != null) {
+    metrics.shutdown();
+  }
+}

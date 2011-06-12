@@ -1,0 +1,26 @@
+{
+  MiniDFSCluster cluster=null;
+  DistributedFileSystem fs=null;
+  try {
+    Configuration conf=new HdfsConfiguration();
+    conf.setInt(DFSConfigKeys.DFS_NAMENODE_SAFEMODE_EXTENSION_KEY,0);
+    conf.setInt(DFSConfigKeys.DFS_NAMENODE_SAFEMODE_MIN_DATANODES_KEY,1);
+    cluster=new MiniDFSCluster.Builder(conf).numDataNodes(0).format(true).build();
+    cluster.waitActive();
+    fs=(DistributedFileSystem)cluster.getFileSystem();
+    assertTrue("No datanode started, but we require one - safemode expected",fs.setSafeMode(SafeModeAction.SAFEMODE_GET));
+    String tipMsg=cluster.getNamesystem().getSafeModeTip();
+    assertTrue("Safemode tip message looks right",tipMsg.contains("The number of live datanodes 0 needs an " + "additional 1 live"));
+    cluster.startDataNodes(conf,1,true,null,null);
+    try {
+      Thread.sleep(1000);
+    }
+ catch (    InterruptedException ignored) {
+    }
+    assertFalse("Out of safe mode after starting datanode.",fs.setSafeMode(SafeModeAction.SAFEMODE_GET));
+  }
+  finally {
+    if (fs != null)     fs.close();
+    if (cluster != null)     cluster.shutdown();
+  }
+}

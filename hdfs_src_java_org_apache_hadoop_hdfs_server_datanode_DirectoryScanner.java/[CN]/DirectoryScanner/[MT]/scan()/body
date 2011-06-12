@@ -1,0 +1,52 @@
+{
+  clear();
+  Map<String,ScanInfo[]> diskReport=getDiskReport();
+synchronized (dataset) {
+    for (    Entry<String,ScanInfo[]> entry : diskReport.entrySet()) {
+      String bpid=entry.getKey();
+      ScanInfo[] blockpoolReport=entry.getValue();
+      Stats statsRecord=new Stats(bpid);
+      stats.put(bpid,statsRecord);
+      LinkedList<ScanInfo> diffRecord=new LinkedList<ScanInfo>();
+      diffs.put(bpid,diffRecord);
+      statsRecord.totalBlocks=blockpoolReport.length;
+      List<Block> bl=dataset.getFinalizedBlocks(bpid);
+      Block[] memReport=bl.toArray(new Block[bl.size()]);
+      Arrays.sort(memReport);
+      int d=0;
+      int m=0;
+      while (m < memReport.length && d < blockpoolReport.length) {
+        Block memBlock=memReport[Math.min(m,memReport.length - 1)];
+        ScanInfo info=blockpoolReport[Math.min(d,blockpoolReport.length - 1)];
+        if (info.getBlockId() < memBlock.getBlockId()) {
+          statsRecord.missingMemoryBlocks++;
+          addDifference(diffRecord,statsRecord,info);
+          d++;
+          continue;
+        }
+        if (info.getBlockId() > memBlock.getBlockId()) {
+          addDifference(diffRecord,statsRecord,memBlock.getBlockId());
+          m++;
+          continue;
+        }
+        if (info.getBlockFile() == null) {
+          addDifference(diffRecord,statsRecord,info);
+        }
+ else         if (info.getGenStamp() != memBlock.getGenerationStamp() || info.getBlockFile().length() != memBlock.getNumBytes()) {
+          statsRecord.mismatchBlocks++;
+          addDifference(diffRecord,statsRecord,info);
+        }
+        d++;
+        m++;
+      }
+      while (m < memReport.length) {
+        addDifference(diffRecord,statsRecord,memReport[m++].getBlockId());
+      }
+      while (d < blockpoolReport.length) {
+        statsRecord.missingMemoryBlocks++;
+        addDifference(diffRecord,statsRecord,blockpoolReport[d++]);
+      }
+      LOG.info(statsRecord.toString());
+    }
+  }
+}

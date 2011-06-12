@@ -1,0 +1,24 @@
+{
+  String doneLocation=conf.get(JTConfig.JT_JOBHISTORY_COMPLETED_LOCATION);
+  if (doneLocation != null) {
+    Path donePath=new Path(doneLocation);
+    doneDirFs=donePath.getFileSystem(conf);
+    done=doneDirFs.makeQualified(donePath);
+  }
+ else {
+    done=logDirFs.makeQualified(new Path(logDir,"done"));
+    doneDirFs=logDirFs;
+  }
+  if (!doneDirFs.exists(done)) {
+    LOG.info("Creating DONE folder at " + done);
+    if (!doneDirFs.mkdirs(done,new FsPermission(HISTORY_DIR_PERMISSION))) {
+      throw new IOException("Mkdirs failed to create " + done.toString());
+    }
+  }
+  LOG.info("Inited the done directory to " + done.toString());
+  moveOldFiles();
+  startFileMoverThreads();
+  long maxAgeOfHistoryFiles=conf.getLong(JTConfig.JT_JOBHISTORY_MAXAGE,DEFAULT_HISTORY_MAX_AGE);
+  historyCleanerThread=new HistoryCleaner(maxAgeOfHistoryFiles);
+  historyCleanerThread.start();
+}

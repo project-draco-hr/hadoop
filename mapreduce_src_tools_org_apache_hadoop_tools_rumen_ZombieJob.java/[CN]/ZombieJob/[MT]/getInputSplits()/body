@@ -1,0 +1,68 @@
+{
+  if (splits == null) {
+    List<InputSplit> splitsList=new ArrayList<InputSplit>();
+    Path emptyPath=new Path("/");
+    int totalHosts=0;
+    for (    LoggedTask mapTask : job.getMapTasks()) {
+      Pre21JobHistoryConstants.Values taskType=mapTask.getTaskType();
+      if (taskType != Pre21JobHistoryConstants.Values.MAP) {
+        LOG.warn("TaskType for a MapTask is not Map. task=" + mapTask.getTaskID() + " type="+ ((taskType == null) ? "null" : taskType.toString()));
+        continue;
+      }
+      List<LoggedLocation> locations=mapTask.getPreferredLocations();
+      List<String> hostList=new ArrayList<String>();
+      if (locations != null) {
+        for (        LoggedLocation location : locations) {
+          List<String> layers=location.getLayers();
+          if (layers.size() == 0) {
+            LOG.warn("Bad location layer format for task " + mapTask.getTaskID());
+            continue;
+          }
+          String host=layers.get(layers.size() - 1);
+          if (host == null) {
+            LOG.warn("Bad location layer format for task " + mapTask.getTaskID() + ": "+ layers);
+            continue;
+          }
+          hostList.add(host);
+        }
+      }
+      String[] hosts=hostList.toArray(new String[hostList.size()]);
+      totalHosts+=hosts.length;
+      long mapInputBytes=getTaskInfo(mapTask).getInputBytes();
+      if (mapInputBytes < 0) {
+        LOG.warn("InputBytes for task " + mapTask.getTaskID() + " is not defined.");
+        mapInputBytes=0;
+      }
+      splitsList.add(new FileSplit(emptyPath,0,mapInputBytes,hosts));
+    }
+    int totalMaps=job.getTotalMaps();
+    if (totalMaps < splitsList.size()) {
+      LOG.warn("TotalMaps for job " + job.getJobID() + " is less than the total number of map task descriptions ("+ totalMaps+ "<"+ splitsList.size()+ ").");
+    }
+    int avgHostPerSplit;
+    if (splitsList.size() == 0) {
+      avgHostPerSplit=3;
+    }
+ else {
+      avgHostPerSplit=totalHosts / splitsList.size();
+      if (avgHostPerSplit == 0) {
+        avgHostPerSplit=3;
+      }
+    }
+    for (int i=splitsList.size(); i < totalMaps; i++) {
+      if (cluster == null) {
+        splitsList.add(new FileSplit(emptyPath,0,0,new String[0]));
+      }
+ else {
+        MachineNode[] mNodes=cluster.getRandomMachines(avgHostPerSplit,random);
+        String[] hosts=new String[mNodes.length];
+        for (int j=0; j < hosts.length; ++j) {
+          hosts[j]=mNodes[j].getName();
+        }
+        splitsList.add(new FileSplit(emptyPath,0,0,hosts));
+      }
+    }
+    splits=splitsList.toArray(new InputSplit[splitsList.size()]);
+  }
+  return splits;
+}

@@ -1,0 +1,56 @@
+{
+  if (!canRun()) {
+    return;
+  }
+  TrackerDistributedCacheManager manager=new FakeTrackerDistributedCacheManager(conf);
+  Cluster cluster=new Cluster(conf);
+  String userName=getJobOwnerName();
+  File workDir=new File(new Path(TEST_ROOT_DIR,"workdir").toString());
+  Job job1=Job.getInstance(cluster,conf);
+  job1.setUser(userName);
+  job1.addCacheFile(secondCacheFile.toUri());
+  Configuration conf1=job1.getConfiguration();
+  ClientDistributedCacheManager.determineTimestamps(conf1);
+  ClientDistributedCacheManager.determineCacheVisibilities(conf1);
+  TaskDistributedCacheManager handle=manager.newTaskDistributedCacheManager(conf1);
+  handle.setup(localDirAllocator,workDir,TaskTracker.getPrivateDistributedCacheDir(userName),TaskTracker.getPublicDistributedCacheDir());
+  handle.release();
+  for (  TaskDistributedCacheManager.CacheFile c : handle.getCacheFiles()) {
+    assertEquals(0,manager.getReferenceCount(c.uri,conf1,c.timestamp,c.owner));
+  }
+  Path thirdCacheFile=new Path(TEST_ROOT_DIR,"thirdcachefile");
+  createPrivateTempFile(thirdCacheFile);
+  Job job2=Job.getInstance(cluster,conf);
+  job2.setUser(userName);
+  job2.addCacheFile(firstCacheFile.toUri());
+  job2.addCacheFile(secondCacheFile.toUri());
+  job2.addCacheFile(thirdCacheFile.toUri());
+  Configuration conf2=job2.getConfiguration();
+  ClientDistributedCacheManager.determineTimestamps(conf2);
+  ClientDistributedCacheManager.determineCacheVisibilities(conf2);
+  handle=manager.newTaskDistributedCacheManager(conf2);
+  Throwable th=null;
+  try {
+    handle.setup(localDirAllocator,workDir,TaskTracker.getPrivateDistributedCacheDir(userName),TaskTracker.getPublicDistributedCacheDir());
+  }
+ catch (  IOException e) {
+    th=e;
+    Log.info("Exception during setup",e);
+  }
+  assertNotNull(th);
+  assertTrue(th.getMessage().contains("fake fail"));
+  handle.release();
+  th=null;
+  for (  TaskDistributedCacheManager.CacheFile c : handle.getCacheFiles()) {
+    try {
+      assertEquals(0,manager.getReferenceCount(c.uri,conf2,c.timestamp,c.owner));
+    }
+ catch (    IOException ie) {
+      th=ie;
+      Log.info("Exception getting reference count for " + c.uri,ie);
+    }
+  }
+  assertNotNull(th);
+  assertTrue(th.getMessage().contains(thirdCacheFile.getName()));
+  fs.delete(thirdCacheFile,false);
+}

@@ -1,0 +1,51 @@
+{
+  return new RemoteIterator<LocatedFileStatus>(){
+    private DirectoryListing thisListing;
+    private int i;
+    private String src;
+    private LocatedFileStatus curStat=null;
+{
+      src=getPathName(p);
+      thisListing=dfs.listPaths(src,HdfsFileStatus.EMPTY_NAME,true);
+      statistics.incrementReadOps(1);
+      if (thisListing == null) {
+        throw new FileNotFoundException("File " + p + " does not exist.");
+      }
+    }
+    @Override public boolean hasNext() throws IOException {
+      while (curStat == null && hasNextNoFilter()) {
+        LocatedFileStatus next=makeQualifiedLocated((HdfsLocatedFileStatus)thisListing.getPartialListing()[i++],p);
+        if (filter.accept(next.getPath())) {
+          curStat=next;
+        }
+      }
+      return curStat != null;
+    }
+    /** 
+ * Check if there is a next item before applying the given filter 
+ */
+    private boolean hasNextNoFilter() throws IOException {
+      if (thisListing == null) {
+        return false;
+      }
+      if (i >= thisListing.getPartialListing().length && thisListing.hasMore()) {
+        thisListing=dfs.listPaths(src,thisListing.getLastName(),true);
+        statistics.incrementReadOps(1);
+        if (thisListing == null) {
+          return false;
+        }
+        i=0;
+      }
+      return (i < thisListing.getPartialListing().length);
+    }
+    @Override public LocatedFileStatus next() throws IOException {
+      if (hasNext()) {
+        LocatedFileStatus tmp=curStat;
+        curStat=null;
+        return tmp;
+      }
+      throw new java.util.NoSuchElementException("No more entry in " + p);
+    }
+  }
+;
+}

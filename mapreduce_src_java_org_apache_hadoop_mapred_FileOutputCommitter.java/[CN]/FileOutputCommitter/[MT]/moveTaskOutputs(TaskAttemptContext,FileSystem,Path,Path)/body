@@ -1,0 +1,26 @@
+{
+  TaskAttemptID attemptId=context.getTaskAttemptID();
+  context.getProgressible().progress();
+  if (fs.isFile(taskOutput)) {
+    Path finalOutputPath=getFinalPath(jobOutputDir,taskOutput,getTempTaskOutputPath(context));
+    if (!fs.rename(taskOutput,finalOutputPath)) {
+      if (!fs.delete(finalOutputPath,true)) {
+        throw new IOException("Failed to delete earlier output of task: " + attemptId);
+      }
+      if (!fs.rename(taskOutput,finalOutputPath)) {
+        throw new IOException("Failed to save output of task: " + attemptId);
+      }
+    }
+    LOG.debug("Moved " + taskOutput + " to "+ finalOutputPath);
+  }
+ else   if (fs.getFileStatus(taskOutput).isDirectory()) {
+    FileStatus[] paths=fs.listStatus(taskOutput);
+    Path finalOutputPath=getFinalPath(jobOutputDir,taskOutput,getTempTaskOutputPath(context));
+    fs.mkdirs(finalOutputPath);
+    if (paths != null) {
+      for (      FileStatus path : paths) {
+        moveTaskOutputs(context,fs,jobOutputDir,path.getPath());
+      }
+    }
+  }
+}

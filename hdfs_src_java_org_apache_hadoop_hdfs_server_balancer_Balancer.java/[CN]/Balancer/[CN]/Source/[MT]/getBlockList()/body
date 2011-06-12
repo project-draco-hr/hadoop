@@ -1,0 +1,30 @@
+{
+  BlockWithLocations[] newBlocks=nnc.namenode.getBlocks(datanode,Math.min(MAX_BLOCKS_SIZE_TO_FETCH,blocksToReceive)).getBlocks();
+  long bytesReceived=0;
+  for (  BlockWithLocations blk : newBlocks) {
+    bytesReceived+=blk.getBlock().getNumBytes();
+    BalancerBlock block;
+synchronized (globalBlockList) {
+      block=globalBlockList.get(blk.getBlock());
+      if (block == null) {
+        block=new BalancerBlock(blk.getBlock());
+        globalBlockList.put(blk.getBlock(),block);
+      }
+ else {
+        block.clearLocations();
+      }
+synchronized (block) {
+        for (        String location : blk.getDatanodes()) {
+          BalancerDatanode datanode=datanodes.get(location);
+          if (datanode != null) {
+            block.addLocation(datanode);
+          }
+        }
+      }
+      if (!srcBlockList.contains(block) && isGoodBlockCandidate(block)) {
+        srcBlockList.add(block);
+      }
+    }
+  }
+  return bytesReceived;
+}

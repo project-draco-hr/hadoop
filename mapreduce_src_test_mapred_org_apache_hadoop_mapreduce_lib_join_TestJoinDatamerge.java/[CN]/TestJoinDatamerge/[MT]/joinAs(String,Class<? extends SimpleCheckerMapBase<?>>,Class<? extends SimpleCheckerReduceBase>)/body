@@ -1,0 +1,22 @@
+{
+  final int srcs=4;
+  Configuration conf=new Configuration();
+  Path base=cluster.getFileSystem().makeQualified(new Path("/" + jointype));
+  Path[] src=writeSimpleSrc(base,conf,srcs);
+  conf.set(CompositeInputFormat.JOIN_EXPR,CompositeInputFormat.compose(jointype,SequenceFileInputFormat.class,src));
+  conf.setInt("testdatamerge.sources",srcs);
+  Job job=Job.getInstance(conf);
+  job.setInputFormatClass(CompositeInputFormat.class);
+  FileOutputFormat.setOutputPath(job,new Path(base,"out"));
+  job.setMapperClass(map);
+  job.setReducerClass(reduce);
+  job.setOutputFormatClass(SequenceFileOutputFormat.class);
+  job.setOutputKeyClass(IntWritable.class);
+  job.setOutputValueClass(IntWritable.class);
+  job.waitForCompletion(true);
+  assertTrue("Job failed",job.isSuccessful());
+  if ("outer".equals(jointype)) {
+    checkOuterConsistency(job,src);
+  }
+  base.getFileSystem(conf).delete(base,true);
+}

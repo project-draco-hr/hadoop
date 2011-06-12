@@ -1,0 +1,31 @@
+{
+  InputSplit inputSplit=getSplitDetails(new Path(splitIndex.getSplitLocation()),splitIndex.getStartOffset());
+  updateJobWithSplit(job,inputSplit);
+  reporter.setInputSplit(inputSplit);
+  RecordReader<INKEY,INVALUE> rawIn=job.getInputFormat().getRecordReader(inputSplit,job,reporter);
+  RecordReader<INKEY,INVALUE> in=isSkipping() ? new SkippingRecordReader<INKEY,INVALUE>(rawIn,umbilical,reporter) : new TrackedRecordReader<INKEY,INVALUE>(rawIn,reporter);
+  job.setBoolean(JobContext.SKIP_RECORDS,isSkipping());
+  int numReduceTasks=conf.getNumReduceTasks();
+  LOG.info("numReduceTasks: " + numReduceTasks);
+  MapOutputCollector collector=null;
+  if (numReduceTasks > 0) {
+    collector=new MapOutputBuffer(umbilical,job,reporter);
+  }
+ else {
+    collector=new DirectMapOutputCollector(umbilical,job,reporter);
+  }
+  MapRunnable<INKEY,INVALUE,OUTKEY,OUTVALUE> runner=ReflectionUtils.newInstance(job.getMapRunnerClass(),job);
+  try {
+    runner.run(in,new OldOutputCollector(collector,conf),reporter);
+    mapPhase.complete();
+    if (numReduceTasks > 0) {
+      setPhase(TaskStatus.Phase.SORT);
+    }
+    statusUpdate(umbilical);
+    collector.flush();
+  }
+  finally {
+    in.close();
+    collector.close();
+  }
+}

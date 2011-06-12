@@ -1,0 +1,63 @@
+{
+  try {
+    startFlag.await();
+    if (Thread.currentThread().isInterrupted()) {
+      return;
+    }
+    LOG.info("START SERIAL @ " + System.currentTimeMillis());
+    GridmixJob prevJob;
+    while (!Thread.currentThread().isInterrupted()) {
+      final JobStory job;
+      try {
+        job=getNextJobFiltered();
+        if (null == job) {
+          return;
+        }
+        if (LOG.isDebugEnabled()) {
+          LOG.debug("Serial mode submitting job " + job.getName());
+        }
+        prevJob=jobCreator.createGridmixJob(conf,0L,job,scratch,userResolver.getTargetUgi(UserGroupInformation.createRemoteUser(job.getUser())),sequence.getAndIncrement());
+        lock.lock();
+        try {
+          LOG.info(" Submitted the job " + prevJob);
+          submitter.add(prevJob);
+        }
+  finally {
+          lock.unlock();
+        }
+      }
+ catch (      IOException e) {
+        error=e;
+        return;
+      }
+      if (prevJob != null) {
+        lock.lock();
+        try {
+          while (true) {
+            try {
+              jobCompleted.await();
+            }
+ catch (            InterruptedException ie) {
+              LOG.error(" Error in SerialJobFactory while waiting for job completion ",ie);
+              return;
+            }
+            if (LOG.isDebugEnabled()) {
+              LOG.info(" job " + job.getName() + " completed ");
+            }
+            break;
+          }
+        }
+  finally {
+          lock.unlock();
+        }
+        prevJob=null;
+      }
+    }
+  }
+ catch (  InterruptedException e) {
+    return;
+  }
+ finally {
+    IOUtils.cleanup(null,jobProducer);
+  }
+}

@@ -1,0 +1,45 @@
+{
+  MockURL o=new MockURL("http://test/");
+  MockURL r=new MockURL((URL)null);
+  ByteRangeInputStream is=new ByteRangeInputStream(o,r);
+  assertEquals("getPos wrong",0,is.getPos());
+  is.read();
+  assertEquals("Initial call made incorrectly","Connect: http://test/, Range: null",o.getMsg());
+  assertEquals("getPos should be 1 after reading one byte",1,is.getPos());
+  o.setMsg(null);
+  is.read();
+  assertEquals("getPos should be 2 after reading two bytes",2,is.getPos());
+  assertNull("No additional connections should have been made (no seek)",o.getMsg());
+  r.setMsg(null);
+  r.setURL(new URL("http://resolvedurl/"));
+  is.seek(100);
+  is.read();
+  assertEquals("Seek to 100 bytes made incorrectly","Connect: http://resolvedurl/, Range: bytes=100-",r.getMsg());
+  assertEquals("getPos should be 101 after reading one byte",101,is.getPos());
+  r.setMsg(null);
+  is.seek(101);
+  is.read();
+  assertNull("Seek to 101 should not result in another request",null);
+  r.setMsg(null);
+  is.seek(2500);
+  is.read();
+  assertEquals("Seek to 2500 bytes made incorrectly","Connect: http://resolvedurl/, Range: bytes=2500-",r.getMsg());
+  r.responseCode=200;
+  is.seek(500);
+  try {
+    is.read();
+    fail("Exception should be thrown when 200 response is given " + "but 206 is expected");
+  }
+ catch (  IOException e) {
+    assertEquals("Should fail because incorrect response code was sent","206 expected, but received 200",e.getMessage());
+  }
+  r.responseCode=206;
+  is.seek(0);
+  try {
+    is.read();
+    fail("Exception should be thrown when 206 response is given " + "but 200 is expected");
+  }
+ catch (  IOException e) {
+    assertEquals("Should fail because incorrect response code was sent","200 expected, but received 206",e.getMessage());
+  }
+}

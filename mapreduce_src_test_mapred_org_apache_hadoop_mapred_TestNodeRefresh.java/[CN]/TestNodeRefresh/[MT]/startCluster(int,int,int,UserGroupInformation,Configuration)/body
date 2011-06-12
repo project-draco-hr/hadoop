@@ -1,0 +1,36 @@
+{
+  try {
+    owner=UserGroupInformation.getLoginUser();
+    user1=UserGroupInformation.createUserForTesting("user1",new String[]{"user1"});
+    user2=UserGroupInformation.createUserForTesting("user2",new String[]{"user2"});
+    user3=UserGroupInformation.createUserForTesting("user3",new String[]{"abc"});
+    user4=UserGroupInformation.createUserForTesting("user4",new String[]{"supergroup"});
+    user5=UserGroupInformation.createUserForTesting("user5",new String[]{"user5"});
+    conf.setBoolean("dfs.replication.considerLoad",false);
+    hosts=new String[numHosts];
+    for (int i=1; i <= numHosts; ++i) {
+      hosts[i - 1]=getHostname(i);
+    }
+    dfs=new MiniDFSCluster(conf,1,true,null,hosts);
+    dfs.waitActive();
+    dfs.startDataNodes(conf,numHosts,true,null,null,hosts,null);
+    dfs.waitActive();
+    FileSystem.mkdirs(dfs.getFileSystem(),new Path("/"),new FsPermission((short)0777));
+    namenode=(dfs.getFileSystem()).getUri().getHost() + ":" + (dfs.getFileSystem()).getUri().getPort();
+    trackerHosts=new String[numHosts * numTrackerPerHost];
+    for (int i=1; i <= (numHosts * numTrackerPerHost); ++i) {
+      trackerHosts[i - 1]=getHostname(i);
+    }
+    JobConf jtConf=new JobConf(conf);
+    mr=new MiniMRCluster(0,0,numHosts * numTrackerPerHost,namenode,1,null,trackerHosts,clusterUgi,jtConf,numExcluded * numTrackerPerHost);
+    jt=mr.getJobTrackerRunner().getJobTracker();
+    Set<String> hostsSeen=new HashSet<String>();
+    for (    TaskTrackerStatus status : jt.taskTrackers()) {
+      hostsSeen.add(status.getHost());
+    }
+    assertEquals("Not all hosts are up",numHosts - numExcluded,hostsSeen.size());
+  }
+ catch (  IOException ioe) {
+    stopCluster();
+  }
+}

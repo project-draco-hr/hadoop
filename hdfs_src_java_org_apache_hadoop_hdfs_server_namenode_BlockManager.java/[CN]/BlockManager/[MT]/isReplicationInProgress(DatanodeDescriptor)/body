@@ -1,0 +1,36 @@
+{
+  boolean status=false;
+  int underReplicatedBlocks=0;
+  int decommissionOnlyReplicas=0;
+  int underReplicatedInOpenFiles=0;
+  final Iterator<? extends Block> it=srcNode.getBlockIterator();
+  while (it.hasNext()) {
+    final Block block=it.next();
+    INode fileINode=blocksMap.getINode(block);
+    if (fileINode != null) {
+      NumberReplicas num=countNodes(block);
+      int curReplicas=num.liveReplicas();
+      int curExpectedReplicas=getReplication(block);
+      if (isNeededReplication(block,curExpectedReplicas,curReplicas)) {
+        if (curExpectedReplicas > curReplicas) {
+          if (!status) {
+            status=true;
+            logBlockReplicationInfo(block,srcNode,num);
+          }
+          underReplicatedBlocks++;
+          if ((curReplicas == 0) && (num.decommissionedReplicas() > 0)) {
+            decommissionOnlyReplicas++;
+          }
+          if (fileINode.isUnderConstruction()) {
+            underReplicatedInOpenFiles++;
+          }
+        }
+        if (!neededReplications.contains(block) && pendingReplications.getNumReplicas(block) == 0) {
+          neededReplications.add(block,curReplicas,num.decommissionedReplicas(),curExpectedReplicas);
+        }
+      }
+    }
+  }
+  srcNode.decommissioningStatus.set(underReplicatedBlocks,decommissionOnlyReplicas,underReplicatedInOpenFiles);
+  return status;
+}

@@ -1,0 +1,64 @@
+{
+  if (dstroot.isFile()) {
+    throw new IOException("dst must be a directory when option " + Options.DELETE.cmd + " is set, but dst (= "+ dstroot.getPath()+ ") is not a directory.");
+  }
+  final Path dstlsr=new Path(jobdir,"_distcp_dst_lsr");
+  final SequenceFile.Writer writer=SequenceFile.createWriter(jobfs,jobconf,dstlsr,Text.class,NullWritable.class,SequenceFile.CompressionType.NONE);
+  try {
+    final Stack<FileStatus> lsrstack=new Stack<FileStatus>();
+    for (lsrstack.push(dstroot); !lsrstack.isEmpty(); ) {
+      final FileStatus status=lsrstack.pop();
+      if (status.isDirectory()) {
+        for (        FileStatus child : dstfs.listStatus(status.getPath())) {
+          String relative=makeRelative(dstroot.getPath(),child.getPath());
+          writer.append(new Text(relative),NullWritable.get());
+          lsrstack.push(child);
+        }
+      }
+    }
+  }
+  finally {
+    checkAndClose(writer);
+  }
+  final Path sortedlsr=new Path(jobdir,"_distcp_dst_lsr_sorted");
+  SequenceFile.Sorter sorter=new SequenceFile.Sorter(jobfs,new Text.Comparator(),Text.class,NullWritable.class,jobconf);
+  sorter.sort(dstlsr,sortedlsr);
+  SequenceFile.Reader lsrin=null;
+  SequenceFile.Reader dstin=null;
+  long deletedPathsCount=0;
+  try {
+    lsrin=new SequenceFile.Reader(jobfs,sortedlsr,jobconf);
+    dstin=new SequenceFile.Reader(jobfs,dstsorted,jobconf);
+    final Text lsrpath=new Text();
+    final Text dstpath=new Text();
+    final Text dstfrom=new Text();
+    final Trash trash=new Trash(dstfs,conf);
+    Path lastpath=null;
+    boolean hasnext=dstin.next(dstpath,dstfrom);
+    while (lsrin.next(lsrpath,NullWritable.get())) {
+      int dst_cmp_lsr=dstpath.compareTo(lsrpath);
+      while (hasnext && dst_cmp_lsr < 0) {
+        hasnext=dstin.next(dstpath,dstfrom);
+        dst_cmp_lsr=dstpath.compareTo(lsrpath);
+      }
+      if (dst_cmp_lsr == 0) {
+        hasnext=dstin.next(dstpath,dstfrom);
+      }
+ else {
+        final Path rmpath=new Path(dstroot.getPath(),lsrpath.toString());
+        ++deletedPathsCount;
+        if ((lastpath == null || !isAncestorPath(lastpath,rmpath))) {
+          if (!(trash.moveToTrash(rmpath) || dstfs.delete(rmpath,true))) {
+            throw new IOException("Failed to delete " + rmpath);
+          }
+          lastpath=rmpath;
+        }
+      }
+    }
+  }
+  finally {
+    checkAndClose(lsrin);
+    checkAndClose(dstin);
+  }
+  return deletedPathsCount;
+}

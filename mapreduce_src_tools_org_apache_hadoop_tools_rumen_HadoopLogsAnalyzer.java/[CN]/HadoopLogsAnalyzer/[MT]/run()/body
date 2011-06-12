@@ -1,0 +1,71 @@
+{
+  Pair<String,String> line=readBalancedLine();
+  while (line != null) {
+    if (debug && (lineNumber < 1000000L && lineNumber % 1000L == 0 || lineNumber % 1000000L == 0)) {
+      LOG.debug("" + lineNumber + " "+ line.second());
+    }
+    if (line.first() == null) {
+      try {
+        processParsedLine(new ParsedLine(line.second(),version));
+      }
+ catch (      StringIndexOutOfBoundsException e) {
+        LOG.warn("anomalous line #" + lineNumber + ":"+ line,e);
+      }
+    }
+ else {
+      jobconf=new ParsedConfigFile(line.first(),line.second());
+      if (jobconf.valid == false) {
+        jobconf=null;
+      }
+      maybeMateJobAndConf();
+    }
+    line=readBalancedLine();
+  }
+  finalizeJob();
+  if (collecting) {
+    String[] typeNames=LogRecordType.lineTypes();
+    for (int i=0; i < typeNames.length; ++i) {
+      statisticalOutput.print(typeNames[i]);
+      statisticalOutput.print('\n');
+    }
+  }
+ else {
+    if (delays) {
+      printDistributionSet("Job start delay spectrum:",delayTimeDists);
+    }
+    if (runtimes) {
+      printDistributionSet("Job run time spectrum:",runTimeDists);
+    }
+    if (spreading) {
+      String ratioDescription="(" + spreadMax + "/1000 %ile) to ("+ spreadMin+ "/1000 %ile) scaled by 1000000";
+      printDistributionSet("Map task success times " + ratioDescription + ":",mapTimeSpreadDists);
+      printDistributionSet("Shuffle success times " + ratioDescription + ":",shuffleTimeSpreadDists);
+      printDistributionSet("Sort success times " + ratioDescription + ":",sortTimeSpreadDists);
+      printDistributionSet("Reduce success times " + ratioDescription + ":",reduceTimeSpreadDists);
+    }
+    if (collectTaskTimes) {
+      printDistributionSet("Global map task success times:",mapTimeDists);
+      printDistributionSet("Global shuffle task success times:",shuffleTimeDists);
+      printDistributionSet("Global sort task success times:",sortTimeDists);
+      printDistributionSet("Global reduce task success times:",reduceTimeDists);
+    }
+  }
+  if (topologyGen != null) {
+    LoggedNetworkTopology topo=new LoggedNetworkTopology(allHosts,"<root>",0);
+    topologyGen.writeObject(topo);
+    topologyGen.close();
+  }
+  if (jobTraceGen != null) {
+    jobTraceGen.close();
+  }
+  if (input != null) {
+    input.close();
+    input=null;
+  }
+  if (inputCodec != null) {
+    CodecPool.returnDecompressor(inputDecompressor);
+    inputDecompressor=null;
+    inputCodec=null;
+  }
+  return 0;
+}

@@ -1,0 +1,37 @@
+{
+  List<LoggedTaskAttempt> attempts=loggedTask.getAttempts();
+  long inputBytes=-1;
+  long inputRecords=-1;
+  long outputBytes=-1;
+  long outputRecords=-1;
+  long heapMegabytes=-1;
+  ResourceUsageMetrics metrics=new ResourceUsageMetrics();
+  Values type=loggedTask.getTaskType();
+  if ((type != Values.MAP) && (type != Values.REDUCE)) {
+    throw new IllegalArgumentException("getTaskInfo only supports MAP or REDUCE tasks: " + type.toString() + " for task = "+ loggedTask.getTaskID());
+  }
+  for (  LoggedTaskAttempt attempt : attempts) {
+    attempt=sanitizeLoggedTaskAttempt(attempt);
+    if ((attempt == null) || (attempt.getResult() != Values.SUCCESS)) {
+      continue;
+    }
+    if (type == Values.MAP) {
+      inputBytes=attempt.getHdfsBytesRead();
+      inputRecords=attempt.getMapInputRecords();
+      outputBytes=(job.getTotalReduces() > 0) ? attempt.getMapOutputBytes() : attempt.getHdfsBytesWritten();
+      outputRecords=attempt.getMapOutputRecords();
+      heapMegabytes=(job.getJobMapMB() > 0) ? job.getJobMapMB() : job.getHeapMegabytes();
+    }
+ else {
+      inputBytes=attempt.getReduceShuffleBytes();
+      inputRecords=attempt.getReduceInputRecords();
+      outputBytes=attempt.getHdfsBytesWritten();
+      outputRecords=attempt.getReduceOutputRecords();
+      heapMegabytes=(job.getJobReduceMB() > 0) ? job.getJobReduceMB() : job.getHeapMegabytes();
+    }
+    metrics=attempt.getResourceUsageMetrics();
+    break;
+  }
+  TaskInfo taskInfo=new TaskInfo(inputBytes,(int)inputRecords,outputBytes,(int)outputRecords,(int)heapMegabytes,metrics);
+  return taskInfo;
+}

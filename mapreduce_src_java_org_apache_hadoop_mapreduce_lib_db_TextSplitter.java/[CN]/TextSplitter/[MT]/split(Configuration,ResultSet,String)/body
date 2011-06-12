@@ -1,0 +1,48 @@
+{
+  LOG.warn("Generating splits for a textual index column.");
+  LOG.warn("If your database sorts in a case-insensitive order, " + "this may result in a partial import or duplicate records.");
+  LOG.warn("You are strongly encouraged to choose an integral split column.");
+  String minString=results.getString(1);
+  String maxString=results.getString(2);
+  boolean minIsNull=false;
+  if (null == minString) {
+    minString="";
+    minIsNull=true;
+  }
+  if (null == maxString) {
+    List<InputSplit> splits=new ArrayList<InputSplit>();
+    splits.add(new DataDrivenDBInputFormat.DataDrivenDBInputSplit(colName + " IS NULL",colName + " IS NULL"));
+    return splits;
+  }
+  int numSplits=conf.getInt(MRJobConfig.NUM_MAPS,1);
+  String lowClausePrefix=colName + " >= '";
+  String highClausePrefix=colName + " < '";
+  int maxPrefixLen=Math.min(minString.length(),maxString.length());
+  int sharedLen;
+  for (sharedLen=0; sharedLen < maxPrefixLen; sharedLen++) {
+    char c1=minString.charAt(sharedLen);
+    char c2=maxString.charAt(sharedLen);
+    if (c1 != c2) {
+      break;
+    }
+  }
+  String commonPrefix=minString.substring(0,sharedLen);
+  minString=minString.substring(sharedLen);
+  maxString=maxString.substring(sharedLen);
+  List<String> splitStrings=split(numSplits,minString,maxString,commonPrefix);
+  List<InputSplit> splits=new ArrayList<InputSplit>();
+  String start=splitStrings.get(0);
+  for (int i=1; i < splitStrings.size(); i++) {
+    String end=splitStrings.get(i);
+    if (i == splitStrings.size() - 1) {
+      splits.add(new DataDrivenDBInputFormat.DataDrivenDBInputSplit(lowClausePrefix + start + "'",colName + " <= '" + end+ "'"));
+    }
+ else {
+      splits.add(new DataDrivenDBInputFormat.DataDrivenDBInputSplit(lowClausePrefix + start + "'",highClausePrefix + end + "'"));
+    }
+  }
+  if (minIsNull) {
+    splits.add(new DataDrivenDBInputFormat.DataDrivenDBInputSplit(colName + " IS NULL",colName + " IS NULL"));
+  }
+  return splits;
+}

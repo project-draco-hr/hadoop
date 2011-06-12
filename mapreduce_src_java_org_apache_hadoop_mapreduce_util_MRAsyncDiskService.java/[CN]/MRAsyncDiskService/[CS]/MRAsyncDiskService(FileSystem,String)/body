@@ -1,0 +1,32 @@
+{
+  this.localFileSystem=localFileSystem;
+  this.volumes=new String[nonCanonicalVols.length];
+  for (int v=0; v < nonCanonicalVols.length; v++) {
+    this.volumes[v]=normalizePath(nonCanonicalVols[v]);
+    LOG.debug("Normalized volume: " + nonCanonicalVols[v] + " -> "+ this.volumes[v]);
+  }
+  asyncDiskService=new AsyncDiskService(this.volumes);
+  for (int v=0; v < volumes.length; v++) {
+    Path absoluteSubdir=new Path(volumes[v],TOBEDELETED);
+    if (!localFileSystem.mkdirs(absoluteSubdir)) {
+      LOG.warn("Cannot create " + TOBEDELETED + " in "+ volumes[v]+ ". Ignored.");
+    }
+  }
+  for (int v=0; v < volumes.length; v++) {
+    Path absoluteSubdir=new Path(volumes[v],TOBEDELETED);
+    FileStatus[] files=null;
+    try {
+      files=localFileSystem.listStatus(absoluteSubdir);
+    }
+ catch (    Exception e) {
+    }
+    if (files != null) {
+      for (int f=0; f < files.length; f++) {
+        String absoluteFilename=files[f].getPath().toUri().getPath();
+        String relative=TOBEDELETED + Path.SEPARATOR_CHAR + files[f].getPath().getName();
+        DeleteTask task=new DeleteTask(volumes[v],absoluteFilename,relative);
+        execute(volumes[v],task);
+      }
+    }
+  }
+}

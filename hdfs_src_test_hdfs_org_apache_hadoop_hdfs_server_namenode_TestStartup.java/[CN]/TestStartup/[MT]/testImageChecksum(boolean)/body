@@ -1,0 +1,52 @@
+{
+  Configuration conf=new Configuration();
+  FileSystem.setDefaultUri(conf,"hdfs://localhost:0");
+  conf.set(DFSConfigKeys.DFS_NAMENODE_HTTP_ADDRESS_KEY,"127.0.0.1:0");
+  File base_dir=new File(System.getProperty("test.build.data","build/test/data"),"dfs/");
+  conf.set(DFSConfigKeys.DFS_NAMENODE_NAME_DIR_KEY,new File(base_dir,"name").getPath());
+  conf.setBoolean(DFSConfigKeys.DFS_PERMISSIONS_ENABLED_KEY,false);
+  if (compress) {
+    conf.setBoolean(DFSConfigKeys.DFS_IMAGE_COMPRESSION_CODEC_KEY,true);
+  }
+  DFSTestUtil.formatNameNode(conf);
+  LOG.info("Create an fsimage");
+  NameNode namenode=new NameNode(conf);
+  namenode.getNamesystem().mkdirs("/test",new PermissionStatus("hairong",null,FsPermission.getDefault()),true);
+  assertTrue(namenode.getFileInfo("/test").isDir());
+  namenode.setSafeMode(SafeModeAction.SAFEMODE_ENTER);
+  namenode.saveNamespace();
+  FSImage image=namenode.getFSImage();
+  image.loadFSImage();
+  File versionFile=image.getStorage().getStorageDir(0).getVersionFile();
+  RandomAccessFile file=new RandomAccessFile(versionFile,"rws");
+  FileInputStream in=null;
+  FileOutputStream out=null;
+  try {
+    in=new FileInputStream(file.getFD());
+    file.seek(0);
+    Properties props=new Properties();
+    props.load(in);
+    String sMd5=props.getProperty(NNStorage.MESSAGE_DIGEST_PROPERTY);
+    MD5Hash md5=new MD5Hash(sMd5);
+    byte[] bytes=md5.getDigest();
+    bytes[0]+=1;
+    md5=new MD5Hash(bytes);
+    props.setProperty(NNStorage.MESSAGE_DIGEST_PROPERTY,md5.toString());
+    file.seek(0);
+    out=new FileOutputStream(file.getFD());
+    props.store(out,null);
+    out.flush();
+    file.setLength(out.getChannel().position());
+    image.loadFSImage();
+    fail("Expect to get a checksumerror");
+  }
+ catch (  IOException e) {
+    assertTrue(e.getMessage().contains("is corrupt"));
+  }
+ finally {
+    IOUtils.closeStream(in);
+    IOUtils.closeStream(out);
+    namenode.stop();
+    namenode.join();
+  }
+}

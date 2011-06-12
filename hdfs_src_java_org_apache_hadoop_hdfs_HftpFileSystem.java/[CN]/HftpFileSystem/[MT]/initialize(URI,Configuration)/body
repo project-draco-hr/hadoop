@@ -1,0 +1,42 @@
+{
+  super.initialize(name,conf);
+  setConf(conf);
+  this.ugi=UserGroupInformation.getCurrentUser();
+  nnAddr=NetUtils.createSocketAddr(name.toString());
+  int urlPort=conf.getInt("dfs.hftp.https.port",-1);
+  if (urlPort == -1)   urlPort=conf.getInt(DFSConfigKeys.DFS_HTTPS_PORT_KEY,DFSConfigKeys.DFS_HTTPS_PORT_DEFAULT);
+  nnHttpUrl=buildUri("https://",NetUtils.normalizeHostName(name.getHost()),urlPort);
+  LOG.debug("using url to get DT:" + nnHttpUrl);
+  String key=HftpFileSystem.HFTP_SERVICE_NAME_KEY + SecurityUtil.buildDTServiceName(name,DFSConfigKeys.DFS_HTTPS_PORT_DEFAULT);
+  if (LOG.isDebugEnabled()) {
+    LOG.debug("Trying to find DT for " + name + " using key="+ key+ "; conf="+ conf.get(key,""));
+  }
+  String nnServiceName=conf.get(key);
+  int nnPort=NameNode.DEFAULT_PORT;
+  if (nnServiceName != null) {
+    nnPort=NetUtils.createSocketAddr(nnServiceName,NameNode.DEFAULT_PORT).getPort();
+  }
+  try {
+    hdfsURI=new URI(buildUri("hdfs://",nnAddr.getHostName(),nnPort));
+  }
+ catch (  URISyntaxException ue) {
+    throw new IOException("bad uri for hdfs",ue);
+  }
+  if (UserGroupInformation.isSecurityEnabled()) {
+    String canonicalName=getCanonicalServiceName();
+    for (    Token<? extends TokenIdentifier> t : ugi.getTokens()) {
+      if (DelegationTokenIdentifier.HDFS_DELEGATION_KIND.equals(t.getKind()) && t.getService().toString().equals(canonicalName)) {
+        if (LOG.isDebugEnabled()) {
+          LOG.debug("Found existing DT for " + name);
+        }
+        delegationToken=(Token<DelegationTokenIdentifier>)t;
+        break;
+      }
+    }
+    ugi.reloginFromKeytab();
+    if (delegationToken == null) {
+      delegationToken=(Token<DelegationTokenIdentifier>)getDelegationToken(null);
+      renewer.addTokenToRenew(this);
+    }
+  }
+}

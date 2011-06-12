@@ -1,0 +1,37 @@
+{
+  boolean done=false;
+  int attempt=0;
+  long len=fileSys.getFileStatus(name).getLen();
+  assertTrue(name + " should be of size " + filesize+ " but found to be of size "+ len,len == filesize);
+  while (!done) {
+    attempt++;
+    try {
+      Thread.sleep(1000);
+    }
+ catch (    InterruptedException e) {
+    }
+    done=true;
+    BlockLocation[] locations=fileSys.getFileBlockLocations(fileSys.getFileStatus(name),0,filesize);
+    if (locations.length < numblocks) {
+      if (attempt > 100) {
+        System.out.println("File " + name + " has only "+ locations.length+ " blocks, "+ " but is expected to have "+ numblocks+ " blocks.");
+      }
+      done=false;
+      continue;
+    }
+    for (int idx=0; idx < locations.length; idx++) {
+      if (locations[idx].getHosts().length < repl) {
+        if (attempt > 100) {
+          System.out.println("File " + name + " has "+ locations.length+ " blocks: "+ " The "+ idx+ " block has only "+ locations[idx].getHosts().length+ " replicas but is expected to have "+ repl+ " replicas.");
+        }
+        done=false;
+        break;
+      }
+    }
+  }
+  FSDataInputStream stm=fileSys.open(name);
+  final byte[] expected=AppendTestUtil.randomBytes(seed,fileSize);
+  byte[] actual=new byte[filesize];
+  stm.readFully(0,actual);
+  checkData(actual,0,expected,"Read 1");
+}

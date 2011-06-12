@@ -1,0 +1,23 @@
+{
+  Properties schedulerProps=new Properties();
+  Properties clusterProps=new Properties();
+  clusterProps.put("mapred.queue.names","default");
+  clusterProps.put(TTConfig.TT_MAP_SLOTS,String.valueOf(1));
+  clusterProps.put(TTConfig.TT_REDUCE_SLOTS,String.valueOf(1));
+  clusterProps.put(JTConfig.JT_TASKS_PER_JOB,String.valueOf(1));
+  clusterProps.put(JTConfig.JT_PERSIST_JOBSTATUS,"false");
+  startCluster(1,clusterProps,schedulerProps);
+  CapacityTaskScheduler scheduler=(CapacityTaskScheduler)getJobTracker().getTaskScheduler();
+  AbstractQueue root=scheduler.getRoot();
+  root.getChildren().get(0).getQueueSchedulingContext().setCapacityPercent(100);
+  JobConf conf=getJobConf();
+  conf.setSpeculativeExecution(false);
+  conf.setNumTasksToExecutePerJvm(-1);
+  SleepJob sleepJob=new SleepJob();
+  sleepJob.setConf(conf);
+  Job job=sleepJob.createJob(3,3,1,1,1,1);
+  job.waitForCompletion(false);
+  assertFalse("The submitted job successfully completed",job.isSuccessful());
+  JobQueuesManager mgr=scheduler.jobQueuesManager;
+  assertEquals("Failed job present in Waiting queue",0,mgr.getJobQueue("default").getWaitingJobCount());
+}

@@ -1,0 +1,63 @@
+{
+  try {
+    Path parentPath=null;
+    List<Path> srcPaths=new ArrayList<Path>();
+    Path destPath=null;
+    String archiveName=null;
+    if (args.length < 5) {
+      System.out.println(usage);
+      throw new IOException("Invalid usage.");
+    }
+    if (!"-archiveName".equals(args[0])) {
+      System.out.println(usage);
+      throw new IOException("Archive Name not specified.");
+    }
+    archiveName=args[1];
+    if (!checkValidName(archiveName)) {
+      System.out.println(usage);
+      throw new IOException("Invalid name for archives. " + archiveName);
+    }
+    int i=2;
+    if (!"-p".equals(args[i])) {
+      System.out.println(usage);
+      throw new IOException("Parent path not specified.");
+    }
+    parentPath=new Path(args[i + 1]);
+    i+=2;
+    for (; i < args.length; i++) {
+      if (i == (args.length - 1)) {
+        destPath=new Path(args[i]);
+      }
+ else {
+        Path argPath=new Path(args[i]);
+        if (argPath.isAbsolute()) {
+          System.out.println(usage);
+          throw new IOException("source path " + argPath + " is not relative  to "+ parentPath);
+        }
+        srcPaths.add(new Path(parentPath,argPath));
+      }
+    }
+    if (srcPaths.size() == 0) {
+      srcPaths.add(parentPath);
+    }
+    List<Path> globPaths=new ArrayList<Path>();
+    for (    Path p : srcPaths) {
+      FileSystem fs=p.getFileSystem(getConf());
+      FileStatus[] statuses=fs.globStatus(p);
+      if (statuses != null) {
+        for (        FileStatus status : statuses) {
+          globPaths.add(fs.makeQualified(status.getPath()));
+        }
+      }
+    }
+    if (globPaths.isEmpty()) {
+      throw new IOException("The resolved paths set is empty." + "  Please check whether the srcPaths exist, where srcPaths = " + srcPaths);
+    }
+    archive(parentPath,globPaths,archiveName,destPath);
+  }
+ catch (  IOException ie) {
+    System.err.println(ie.getLocalizedMessage());
+    return -1;
+  }
+  return 0;
+}

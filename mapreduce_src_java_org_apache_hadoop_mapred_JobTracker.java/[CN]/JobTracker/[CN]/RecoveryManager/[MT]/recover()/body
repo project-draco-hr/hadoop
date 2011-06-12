@@ -1,0 +1,28 @@
+{
+  long recoveryProcessStartTime=clock.getTime();
+  if (!shouldRecover()) {
+    jobsToRecover.clear();
+    return;
+  }
+  LOG.info("Starting the recovery process for " + jobsToRecover.size() + " jobs ...");
+  for (  JobID jobId : jobsToRecover) {
+    LOG.info("Submitting job " + jobId);
+    try {
+      Path jobInfoFile=getSystemFileForJob(jobId);
+      FSDataInputStream in=fs.open(jobInfoFile);
+      JobInfo token=new JobInfo();
+      token.readFields(in);
+      in.close();
+      UserGroupInformation ugi=UserGroupInformation.createRemoteUser(token.getUser().toString());
+      submitJob(token.getJobID(),restartCount,ugi,token.getJobSubmitDir().toString(),true,null);
+      recovered++;
+    }
+ catch (    Exception e) {
+      LOG.warn("Could not recover job " + jobId,e);
+    }
+  }
+  recoveryDuration=clock.getTime() - recoveryProcessStartTime;
+  hasRecovered=true;
+  LOG.info("Recovery done! Recoverd " + recovered + " of "+ jobsToRecover.size()+ " jobs.");
+  LOG.info("Recovery Duration (ms):" + recoveryDuration);
+}

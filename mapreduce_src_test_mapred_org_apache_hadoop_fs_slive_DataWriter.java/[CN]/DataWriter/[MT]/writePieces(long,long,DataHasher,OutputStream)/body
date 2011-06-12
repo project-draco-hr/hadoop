@@ -1,0 +1,55 @@
+{
+  if (byteAm <= 0) {
+    return new GenerateOutput(0,0);
+  }
+  if (startPos < 0) {
+    startPos=0;
+  }
+  int leftOver=(int)(byteAm % bufferSize);
+  long fullPieces=byteAm / bufferSize;
+  long offset=startPos;
+  long bytesWritten=0;
+  long timeTaken=0;
+  for (long i=0; i < fullPieces; ++i) {
+    GenerateResult genData=generateFullSegment(bufferSize,offset,hasher);
+    offset=genData.getOffset();
+    ByteBuffer gBuf=genData.getBuffer();
+{
+      byte[] buf=gBuf.array();
+      long startTime=Timer.now();
+      out.write(buf);
+      if (Constants.FLUSH_WRITES) {
+        out.flush();
+      }
+      timeTaken+=Timer.elapsed(startTime);
+      bytesWritten+=buf.length;
+    }
+  }
+  if (leftOver > 0) {
+    ByteBuffer leftOverBuf=ByteBuffer.wrap(new byte[leftOver]);
+    int bytesLeft=leftOver % BYTES_PER_LONG;
+    leftOver=leftOver - bytesLeft;
+    if (leftOver > 0) {
+      GenerateResult genData=generateFullSegment(leftOver,offset,hasher);
+      offset=genData.getOffset();
+      leftOverBuf.put(genData.getBuffer());
+    }
+    if (bytesLeft > 0) {
+      GenerateResult genData=generatePartialSegment(bytesLeft,offset,hasher);
+      offset=genData.getOffset();
+      leftOverBuf.put(genData.getBuffer());
+    }
+    leftOverBuf.rewind();
+{
+      byte[] buf=leftOverBuf.array();
+      long startTime=Timer.now();
+      out.write(buf);
+      if (Constants.FLUSH_WRITES) {
+        out.flush();
+      }
+      timeTaken+=Timer.elapsed(startTime);
+      bytesWritten+=buf.length;
+    }
+  }
+  return new GenerateOutput(bytesWritten,timeTaken);
+}

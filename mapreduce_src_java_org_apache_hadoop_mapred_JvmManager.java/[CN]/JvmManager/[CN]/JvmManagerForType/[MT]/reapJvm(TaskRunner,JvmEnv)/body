@@ -1,0 +1,37 @@
+{
+  if (t.getTaskInProgress().wasKilled()) {
+    return;
+  }
+  boolean spawnNewJvm=false;
+  JobID jobId=t.getTask().getJobID();
+  int numJvmsSpawned=jvmIdToRunner.size();
+  JvmRunner runnerToKill=null;
+  if (numJvmsSpawned >= maxJvms) {
+    Iterator<Map.Entry<JVMId,JvmRunner>> jvmIter=jvmIdToRunner.entrySet().iterator();
+    while (jvmIter.hasNext()) {
+      JvmRunner jvmRunner=jvmIter.next().getValue();
+      JobID jId=jvmRunner.jvmId.getJobId();
+      if (jId.equals(jobId) && !jvmRunner.isBusy() && !jvmRunner.ranAll()) {
+        setRunningTaskForJvm(jvmRunner.jvmId,t);
+        LOG.info("No new JVM spawned for jobId/taskid: " + jobId + "/"+ t.getTask().getTaskID()+ ". Attempting to reuse: "+ jvmRunner.jvmId);
+        return;
+      }
+      if ((jId.equals(jobId) && jvmRunner.ranAll()) || (!jId.equals(jobId) && !jvmRunner.isBusy())) {
+        runnerToKill=jvmRunner;
+        spawnNewJvm=true;
+      }
+    }
+  }
+ else {
+    spawnNewJvm=true;
+  }
+  if (spawnNewJvm) {
+    if (runnerToKill != null) {
+      LOG.info("Killing JVM: " + runnerToKill.jvmId);
+      killJvmRunner(runnerToKill);
+    }
+    spawnNewJvm(jobId,env,t);
+    return;
+  }
+  throw new RuntimeException("Inconsistent state!!! " + "JVM Manager reached an unstable state " + "while reaping a JVM for task: " + t.getTask().getTaskID() + " "+ getDetails());
+}

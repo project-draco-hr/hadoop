@@ -1,0 +1,74 @@
+{
+  int testType=TEST_TYPE_READ;
+  int bufferSize=DEFAULT_BUFFER_SIZE;
+  long fileSize=1 * MEGA;
+  int nrFiles=1;
+  String resFileName=DEFAULT_RES_FILE_NAME;
+  boolean isSequential=false;
+  String version=TestDFSIO.class.getSimpleName() + ".0.0.6";
+  LOG.info(version);
+  if (args.length == 0) {
+    System.err.println("Missing arguments.");
+    return -1;
+  }
+  for (int i=0; i < args.length; i++) {
+    if (args[i].startsWith("-read")) {
+      testType=TEST_TYPE_READ;
+    }
+ else     if (args[i].equals("-write")) {
+      testType=TEST_TYPE_WRITE;
+    }
+ else     if (args[i].equals("-append")) {
+      testType=TEST_TYPE_APPEND;
+    }
+ else     if (args[i].equals("-clean")) {
+      testType=TEST_TYPE_CLEANUP;
+    }
+ else     if (args[i].startsWith("-seq")) {
+      isSequential=true;
+    }
+ else     if (args[i].equals("-nrFiles")) {
+      nrFiles=Integer.parseInt(args[++i]);
+    }
+ else     if (args[i].equals("-fileSize")) {
+      fileSize=parseSize(args[++i]);
+    }
+ else     if (args[i].equals("-bufferSize")) {
+      bufferSize=Integer.parseInt(args[++i]);
+    }
+ else     if (args[i].equals("-resFile")) {
+      resFileName=args[++i];
+    }
+ else {
+      System.err.println("Illegal argument: " + args[i]);
+      return -1;
+    }
+  }
+  LOG.info("nrFiles = " + nrFiles);
+  LOG.info("fileSize (MB) = " + toMB(fileSize));
+  LOG.info("bufferSize = " + bufferSize);
+  LOG.info("baseDir = " + getBaseDir(config));
+  config.setInt("test.io.file.buffer.size",bufferSize);
+  config.setBoolean(DFSConfigKeys.DFS_SUPPORT_APPEND_KEY,true);
+  FileSystem fs=FileSystem.get(config);
+  if (isSequential) {
+    long tStart=System.currentTimeMillis();
+    sequentialTest(fs,testType,fileSize,nrFiles);
+    long execTime=System.currentTimeMillis() - tStart;
+    String resultLine="Seq Test exec time sec: " + (float)execTime / 1000;
+    LOG.info(resultLine);
+    return 0;
+  }
+  if (testType == TEST_TYPE_CLEANUP) {
+    cleanup(fs);
+    return 0;
+  }
+  createControlFile(fs,fileSize,nrFiles);
+  long tStart=System.currentTimeMillis();
+  if (testType == TEST_TYPE_WRITE)   writeTest(fs);
+  if (testType == TEST_TYPE_READ)   readTest(fs);
+  if (testType == TEST_TYPE_APPEND)   appendTest(fs);
+  long execTime=System.currentTimeMillis() - tStart;
+  analyzeResult(fs,testType,execTime,resFileName);
+  return 0;
+}

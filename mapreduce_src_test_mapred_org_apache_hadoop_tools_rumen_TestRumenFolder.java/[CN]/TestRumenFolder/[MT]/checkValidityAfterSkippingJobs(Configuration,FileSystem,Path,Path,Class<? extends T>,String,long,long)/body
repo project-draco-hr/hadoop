@@ -1,0 +1,31 @@
+{
+  JsonObjectMapperParser<T> inputFileParser=new JsonObjectMapperParser<T>(inputFile,clazz,conf);
+  InputStream resultStream=lfs.open(result);
+  JsonObjectMapperParser<T> resultParser=new JsonObjectMapperParser<T>(resultStream,clazz);
+  List<Long> gpSubmitTimes=new LinkedList<Long>();
+  List<Long> rpSubmitTimes=new LinkedList<Long>();
+  try {
+    LoggedJob firstJob=(LoggedJob)inputFileParser.getNext();
+    gpSubmitTimes.add(firstJob.getSubmitTime());
+    long absoluteStartsAfterTime=firstJob.getSubmitTime() + startsAfter;
+    long endTime=firstJob.getSubmitTime() + duration;
+    LoggedJob oriJob=null;
+    while ((oriJob=(LoggedJob)inputFileParser.getNext()) != null) {
+      gpSubmitTimes.add(oriJob.getSubmitTime());
+    }
+    LoggedJob job=null;
+    while ((job=(LoggedJob)resultParser.getNext()) != null) {
+      assertTrue("job's submit time in the output trace is less " + "than the specified value of starts-after",(job.getSubmitTime() >= absoluteStartsAfterTime));
+      rpSubmitTimes.add(job.getSubmitTime());
+    }
+    List<Long> skippedJobs=new LinkedList<Long>();
+    skippedJobs.addAll(gpSubmitTimes);
+    skippedJobs.removeAll(rpSubmitTimes);
+    for (    Long submitTime : skippedJobs) {
+      assertTrue("skipped job submit time " + submitTime + " in the trace is greater "+ "than the specified value of starts-after "+ absoluteStartsAfterTime,(submitTime < absoluteStartsAfterTime));
+    }
+  }
+  finally {
+    IOUtils.cleanup(null,inputFileParser,resultParser);
+  }
+}

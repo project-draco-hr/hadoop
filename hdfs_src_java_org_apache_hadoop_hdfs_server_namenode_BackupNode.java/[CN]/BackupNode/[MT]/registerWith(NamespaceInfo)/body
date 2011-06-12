@@ -1,0 +1,32 @@
+{
+  BackupImage bnImage=(BackupImage)getFSImage();
+  if (bnImage.getStorage().getNamespaceID() == 0)   bnImage.getStorage().setStorageInfo(nsInfo);
+ else   if (bnImage.getStorage().getNamespaceID() != nsInfo.getNamespaceID())   throw new IOException("Incompatible namespaceIDs" + ": active node namespaceID = " + nsInfo.getNamespaceID() + "; backup node namespaceID = "+ bnImage.getStorage().getNamespaceID());
+  setRegistration();
+  NamenodeRegistration nnReg=null;
+  while (!isStopRequested()) {
+    try {
+      nnReg=namenode.register(getRegistration());
+      break;
+    }
+ catch (    SocketTimeoutException e) {
+      LOG.info("Problem connecting to name-node: " + nnRpcAddress);
+      try {
+        Thread.sleep(1000);
+      }
+ catch (      InterruptedException ie) {
+      }
+    }
+  }
+  String msg=null;
+  if (nnReg == null)   msg="Registration rejected by " + nnRpcAddress;
+ else   if (!nnReg.isRole(NamenodeRole.ACTIVE)) {
+    msg="Name-node " + nnRpcAddress + " is not active";
+  }
+  if (msg != null) {
+    msg+=". Shutting down.";
+    LOG.error(msg);
+    throw new IOException(msg);
+  }
+  nnRpcAddress=nnReg.getAddress();
+}

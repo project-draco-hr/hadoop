@@ -1,0 +1,53 @@
+{
+  StringBuffer ldLibraryPath=new StringBuffer();
+  ldLibraryPath.append(workDir.toString());
+  String oldLdLibraryPath=null;
+  oldLdLibraryPath=System.getenv("LD_LIBRARY_PATH");
+  if (oldLdLibraryPath != null) {
+    ldLibraryPath.append(SYSTEM_PATH_SEPARATOR);
+    ldLibraryPath.append(oldLdLibraryPath);
+  }
+  env.put("LD_LIBRARY_PATH",ldLibraryPath.toString());
+  String jobTokenFile=conf.get(TokenCache.JOB_TOKENS_FILENAME);
+  LOG.debug("putting jobToken file name into environment fn=" + jobTokenFile);
+  env.put(UserGroupInformation.HADOOP_TOKEN_FILE_LOCATION,jobTokenFile);
+  env.put("HADOOP_ROOT_LOGGER","INFO,TLA");
+  String hadoopClientOpts=System.getenv("HADOOP_CLIENT_OPTS");
+  if (hadoopClientOpts == null) {
+    hadoopClientOpts="";
+  }
+ else {
+    hadoopClientOpts=hadoopClientOpts + " ";
+  }
+  hadoopClientOpts=hadoopClientOpts + "-Dhadoop.tasklog.taskid=" + taskid+ " -Dhadoop.tasklog.iscleanup="+ t.isTaskCleanupTask()+ " -Dhadoop.tasklog.totalLogFileSize="+ logSize;
+  env.put("HADOOP_CLIENT_OPTS",hadoopClientOpts);
+  String mapredChildEnv=getChildEnv(conf);
+  if (mapredChildEnv != null && mapredChildEnv.length() > 0) {
+    String childEnvs[]=mapredChildEnv.split(",");
+    for (    String cEnv : childEnvs) {
+      try {
+        String[] parts=cEnv.split("=");
+        String value=env.get(parts[0]);
+        if (value != null) {
+          value=parts[1].replace("$" + parts[0],value);
+        }
+ else {
+          value=System.getenv(parts[0]);
+          if (value != null) {
+            value=parts[1].replace("$" + parts[0],value);
+          }
+ else {
+            value=parts[1].replace("$" + parts[0],"");
+          }
+        }
+        env.put(parts[0],value);
+      }
+ catch (      Throwable t) {
+        errorInfo="Invalid User environment settings : " + mapredChildEnv + ". Failed to parse user-passed environment param."+ " Expecting : env1=value1,env2=value2...";
+        LOG.warn(errorInfo);
+        throw t;
+      }
+    }
+  }
+  return errorInfo;
+}

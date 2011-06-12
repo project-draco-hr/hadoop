@@ -1,0 +1,44 @@
+{
+  int refetchToken=1;
+  while (true) {
+    block=getBlockAt(block.getStartOffset(),false);
+    DNAddrPair retval=chooseDataNode(block);
+    DatanodeInfo chosenNode=retval.info;
+    InetSocketAddress targetAddr=retval.addr;
+    BlockReader reader=null;
+    try {
+      Token<BlockTokenIdentifier> blockToken=block.getBlockToken();
+      int len=(int)(end - start + 1);
+      reader=getBlockReader(targetAddr,src,block.getBlock(),blockToken,start,len,buffersize,verifyChecksum,dfsClient.clientName);
+      int nread=reader.readAll(buf,offset,len);
+      if (nread != len) {
+        throw new IOException("truncated return from reader.read(): " + "excpected " + len + ", got "+ nread);
+      }
+      return;
+    }
+ catch (    ChecksumException e) {
+      DFSClient.LOG.warn("fetchBlockByteRange(). Got a checksum exception for " + src + " at "+ block.getBlock()+ ":"+ e.getPos()+ " from "+ chosenNode.getName());
+      addIntoCorruptedBlockMap(block.getBlock(),chosenNode,corruptedBlockMap);
+    }
+catch (    IOException e) {
+      if (e instanceof InvalidBlockTokenException && refetchToken > 0) {
+        DFSClient.LOG.info("Will get a new access token and retry, " + "access token was invalid when connecting to " + targetAddr + " : "+ e);
+        refetchToken--;
+        fetchBlockAt(block.getStartOffset());
+        continue;
+      }
+ else {
+        DFSClient.LOG.warn("Failed to connect to " + targetAddr + " for file "+ src+ " for block "+ block.getBlock()+ ":"+ e);
+        if (DFSClient.LOG.isDebugEnabled()) {
+          DFSClient.LOG.debug("Connection failure ",e);
+        }
+      }
+    }
+ finally {
+      if (reader != null) {
+        closeBlockReader(reader);
+      }
+    }
+    addToDeadNodes(chosenNode);
+  }
+}

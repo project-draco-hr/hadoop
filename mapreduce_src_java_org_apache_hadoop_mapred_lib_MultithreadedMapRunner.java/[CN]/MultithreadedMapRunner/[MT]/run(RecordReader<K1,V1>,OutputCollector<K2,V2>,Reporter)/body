@@ -1,0 +1,35 @@
+{
+  try {
+    K1 key=input.createKey();
+    V1 value=input.createValue();
+    while (input.next(key,value)) {
+      executorService.execute(new MapperInvokeRunable(key,value,output,reporter));
+      checkForExceptionsFromProcessingThreads();
+      key=input.createKey();
+      value=input.createValue();
+    }
+    if (LOG.isDebugEnabled()) {
+      LOG.debug("Finished dispatching all Mappper.map calls, job " + job.getJobName());
+    }
+    executorService.shutdown();
+    try {
+      while (!executorService.awaitTermination(100,TimeUnit.MILLISECONDS)) {
+        if (LOG.isDebugEnabled()) {
+          LOG.debug("Awaiting all running Mappper.map calls to finish, job " + job.getJobName());
+        }
+        checkForExceptionsFromProcessingThreads();
+      }
+      checkForExceptionsFromProcessingThreads();
+    }
+ catch (    IOException ioEx) {
+      executorService.shutdownNow();
+      throw ioEx;
+    }
+catch (    InterruptedException iEx) {
+      throw new RuntimeException(iEx);
+    }
+  }
+  finally {
+    mapper.close();
+  }
+}

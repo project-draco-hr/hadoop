@@ -1,0 +1,47 @@
+{
+  int errCode=-1;
+  int numCorrupt=0;
+  String lastBlock=null;
+  final String noCorruptLine="has no CORRUPT files";
+  final String noMoreCorruptLine="has no more CORRUPT files";
+  boolean allDone=false;
+  while (!allDone) {
+    final StringBuffer url=new StringBuffer(baseUrl);
+    if (lastBlock != null) {
+      url.append("&startblockafter=").append(lastBlock);
+    }
+    URL path=new URL(url.toString());
+    SecurityUtil.fetchServiceTicket(path);
+    URLConnection connection=path.openConnection();
+    InputStream stream=connection.getInputStream();
+    BufferedReader input=new BufferedReader(new InputStreamReader(stream,"UTF-8"));
+    try {
+      String line=null;
+      while ((line=input.readLine()) != null) {
+        if ((line.endsWith(noCorruptLine)) || (line.endsWith(noMoreCorruptLine)) || (line.endsWith(NamenodeFsck.NONEXISTENT_STATUS))) {
+          allDone=true;
+          break;
+        }
+        if ((line.isEmpty()) || (line.startsWith("FSCK started by")) || (line.startsWith("The filesystem under path")))         continue;
+        numCorrupt++;
+        if (numCorrupt == 1) {
+          out.println("The list of corrupt files under path '" + dir + "' are:");
+        }
+        out.println(line);
+        try {
+          lastBlock=line.split("\t")[0];
+        }
+ catch (        Exception e) {
+          allDone=true;
+          break;
+        }
+      }
+    }
+  finally {
+      input.close();
+    }
+  }
+  out.println("The filesystem under path '" + dir + "' has "+ numCorrupt+ " CORRUPT files");
+  if (numCorrupt == 0)   errCode=0;
+  return errCode;
+}

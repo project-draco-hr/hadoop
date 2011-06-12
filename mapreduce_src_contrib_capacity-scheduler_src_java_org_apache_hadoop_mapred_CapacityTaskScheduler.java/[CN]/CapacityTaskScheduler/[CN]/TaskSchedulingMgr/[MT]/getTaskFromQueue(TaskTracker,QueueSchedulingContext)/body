@@ -1,0 +1,59 @@
+{
+  TaskTrackerStatus taskTrackerStatus=taskTracker.getStatus();
+  for (  JobInProgress j : scheduler.jobQueuesManager.getJobQueue(qsi.getQueueName()).getRunningJobs()) {
+    if (areTasksInQueueOverMaxCapacity(qsi,j.getNumSlotsPerTask(type))) {
+      continue;
+    }
+    if (j.getStatus().getRunState() != JobStatus.RUNNING) {
+      continue;
+    }
+    if (isUserOverLimit(j,qsi)) {
+      continue;
+    }
+    if (scheduler.memoryMatcher.matchesMemoryRequirements(j,type,taskTrackerStatus)) {
+      Task t=obtainNewTask(taskTrackerStatus,j);
+      if (t != null) {
+        return TaskLookupResult.getTaskFoundResult(t);
+      }
+ else {
+        if (LOG.isDebugEnabled()) {
+          LOG.debug("Job " + j.getJobID().toString() + " returned no tasks of type "+ type);
+        }
+      }
+    }
+ else {
+      TaskDataView view=TaskDataView.getTaskDataView(type);
+      if ((view.getPendingTasks(j) != 0 && !view.hasSufficientReservedTaskTrackers(j))) {
+        LOG.info(j.getJobID() + ": Reserving " + taskTracker.getTrackerName()+ " since memory-requirements don't match");
+        taskTracker.reserveSlots(type,j,taskTracker.getAvailableSlots(type));
+        return TaskLookupResult.getMemFailedResult();
+      }
+    }
+  }
+  for (  JobInProgress j : scheduler.jobQueuesManager.getJobQueue(qsi.getQueueName()).getRunningJobs()) {
+    if (j.getStatus().getRunState() != JobStatus.RUNNING) {
+      continue;
+    }
+    if (areTasksInQueueOverMaxCapacity(qsi,j.getNumSlotsPerTask(type))) {
+      continue;
+    }
+    if (scheduler.memoryMatcher.matchesMemoryRequirements(j,type,taskTrackerStatus)) {
+      Task t=obtainNewTask(taskTrackerStatus,j);
+      if (t != null) {
+        return TaskLookupResult.getTaskFoundResult(t);
+      }
+ else {
+      }
+    }
+ else {
+      if (TaskDataView.getTaskDataView(type).getPendingTasks(j) != 0 || hasSpeculativeTask(j,taskTrackerStatus)) {
+        return TaskLookupResult.getMemFailedResult();
+      }
+    }
+  }
+  if (LOG.isDebugEnabled()) {
+    String msg="Found no task from the queue " + qsi.getQueueName();
+    LOG.debug(msg);
+  }
+  return TaskLookupResult.getNoTaskFoundResult();
+}

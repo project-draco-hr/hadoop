@@ -1,0 +1,94 @@
+{
+  String proto="http://";
+  if (UserGroupInformation.isSecurityEnabled()) {
+    System.setProperty("https.cipherSuites",Krb5AndCertsSslSocketConnector.KRB5_CIPHER_SUITES.get(0));
+    proto="https://";
+  }
+  final StringBuilder url=new StringBuilder(proto);
+  String namenodeAddress=getCurrentNamenodeAddress();
+  if (namenodeAddress == null) {
+    System.err.println("DFSck exiting.");
+    return 0;
+  }
+  url.append(namenodeAddress);
+  System.err.println("Connecting to namenode via " + url.toString());
+  url.append("/fsck?ugi=").append(ugi.getShortUserName());
+  String dir=null;
+  boolean doListCorruptFileBlocks=false;
+  for (int idx=0; idx < args.length; idx++) {
+    if (args[idx].equals("-move")) {
+      url.append("&move=1");
+    }
+ else     if (args[idx].equals("-delete")) {
+      url.append("&delete=1");
+    }
+ else     if (args[idx].equals("-files")) {
+      url.append("&files=1");
+    }
+ else     if (args[idx].equals("-openforwrite")) {
+      url.append("&openforwrite=1");
+    }
+ else     if (args[idx].equals("-blocks")) {
+      url.append("&blocks=1");
+    }
+ else     if (args[idx].equals("-locations")) {
+      url.append("&locations=1");
+    }
+ else     if (args[idx].equals("-racks")) {
+      url.append("&racks=1");
+    }
+ else     if (args[idx].equals("-list-corruptfileblocks")) {
+      url.append("&listcorruptfileblocks=1");
+      doListCorruptFileBlocks=true;
+    }
+ else     if (!args[idx].startsWith("-")) {
+      if (null == dir) {
+        dir=args[idx];
+      }
+ else {
+        System.err.println("fsck: can only operate on one path at a time '" + args[idx] + "'");
+        printUsage();
+        return -1;
+      }
+    }
+ else {
+      System.err.println("fsck: Illegal option '" + args[idx] + "'");
+      printUsage();
+      return -1;
+    }
+  }
+  if (null == dir) {
+    dir="/";
+  }
+  url.append("&path=").append(URLEncoder.encode(dir,"UTF-8"));
+  if (doListCorruptFileBlocks) {
+    return listCorruptFileBlocks(dir,url.toString());
+  }
+  URL path=new URL(url.toString());
+  SecurityUtil.fetchServiceTicket(path);
+  URLConnection connection=path.openConnection();
+  InputStream stream=connection.getInputStream();
+  BufferedReader input=new BufferedReader(new InputStreamReader(stream,"UTF-8"));
+  String line=null;
+  String lastLine=null;
+  int errCode=-1;
+  try {
+    while ((line=input.readLine()) != null) {
+      out.println(line);
+      lastLine=line;
+    }
+  }
+  finally {
+    input.close();
+  }
+  if (lastLine.endsWith(NamenodeFsck.HEALTHY_STATUS)) {
+    errCode=0;
+  }
+ else   if (lastLine.endsWith(NamenodeFsck.CORRUPT_STATUS)) {
+    errCode=1;
+  }
+ else   if (lastLine.endsWith(NamenodeFsck.NONEXISTENT_STATUS)) {
+    errCode=0;
+  }
+  return errCode;
+}

@@ -1,0 +1,30 @@
+{
+  code=ErasureCodeType.XOR;
+  stripeLength=3;
+  mySetup("xor",1);
+  try {
+    Path file=new Path("/user/raid/raidtest/file1");
+    long crc=createTestFile(fileSys,file,1,8,8192L);
+    FileStatus stat=fileSys.getFileStatus(file);
+    LOG.info("Created " + file + ", crc="+ crc+ ", len="+ stat.getLen());
+    byte[] filebytes=new byte[(int)stat.getLen()];
+    DistributedRaidFileSystem raidfs=getRaidFS();
+    FSDataInputStream stm=raidfs.open(file);
+    stm.readFully(0,filebytes);
+    assertEquals(crc,bufferCRC(filebytes));
+    stm.close();
+    RaidNode.doRaid(conf,fileSys.getFileStatus(file),new Path("/destraid"),code,new RaidNode.Statistics(),new RaidUtils.DummyProgressable(),false,1,1,stripeLength);
+    int[] corrupt={0,4,7};
+    for (    int blockIdx : corrupt) {
+      LOG.info("Corrupt block " + blockIdx + " of file "+ file);
+      LocatedBlocks locations=getBlockLocations(file);
+      corruptBlock(dfs,file,locations.get(blockIdx).getBlock(),NUM_DATANODES,true);
+    }
+    stm=raidfs.open(file);
+    stm.readFully(0,filebytes);
+    assertEquals(crc,bufferCRC(filebytes));
+  }
+  finally {
+    myTearDown();
+  }
+}

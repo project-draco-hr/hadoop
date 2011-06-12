@@ -1,0 +1,91 @@
+{
+  TreeMap<String,String> retv=new TreeMap<String,String>();
+  JobID mapreduceID=cjob.getMapredJobID();
+  Job job=cjob.getJob();
+  String jobName=job.getJobName();
+  retv.put("JobId",mapreduceID.toString());
+  retv.put("JobName",jobName);
+  TaskExecutionStats theTaskExecutionStats=new TaskExecutionStats();
+  try {
+    Counters jobCounters=job.getCounters();
+    Iterator<CounterGroup> groups=jobCounters.iterator();
+    while (groups.hasNext()) {
+      CounterGroup g=groups.next();
+      String gn=g.getName();
+      Iterator<Counter> cs=g.iterator();
+      while (cs.hasNext()) {
+        Counter c=cs.next();
+        String n=c.getName();
+        long v=c.getValue();
+        retv.put(mapreduceID + "." + jobName+ "."+ gn+ "."+ n,"" + v);
+      }
+    }
+    JobClient jc=new JobClient(job.getConfiguration());
+    TaskReport[] maps=jc.getMapTaskReports((org.apache.hadoop.mapred.JobID)mapreduceID);
+    TaskReport[] reduces=jc.getReduceTaskReports((org.apache.hadoop.mapred.JobID)mapreduceID);
+    retv.put(mapreduceID + "." + jobName+ "."+ "numOfMapTasks","" + maps.length);
+    retv.put(mapreduceID + "." + jobName+ "."+ "numOfReduceTasks","" + reduces.length);
+    long[] mapExecutionTimes=new long[maps.length];
+    long[] reduceExecutionTimes=new long[reduces.length];
+    Date date=Calendar.getInstance().getTime();
+    long startTime=date.getTime();
+    long finishTime=0;
+    for (int j=0; j < maps.length; j++) {
+      TaskReport map=maps[j];
+      long thisStartTime=map.getStartTime();
+      long thisFinishTime=map.getFinishTime();
+      if (thisStartTime > 0 && thisFinishTime > 0) {
+        mapExecutionTimes[j]=thisFinishTime - thisStartTime;
+      }
+      if (startTime > thisStartTime) {
+        startTime=thisStartTime;
+      }
+      if (finishTime < thisFinishTime) {
+        finishTime=thisFinishTime;
+      }
+    }
+    theTaskExecutionStats.computeStats("mapExecutionTimeStats",mapExecutionTimes);
+    retv.put(mapreduceID + "." + jobName+ "."+ "mapStartTime","" + startTime);
+    retv.put(mapreduceID + "." + jobName+ "."+ "mapEndTime","" + finishTime);
+    for (int j=0; j < reduces.length; j++) {
+      TaskReport reduce=reduces[j];
+      long thisStartTime=reduce.getStartTime();
+      long thisFinishTime=reduce.getFinishTime();
+      if (thisStartTime > 0 && thisFinishTime > 0) {
+        reduceExecutionTimes[j]=thisFinishTime - thisStartTime;
+      }
+      if (startTime > thisStartTime) {
+        startTime=thisStartTime;
+      }
+      if (finishTime < thisFinishTime) {
+        finishTime=thisFinishTime;
+      }
+    }
+    theTaskExecutionStats.computeStats("reduceExecutionTimeStats",reduceExecutionTimes);
+    retv.put(mapreduceID + "." + jobName+ "."+ "reduceStartTime","" + startTime);
+    retv.put(mapreduceID + "." + jobName+ "."+ "reduceEndTime","" + finishTime);
+    if (cjob.getJobState() == ControlledJob.State.SUCCESS) {
+      retv.put(mapreduceID + "." + "jobStatus","successful");
+    }
+ else     if (cjob.getJobState() == ControlledJob.State.FAILED) {
+      retv.put(mapreduceID + "." + jobName+ "."+ "jobStatus","failed");
+    }
+ else {
+      retv.put(mapreduceID + "." + jobName+ "."+ "jobStatus","unknown");
+    }
+    Iterator<Entry<String,SimpleStats>> entries=theTaskExecutionStats.theStats.entrySet().iterator();
+    while (entries.hasNext()) {
+      Entry<String,SimpleStats> e=entries.next();
+      SimpleStats v=e.getValue();
+      retv.put(mapreduceID + "." + jobName+ "."+ e.getKey()+ "."+ "min","" + v.minValue);
+      retv.put(mapreduceID + "." + jobName+ "."+ e.getKey()+ "."+ "max","" + v.maxValue);
+      retv.put(mapreduceID + "." + jobName+ "."+ e.getKey()+ "."+ "medium","" + v.mediumValue);
+      retv.put(mapreduceID + "." + jobName+ "."+ e.getKey()+ "."+ "avg","" + v.averageValue);
+      retv.put(mapreduceID + "." + jobName+ "."+ e.getKey()+ "."+ "numOfItems","" + v.n);
+    }
+  }
+ catch (  Exception e) {
+    e.printStackTrace();
+  }
+  return retv;
+}

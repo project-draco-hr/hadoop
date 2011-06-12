@@ -1,0 +1,37 @@
+{
+  HashMap<Integer,Integer> corruptBlocksPerStripe=new LinkedHashMap<Integer,Integer>();
+  final int stripeBlocks=RaidNode.getStripeLength(conf);
+  final FileStatus fileStatus=dfs.getFileStatus(filePath);
+  final long blockSize=fileStatus.getBlockSize();
+  final long fileLength=fileStatus.getLen();
+  final long fileLengthInBlocks=(fileLength / blockSize) + (((fileLength % blockSize) == 0) ? 0L : 1L);
+  final long fileStripes=(fileLengthInBlocks / stripeBlocks) + (((fileLengthInBlocks % stripeBlocks) == 0) ? 0L : 1L);
+  final BlockLocation[] fileBlocks=dfs.getFileBlockLocations(fileStatus,0,fileLength);
+  for (  BlockLocation fileBlock : fileBlocks) {
+    int blockNo=(int)(fileBlock.getOffset() / blockSize);
+    final int stripe=(int)(blockNo / stripeBlocks);
+    if (fileBlock.isCorrupt() || (fileBlock.getNames().length == 0 && fileBlock.getLength() > 0)) {
+      if (corruptBlocksPerStripe.get(stripe) == null) {
+        corruptBlocksPerStripe.put(stripe,1);
+      }
+ else {
+        corruptBlocksPerStripe.put(stripe,corruptBlocksPerStripe.get(stripe) + 1);
+      }
+      LOG.debug("file " + filePath.toString() + " corrupt in block "+ blockNo+ "/"+ fileLengthInBlocks+ ", stripe "+ stripe+ "/"+ fileStripes);
+    }
+ else {
+      LOG.debug("file " + filePath.toString() + " OK in block "+ blockNo+ "/"+ fileLengthInBlocks+ ", stripe "+ stripe+ "/"+ fileStripes);
+    }
+  }
+  RaidInfo raidInfo=getFileRaidInfo(dfs,filePath);
+  if (raidInfo.raidType != RaidType.NONE) {
+    checkParityBlocks(filePath,corruptBlocksPerStripe,blockSize,fileStripes,raidInfo);
+  }
+  final int maxCorruptBlocksPerStripe=raidInfo.parityBlocksPerStripe;
+  for (  int corruptBlocksInStripe : corruptBlocksPerStripe.values()) {
+    if (corruptBlocksInStripe > maxCorruptBlocksPerStripe) {
+      return true;
+    }
+  }
+  return false;
+}

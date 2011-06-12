@@ -1,0 +1,59 @@
+{
+  DFSTestUtil util=new DFSTestUtil("TestFsck",4,3,8 * 1024);
+  MiniDFSCluster cluster=null;
+  FileSystem fs=null;
+  try {
+    Configuration conf=new HdfsConfiguration();
+    conf.setLong(DFSConfigKeys.DFS_BLOCKREPORT_INTERVAL_MSEC_KEY,10000L);
+    cluster=new MiniDFSCluster.Builder(conf).numDataNodes(4).build();
+    String topDir="/srcdat";
+    String randomString="HADOOP  ";
+    fs=cluster.getFileSystem();
+    cluster.waitActive();
+    util.createFiles(fs,topDir);
+    util.waitReplication(fs,topDir,(short)3);
+    String outStr=runFsck(conf,0,true,"/");
+    assertTrue(outStr.contains(NamenodeFsck.HEALTHY_STATUS));
+    Path openFile=new Path(topDir + "/openFile");
+    FSDataOutputStream out=fs.create(openFile);
+    int writeCount=0;
+    while (writeCount != 100) {
+      out.write(randomString.getBytes());
+      writeCount++;
+    }
+    outStr=runFsck(conf,0,true,topDir);
+    System.out.println(outStr);
+    assertTrue(outStr.contains(NamenodeFsck.HEALTHY_STATUS));
+    assertFalse(outStr.contains("OPENFORWRITE"));
+    outStr=runFsck(conf,0,true,topDir,"-openforwrite");
+    System.out.println(outStr);
+    assertTrue(outStr.contains("OPENFORWRITE"));
+    assertTrue(outStr.contains("openFile"));
+    out.close();
+    outStr=runFsck(conf,0,true,topDir);
+    System.out.println(outStr);
+    assertTrue(outStr.contains(NamenodeFsck.HEALTHY_STATUS));
+    assertFalse(outStr.contains("OPENFORWRITE"));
+    util.cleanup(fs,topDir);
+    if (fs != null) {
+      try {
+        fs.close();
+      }
+ catch (      Exception e) {
+      }
+    }
+    cluster.shutdown();
+  }
+  finally {
+    if (fs != null) {
+      try {
+        fs.close();
+      }
+ catch (      Exception e) {
+      }
+    }
+    if (cluster != null) {
+      cluster.shutdown();
+    }
+  }
+}

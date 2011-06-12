@@ -1,0 +1,85 @@
+{
+  Assert.assertNotNull("TTclient is null",tClient);
+  FsPermission fsPerm=null;
+  String[] pathInfo=conf.getStrings(MRConfig.LOCAL_DIR);
+  for (int i=0; i < pathInfo.length; i++) {
+    jobIdDir=new StringBuffer();
+    String userName=null;
+    try {
+      JobStatus[] jobStatus=cluster.getJTClient().getClient().getAllJobs();
+      userName=jobStatus[0].getUsername();
+    }
+ catch (    Exception ex) {
+      LOG.error("Failed to get user name");
+      boolean status=false;
+      Assert.assertTrue("Failed to get the userName",status);
+    }
+    jobIdDir.append(pathInfo[i]).append(Path.SEPARATOR);
+    jobIdDir.append(TaskTracker.getLocalJobDir(userName,info.getID().toString()));
+    FileStatus[] fs=null;
+    try {
+      fs=tClient.listStatus(jobIdDir.toString(),true);
+    }
+ catch (    Exception ex) {
+      LOG.error("Failed to get the jobIdDir files " + ex);
+    }
+    Assert.assertEquals("Filestatus length is zero",fs.length != 0,true);
+    for (    FileStatus file : fs) {
+      try {
+        String filename=file.getPath().getName();
+        if (filename.equals(TaskTracker.JOBFILE)) {
+          if (taskController == DefaultTaskController.class.getName()) {
+            fsPerm=file.getPermission();
+            Assert.assertTrue("FilePermission failed for " + filename,fsPerm.equals(PERM_777));
+          }
+        }
+        if (filename.startsWith("attempt")) {
+          StringBuffer attemptDir=new StringBuffer(jobIdDir);
+          attemptDir.append(Path.SEPARATOR).append(filename);
+          if (tClient.getFileStatus(attemptDir.toString(),true) != null) {
+            FileStatus[] attemptFs=tClient.listStatus(attemptDir.toString(),true,true);
+            for (            FileStatus attemptfz : attemptFs) {
+              Assert.assertNotNull("FileStatus is null",attemptfz);
+              fsPerm=attemptfz.getPermission();
+              Assert.assertNotNull("FsPermission is null",fsPerm);
+              if (taskController == DefaultTaskController.class.getName()) {
+                if (!attemptfz.isDir()) {
+                  Assert.assertTrue("FilePermission failed for " + filename,fsPerm.equals(PERM_777));
+                }
+ else {
+                  Assert.assertTrue("FilePermission failed for " + filename,fsPerm.equals(PERM_755));
+                }
+              }
+            }
+          }
+        }
+        if (filename.equals(TaskTracker.TASKJARDIR)) {
+          StringBuffer jarsDir=new StringBuffer(jobIdDir);
+          jarsDir.append(Path.SEPARATOR).append(filename);
+          FileStatus[] jarsFs=tClient.listStatus(jarsDir.toString(),true,true);
+          for (          FileStatus jarsfz : jarsFs) {
+            Assert.assertNotNull("FileStatus is null",jarsfz);
+            fsPerm=jarsfz.getPermission();
+            Assert.assertNotNull("File permission is null",fsPerm);
+            if (taskController == DefaultTaskController.class.getName()) {
+              if (!jarsfz.isDir()) {
+                if (jarsfz.getPath().getName().equals("job.jar")) {
+                  Assert.assertTrue("FilePermission failed for " + filename,fsPerm.equals(PERM_777));
+                }
+ else {
+                  Assert.assertTrue("FilePermission failed for " + filename,fsPerm.equals(PERM_644));
+                }
+              }
+ else {
+                Assert.assertTrue("FilePermission failed for " + filename,fsPerm.equals(PERM_755));
+              }
+            }
+          }
+        }
+      }
+ catch (      Exception ex) {
+        LOG.error("The exception occurred while searching for nonexsistent" + "file, ignoring and continuing. " + ex);
+      }
+    }
+  }
+}

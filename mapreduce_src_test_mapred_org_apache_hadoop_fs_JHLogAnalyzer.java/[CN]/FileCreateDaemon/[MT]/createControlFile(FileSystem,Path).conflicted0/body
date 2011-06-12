@@ -1,0 +1,34 @@
+{
+  fs.delete(INPUT_DIR,true);
+  jhLogFiles=fs.listStatus(jhLogDir);
+  numFinishedThreads=0;
+  try {
+    int start=0;
+    int step=jhLogFiles.length / NUM_CREATE_THREADS + ((jhLogFiles.length % NUM_CREATE_THREADS) > 0 ? 1 : 0);
+    FileCreateDaemon[] daemons=new FileCreateDaemon[NUM_CREATE_THREADS];
+    numRunningThreads=0;
+    for (int tIdx=0; tIdx < NUM_CREATE_THREADS && start < jhLogFiles.length; tIdx++) {
+      int end=Math.min(start + step,jhLogFiles.length);
+      daemons[tIdx]=new FileCreateDaemon(fs,start,end);
+      start+=step;
+      numRunningThreads++;
+    }
+    for (int tIdx=0; tIdx < numRunningThreads; tIdx++) {
+      daemons[tIdx].start();
+    }
+  }
+  finally {
+    int prevValue=0;
+    while (numFinishedThreads < numRunningThreads) {
+      if (prevValue < numFinishedThreads) {
+        LOG.info("Finished " + numFinishedThreads + " threads out of "+ numRunningThreads);
+        prevValue=numFinishedThreads;
+      }
+      try {
+        Thread.sleep(500);
+      }
+ catch (      InterruptedException e) {
+      }
+    }
+  }
+}

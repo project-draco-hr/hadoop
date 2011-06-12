@@ -1,0 +1,24 @@
+{
+  JobConf job=new JobConf();
+  setConfForFileOutputCommitter(job);
+  JobContext jContext=new JobContextImpl(job,taskID.getJobID());
+  TaskAttemptContext tContext=new TaskAttemptContextImpl(job,taskID);
+  FileOutputCommitter committer=new FileOutputCommitter();
+  FileOutputFormat.setWorkOutputPath(job,committer.getTempTaskOutputPath(tContext));
+  committer.setupJob(jContext);
+  committer.setupTask(tContext);
+  String file="test.txt";
+  Reporter reporter=Reporter.NULL;
+  FileSystem localFs=FileSystem.getLocal(job);
+  TextOutputFormat theOutputFormat=new TextOutputFormat();
+  RecordWriter theRecordWriter=theOutputFormat.getRecordWriter(localFs,job,file,reporter);
+  writeOutput(theRecordWriter,reporter);
+  committer.abortTask(tContext);
+  File expectedFile=new File(new Path(committer.getTempTaskOutputPath(tContext),file).toString());
+  assertFalse("task temp dir still exists",expectedFile.exists());
+  committer.abortJob(jContext,JobStatus.State.FAILED);
+  expectedFile=new File(new Path(outDir,FileOutputCommitter.TEMP_DIR_NAME).toString());
+  assertFalse("job temp dir still exists",expectedFile.exists());
+  assertEquals("Output directory not empty",0,new File(outDir.toString()).listFiles().length);
+  FileUtil.fullyDelete(new File(outDir.toString()));
+}

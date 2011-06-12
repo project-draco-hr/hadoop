@@ -1,0 +1,43 @@
+{
+  String srcfilelist=jconf.get(SRC_LIST_LABEL,"");
+  if ("".equals(srcfilelist)) {
+    throw new IOException("Unable to get the " + "src file for archive generation.");
+  }
+  long totalSize=jconf.getLong(TOTAL_SIZE_LABEL,-1);
+  if (totalSize == -1) {
+    throw new IOException("Invalid size of files to archive");
+  }
+  Path src=new Path(srcfilelist);
+  FileSystem fs=src.getFileSystem(jconf);
+  FileStatus fstatus=fs.getFileStatus(src);
+  ArrayList<FileSplit> splits=new ArrayList<FileSplit>(numSplits);
+  LongWritable key=new LongWritable();
+  final HarEntry value=new HarEntry();
+  SequenceFile.Reader reader=null;
+  long remaining=fstatus.getLen();
+  long currentCount=0L;
+  long lastPos=0L;
+  long startPos=0L;
+  long targetSize=totalSize / numSplits;
+  try {
+    reader=new SequenceFile.Reader(fs,src,jconf);
+    while (reader.next(key,value)) {
+      if (currentCount + key.get() > targetSize && currentCount != 0) {
+        long size=lastPos - startPos;
+        splits.add(new FileSplit(src,startPos,size,(String[])null));
+        remaining=remaining - size;
+        startPos=lastPos;
+        currentCount=0L;
+      }
+      currentCount+=key.get();
+      lastPos=reader.getPosition();
+    }
+    if (remaining != 0) {
+      splits.add(new FileSplit(src,startPos,remaining,(String[])null));
+    }
+  }
+  finally {
+    reader.close();
+  }
+  return splits.toArray(new FileSplit[splits.size()]);
+}

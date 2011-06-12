@@ -1,0 +1,27 @@
+{
+  resourceRecheckInterval=conf.getLong(DFSConfigKeys.DFS_NAMENODE_RESOURCE_CHECK_INTERVAL_KEY,DFSConfigKeys.DFS_NAMENODE_RESOURCE_CHECK_INTERVAL_DEFAULT);
+  nnResourceChecker=new NameNodeResourceChecker(conf);
+  checkAvailableResources();
+  this.systemStart=now();
+  this.blockManager=new BlockManager(this,conf);
+  this.fsLock=new ReentrantReadWriteLock(true);
+  setConfigurationParameters(conf);
+  dtSecretManager=createDelegationTokenSecretManager(conf);
+  this.registerMBean();
+  if (fsImage == null) {
+    this.dir=new FSDirectory(this,conf);
+    StartupOption startOpt=NameNode.getStartupOption(conf);
+    this.dir.loadFSImage(getNamespaceDirs(conf),getNamespaceEditsDirs(conf),startOpt);
+    long timeTakenToLoadFSImage=now() - systemStart;
+    LOG.info("Finished loading FSImage in " + timeTakenToLoadFSImage + " msecs");
+    NameNode.getNameNodeMetrics().setFsImageLoadTime((int)timeTakenToLoadFSImage);
+  }
+ else {
+    this.dir=new FSDirectory(fsImage,this,conf);
+  }
+  this.safeMode=new SafeModeInfo(conf);
+  this.hostsReader=new HostsFileReader(conf.get(DFSConfigKeys.DFS_HOSTS,""),conf.get(DFSConfigKeys.DFS_HOSTS_EXCLUDE,""));
+  if (isBlockTokenEnabled) {
+    blockTokenSecretManager=new BlockTokenSecretManager(true,blockKeyUpdateInterval,blockTokenLifetime);
+  }
+}

@@ -1,0 +1,24 @@
+{
+  InputFormat<Text,BytesWritable> format=new SequenceFileInputFilter<Text,BytesWritable>();
+  if (numSplits == 0) {
+    numSplits=random.nextInt(MAX_LENGTH / (SequenceFile.SYNC_INTERVAL / 20)) + 1;
+  }
+  FileInputFormat.setMaxInputSplitSize(job,fs.getFileStatus(inFile).getLen() / numSplits);
+  TaskAttemptContext context=MapReduceTestUtil.createDummyMapTaskAttemptContext(job.getConfiguration());
+  int count=0;
+  for (  InputSplit split : format.getSplits(job)) {
+    RecordReader<Text,BytesWritable> reader=format.createRecordReader(split,context);
+    MapContext<Text,BytesWritable,Text,BytesWritable> mcontext=new MapContextImpl<Text,BytesWritable,Text,BytesWritable>(job.getConfiguration(),context.getTaskAttemptID(),reader,null,null,MapReduceTestUtil.createDummyReporter(),split);
+    reader.initialize(split,mcontext);
+    try {
+      while (reader.nextKeyValue()) {
+        LOG.info("Accept record " + reader.getCurrentKey().toString());
+        count++;
+      }
+    }
+  finally {
+      reader.close();
+    }
+  }
+  return count;
+}

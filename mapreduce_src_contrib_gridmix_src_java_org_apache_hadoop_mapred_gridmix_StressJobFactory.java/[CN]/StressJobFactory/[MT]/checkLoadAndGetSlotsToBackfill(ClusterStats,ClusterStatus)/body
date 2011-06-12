@@ -1,0 +1,42 @@
+{
+  loadStatus.mapSlotCapacity=clusterStatus.getMaxMapTasks();
+  loadStatus.reduceSlotCapacity=clusterStatus.getMaxReduceTasks();
+  loadStatus.numJobsBackfill=(int)(maxJobTrackerRatio * clusterStatus.getTaskTrackers()) - stats.getNumRunningJob();
+  if (loadStatus.numJobsBackfill <= 0) {
+    if (LOG.isDebugEnabled()) {
+      LOG.debug(System.currentTimeMillis() + " Overloaded is " + Boolean.TRUE.toString()+ " NumJobsBackfill is "+ loadStatus.numJobsBackfill);
+    }
+    return;
+  }
+  float incompleteMapTasks=0;
+  for (  JobStats job : ClusterStats.getRunningJobStats()) {
+    float mapProgress=job.getJob().mapProgress();
+    int noOfMaps=job.getNoOfMaps();
+    incompleteMapTasks+=calcEffectiveIncompleteMapTasks(clusterStatus.getMaxMapTasks(),noOfMaps,mapProgress);
+  }
+  loadStatus.mapSlotsBackfill=(int)((overloadMapTaskMapSlotRatio * clusterStatus.getMaxMapTasks()) - incompleteMapTasks);
+  if (loadStatus.mapSlotsBackfill <= 0) {
+    if (LOG.isDebugEnabled()) {
+      LOG.debug(System.currentTimeMillis() + " Overloaded is " + Boolean.TRUE.toString()+ " MapSlotsBackfill is "+ loadStatus.mapSlotsBackfill);
+    }
+    return;
+  }
+  float incompleteReduceTasks=0;
+  for (  JobStats job : ClusterStats.getRunningJobStats()) {
+    int noOfReduces=job.getJob().getNumReduceTasks();
+    if (noOfReduces > 0) {
+      float reduceProgress=job.getJob().reduceProgress();
+      incompleteReduceTasks+=calcEffectiveIncompleteReduceTasks(clusterStatus.getMaxReduceTasks(),noOfReduces,reduceProgress);
+    }
+  }
+  loadStatus.reduceSlotsBackfill=(int)((overloadReduceTaskReduceSlotRatio * clusterStatus.getMaxReduceTasks()) - incompleteReduceTasks);
+  if (loadStatus.reduceSlotsBackfill <= 0) {
+    if (LOG.isDebugEnabled()) {
+      LOG.debug(System.currentTimeMillis() + " Overloaded is " + Boolean.TRUE.toString()+ " ReduceSlotsBackfill is "+ loadStatus.reduceSlotsBackfill);
+    }
+    return;
+  }
+  if (LOG.isDebugEnabled()) {
+    LOG.debug(System.currentTimeMillis() + " Overloaded is " + Boolean.FALSE.toString()+ "Current load Status is "+ loadStatus);
+  }
+}

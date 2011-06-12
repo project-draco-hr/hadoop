@@ -1,0 +1,37 @@
+{
+  FsShell shell=new FsShell();
+  shell.setConf(conf);
+  try {
+    Path dir=new Path(chmodDir);
+    fs.delete(dir,true);
+    fs.mkdirs(dir);
+    confirmPermissionChange("u+rwx,g=rw,o-rwx","rwxrw----",fs,shell,dir);
+    Path file=new Path(chmodDir,"file");
+    TestDFSShell.writeFile(fs,file);
+    confirmPermissionChange("644","rw-r--r--",fs,shell,file);
+    runCmd(shell,"-chmod","-R","a+rwX",chmodDir);
+    assertEquals("rwxrwxrwx",fs.getFileStatus(dir).getPermission().toString());
+    assertEquals("rw-rw-rw-",fs.getFileStatus(file).getPermission().toString());
+    Path dir2=new Path(dir,"stickybit");
+    fs.mkdirs(dir2);
+    LOG.info("Testing sticky bit on: " + dir2);
+    LOG.info("Sticky bit directory initial mode: " + fs.getFileStatus(dir2).getPermission());
+    confirmPermissionChange("u=rwx,g=rx,o=rx","rwxr-xr-x",fs,shell,dir2);
+    confirmPermissionChange("+t","rwxr-xr-t",fs,shell,dir2);
+    confirmPermissionChange("-t","rwxr-xr-x",fs,shell,dir2);
+    confirmPermissionChange("=t","--------T",fs,shell,dir2);
+    confirmPermissionChange("0000","---------",fs,shell,dir2);
+    confirmPermissionChange("1666","rw-rw-rwT",fs,shell,dir2);
+    confirmPermissionChange("777","rwxrwxrwt",fs,shell,dir2);
+    fs.delete(dir2,true);
+    fs.delete(dir,true);
+  }
+  finally {
+    try {
+      fs.close();
+      shell.close();
+    }
+ catch (    IOException ignored) {
+    }
+  }
+}

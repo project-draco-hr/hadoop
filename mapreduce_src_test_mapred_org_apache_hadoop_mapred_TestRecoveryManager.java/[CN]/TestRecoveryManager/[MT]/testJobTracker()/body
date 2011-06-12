@@ -1,0 +1,41 @@
+{
+  LOG.info("Testing jobtracker restart with faulty job");
+  String signalFile=new Path(TEST_DIR,"signal").toString();
+  JobConf conf=new JobConf();
+  FileSystem fs=FileSystem.get(new Configuration());
+  fs.delete(TEST_DIR,true);
+  conf.set(JTConfig.JT_JOBHISTORY_BLOCK_SIZE,"1024");
+  MiniMRCluster mr=new MiniMRCluster(1,"file:///",1,null,null,conf);
+  JobConf job1=mr.createJobConf();
+  UtilsForTests.configureWaitingJobConf(job1,new Path(TEST_DIR,"input"),new Path(TEST_DIR,"output1"),2,0,"test-recovery-manager",signalFile,signalFile);
+  RunningJob rJob1=(new JobClient(job1)).submitJob(job1);
+  LOG.info("Submitted job " + rJob1.getID());
+  while (rJob1.mapProgress() < 0.5f) {
+    LOG.info("Waiting for job " + rJob1.getID() + " to be 50% done");
+    UtilsForTests.waitFor(100);
+  }
+  JobConf job2=mr.createJobConf();
+  UtilsForTests.configureWaitingJobConf(job2,new Path(TEST_DIR,"input"),new Path(TEST_DIR,"output2"),30,0,"test-recovery-manager",signalFile,signalFile);
+  RunningJob rJob2=(new JobClient(job2)).submitJob(job2);
+  LOG.info("Submitted job " + rJob2.getID());
+  while (rJob2.mapProgress() < 0.5f) {
+    LOG.info("Waiting for job " + rJob2.getID() + " to be 50% done");
+    UtilsForTests.waitFor(100);
+  }
+  LOG.info("Stopping jobtracker");
+  String sysDir=mr.getJobTrackerRunner().getJobTracker().getSystemDir();
+  mr.stopJobTracker();
+  Path jobFile=new Path(sysDir,rJob1.getID().toString() + "/" + JobTracker.JOB_INFO_FILE);
+  LOG.info("Deleting job token file : " + jobFile.toString());
+  fs.delete(jobFile,false);
+  FSDataOutputStream out=fs.create(jobFile);
+  out.write(1);
+  out.close();
+  mr.getJobTrackerConf().setBoolean(JTConfig.JT_RESTART_ENABLED,true);
+  LOG.info("Starting jobtracker");
+  mr.startJobTracker();
+  ClusterStatus status=mr.getJobTrackerRunner().getJobTracker().getClusterStatus(false);
+  assertEquals("JobTracker crashed!",JobTrackerStatus.RUNNING,status.getJobTrackerStatus());
+  assertEquals("No of recovered jobs not correct",1,mr.getJobTrackerRunner().getJobTracker().recoveryManager.getRecovered());
+  mr.shutdown();
+}

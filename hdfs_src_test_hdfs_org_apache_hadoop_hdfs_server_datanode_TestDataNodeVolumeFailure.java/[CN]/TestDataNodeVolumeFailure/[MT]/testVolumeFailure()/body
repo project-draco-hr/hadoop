@@ -1,0 +1,31 @@
+{
+  FileSystem fs=cluster.getFileSystem();
+  dataDir=new File(cluster.getDataDirectory());
+  System.out.println("Data dir: is " + dataDir.getPath());
+  String filename="/test.txt";
+  Path filePath=new Path(filename);
+  int filesize=block_size * blocks_num;
+  DFSTestUtil.createFile(fs,filePath,filesize,repl,1L);
+  DFSTestUtil.waitReplication(fs,filePath,repl);
+  System.out.println("file " + filename + "(size "+ filesize+ ") is created and replicated");
+  data_fail=new File(dataDir,"data3");
+  failedDir=MiniDFSCluster.getFinalizedDir(dataDir,cluster.getNamesystem().getBlockPoolId());
+  if (failedDir.exists() && !deteteBlocks(failedDir)) {
+    throw new IOException("Could not delete hdfs directory '" + failedDir + "'");
+  }
+  data_fail.setReadOnly();
+  failedDir.setReadOnly();
+  System.out.println("Deleteing " + failedDir.getPath() + "; exist="+ failedDir.exists());
+  triggerFailure(filename,filesize);
+  DataNode dn=cluster.getDataNodes().get(1);
+  String bpid=cluster.getNamesystem().getBlockPoolId();
+  DatanodeRegistration dnR=dn.getDNRegistrationForBP(bpid);
+  long[] bReport=dn.getFSDataset().getBlockReport(bpid).getBlockListAsLongs();
+  cluster.getNameNode().blockReport(dnR,bpid,bReport);
+  verify(filename,filesize);
+  System.out.println("creating file test1.txt");
+  Path fileName1=new Path("/test1.txt");
+  DFSTestUtil.createFile(fs,fileName1,filesize,repl,1L);
+  DFSTestUtil.waitReplication(fs,fileName1,repl);
+  System.out.println("file " + fileName1.getName() + " is created and replicated");
+}

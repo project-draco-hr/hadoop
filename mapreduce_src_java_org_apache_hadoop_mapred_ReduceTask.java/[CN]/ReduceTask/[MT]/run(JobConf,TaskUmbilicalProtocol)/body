@@ -1,0 +1,51 @@
+{
+  job.setBoolean(JobContext.SKIP_RECORDS,isSkipping());
+  if (isMapOrReduce()) {
+    copyPhase=getProgress().addPhase("copy");
+    sortPhase=getProgress().addPhase("sort");
+    reducePhase=getProgress().addPhase("reduce");
+  }
+  TaskReporter reporter=startReporter(umbilical);
+  boolean useNewApi=job.getUseNewReducer();
+  initialize(job,getJobID(),reporter,useNewApi);
+  if (jobCleanup) {
+    runJobCleanupTask(umbilical,reporter);
+    return;
+  }
+  if (jobSetup) {
+    runJobSetupTask(umbilical,reporter);
+    return;
+  }
+  if (taskCleanup) {
+    runTaskCleanupTask(umbilical,reporter);
+    return;
+  }
+  codec=initCodec();
+  RawKeyValueIterator rIter=null;
+  boolean isLocal="local".equals(job.get(JTConfig.JT_IPC_ADDRESS,"local"));
+  if (!isLocal) {
+    Class combinerClass=conf.getCombinerClass();
+    CombineOutputCollector combineCollector=(null != combinerClass) ? new CombineOutputCollector(reduceCombineOutputCounter) : null;
+    Shuffle shuffle=new Shuffle(getTaskID(),job,FileSystem.getLocal(job),umbilical,super.lDirAlloc,reporter,codec,combinerClass,combineCollector,spilledRecordsCounter,reduceCombineInputCounter,shuffledMapsCounter,reduceShuffleBytes,failedShuffleCounter,mergedMapOutputsCounter,taskStatus,copyPhase,sortPhase,this);
+    rIter=shuffle.run();
+  }
+ else {
+    copyPhase.complete();
+    final FileSystem rfs=FileSystem.getLocal(job).getRaw();
+    rIter=Merger.merge(job,rfs,job.getMapOutputKeyClass(),job.getMapOutputValueClass(),codec,getMapFiles(rfs,true),!conf.getKeepFailedTaskFiles(),job.getInt(JobContext.IO_SORT_FACTOR,100),new Path(getTaskID().toString()),job.getOutputKeyComparator(),reporter,spilledRecordsCounter,null,null);
+  }
+  mapOutputFilesOnDisk.clear();
+  sortPhase.complete();
+  setPhase(TaskStatus.Phase.REDUCE);
+  statusUpdate(umbilical);
+  Class keyClass=job.getMapOutputKeyClass();
+  Class valueClass=job.getMapOutputValueClass();
+  RawComparator comparator=job.getOutputValueGroupingComparator();
+  if (useNewApi) {
+    runNewReducer(job,umbilical,reporter,rIter,comparator,keyClass,valueClass);
+  }
+ else {
+    runOldReducer(job,umbilical,reporter,rIter,comparator,keyClass,valueClass);
+  }
+  done(umbilical,reporter);
+}

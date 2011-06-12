@@ -1,0 +1,45 @@
+{
+  Configuration conf=getConf();
+  NameNode.initMetrics(conf,NamenodeRole.ACTIVE);
+  DFSTestUtil.formatNameNode(conf);
+  FSNamesystem fsn=new FSNamesystem(conf);
+  FSImage originalImage=fsn.dir.fsImage;
+  NNStorage storage=originalImage.getStorage();
+  storage.close();
+  NNStorage spyStorage=spy(storage);
+  originalImage.storage=spyStorage;
+  FSImage spyImage=spy(originalImage);
+  fsn.dir.fsImage=spyImage;
+  spyImage.getStorage().setStorageDirectories(FSNamesystem.getNamespaceDirs(conf),FSNamesystem.getNamespaceEditsDirs(conf));
+switch (fault) {
+case SAVE_FSIMAGE:
+    doAnswer(new FaultySaveImage()).when(spyImage).saveFSImage((File)anyObject());
+  break;
+case MOVE_CURRENT:
+doThrow(new RuntimeException("Injected fault: moveCurrent")).when(spyStorage).moveCurrent((StorageDirectory)anyObject());
+break;
+case MOVE_LAST_CHECKPOINT:
+doThrow(new RuntimeException("Injected fault: moveLastCheckpoint")).when(spyStorage).moveLastCheckpoint((StorageDirectory)anyObject());
+break;
+}
+try {
+doAnEdit(fsn,1);
+fsn.setSafeMode(SafeModeAction.SAFEMODE_ENTER);
+try {
+fsn.saveNamespace();
+}
+ catch (Exception e) {
+LOG.info("Test caught expected exception",e);
+}
+originalImage.close();
+fsn.close();
+fsn=null;
+fsn=new FSNamesystem(conf);
+checkEditExists(fsn,1);
+}
+  finally {
+if (fsn != null) {
+fsn.close();
+}
+}
+}

@@ -1,0 +1,34 @@
+{
+  LOG.info("starting");
+  Job job=Job.getInstance(new Cluster(getConf()),getConf());
+  Path inputDir=new Path(args[0]);
+  Path outputDir=new Path(args[1]);
+  boolean useSimplePartitioner=getUseSimplePartitioner(job);
+  TeraInputFormat.setInputPaths(job,inputDir);
+  FileOutputFormat.setOutputPath(job,outputDir);
+  job.setJobName("TeraSort");
+  job.setJarByClass(TeraSort.class);
+  job.setOutputKeyClass(Text.class);
+  job.setOutputValueClass(Text.class);
+  job.setInputFormatClass(TeraInputFormat.class);
+  job.setOutputFormatClass(TeraOutputFormat.class);
+  if (useSimplePartitioner) {
+    job.setPartitionerClass(SimplePartitioner.class);
+  }
+ else {
+    long start=System.currentTimeMillis();
+    Path partitionFile=new Path(outputDir,TeraInputFormat.PARTITION_FILENAME);
+    URI partitionUri=new URI(partitionFile.toString() + "#" + TeraInputFormat.PARTITION_FILENAME);
+    TeraInputFormat.writePartitionFile(job,partitionFile);
+    job.addCacheFile(partitionUri);
+    job.createSymlink();
+    long end=System.currentTimeMillis();
+    System.out.println("Spent " + (end - start) + "ms computing partitions.");
+    job.setPartitionerClass(TotalOrderPartitioner.class);
+  }
+  job.getConfiguration().setInt("dfs.replication",getOutputReplication(job));
+  TeraOutputFormat.setFinalSync(job,true);
+  int ret=job.waitForCompletion(true) ? 0 : 1;
+  LOG.info("done");
+  return ret;
+}

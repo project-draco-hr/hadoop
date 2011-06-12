@@ -1,0 +1,38 @@
+{
+  emulateDistributedCache=jobCreator.canEmulateDistCacheLoad() && conf.getBoolean(GRIDMIX_EMULATE_DISTRIBUTEDCACHE,true);
+  generateDistCacheData=generate;
+  if (generateDistCacheData || emulateDistributedCache) {
+    if ("-".equals(traceIn)) {
+      LOG.warn("Gridmix will not emulate Distributed Cache load because " + "the input trace source is a stream instead of file.");
+      emulateDistributedCache=generateDistCacheData=false;
+    }
+ else     if (FileSystem.getLocal(conf).getUri().getScheme().equals(distCachePath.toUri().getScheme())) {
+      LOG.warn("Gridmix will not emulate Distributed Cache load because " + "<iopath> provided is on local file system.");
+      emulateDistributedCache=generateDistCacheData=false;
+    }
+ else {
+      FileSystem fs=FileSystem.get(conf);
+      Path cur=distCachePath.getParent();
+      while (cur != null) {
+        if (cur.toString().length() > 0) {
+          FsPermission perm=fs.getFileStatus(cur).getPermission();
+          if (!perm.getOtherAction().and(FsAction.EXECUTE).equals(FsAction.EXECUTE)) {
+            LOG.warn("Gridmix will not emulate Distributed Cache load " + "because the ascendant directory (of distributed cache " + "directory) " + cur + " doesn't have execute permission "+ "for others.");
+            emulateDistributedCache=generateDistCacheData=false;
+            break;
+          }
+        }
+        cur=cur.getParent();
+      }
+    }
+  }
+  try {
+    pseudoLocalFs=FileSystem.get(new URI("pseudo:///"),conf);
+  }
+ catch (  URISyntaxException e) {
+    LOG.warn("Gridmix will not emulate Distributed Cache load because " + "creation of pseudo local file system failed.");
+    e.printStackTrace();
+    emulateDistributedCache=generateDistCacheData=false;
+    return;
+  }
+}

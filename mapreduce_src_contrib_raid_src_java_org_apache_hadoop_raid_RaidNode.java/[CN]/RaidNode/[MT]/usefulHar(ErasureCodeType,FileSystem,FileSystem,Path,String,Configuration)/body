@@ -1,0 +1,46 @@
+{
+  FileSystem fsHar=new HarFileSystem(destFs);
+  String harURIPath=harPath.toUri().getPath();
+  Path qualifiedPath=new Path("har://",harURIPath + Path.SEPARATOR + harPath.getParent().toUri().getPath());
+  fsHar.initialize(qualifiedPath.toUri(),conf);
+  FileStatus[] filesInHar=fsHar.listStatus(qualifiedPath);
+  if (filesInHar.length == 0) {
+    return 0;
+  }
+  int numUseless=0;
+  for (  FileStatus one : filesInHar) {
+    Path parityPath=one.getPath();
+    String parityStr=parityPath.toUri().getPath();
+    if (parityStr.startsWith("har:/")) {
+      LOG.error("Unexpected prefix har:/ for " + parityStr);
+      continue;
+    }
+    String prefixToReplace=harURIPath + destPrefix;
+    if (!parityStr.startsWith(prefixToReplace)) {
+      continue;
+    }
+    String src=parityStr.substring(prefixToReplace.length());
+    if (code == ErasureCodeType.XOR) {
+      ParityFilePair ppair=getParityFile(getDestinationPath(ErasureCodeType.RS,conf),new Path(src),conf);
+      if (ppair != null) {
+        numUseless++;
+        continue;
+      }
+    }
+    try {
+      FileStatus srcStatus=srcFs.getFileStatus(new Path(src));
+      if (srcStatus == null) {
+        numUseless++;
+      }
+ else       if (one.getModificationTime() != srcStatus.getModificationTime()) {
+        numUseless++;
+      }
+    }
+ catch (    FileNotFoundException e) {
+      LOG.info("File not found: " + e);
+      numUseless++;
+    }
+  }
+  int uselessPercent=numUseless * 100 / filesInHar.length;
+  return 100 - uselessPercent;
+}

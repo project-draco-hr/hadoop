@@ -1,0 +1,23 @@
+{
+  final Configuration conf=new Configuration();
+  final FileSystem lfs=FileSystem.getLocal(conf);
+  final Path rootInputDir=new Path(System.getProperty("test.tools.input.dir","")).makeQualified(lfs.getUri(),lfs.getWorkingDirectory());
+  final Path rootTempDir=new Path(System.getProperty("test.build.data","/tmp")).makeQualified(lfs.getUri(),lfs.getWorkingDirectory());
+  final Path rootInputPath=new Path(rootInputDir,"rumen/small-trace-test");
+  final Path tempDir=new Path(rootTempDir,"TestRumenViaDispatch");
+  lfs.delete(tempDir,true);
+  final Path topologyPath=new Path(tempDir,"dispatch-topology.json");
+  final Path tracePath=new Path(tempDir,"dispatch-trace.json");
+  final Path inputPath=new Path(rootInputPath,"dispatch-sample-v20-jt-log.gz");
+  System.out.println("topology result file = " + topologyPath);
+  System.out.println("testRumenViaDispatch() trace result file = " + tracePath);
+  String demuxerClassName=ConcatenatedInputFilesDemuxer.class.getName();
+  String[] args={"-demuxer",demuxerClassName,tracePath.toString(),topologyPath.toString(),inputPath.toString()};
+  final Path topologyGoldFile=new Path(rootInputPath,"dispatch-topology-output.json.gz");
+  final Path traceGoldFile=new Path(rootInputPath,"dispatch-trace-output.json.gz");
+  Tool analyzer=new TraceBuilder();
+  int result=ToolRunner.run(analyzer,args);
+  assertEquals("Non-zero exit",0,result);
+  TestRumenJobTraces.<LoggedNetworkTopology>jsonFileMatchesGold(conf,topologyPath,topologyGoldFile,LoggedNetworkTopology.class,"topology");
+  TestRumenJobTraces.<LoggedJob>jsonFileMatchesGold(conf,tracePath,traceGoldFile,LoggedJob.class,"trace");
+}

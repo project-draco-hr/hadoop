@@ -1,0 +1,45 @@
+{
+  if (doPipe_ && outThread_ == null) {
+    startOutputThreads(output,reporter);
+  }
+  try {
+    while (values.hasNext()) {
+      Writable val=(Writable)values.next();
+      numRecRead_++;
+      maybeLogRecord();
+      if (doPipe_) {
+        if (outerrThreadsThrowable != null) {
+          mapRedFinished();
+          throw new IOException("MROutput/MRErrThread failed:",outerrThreadsThrowable);
+        }
+        inWriter_.writeKey(key);
+        inWriter_.writeValue(val);
+      }
+ else {
+        output.collect(key,val);
+      }
+    }
+    if (doPipe_ && skipping) {
+      clientOut_.flush();
+    }
+  }
+ catch (  IOException io) {
+    String extraInfo="";
+    try {
+      int exitVal=sim.exitValue();
+      if (exitVal == 0) {
+        extraInfo="subprocess exited successfully\n";
+      }
+ else {
+        extraInfo="subprocess exited with error code " + exitVal + "\n";
+      }
+      ;
+    }
+ catch (    IllegalThreadStateException e) {
+      extraInfo="subprocess still running\n";
+    }
+    ;
+    mapRedFinished();
+    throw new IOException(extraInfo + getContext() + io.getMessage());
+  }
+}

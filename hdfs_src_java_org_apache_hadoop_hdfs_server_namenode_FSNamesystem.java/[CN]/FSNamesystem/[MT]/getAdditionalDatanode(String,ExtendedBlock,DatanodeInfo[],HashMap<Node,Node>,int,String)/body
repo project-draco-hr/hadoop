@@ -1,0 +1,31 @@
+{
+  dtpReplaceDatanodeOnFailure.checkEnabled();
+  final DatanodeDescriptor clientnode;
+  final long preferredblocksize;
+  final List<DatanodeDescriptor> chosen;
+  readLock();
+  try {
+    if (isInSafeMode()) {
+      throw new SafeModeException("Cannot add datanode; src=" + src + ", blk="+ blk,safeMode);
+    }
+    final INodeFileUnderConstruction file=checkLease(src,clientName);
+    clientnode=file.getClientNode();
+    preferredblocksize=file.getPreferredBlockSize();
+    chosen=new ArrayList<DatanodeDescriptor>();
+    for (    DatanodeInfo d : existings) {
+      final DatanodeDescriptor descriptor=getDatanode(d);
+      if (descriptor != null) {
+        chosen.add(descriptor);
+      }
+    }
+  }
+  finally {
+    readUnlock();
+  }
+  final DatanodeInfo[] targets=blockManager.replicator.chooseTarget(src,numAdditionalNodes,clientnode,chosen,true,excludes,preferredblocksize);
+  final LocatedBlock lb=new LocatedBlock(blk,targets);
+  if (isBlockTokenEnabled) {
+    lb.setBlockToken(blockTokenSecretManager.generateToken(lb.getBlock(),EnumSet.of(BlockTokenSecretManager.AccessMode.COPY)));
+  }
+  return lb;
+}

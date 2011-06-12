@@ -1,0 +1,28 @@
+{
+  if (!context.nextKey() || context.getCurrentKey().getType() != GridmixKey.REDUCE_SPEC) {
+    throw new IOException("Missing reduce spec");
+  }
+  long outBytes=0L;
+  long outRecords=0L;
+  long inRecords=0L;
+  for (  GridmixRecord ignored : context.getValues()) {
+    final GridmixKey spec=context.getCurrentKey();
+    inRecords+=spec.getReduceInputRecords();
+    outBytes+=spec.getReduceOutputBytes();
+    outRecords+=spec.getReduceOutputRecords();
+  }
+  if (0 == outRecords && inRecords > 0) {
+    LOG.info("Spec output bytes w/o records. Using input record count");
+    outRecords=inRecords;
+  }
+  Configuration conf=context.getConfiguration();
+  if (CompressionEmulationUtil.isCompressionEmulationEnabled(conf) && FileOutputFormat.getCompressOutput(context)) {
+    float compressionRatio=CompressionEmulationUtil.getReduceOutputCompressionEmulationRatio(conf);
+    LOG.info("GridMix is configured to use a compression ratio of " + compressionRatio + " for the reduce output data.");
+    val.setCompressibility(true,compressionRatio);
+    outBytes/=compressionRatio;
+  }
+  factory=new AvgRecordFactory(outBytes,outRecords,context.getConfiguration(),5 * 1024);
+  ratio=outRecords / (1.0 * inRecords);
+  acc=0.0;
+}

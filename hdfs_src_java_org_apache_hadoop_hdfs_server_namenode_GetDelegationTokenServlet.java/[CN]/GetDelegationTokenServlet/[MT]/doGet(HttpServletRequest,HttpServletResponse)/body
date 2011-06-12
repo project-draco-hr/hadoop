@@ -1,0 +1,44 @@
+{
+  final UserGroupInformation ugi;
+  final ServletContext context=getServletContext();
+  final Configuration conf=(Configuration)context.getAttribute(JspHelper.CURRENT_CONF);
+  try {
+    ugi=getUGI(req,conf);
+  }
+ catch (  IOException ioe) {
+    LOG.info("Request for token received with no authentication from " + req.getRemoteAddr(),ioe);
+    resp.sendError(HttpServletResponse.SC_FORBIDDEN,"Unable to identify or authenticate user");
+    return;
+  }
+  LOG.info("Sending token: {" + ugi.getUserName() + ","+ req.getRemoteAddr()+ "}");
+  final NameNode nn=(NameNode)context.getAttribute("name.node");
+  String renewer=req.getParameter(RENEWER);
+  final String renewerFinal=(renewer == null) ? req.getUserPrincipal().getName() : renewer;
+  DataOutputStream dos=null;
+  try {
+    dos=new DataOutputStream(resp.getOutputStream());
+    final DataOutputStream dosFinal=dos;
+    ugi.doAs(new PrivilegedExceptionAction<Void>(){
+      @Override public Void run() throws Exception {
+        String s=NameNode.getAddress(conf).getAddress().getHostAddress() + ":" + NameNode.getAddress(conf).getPort();
+        Token<DelegationTokenIdentifier> token=nn.getDelegationToken(new Text(renewerFinal));
+        if (token == null) {
+          throw new Exception("couldn't get the token for " + s);
+        }
+        token.setService(new Text(s));
+        Credentials ts=new Credentials();
+        ts.addToken(new Text(ugi.getShortUserName()),token);
+        ts.write(dosFinal);
+        return null;
+      }
+    }
+);
+  }
+ catch (  Exception e) {
+    LOG.info("Exception while sending token. Re-throwing. ",e);
+    resp.sendError(HttpServletResponse.SC_INTERNAL_SERVER_ERROR);
+  }
+ finally {
+    if (dos != null)     dos.close();
+  }
+}

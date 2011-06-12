@@ -1,0 +1,35 @@
+{
+  if (status != STATUS_NORMAL) {
+    if (in != null) {
+      in.close();
+      in=null;
+    }
+    final URLOpener o=resolvedURL.getURL() == null ? originalURL : resolvedURL;
+    final HttpURLConnection connection=o.openConnection();
+    try {
+      connection.setRequestMethod("GET");
+      if (startPos != 0) {
+        connection.setRequestProperty("Range","bytes=" + startPos + "-");
+      }
+      connection.connect();
+      final String cl=connection.getHeaderField(StreamFile.CONTENT_LENGTH);
+      filelength=cl == null ? -1 : Long.parseLong(cl);
+      if (HftpFileSystem.LOG.isDebugEnabled()) {
+        HftpFileSystem.LOG.debug("filelength = " + filelength);
+      }
+      in=connection.getInputStream();
+    }
+ catch (    IOException ioe) {
+      HftpFileSystem.throwIOExceptionFromConnection(connection,ioe);
+    }
+    if (startPos != 0 && connection.getResponseCode() != 206) {
+      throw new IOException("206 expected, but received " + connection.getResponseCode());
+    }
+ else     if (startPos == 0 && connection.getResponseCode() != 200) {
+      throw new IOException("200 expected, but received " + connection.getResponseCode());
+    }
+    resolvedURL.setURL(connection.getURL());
+    status=STATUS_NORMAL;
+  }
+  return in;
+}

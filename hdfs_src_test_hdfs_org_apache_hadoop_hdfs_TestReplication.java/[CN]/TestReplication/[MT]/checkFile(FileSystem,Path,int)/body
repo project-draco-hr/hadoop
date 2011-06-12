@@ -1,0 +1,55 @@
+{
+  Configuration conf=fileSys.getConf();
+  ClientProtocol namenode=DFSClient.createNamenode(conf);
+  waitForBlockReplication(name.toString(),namenode,Math.min(numDatanodes,repl),-1);
+  LocatedBlocks locations=namenode.getBlockLocations(name.toString(),0,Long.MAX_VALUE);
+  FileStatus stat=fileSys.getFileStatus(name);
+  BlockLocation[] blockLocations=fileSys.getFileBlockLocations(stat,0L,Long.MAX_VALUE);
+  assertTrue(blockLocations.length == locations.locatedBlockCount());
+  for (int i=0; i < blockLocations.length; i++) {
+    LocatedBlock blk=locations.get(i);
+    DatanodeInfo[] datanodes=blk.getLocations();
+    String[] topologyPaths=blockLocations[i].getTopologyPaths();
+    assertTrue(topologyPaths.length == datanodes.length);
+    for (int j=0; j < topologyPaths.length; j++) {
+      boolean found=false;
+      for (int k=0; k < racks.length; k++) {
+        if (topologyPaths[j].startsWith(racks[k])) {
+          found=true;
+          break;
+        }
+      }
+      assertTrue(found);
+    }
+  }
+  boolean isOnSameRack=true, isNotOnSameRack=true;
+  for (  LocatedBlock blk : locations.getLocatedBlocks()) {
+    DatanodeInfo[] datanodes=blk.getLocations();
+    if (datanodes.length <= 1)     break;
+    if (datanodes.length == 2) {
+      isNotOnSameRack=!(datanodes[0].getNetworkLocation().equals(datanodes[1].getNetworkLocation()));
+      break;
+    }
+    isOnSameRack=false;
+    isNotOnSameRack=false;
+    for (int i=0; i < datanodes.length - 1; i++) {
+      LOG.info("datanode " + i + ": "+ datanodes[i].getName());
+      boolean onRack=false;
+      for (int j=i + 1; j < datanodes.length; j++) {
+        if (datanodes[i].getNetworkLocation().equals(datanodes[j].getNetworkLocation())) {
+          onRack=true;
+        }
+      }
+      if (onRack) {
+        isOnSameRack=true;
+      }
+      if (!onRack) {
+        isNotOnSameRack=true;
+      }
+      if (isOnSameRack && isNotOnSameRack)       break;
+    }
+    if (!isOnSameRack || !isNotOnSameRack)     break;
+  }
+  assertTrue(isOnSameRack);
+  assertTrue(isNotOnSameRack);
+}

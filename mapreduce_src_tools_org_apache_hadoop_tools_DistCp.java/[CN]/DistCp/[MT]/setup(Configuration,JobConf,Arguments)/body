@@ -1,0 +1,223 @@
+{
+  jobConf.set(DST_DIR_LABEL,args.dst.toUri().toString());
+  final boolean update=args.flags.contains(Options.UPDATE);
+  final boolean skipCRCCheck=args.flags.contains(Options.SKIPCRC);
+  final boolean overwrite=!update && args.flags.contains(Options.OVERWRITE) && !args.dryrun;
+  jobConf.setBoolean(Options.UPDATE.propertyname,update);
+  jobConf.setBoolean(Options.SKIPCRC.propertyname,skipCRCCheck);
+  jobConf.setBoolean(Options.OVERWRITE.propertyname,overwrite);
+  jobConf.setBoolean(Options.IGNORE_READ_FAILURES.propertyname,args.flags.contains(Options.IGNORE_READ_FAILURES));
+  jobConf.setBoolean(Options.PRESERVE_STATUS.propertyname,args.flags.contains(Options.PRESERVE_STATUS));
+  final String randomId=getRandomId();
+  JobClient jClient=new JobClient(jobConf);
+  Path stagingArea;
+  try {
+    stagingArea=JobSubmissionFiles.getStagingDir(jClient.getClusterHandle(),conf);
+  }
+ catch (  InterruptedException ie) {
+    throw new IOException(ie);
+  }
+  Path jobDirectory=new Path(stagingArea + NAME + "_"+ randomId);
+  FsPermission mapredSysPerms=new FsPermission(JobSubmissionFiles.JOB_DIR_PERMISSION);
+  FileSystem.mkdirs(jClient.getFs(),jobDirectory,mapredSysPerms);
+  jobConf.set(JOB_DIR_LABEL,jobDirectory.toString());
+  long maxBytesPerMap=conf.getLong(BYTES_PER_MAP_LABEL,BYTES_PER_MAP);
+  FileSystem dstfs=args.dst.getFileSystem(conf);
+  TokenCache.obtainTokensForNamenodes(jobConf.getCredentials(),new Path[]{args.dst},conf);
+  boolean dstExists=dstfs.exists(args.dst);
+  boolean dstIsDir=false;
+  if (dstExists) {
+    dstIsDir=dstfs.getFileStatus(args.dst).isDirectory();
+  }
+  Path logPath=args.log;
+  if (logPath == null) {
+    String filename="_distcp_logs_" + randomId;
+    if (!dstExists || !dstIsDir) {
+      Path parent=args.dst.getParent();
+      if (null == parent) {
+        parent=args.dst;
+      }
+      if (!dstfs.exists(parent)) {
+        dstfs.mkdirs(parent);
+      }
+      logPath=new Path(parent,filename);
+    }
+ else {
+      logPath=new Path(args.dst,filename);
+    }
+  }
+  FileOutputFormat.setOutputPath(jobConf,logPath);
+  FileSystem jobfs=jobDirectory.getFileSystem(jobConf);
+  Path srcfilelist=new Path(jobDirectory,"_distcp_src_files");
+  jobConf.set(SRC_LIST_LABEL,srcfilelist.toString());
+  SequenceFile.Writer src_writer=SequenceFile.createWriter(jobfs,jobConf,srcfilelist,LongWritable.class,FilePair.class,SequenceFile.CompressionType.NONE);
+  Path dstfilelist=new Path(jobDirectory,"_distcp_dst_files");
+  SequenceFile.Writer dst_writer=SequenceFile.createWriter(jobfs,jobConf,dstfilelist,Text.class,Text.class,SequenceFile.CompressionType.NONE);
+  Path dstdirlist=new Path(jobDirectory,"_distcp_dst_dirs");
+  jobConf.set(DST_DIR_LIST_LABEL,dstdirlist.toString());
+  SequenceFile.Writer dir_writer=SequenceFile.createWriter(jobfs,jobConf,dstdirlist,Text.class,FilePair.class,SequenceFile.CompressionType.NONE);
+  final boolean special=(args.srcs.size() == 1 && !dstExists) || update || overwrite;
+  int srcCount=0, cnsyncf=0, dirsyn=0;
+  long fileCount=0L, dirCount=0L, byteCount=0L, cbsyncs=0L, skipFileCount=0L, skipByteCount=0L;
+  Path basedir=null;
+  HashSet<Path> parentDirsToCopy=new HashSet<Path>();
+  if (args.basedir != null) {
+    FileSystem basefs=args.basedir.getFileSystem(conf);
+    basedir=args.basedir.makeQualified(basefs);
+    if (!basefs.isDirectory(basedir)) {
+      throw new IOException("Basedir " + basedir + " is not a directory.");
+    }
+  }
+  try {
+    for (Iterator<Path> srcItr=args.srcs.iterator(); srcItr.hasNext(); ) {
+      final Path src=srcItr.next();
+      FileSystem srcfs=src.getFileSystem(conf);
+      FileStatus srcfilestat=srcfs.getFileStatus(src);
+      Path root=special && srcfilestat.isDirectory() ? src : src.getParent();
+      if (dstExists && !dstIsDir && (args.srcs.size() > 1 || srcfilestat.isDirectory())) {
+        throw new IOException("Destination " + args.dst + " should be a dir"+ " if multiple source paths are there OR if"+ " the source path is a dir");
+      }
+      if (basedir != null) {
+        root=basedir;
+        Path parent=src.getParent().makeQualified(srcfs);
+        while (parent != null && !parent.equals(basedir)) {
+          if (!parentDirsToCopy.contains(parent)) {
+            parentDirsToCopy.add(parent);
+            String dst=makeRelative(root,parent);
+            FileStatus pst=srcfs.getFileStatus(parent);
+            src_writer.append(new LongWritable(0),new FilePair(pst,dst));
+            dst_writer.append(new Text(dst),new Text(parent.toString()));
+            dir_writer.append(new Text(dst),new FilePair(pst,dst));
+            if (++dirsyn > SYNC_FILE_MAX) {
+              dirsyn=0;
+              dir_writer.sync();
+            }
+          }
+          parent=parent.getParent();
+        }
+        if (parent == null) {
+          throw new IOException("Basedir " + basedir + " is not a prefix of source path "+ src);
+        }
+      }
+      if (srcfilestat.isDirectory()) {
+        ++srcCount;
+        final String dst=makeRelative(root,src);
+        if (!update || !dirExists(conf,new Path(args.dst,dst))) {
+          ++dirCount;
+          src_writer.append(new LongWritable(0),new FilePair(srcfilestat,dst));
+        }
+        dst_writer.append(new Text(dst),new Text(src.toString()));
+      }
+      Stack<FileStatus> pathstack=new Stack<FileStatus>();
+      for (pathstack.push(srcfilestat); !pathstack.empty(); ) {
+        FileStatus cur=pathstack.pop();
+        FileStatus[] children=srcfs.listStatus(cur.getPath());
+        for (int i=0; i < children.length; i++) {
+          boolean skipPath=false;
+          final FileStatus child=children[i];
+          final String dst=makeRelative(root,child.getPath());
+          ++srcCount;
+          if (child.isDirectory()) {
+            pathstack.push(child);
+            if (!update || !dirExists(conf,new Path(args.dst,dst))) {
+              ++dirCount;
+            }
+ else {
+              skipPath=true;
+            }
+          }
+ else {
+            Path destPath=new Path(args.dst,dst);
+            if (cur.isFile() && (args.srcs.size() == 1)) {
+              Path dstparent=destPath.getParent();
+              FileSystem destFileSys=destPath.getFileSystem(jobConf);
+              if (!(destFileSys.exists(dstparent) && destFileSys.getFileStatus(dstparent).isDirectory())) {
+                destPath=dstparent;
+              }
+            }
+            skipPath=update && sameFile(srcfs,child,dstfs,destPath,skipCRCCheck);
+            skipPath|=fileCount == args.filelimit || byteCount + child.getLen() > args.sizelimit;
+            if (!skipPath) {
+              ++fileCount;
+              byteCount+=child.getLen();
+              if (LOG.isTraceEnabled()) {
+                LOG.trace("adding file " + child.getPath());
+              }
+              ++cnsyncf;
+              cbsyncs+=child.getLen();
+              if (cnsyncf > SYNC_FILE_MAX || cbsyncs > maxBytesPerMap) {
+                src_writer.sync();
+                dst_writer.sync();
+                cnsyncf=0;
+                cbsyncs=0L;
+              }
+            }
+ else {
+              ++skipFileCount;
+              skipByteCount+=child.getLen();
+              if (LOG.isTraceEnabled()) {
+                LOG.trace("skipping file " + child.getPath());
+              }
+            }
+          }
+          if (!skipPath) {
+            src_writer.append(new LongWritable(child.isDirectory() ? 0 : child.getLen()),new FilePair(child,dst));
+          }
+          dst_writer.append(new Text(dst),new Text(child.getPath().toString()));
+        }
+        if (cur.isDirectory()) {
+          String dst=makeRelative(root,cur.getPath());
+          dir_writer.append(new Text(dst),new FilePair(cur,dst));
+          if (++dirsyn > SYNC_FILE_MAX) {
+            dirsyn=0;
+            dir_writer.sync();
+          }
+        }
+      }
+    }
+  }
+  finally {
+    checkAndClose(src_writer);
+    checkAndClose(dst_writer);
+    checkAndClose(dir_writer);
+  }
+  LOG.info("sourcePathsCount(files+directories)=" + srcCount);
+  LOG.info("filesToCopyCount=" + fileCount);
+  LOG.info("bytesToCopyCount=" + StringUtils.humanReadableInt(byteCount));
+  if (update) {
+    LOG.info("filesToSkipCopyCount=" + skipFileCount);
+    LOG.info("bytesToSkipCopyCount=" + StringUtils.humanReadableInt(skipByteCount));
+  }
+  if (args.dryrun) {
+    return false;
+  }
+  int mapCount=setMapCount(byteCount,jobConf);
+  setReplication(conf,jobConf,srcfilelist,mapCount);
+  FileStatus dststatus=null;
+  try {
+    dststatus=dstfs.getFileStatus(args.dst);
+  }
+ catch (  FileNotFoundException fnfe) {
+    LOG.info(args.dst + " does not exist.");
+  }
+  if (dststatus == null) {
+    if (srcCount > 1 && !dstfs.mkdirs(args.dst)) {
+      throw new IOException("Failed to create" + args.dst);
+    }
+  }
+  final Path sorted=new Path(jobDirectory,"_distcp_sorted");
+  checkDuplication(jobfs,dstfilelist,sorted,conf);
+  if (dststatus != null && args.flags.contains(Options.DELETE)) {
+    long deletedPathsCount=deleteNonexisting(dstfs,dststatus,sorted,jobfs,jobDirectory,jobConf,conf);
+    LOG.info("deletedPathsFromDestCount(files+directories)=" + deletedPathsCount);
+  }
+  Path tmpDir=new Path((dstExists && !dstIsDir) || (!dstExists && srcCount == 1) ? args.dst.getParent() : args.dst,"_distcp_tmp_" + randomId);
+  jobConf.set(TMP_DIR_LABEL,tmpDir.toUri().toString());
+  tmpDir.getFileSystem(conf).mkdirs(tmpDir);
+  LOG.info("sourcePathsCount=" + srcCount);
+  LOG.info("filesToCopyCount=" + fileCount);
+  LOG.info("bytesToCopyCount=" + StringUtils.humanReadableInt(byteCount));
+  jobConf.setInt(SRC_COUNT_LABEL,srcCount);
+  jobConf.setLong(TOTAL_SIZE_LABEL,byteCount);
+  return (fileCount + dirCount) > 0;
+}

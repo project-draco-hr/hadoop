@@ -1,0 +1,39 @@
+{
+  final FileStatus srcstat=value.input;
+  final Path relativedst=new Path(value.output);
+  try {
+    copyWithRetries(srcstat,relativedst,out,reporter);
+  }
+ catch (  IOException e) {
+    ++failcount;
+    reporter.incrCounter(Counter.FAIL,1);
+    updateStatus(reporter);
+    final String sfailure="FAIL " + relativedst + " : "+ StringUtils.stringifyException(e);
+    out.collect(null,new Text(sfailure));
+    LOG.info(sfailure);
+    if (e instanceof FileNotFoundException) {
+      final String s="Possible Cause for failure: Either the filesystem " + srcstat.getPath().getFileSystem(job) + " is not accessible or the file is deleted";
+      LOG.error(s);
+      out.collect(null,new Text(s));
+    }
+    try {
+      for (int i=0; i < 3; ++i) {
+        try {
+          final Path tmp=new Path(job.get(TMP_DIR_LABEL),relativedst);
+          if (destFileSys.delete(tmp,true))           break;
+        }
+ catch (        Throwable ex) {
+          LOG.debug("Ignoring cleanup exception",ex);
+        }
+        updateStatus(reporter);
+        Thread.sleep(3 * 1000);
+      }
+    }
+ catch (    InterruptedException inte) {
+      throw (IOException)new IOException().initCause(inte);
+    }
+  }
+ finally {
+    updateStatus(reporter);
+  }
+}

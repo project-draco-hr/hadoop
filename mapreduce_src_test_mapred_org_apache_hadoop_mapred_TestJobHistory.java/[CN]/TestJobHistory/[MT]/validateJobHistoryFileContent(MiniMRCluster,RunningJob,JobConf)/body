@@ -1,0 +1,21 @@
+{
+  JobID id=job.getID();
+  JobHistory jobHistory=mr.getJobTrackerRunner().getJobTracker().getJobHistory();
+  Path doneDir=jobHistory.getCompletedJobHistoryLocation();
+  String logFileName=getDoneFile(jobHistory,conf,id,doneDir);
+  Path logFile=new Path(doneDir,logFileName);
+  FileSystem fileSys=logFile.getFileSystem(conf);
+  assertTrue("History file does not exist",fileSys.exists(logFile));
+  JobHistoryParser parser=new JobHistoryParser(fileSys,logFile.toUri().getPath());
+  JobHistoryParser.JobInfo jobInfo=parser.parse();
+  validateJobLevelKeyValues(mr,job,jobInfo,conf);
+  validateTaskLevelKeyValues(mr,job,jobInfo);
+  validateTaskAttemptLevelKeyValues(mr,job,jobInfo);
+  if (mr.getJobTrackerRunner().getJobTracker().areACLsEnabled()) {
+    AccessControlList acl=new AccessControlList(conf.get(JobACL.VIEW_JOB.getAclName()," "));
+    assertTrue("VIEW_JOB ACL is not properly logged to history file.",acl.toString().equals(jobInfo.getJobACLs().get(JobACL.VIEW_JOB).toString()));
+    acl=new AccessControlList(conf.get(JobACL.MODIFY_JOB.getAclName()," "));
+    assertTrue("MODIFY_JOB ACL is not properly logged to history file.",acl.toString().equals(jobInfo.getJobACLs().get(JobACL.MODIFY_JOB).toString()));
+  }
+  assertTrue(jobInfo.getJobQueueName().equals(conf.getQueueName()));
+}

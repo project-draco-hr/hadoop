@@ -1,0 +1,66 @@
+{
+  Path dn=cfg.getOutputPath();
+  LOG.info("Writing report using contents of " + dn);
+  FileSystem fs=FileSystem.get(cfg.getConfig());
+  FileStatus[] reduceFiles=fs.listStatus(dn);
+  BufferedReader fileReader=null;
+  PrintWriter reportWriter=null;
+  try {
+    List<OperationOutput> noOperations=new ArrayList<OperationOutput>();
+    Map<String,List<OperationOutput>> splitTypes=new TreeMap<String,List<OperationOutput>>();
+    for (    FileStatus fn : reduceFiles) {
+      if (!fn.getPath().getName().startsWith("part"))       continue;
+      fileReader=new BufferedReader(new InputStreamReader(new DataInputStream(fs.open(fn.getPath()))));
+      String line;
+      while ((line=fileReader.readLine()) != null) {
+        String pieces[]=line.split("\t",2);
+        if (pieces.length == 2) {
+          OperationOutput data=new OperationOutput(pieces[0],pieces[1]);
+          String op=(data.getOperationType());
+          if (op != null) {
+            List<OperationOutput> opList=splitTypes.get(op);
+            if (opList == null) {
+              opList=new ArrayList<OperationOutput>();
+            }
+            opList.add(data);
+            splitTypes.put(op,opList);
+          }
+ else {
+            noOperations.add(data);
+          }
+        }
+ else {
+          throw new IOException("Unparseable line " + line);
+        }
+      }
+      fileReader.close();
+      fileReader=null;
+    }
+    File resFile=null;
+    if (cfg.getResultFile() != null) {
+      resFile=new File(cfg.getResultFile());
+    }
+    if (resFile != null) {
+      LOG.info("Report results being placed to logging output and to file " + resFile.getCanonicalPath());
+      reportWriter=new PrintWriter(new FileOutputStream(resFile));
+    }
+ else {
+      LOG.info("Report results being placed to logging output");
+    }
+    ReportWriter reporter=new ReportWriter();
+    if (!noOperations.isEmpty()) {
+      reporter.basicReport(noOperations,reportWriter);
+    }
+    for (    String opType : splitTypes.keySet()) {
+      reporter.opReport(opType,splitTypes.get(opType),reportWriter);
+    }
+  }
+  finally {
+    if (fileReader != null) {
+      fileReader.close();
+    }
+    if (reportWriter != null) {
+      reportWriter.close();
+    }
+  }
+}

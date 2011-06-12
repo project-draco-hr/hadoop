@@ -1,0 +1,30 @@
+{
+  BigDecimal minVal=results.getBigDecimal(1);
+  BigDecimal maxVal=results.getBigDecimal(2);
+  String lowClausePrefix=colName + " >= ";
+  String highClausePrefix=colName + " < ";
+  BigDecimal numSplits=new BigDecimal(conf.getInt(MRJobConfig.NUM_MAPS,1));
+  if (minVal == null && maxVal == null) {
+    List<InputSplit> splits=new ArrayList<InputSplit>();
+    splits.add(new DataDrivenDBInputFormat.DataDrivenDBInputSplit(colName + " IS NULL",colName + " IS NULL"));
+    return splits;
+  }
+  if (minVal == null || maxVal == null) {
+    LOG.error("Cannot find a range for NUMERIC or DECIMAL fields with one end NULL.");
+    return null;
+  }
+  List<BigDecimal> splitPoints=split(numSplits,minVal,maxVal);
+  List<InputSplit> splits=new ArrayList<InputSplit>();
+  BigDecimal start=splitPoints.get(0);
+  for (int i=1; i < splitPoints.size(); i++) {
+    BigDecimal end=splitPoints.get(i);
+    if (i == splitPoints.size() - 1) {
+      splits.add(new DataDrivenDBInputFormat.DataDrivenDBInputSplit(lowClausePrefix + start.toString(),colName + " <= " + end.toString()));
+    }
+ else {
+      splits.add(new DataDrivenDBInputFormat.DataDrivenDBInputSplit(lowClausePrefix + start.toString(),highClausePrefix + end.toString()));
+    }
+    start=end;
+  }
+  return splits;
+}

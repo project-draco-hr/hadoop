@@ -1,0 +1,33 @@
+{
+  String c=job.get("stream.recordreader.class");
+  if (c == null || c.indexOf("LineRecordReader") >= 0) {
+    return super.getRecordReader(genericSplit,job,reporter);
+  }
+  FileSplit split=(FileSplit)genericSplit;
+  LOG.info("getRecordReader start.....split=" + split);
+  reporter.setStatus(split.toString());
+  FileSystem fs=split.getPath().getFileSystem(job);
+  FSDataInputStream in=fs.open(split.getPath());
+  Class readerClass;
+{
+    readerClass=StreamUtil.goodClassOrNull(job,c,null);
+    if (readerClass == null) {
+      throw new RuntimeException("Class not found: " + c);
+    }
+  }
+  Constructor ctor;
+  try {
+    ctor=readerClass.getConstructor(new Class[]{FSDataInputStream.class,FileSplit.class,Reporter.class,JobConf.class,FileSystem.class});
+  }
+ catch (  NoSuchMethodException nsm) {
+    throw new RuntimeException(nsm);
+  }
+  RecordReader<Text,Text> reader;
+  try {
+    reader=(RecordReader<Text,Text>)ctor.newInstance(new Object[]{in,split,reporter,job,fs});
+  }
+ catch (  Exception nsm) {
+    throw new RuntimeException(nsm);
+  }
+  return reader;
+}

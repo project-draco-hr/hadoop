@@ -1,0 +1,40 @@
+{
+  if (killTasks == 0) {
+    return;
+  }
+  if (debug) {
+    LOG.debug("trying to kill " + Integer.toString(killTasks) + " tasks from queue "+ queue+ " "+ taskType(map));
+  }
+  int killed=0;
+  Collection<JobInProgress> jobs=getJobs(queue);
+  if (debug) {
+    LOG.debug("total jobs to kill from " + Integer.toString(jobs.size()) + " "+ taskType(map));
+  }
+  for (  JobInProgress job : jobs) {
+    TaskInProgress tasks[]=(map) ? job.maps.clone() : job.reduces.clone();
+    if (sortTasks) {
+      Arrays.sort(tasks,TASK_COMPARATOR);
+    }
+    if (debug) {
+      LOG.debug("total tasks to kill from " + Integer.toString(tasks.length) + " "+ taskType(map));
+    }
+    for (int i=0; i < tasks.length; i++) {
+      if (debug) {
+        LOG.debug("total active tasks to kill from " + Integer.toString(tasks[i].getActiveTasks().keySet().size()) + " "+ taskType(map));
+      }
+      for (      TaskAttemptID id : tasks[i].getActiveTasks().keySet()) {
+        if (tasks[i].isCommitPending(id)) {
+          continue;
+        }
+        tasks[i].killTask(id,false);
+        if (debug) {
+          LOG.debug("killed task " + id + " progress "+ Double.toString(tasks[i].getProgress())+ " start time "+ Long.toString(tasks[i].getExecStartTime())+ " "+ taskType(map));
+        }
+        killed+=1;
+        if (killed == killTasks) {
+          return;
+        }
+      }
+    }
+  }
+}

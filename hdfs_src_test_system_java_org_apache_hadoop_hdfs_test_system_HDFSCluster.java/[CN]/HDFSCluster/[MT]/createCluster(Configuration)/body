@@ -1,0 +1,25 @@
+{
+  conf.addResource("system-test.xml");
+  String sockAddrStr=FileSystem.getDefaultUri(conf).getAuthority();
+  if (sockAddrStr == null) {
+    throw new IllegalArgumentException("Namenode IPC address is not set");
+  }
+  String[] splits=sockAddrStr.split(":");
+  if (splits.length != 2) {
+    throw new IllegalArgumentException("Namenode report IPC is not correctly configured");
+  }
+  nnHostName=splits[0];
+  DN_hostFileName=conf.get(CONF_HADOOP_DN_HOSTFILE_NAME,"slaves");
+  hdfsDaemonInfos=new ArrayList<HadoopDaemonInfo>();
+  hdfsDaemonInfos.add(new HadoopDaemonInfo("namenode",Role.NN,Arrays.asList(new String[]{nnHostName})));
+  hdfsDaemonInfos.add(new HadoopDaemonInfo("datanode",Role.DN,DN_hostFileName));
+  String implKlass=conf.get(CLUSTER_PROCESS_MGR_IMPL);
+  if (implKlass == null || implKlass.isEmpty()) {
+    implKlass=HDFSCluster.HDFSProcessManager.class.getName();
+  }
+  Class<ClusterProcessManager> klass=(Class<ClusterProcessManager>)Class.forName(implKlass);
+  ClusterProcessManager clusterProcessMgr=klass.newInstance();
+  LOG.info("Created ClusterProcessManager as " + implKlass);
+  clusterProcessMgr.init(conf);
+  return new HDFSCluster(conf,clusterProcessMgr);
+}

@@ -1,0 +1,39 @@
+{
+  String clusterid="";
+  Configuration conf=new Configuration();
+  List<InetSocketAddress> isas=null;
+  try {
+    isas=DFSUtil.getNNServiceRpcAddresses(conf);
+  }
+ catch (  Exception e) {
+    DecommissionStatus dInfo=new DecommissionStatus(clusterid,e);
+    return dInfo;
+  }
+  Map<String,Map<String,String>> statusMap=new HashMap<String,Map<String,String>>();
+  Map<String,Exception> decommissionExceptions=new HashMap<String,Exception>();
+  List<String> unreportedNamenode=new ArrayList<String>();
+  for (  InetSocketAddress isa : isas) {
+    NamenodeMXBeanHelper nnHelper=null;
+    try {
+      nnHelper=new NamenodeMXBeanHelper(isa,conf);
+      if (clusterid.equals("")) {
+        clusterid=nnHelper.getClusterId();
+      }
+      nnHelper.getDecomNodeInfoForReport(statusMap);
+    }
+ catch (    Exception e) {
+      String nnHost=isa.getHostName();
+      decommissionExceptions.put(nnHost,e);
+      unreportedNamenode.add(nnHost);
+      continue;
+    }
+ finally {
+      if (nnHelper != null) {
+        nnHelper.cleanup();
+      }
+    }
+  }
+  updateUnknownStatus(statusMap,unreportedNamenode);
+  getDecommissionNodeClusterState(statusMap);
+  return new DecommissionStatus(statusMap,clusterid,getDatanodeHttpPort(conf),decommissionExceptions);
+}

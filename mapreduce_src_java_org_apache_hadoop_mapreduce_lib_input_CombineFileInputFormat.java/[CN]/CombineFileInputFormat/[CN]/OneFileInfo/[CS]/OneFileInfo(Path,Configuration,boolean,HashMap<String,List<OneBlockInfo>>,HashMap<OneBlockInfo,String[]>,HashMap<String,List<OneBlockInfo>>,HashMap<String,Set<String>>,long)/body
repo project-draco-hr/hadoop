@@ -1,0 +1,74 @@
+{
+  this.fileSize=0;
+  FileSystem fs=path.getFileSystem(conf);
+  FileStatus stat=fs.getFileStatus(path);
+  BlockLocation[] locations=fs.getFileBlockLocations(stat,0,stat.getLen());
+  if (locations == null) {
+    blocks=new OneBlockInfo[0];
+  }
+ else {
+    if (!isSplitable) {
+      blocks=new OneBlockInfo[1];
+      fileSize=stat.getLen();
+      blocks[0]=new OneBlockInfo(path,0,fileSize,locations[0].getHosts(),locations[0].getTopologyPaths());
+    }
+ else {
+      ArrayList<OneBlockInfo> blocksList=new ArrayList<OneBlockInfo>(locations.length);
+      for (int i=0; i < locations.length; i++) {
+        fileSize+=locations[i].getLength();
+        long left=locations[i].getLength();
+        long myOffset=locations[i].getOffset();
+        long myLength=0;
+        while (left > 0) {
+          if (maxSize == 0) {
+            myLength=left;
+          }
+ else {
+            if (left > maxSize && left < 2 * maxSize) {
+              myLength=left / 2;
+            }
+ else {
+              myLength=Math.min(maxSize,left);
+            }
+          }
+          OneBlockInfo oneblock=new OneBlockInfo(path,myOffset,myLength,locations[i].getHosts(),locations[i].getTopologyPaths());
+          left-=myLength;
+          myOffset+=myLength;
+          blocksList.add(oneblock);
+        }
+      }
+      blocks=blocksList.toArray(new OneBlockInfo[blocksList.size()]);
+    }
+    for (    OneBlockInfo oneblock : blocks) {
+      blockToNodes.put(oneblock,oneblock.hosts);
+      String[] racks=null;
+      if (oneblock.hosts.length == 0) {
+        racks=new String[]{NetworkTopology.DEFAULT_RACK};
+      }
+ else {
+        racks=oneblock.racks;
+      }
+      for (int j=0; j < racks.length; j++) {
+        String rack=racks[j];
+        List<OneBlockInfo> blklist=rackToBlocks.get(rack);
+        if (blklist == null) {
+          blklist=new ArrayList<OneBlockInfo>();
+          rackToBlocks.put(rack,blklist);
+        }
+        blklist.add(oneblock);
+        if (!racks[j].equals(NetworkTopology.DEFAULT_RACK)) {
+          addHostToRack(rackToNodes,racks[j],oneblock.hosts[j]);
+        }
+      }
+      for (int j=0; j < oneblock.hosts.length; j++) {
+        String node=oneblock.hosts[j];
+        List<OneBlockInfo> blklist=nodeToBlocks.get(node);
+        if (blklist == null) {
+          blklist=new ArrayList<OneBlockInfo>();
+          nodeToBlocks.put(node,blklist);
+        }
+        blklist.add(oneblock);
+      }
+    }
+  }
+}

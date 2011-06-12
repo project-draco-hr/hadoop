@@ -1,0 +1,42 @@
+{
+  UserGroupInformation ugi=null;
+  if (UserGroupInformation.isSecurityEnabled()) {
+    String user=request.getRemoteUser();
+    String tokenString=request.getParameter(DELEGATION_PARAMETER_NAME);
+    if (tokenString != null) {
+      Token<DelegationTokenIdentifier> token=new Token<DelegationTokenIdentifier>();
+      token.decodeFromUrlString(tokenString);
+      String serviceAddress=getNNServiceAddress(context,request);
+      if (serviceAddress != null) {
+        LOG.info("Setting service in token: " + new Text(serviceAddress));
+        token.setService(new Text(serviceAddress));
+      }
+      ByteArrayInputStream buf=new ByteArrayInputStream(token.getIdentifier());
+      DataInputStream in=new DataInputStream(buf);
+      DelegationTokenIdentifier id=new DelegationTokenIdentifier();
+      id.readFields(in);
+      ugi=id.getUser();
+      ugi.addToken(token);
+      ugi.setAuthenticationMethod(AuthenticationMethod.TOKEN);
+    }
+ else {
+      if (user == null) {
+        throw new IOException("Security enabled but user not " + "authenticated by filter");
+      }
+      ugi=UserGroupInformation.createRemoteUser(user);
+      ugi.setAuthenticationMethod(AuthenticationMethod.KERBEROS_SSL);
+    }
+  }
+ else {
+    String user=request.getParameter("ugi");
+    if (user == null) {
+      ugi=getDefaultWebUser(conf);
+    }
+ else {
+      ugi=UserGroupInformation.createRemoteUser(user.split(",")[0]);
+    }
+    ugi.setAuthenticationMethod(AuthenticationMethod.SIMPLE);
+  }
+  if (LOG.isDebugEnabled())   LOG.debug("getUGI is returning: " + ugi.getShortUserName());
+  return ugi;
+}

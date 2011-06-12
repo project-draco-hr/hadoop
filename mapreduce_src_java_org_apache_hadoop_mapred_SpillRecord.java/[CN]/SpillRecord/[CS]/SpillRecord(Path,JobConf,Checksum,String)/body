@@ -1,0 +1,25 @@
+{
+  final FileSystem rfs=FileSystem.getLocal(job).getRaw();
+  final DataInputStream in=new DataInputStream(SecureIOUtils.openForRead(new File(indexFileName.toUri().getPath()),expectedIndexOwner,null));
+  try {
+    final long length=rfs.getFileStatus(indexFileName).getLen();
+    final int partitions=(int)length / MAP_OUTPUT_INDEX_RECORD_LENGTH;
+    final int size=partitions * MAP_OUTPUT_INDEX_RECORD_LENGTH;
+    buf=ByteBuffer.allocate(size);
+    if (crc != null) {
+      crc.reset();
+      CheckedInputStream chk=new CheckedInputStream(in,crc);
+      IOUtils.readFully(chk,buf.array(),0,size);
+      if (chk.getChecksum().getValue() != in.readLong()) {
+        throw new ChecksumException("Checksum error reading spill index: " + indexFileName,-1);
+      }
+    }
+ else {
+      IOUtils.readFully(in,buf.array(),0,size);
+    }
+    entries=buf.asLongBuffer();
+  }
+  finally {
+    in.close();
+  }
+}

@@ -1,0 +1,38 @@
+{
+  if (tasksInited.get() || isComplete()) {
+    return;
+  }
+synchronized (jobInitKillStatus) {
+    if (jobInitKillStatus.killed || jobInitKillStatus.initStarted) {
+      return;
+    }
+    jobInitKillStatus.initStarted=true;
+  }
+  LOG.info("Initializing " + jobId);
+  logSubmissionToJobHistory();
+  setPriority(this.priority);
+  generateAndStoreTokens();
+  TaskSplitMetaInfo[] taskSplitMetaInfo=createSplits(jobId);
+  numMapTasks=taskSplitMetaInfo.length;
+  checkTaskLimits();
+  jobtracker.getInstrumentation().addWaitingMaps(getJobID(),numMapTasks);
+  jobtracker.getInstrumentation().addWaitingReduces(getJobID(),numReduceTasks);
+  createMapTasks(jobFile.toString(),taskSplitMetaInfo);
+  if (numMapTasks > 0) {
+    nonRunningMapCache=createCache(taskSplitMetaInfo,maxLevel);
+  }
+  this.launchTime=JobTracker.getClock().getTime();
+  createReduceTasks(jobFile.toString());
+  completedMapsForReduceSlowstart=(int)Math.ceil((conf.getFloat(MRJobConfig.COMPLETED_MAPS_FOR_REDUCE_SLOWSTART,DEFAULT_COMPLETED_MAPS_PERCENT_FOR_REDUCE_SLOWSTART) * numMapTasks));
+  initSetupCleanupTasks(jobFile.toString());
+synchronized (jobInitKillStatus) {
+    jobInitKillStatus.initDone=true;
+    if (jobInitKillStatus.killed) {
+      throw new KillInterruptedException("Job " + jobId + " killed in init");
+    }
+  }
+  tasksInited.set(true);
+  JobInitedEvent jie=new JobInitedEvent(profile.getJobID(),this.launchTime,numMapTasks,numReduceTasks,JobStatus.getJobRunState(JobStatus.PREP));
+  jobHistory.logEvent(jie,jobId);
+  LOG.info("Job " + jobId + " initialized successfully with "+ numMapTasks+ " map tasks and "+ numReduceTasks+ " reduce tasks.");
+}

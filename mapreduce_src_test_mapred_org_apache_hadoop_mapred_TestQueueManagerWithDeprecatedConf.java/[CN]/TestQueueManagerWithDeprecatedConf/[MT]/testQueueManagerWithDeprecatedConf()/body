@@ -1,0 +1,31 @@
+{
+  String queueConfigPath=System.getProperty("test.build.extraconf","build/test/extraconf");
+  File hadoopConfigFile=new File(queueConfigPath,"mapred-site.xml");
+  try {
+    Properties hadoopConfProps=new Properties();
+    hadoopConfProps.put(DeprecatedQueueConfigurationParser.MAPRED_QUEUE_NAMES_KEY,"default,q1,q2");
+    hadoopConfProps.put(MRConfig.MR_ACLS_ENABLED,"true");
+    UserGroupInformation ugi=UserGroupInformation.createRemoteUser("unknownUser");
+    hadoopConfProps.put(toFullPropertyName("default",submitAcl),ugi.getUserName());
+    hadoopConfProps.put(toFullPropertyName("q1",submitAcl),"u1");
+    hadoopConfProps.put(toFullPropertyName("q2",submitAcl),"*");
+    hadoopConfProps.put(toFullPropertyName("default",adminAcl),ugi.getUserName());
+    hadoopConfProps.put(toFullPropertyName("q1",adminAcl),"u2");
+    hadoopConfProps.put(toFullPropertyName("q2",adminAcl),"*");
+    UtilsForTests.setUpConfigFile(hadoopConfProps,hadoopConfigFile);
+    Configuration conf=new JobConf();
+    conf.setBoolean(MRConfig.MR_ACLS_ENABLED,true);
+    QueueManager queueManager=new QueueManager(conf);
+    assertTrue("User Job Submission failed.",queueManager.hasAccess("default",QueueACL.SUBMIT_JOB,ugi));
+    assertFalse("User Job Submission failed.",queueManager.hasAccess("q1",QueueACL.SUBMIT_JOB,ugi));
+    assertTrue("User Job Submission failed.",queueManager.hasAccess("q2",QueueACL.SUBMIT_JOB,ugi));
+    assertTrue("User Job Submission failed.",queueManager.hasAccess("default",QueueACL.ADMINISTER_JOBS,ugi));
+    assertFalse("User Job Submission failed.",queueManager.hasAccess("q1",QueueACL.ADMINISTER_JOBS,ugi));
+    assertTrue("User Job Submission failed.",queueManager.hasAccess("q2",QueueACL.ADMINISTER_JOBS,ugi));
+  }
+  finally {
+    if (hadoopConfigFile.exists()) {
+      hadoopConfigFile.delete();
+    }
+  }
+}

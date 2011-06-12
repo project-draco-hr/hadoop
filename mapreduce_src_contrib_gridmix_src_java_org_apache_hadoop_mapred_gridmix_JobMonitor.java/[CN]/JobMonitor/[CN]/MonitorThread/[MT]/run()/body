@@ -1,0 +1,64 @@
+{
+  boolean graceful;
+  boolean shutdown;
+  while (true) {
+    try {
+synchronized (mJobs) {
+        graceful=JobMonitor.this.graceful;
+        shutdown=JobMonitor.this.shutdown;
+        runningJobs.drainTo(mJobs);
+      }
+      if (shutdown) {
+        if (!graceful) {
+          while (!runningJobs.isEmpty()) {
+synchronized (mJobs) {
+              runningJobs.drainTo(mJobs);
+            }
+          }
+          break;
+        }
+ else         if (mJobs.isEmpty()) {
+          break;
+        }
+      }
+      while (!mJobs.isEmpty()) {
+        Job job;
+synchronized (mJobs) {
+          job=mJobs.poll();
+        }
+        try {
+          if (job.isComplete()) {
+            process(job);
+            statistics.add(job);
+            continue;
+          }
+        }
+ catch (        IOException e) {
+          if (e.getCause() instanceof ClosedByInterruptException) {
+            Thread.currentThread().interrupt();
+          }
+ else {
+            LOG.warn("Lost job " + (null == job.getJobName() ? "<unknown>" : job.getJobName()),e);
+            continue;
+          }
+        }
+synchronized (mJobs) {
+          if (!mJobs.offer(job)) {
+            LOG.error("Lost job " + (null == job.getJobName() ? "<unknown>" : job.getJobName()));
+          }
+        }
+        break;
+      }
+      try {
+        TimeUnit.MILLISECONDS.sleep(pollDelayMillis);
+      }
+ catch (      InterruptedException e) {
+        shutdown=true;
+        continue;
+      }
+    }
+ catch (    Throwable e) {
+      LOG.warn("Unexpected exception: ",e);
+    }
+  }
+}

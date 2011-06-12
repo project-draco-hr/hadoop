@@ -1,0 +1,160 @@
+{
+  Path jobTraceFilename=null;
+  Path topologyFilename=null;
+  if (args.length == 0 || args[args.length - 1].charAt(0) == '-') {
+    throw new IllegalArgumentException("No input specified.");
+  }
+ else {
+    inputFilename=args[args.length - 1];
+  }
+  for (int i=0; i < args.length - (inputFilename == null ? 0 : 1); ++i) {
+    if ("-h".equals(args[i].toLowerCase()) || "-help".equals(args[i].toLowerCase())) {
+      usage();
+      return 0;
+    }
+    if ("-c".equals(args[i].toLowerCase()) || "-collect-prefixes".equals(args[i].toLowerCase())) {
+      collecting=true;
+      continue;
+    }
+    if ("-write-job-trace".equals(args[i].toLowerCase())) {
+      ++i;
+      jobTraceFilename=new Path(args[i]);
+      continue;
+    }
+    if ("-single-line-job-traces".equals(args[i].toLowerCase())) {
+      prettyprintTrace=false;
+      continue;
+    }
+    if ("-omit-task-details".equals(args[i].toLowerCase())) {
+      omitTaskDetails=true;
+      continue;
+    }
+    if ("-write-topology".equals(args[i].toLowerCase())) {
+      ++i;
+      topologyFilename=new Path(args[i]);
+      continue;
+    }
+    if ("-job-digest-spectra".equals(args[i].toLowerCase())) {
+      ArrayList<Integer> values=new ArrayList<Integer>();
+      ++i;
+      while (i < args.length && Character.isDigit(args[i].charAt(0))) {
+        values.add(Integer.parseInt(args[i]));
+        ++i;
+      }
+      if (values.size() == 0) {
+        throw new IllegalArgumentException("Empty -job-digest-spectra list");
+      }
+      attemptTimesPercentiles=new int[values.size()];
+      int lastValue=0;
+      for (int j=0; j < attemptTimesPercentiles.length; ++j) {
+        if (values.get(j) <= lastValue || values.get(j) >= 100) {
+          throw new IllegalArgumentException("Bad -job-digest-spectra percentiles list");
+        }
+        attemptTimesPercentiles[j]=values.get(j);
+      }
+      --i;
+      continue;
+    }
+    if ("-d".equals(args[i].toLowerCase()) || "-debug".equals(args[i].toLowerCase())) {
+      debug=true;
+      continue;
+    }
+    if ("-spreads".equals(args[i].toLowerCase())) {
+      int min=Integer.parseInt(args[i + 1]);
+      int max=Integer.parseInt(args[i + 2]);
+      if (min < max && min < 1000 && max < 1000) {
+        spreadMin=min;
+        spreadMax=max;
+        spreading=true;
+        i+=2;
+      }
+      continue;
+    }
+    if ("-delays".equals(args[i].toLowerCase())) {
+      delays=true;
+      continue;
+    }
+    if ("-runtimes".equals(args[i].toLowerCase())) {
+      runtimes=true;
+      continue;
+    }
+    if ("-tasktimes".equals(args[i].toLowerCase())) {
+      collectTaskTimes=true;
+      continue;
+    }
+    if ("-v1".equals(args[i].toLowerCase())) {
+      version=1;
+      continue;
+    }
+    throw new IllegalArgumentException("Unrecognized argument: " + args[i]);
+  }
+  runTimeDists=newDistributionBlock();
+  delayTimeDists=newDistributionBlock();
+  mapTimeSpreadDists=newDistributionBlock("map-time-spreads");
+  shuffleTimeSpreadDists=newDistributionBlock();
+  sortTimeSpreadDists=newDistributionBlock();
+  reduceTimeSpreadDists=newDistributionBlock();
+  mapTimeDists=newDistributionBlock();
+  shuffleTimeDists=newDistributionBlock();
+  sortTimeDists=newDistributionBlock();
+  reduceTimeDists=newDistributionBlock();
+  taskAttemptStartTimes=new HashMap<String,Long>();
+  taskReduceAttemptShuffleEndTimes=new HashMap<String,Long>();
+  taskReduceAttemptSortEndTimes=new HashMap<String,Long>();
+  taskMapAttemptFinishTimes=new HashMap<String,Long>();
+  taskReduceAttemptFinishTimes=new HashMap<String,Long>();
+  final Path inputPath=new Path(inputFilename);
+  inputIsDirectory=pathIsDirectory(inputPath);
+  if (jobTraceFilename != null && attemptTimesPercentiles == null) {
+    attemptTimesPercentiles=new int[19];
+    for (int i=0; i < 19; ++i) {
+      attemptTimesPercentiles[i]=(i + 1) * 5;
+    }
+  }
+  if (!inputIsDirectory) {
+    input=maybeUncompressedPath(inputPath);
+  }
+ else {
+    inputDirectoryPath=inputPath;
+    FileSystem fs=inputPath.getFileSystem(getConf());
+    FileStatus[] statuses=fs.listStatus(inputPath);
+    inputDirectoryFiles=new String[statuses.length];
+    for (int i=0; i < statuses.length; ++i) {
+      inputDirectoryFiles[i]=statuses[i].getPath().getName();
+    }
+    int dropPoint=0;
+    for (int i=0; i < inputDirectoryFiles.length; ++i) {
+      String name=inputDirectoryFiles[i];
+      if (!(name.length() >= 4 && ".crc".equals(name.substring(name.length() - 4)))) {
+        inputDirectoryFiles[dropPoint++]=name;
+      }
+    }
+    LOG.info("We dropped " + (inputDirectoryFiles.length - dropPoint) + " crc files.");
+    String[] new_inputDirectoryFiles=new String[dropPoint];
+    System.arraycopy(inputDirectoryFiles,0,new_inputDirectoryFiles,0,dropPoint);
+    inputDirectoryFiles=new_inputDirectoryFiles;
+    Arrays.sort(inputDirectoryFiles);
+    if (!setNextDirectoryInputStream()) {
+      throw new FileNotFoundException("Empty directory specified.");
+    }
+  }
+  if (jobTraceFilename != null) {
+    ObjectMapper jmapper=new ObjectMapper();
+    jmapper.configure(SerializationConfig.Feature.CAN_OVERRIDE_ACCESS_MODIFIERS,true);
+    JsonFactory jfactory=jmapper.getJsonFactory();
+    FileSystem jobFS=jobTraceFilename.getFileSystem(getConf());
+    jobTraceGen=jfactory.createJsonGenerator(jobFS.create(jobTraceFilename),JsonEncoding.UTF8);
+    if (prettyprintTrace) {
+      jobTraceGen.useDefaultPrettyPrinter();
+    }
+    if (topologyFilename != null) {
+      ObjectMapper tmapper=new ObjectMapper();
+      tmapper.configure(SerializationConfig.Feature.CAN_OVERRIDE_ACCESS_MODIFIERS,true);
+      JsonFactory tfactory=tmapper.getJsonFactory();
+      FileSystem topoFS=topologyFilename.getFileSystem(getConf());
+      topologyGen=tfactory.createJsonGenerator(topoFS.create(topologyFilename),JsonEncoding.UTF8);
+      topologyGen.useDefaultPrettyPrinter();
+    }
+  }
+  return 0;
+}

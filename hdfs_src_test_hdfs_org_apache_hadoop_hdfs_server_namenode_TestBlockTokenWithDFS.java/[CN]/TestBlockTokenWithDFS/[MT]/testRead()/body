@@ -1,0 +1,115 @@
+{
+  MiniDFSCluster cluster=null;
+  int numDataNodes=2;
+  Configuration conf=getConf(numDataNodes);
+  try {
+    cluster=new MiniDFSCluster.Builder(conf).numDataNodes(numDataNodes).build();
+    cluster.waitActive();
+    assertEquals(numDataNodes,cluster.getDataNodes().size());
+    SecurityTestUtil.setBlockTokenLifetime(cluster.getNameNode().getNamesystem().blockTokenSecretManager,1000L);
+    Path fileToRead=new Path(FILE_TO_READ);
+    FileSystem fs=cluster.getFileSystem();
+    createFile(fs,fileToRead);
+    FSDataInputStream in1=fs.open(fileToRead);
+    assertTrue(checkFile1(in1));
+    FSDataInputStream in2=fs.open(fileToRead);
+    assertTrue(checkFile1(in2));
+    FSDataInputStream in3=fs.open(fileToRead);
+    assertTrue(checkFile2(in3));
+    new DFSClient(new InetSocketAddress("localhost",cluster.getNameNodePort()),conf);
+    List<LocatedBlock> locatedBlocks=cluster.getNameNode().getBlockLocations(FILE_TO_READ,0,FILE_SIZE).getLocatedBlocks();
+    LocatedBlock lblock=locatedBlocks.get(0);
+    Token<BlockTokenIdentifier> myToken=lblock.getBlockToken();
+    assertFalse(SecurityTestUtil.isBlockTokenExpired(myToken));
+    tryRead(conf,lblock,true);
+    while (!SecurityTestUtil.isBlockTokenExpired(myToken)) {
+      try {
+        Thread.sleep(10);
+      }
+ catch (      InterruptedException ignored) {
+      }
+    }
+    assertTrue(SecurityTestUtil.isBlockTokenExpired(myToken));
+    tryRead(conf,lblock,false);
+    lblock.setBlockToken(cluster.getNameNode().getNamesystem().blockTokenSecretManager.generateToken(lblock.getBlock(),EnumSet.of(BlockTokenSecretManager.AccessMode.READ)));
+    tryRead(conf,lblock,true);
+    ExtendedBlock wrongBlock=new ExtendedBlock(lblock.getBlock().getBlockPoolId(),lblock.getBlock().getBlockId() + 1);
+    lblock.setBlockToken(cluster.getNameNode().getNamesystem().blockTokenSecretManager.generateToken(wrongBlock,EnumSet.of(BlockTokenSecretManager.AccessMode.READ)));
+    tryRead(conf,lblock,false);
+    lblock.setBlockToken(cluster.getNameNode().getNamesystem().blockTokenSecretManager.generateToken(lblock.getBlock(),EnumSet.of(BlockTokenSecretManager.AccessMode.WRITE,BlockTokenSecretManager.AccessMode.COPY,BlockTokenSecretManager.AccessMode.REPLACE)));
+    tryRead(conf,lblock,false);
+    SecurityTestUtil.setBlockTokenLifetime(cluster.getNameNode().getNamesystem().blockTokenSecretManager,600 * 1000L);
+    List<LocatedBlock> lblocks=DFSTestUtil.getAllBlocks(in1);
+    for (    LocatedBlock blk : lblocks) {
+      assertTrue(SecurityTestUtil.isBlockTokenExpired(blk.getBlockToken()));
+    }
+    in1.seek(0);
+    assertTrue(checkFile1(in1));
+    List<LocatedBlock> lblocks2=DFSTestUtil.getAllBlocks(in2);
+    for (    LocatedBlock blk : lblocks2) {
+      assertTrue(SecurityTestUtil.isBlockTokenExpired(blk.getBlockToken()));
+    }
+    assertTrue(in2.seekToNewSource(0));
+    assertTrue(checkFile1(in2));
+    List<LocatedBlock> lblocks3=DFSTestUtil.getAllBlocks(in3);
+    for (    LocatedBlock blk : lblocks3) {
+      assertTrue(SecurityTestUtil.isBlockTokenExpired(blk.getBlockToken()));
+    }
+    assertTrue(checkFile2(in3));
+    assertTrue(cluster.restartDataNodes(true));
+    cluster.waitActive();
+    assertEquals(numDataNodes,cluster.getDataNodes().size());
+    cluster.shutdownNameNode(0);
+    lblocks=DFSTestUtil.getAllBlocks(in1);
+    for (    LocatedBlock blk : lblocks) {
+      assertFalse(SecurityTestUtil.isBlockTokenExpired(blk.getBlockToken()));
+    }
+    in1.seek(0);
+    assertTrue(checkFile1(in1));
+    lblocks2=DFSTestUtil.getAllBlocks(in2);
+    for (    LocatedBlock blk : lblocks2) {
+      assertFalse(SecurityTestUtil.isBlockTokenExpired(blk.getBlockToken()));
+    }
+    in2.seekToNewSource(0);
+    assertTrue(checkFile1(in2));
+    lblocks3=DFSTestUtil.getAllBlocks(in3);
+    for (    LocatedBlock blk : lblocks3) {
+      assertFalse(SecurityTestUtil.isBlockTokenExpired(blk.getBlockToken()));
+    }
+    assertTrue(checkFile2(in3));
+    cluster.restartNameNode(0);
+    cluster.shutdownNameNode(0);
+    in1.seek(0);
+    assertTrue(checkFile1(in1));
+    in2.seekToNewSource(0);
+    assertTrue(checkFile1(in2));
+    assertTrue(checkFile2(in3));
+    cluster.restartNameNode(0);
+    assertTrue(cluster.restartDataNodes(true));
+    cluster.waitActive();
+    assertEquals(numDataNodes,cluster.getDataNodes().size());
+    cluster.shutdownNameNode(0);
+    in1.seek(0);
+    assertFalse(checkFile1(in1));
+    assertFalse(checkFile2(in3));
+    cluster.restartNameNode(0);
+    in1.seek(0);
+    assertTrue(checkFile1(in1));
+    in2.seekToNewSource(0);
+    assertTrue(checkFile1(in2));
+    assertTrue(checkFile2(in3));
+    assertTrue(cluster.restartDataNodes(false));
+    cluster.waitActive();
+    assertEquals(numDataNodes,cluster.getDataNodes().size());
+    in1.seek(0);
+    assertTrue(checkFile1(in1));
+    in2.seekToNewSource(0);
+    assertTrue(checkFile1(in2));
+    assertTrue(checkFile2(in3));
+  }
+  finally {
+    if (cluster != null) {
+      cluster.shutdown();
+    }
+  }
+}

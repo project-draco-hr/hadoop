@@ -1,0 +1,33 @@
+{
+  Random rand=new Random();
+  Path root=new Path("/");
+  Path qualifiedPath=dest.getPath().makeQualified(destFs);
+  String harFileDst=qualifiedPath.getName() + HAR_SUFFIX;
+  String harFileSrc=qualifiedPath.getName() + "-" + rand.nextLong()+ "-"+ HAR_SUFFIX;
+  short metaReplication=(short)Integer.parseInt(info.getProperty("metaReplication"));
+  conf.setLong("har.partfile.size",configMgr.getHarPartfileSize());
+  HadoopArchives har=new HadoopArchives(conf);
+  String[] args=new String[7];
+  args[0]="-Ddfs.replication=" + metaReplication;
+  args[1]="-archiveName";
+  args[2]=harFileSrc;
+  args[3]="-p";
+  args[4]=root.makeQualified(destFs).toString();
+  args[5]=qualifiedPath.toUri().getPath().substring(1);
+  args[6]=tmpHarPath.toString();
+  int ret=0;
+  try {
+    ret=ToolRunner.run(har,args);
+    if (ret == 0 && !destFs.rename(new Path(tmpHarPath + "/" + harFileSrc),new Path(qualifiedPath,harFileDst))) {
+      LOG.error("HAR rename didn't succeed from " + tmpHarPath + "/"+ harFileSrc+ " to "+ qualifiedPath+ "/"+ harFileDst);
+      ret=-2;
+    }
+  }
+ catch (  Exception exc) {
+    throw new IOException("Error while creating archive " + ret,exc);
+  }
+  if (ret != 0) {
+    throw new IOException("Error while creating archive " + ret);
+  }
+  return;
+}

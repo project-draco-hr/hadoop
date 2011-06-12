@@ -1,0 +1,23 @@
+{
+  final String parityPathStr=raidInfo.parityPair.getPath().toUri().getPath();
+  FileSystem parityFS=raidInfo.parityPair.getFileSystem();
+  FileStatus parityFileStatus=parityFS.getFileStatus(new Path(parityPathStr));
+  long parityFileLength=parityFileStatus.getLen();
+  if (parityFileLength != fileStripes * raidInfo.parityBlocksPerStripe * blockSize) {
+    throw new IOException("expected parity file of length" + (fileStripes * raidInfo.parityBlocksPerStripe * blockSize) + " but got parity file of length "+ parityFileLength);
+  }
+  BlockLocation[] parityBlocks=parityFS.getFileBlockLocations(parityFileStatus,0L,parityFileLength);
+  if (parityFS instanceof DistributedFileSystem || parityFS instanceof DistributedRaidFileSystem) {
+    long parityBlockSize=parityFileStatus.getBlockSize();
+    if (parityBlockSize != blockSize) {
+      throw new IOException("file block size is " + blockSize + " but parity file block size is "+ parityBlockSize);
+    }
+  }
+ else   if (parityFS instanceof HarFileSystem) {
+    LOG.debug("HAR FS found");
+  }
+ else {
+    LOG.warn("parity file system is not of a supported type");
+  }
+  return parityBlocks;
+}

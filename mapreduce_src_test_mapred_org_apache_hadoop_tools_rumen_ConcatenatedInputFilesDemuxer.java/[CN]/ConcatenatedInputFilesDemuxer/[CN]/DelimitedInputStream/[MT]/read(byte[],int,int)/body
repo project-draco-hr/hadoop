@@ -1,0 +1,46 @@
+{
+  if (endSeen) {
+    return -1;
+  }
+  input.mark(length + markerBytes.length + 10);
+  int dataSeen=input.read(buffer,offset,length);
+  byte[] extraReadBuffer=null;
+  int extraActualRead=-1;
+  for (int i=offset; i < offset + dataSeen; ++i) {
+    if (buffer[i] == markerBytes[0]) {
+      boolean mismatch=false;
+      for (int j=1; j < Math.min(markerBytes.length,offset + dataSeen - i); ++j) {
+        if (buffer[i + j] != markerBytes[j]) {
+          mismatch=true;
+          break;
+        }
+      }
+      if (!mismatch) {
+        int uncheckedMarkerCharCount=markerBytes.length - (offset + dataSeen - i);
+        if (uncheckedMarkerCharCount > 0) {
+          if (extraReadBuffer == null) {
+            extraReadBuffer=new byte[markerBytes.length - 1];
+            extraActualRead=input.read(extraReadBuffer);
+          }
+          if (extraActualRead < uncheckedMarkerCharCount) {
+            input.reset();
+            return input.read(buffer,offset,length);
+          }
+          for (int j=0; j < uncheckedMarkerCharCount; ++j) {
+            if (extraReadBuffer[j] != markerBytes[markerBytes.length - uncheckedMarkerCharCount + j]) {
+              input.reset();
+              return input.read(buffer,offset,length);
+            }
+          }
+        }
+        input.reset();
+        if (i == offset) {
+          return -1;
+        }
+        int result=input.read(buffer,offset,i - offset);
+        return result;
+      }
+    }
+  }
+  return dataSeen;
+}

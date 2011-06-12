@@ -1,0 +1,26 @@
+{
+  final DataOutputStream out=new DataOutputStream(NetUtils.getOutputStream(s,datanode.socketWriteTimeout));
+  checkAccess(out,true,block,blockToken,Op.BLOCK_CHECKSUM,BlockTokenSecretManager.AccessMode.READ);
+  updateCurrentThreadName("Reading metadata for block " + block);
+  final MetaDataInputStream metadataIn=datanode.data.getMetaDataInputStream(block);
+  final DataInputStream checksumIn=new DataInputStream(new BufferedInputStream(metadataIn,BUFFER_SIZE));
+  updateCurrentThreadName("Getting checksum for block " + block);
+  try {
+    final BlockMetadataHeader header=BlockMetadataHeader.readHeader(checksumIn);
+    final DataChecksum checksum=header.getChecksum();
+    final int bytesPerCRC=checksum.getBytesPerChecksum();
+    final long crcPerBlock=(metadataIn.getLength() - BlockMetadataHeader.getHeaderSize()) / checksum.getChecksumSize();
+    final MD5Hash md5=MD5Hash.digest(checksumIn);
+    if (LOG.isDebugEnabled()) {
+      LOG.debug("block=" + block + ", bytesPerCRC="+ bytesPerCRC+ ", crcPerBlock="+ crcPerBlock+ ", md5="+ md5);
+    }
+    BlockOpResponseProto.newBuilder().setStatus(SUCCESS).setChecksumResponse(OpBlockChecksumResponseProto.newBuilder().setBytesPerCrc(bytesPerCRC).setCrcPerBlock(crcPerBlock).setMd5(ByteString.copyFrom(md5.getDigest()))).build().writeDelimitedTo(out);
+    out.flush();
+  }
+  finally {
+    IOUtils.closeStream(out);
+    IOUtils.closeStream(checksumIn);
+    IOUtils.closeStream(metadataIn);
+  }
+  datanode.metrics.addBlockChecksumOp(elapsed());
+}

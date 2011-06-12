@@ -1,0 +1,33 @@
+{
+  List<Block> arr=dataset.getFinalizedBlocks(blockPoolId);
+  Collections.shuffle(arr);
+  blockInfoSet=new TreeSet<BlockScanInfo>();
+  blockMap=new HashMap<Block,BlockScanInfo>();
+  long scanTime=-1;
+  for (  Block block : arr) {
+    BlockScanInfo info=new BlockScanInfo(block);
+    info.lastScanTime=scanTime--;
+    addBlockInfo(info);
+  }
+  File dir=null;
+  List<FSVolume> volumes=dataset.volumes.getVolumes();
+  for (  FSDataset.FSVolume vol : dataset.volumes.getVolumes()) {
+    File bpDir=vol.getBlockPoolSlice(blockPoolId).getDirectory();
+    if (LogFileHandler.isFilePresent(bpDir,verificationLogFile)) {
+      dir=bpDir;
+      break;
+    }
+  }
+  if (dir == null) {
+    dir=volumes.get(0).getBlockPoolSlice(blockPoolId).getDirectory();
+  }
+  try {
+    verificationLog=new LogFileHandler(dir,verificationLogFile,100);
+  }
+ catch (  IOException e) {
+    LOG.warn("Could not open verfication log. " + "Verification times are not stored.");
+  }
+synchronized (this) {
+    throttler=new DataTransferThrottler(200,MAX_SCAN_RATE);
+  }
+}

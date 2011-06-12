@@ -1,0 +1,49 @@
+{
+  final EventFetcher<K,V> eventFetcher=new EventFetcher<K,V>(reduceId,umbilical,scheduler,this);
+  eventFetcher.start();
+  final int numFetchers=jobConf.getInt(MRJobConfig.SHUFFLE_PARALLEL_COPIES,5);
+  Fetcher<K,V>[] fetchers=new Fetcher[numFetchers];
+  for (int i=0; i < numFetchers; ++i) {
+    fetchers[i]=new Fetcher<K,V>(jobConf,reduceId,scheduler,merger,reporter,metrics,this,reduceTask.getJobTokenSecret());
+    fetchers[i].start();
+  }
+  while (!scheduler.waitUntilDone(PROGRESS_FREQUENCY)) {
+    reporter.progress();
+synchronized (this) {
+      if (throwable != null) {
+        throw new ShuffleError("error in shuffle in " + throwingThreadName,throwable);
+      }
+    }
+  }
+  eventFetcher.interrupt();
+  try {
+    eventFetcher.join();
+  }
+ catch (  Throwable t) {
+    LOG.info("Failed to stop " + eventFetcher.getName(),t);
+  }
+  for (  Fetcher<K,V> fetcher : fetchers) {
+    fetcher.interrupt();
+  }
+  for (  Fetcher<K,V> fetcher : fetchers) {
+    fetcher.join();
+  }
+  fetchers=null;
+  scheduler.close();
+  copyPhase.complete();
+  taskStatus.setPhase(TaskStatus.Phase.SORT);
+  reduceTask.statusUpdate(umbilical);
+  RawKeyValueIterator kvIter=null;
+  try {
+    kvIter=merger.close();
+  }
+ catch (  Throwable e) {
+    throw new ShuffleError("Error while doing final merge ",e);
+  }
+synchronized (this) {
+    if (throwable != null) {
+      throw new ShuffleError("error in shuffle in " + throwingThreadName,throwable);
+    }
+  }
+  return kvIter;
+}

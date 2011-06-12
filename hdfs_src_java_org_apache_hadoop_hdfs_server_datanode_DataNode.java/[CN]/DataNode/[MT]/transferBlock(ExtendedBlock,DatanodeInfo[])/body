@@ -1,0 +1,28 @@
+{
+  DatanodeProtocol nn=getBPNamenode(block.getBlockPoolId());
+  DatanodeRegistration bpReg=getDNRegistrationForBP(block.getBlockPoolId());
+  if (!data.isValidBlock(block)) {
+    String errStr="Can't send invalid block " + block;
+    LOG.info(errStr);
+    nn.errorReport(bpReg,DatanodeProtocol.INVALID_BLOCK,errStr);
+    return;
+  }
+  long onDiskLength=data.getLength(block);
+  if (block.getNumBytes() > onDiskLength) {
+    nn.reportBadBlocks(new LocatedBlock[]{new LocatedBlock(block,new DatanodeInfo[]{new DatanodeInfo(bpReg)})});
+    LOG.info("Can't replicate block " + block + " because on-disk length "+ onDiskLength+ " is shorter than NameNode recorded length "+ block.getNumBytes());
+    return;
+  }
+  int numTargets=xferTargets.length;
+  if (numTargets > 0) {
+    if (LOG.isInfoEnabled()) {
+      StringBuilder xfersBuilder=new StringBuilder();
+      for (int i=0; i < numTargets; i++) {
+        xfersBuilder.append(xferTargets[i].getName());
+        xfersBuilder.append(" ");
+      }
+      LOG.info(bpReg + " Starting thread to transfer block " + block+ " to "+ xfersBuilder);
+    }
+    new Daemon(new DataTransfer(xferTargets,block,BlockConstructionStage.PIPELINE_SETUP_CREATE,"")).start();
+  }
+}

@@ -1,0 +1,20 @@
+{
+  taskTrackerManager.addQueues(new String[]{"default"});
+  ArrayList<FakeQueueInfo> queues=new ArrayList<FakeQueueInfo>();
+  queues.add(new FakeQueueInfo("default",100.0f,true,1));
+  taskTrackerManager.setFakeQueues(queues);
+  scheduler.start();
+  FakeJobInProgress fjob1=taskTrackerManager.submitJob(JobStatus.PREP,1,0,"default","user");
+  FakeJobInProgress fjob2=taskTrackerManager.submitJob(JobStatus.PREP,1,0,"default","user");
+  testJobOrderChange(fjob1,fjob2,true);
+  taskTrackerManager.initJob(fjob2);
+  taskTrackerManager.initJob(fjob1);
+  assertEquals("Waiting queue is garbled on job init",2,scheduler.jobQueuesManager.getJobQueue("default").getWaitingJobs().size());
+  testJobOrderChange(fjob1,fjob2,false);
+  List<Task> tasks=scheduler.assignTasks(tracker("tt1"));
+  taskTrackerManager.finishTask(tasks.get(0).getTaskID().toString(),fjob1);
+  taskTrackerManager.finalizeJob(fjob1);
+  Collection<JobInProgress> rqueue=scheduler.jobQueuesManager.getJobQueue("default").getRunningJobs();
+  assertFalse("Scheduler contains completed job",rqueue.contains(fjob1));
+  assertEquals("Job finish garbles the queue",1,rqueue.size());
+}

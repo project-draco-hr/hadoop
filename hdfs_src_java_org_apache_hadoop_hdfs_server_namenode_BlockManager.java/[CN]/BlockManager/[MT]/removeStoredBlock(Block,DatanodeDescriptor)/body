@@ -1,0 +1,32 @@
+{
+  if (NameNode.stateChangeLog.isDebugEnabled()) {
+    NameNode.stateChangeLog.debug("BLOCK* NameSystem.removeStoredBlock: " + block + " from "+ node.getName());
+  }
+  assert(namesystem.hasWriteLock());
+{
+    if (!blocksMap.removeNode(block,node)) {
+      if (NameNode.stateChangeLog.isDebugEnabled()) {
+        NameNode.stateChangeLog.debug("BLOCK* NameSystem.removeStoredBlock: " + block + " has already been removed from node "+ node);
+      }
+      return;
+    }
+    INode fileINode=blocksMap.getINode(block);
+    if (fileINode != null) {
+      namesystem.decrementSafeBlockCount(block);
+      updateNeededReplications(block,-1,0);
+    }
+    Collection<Block> excessBlocks=excessReplicateMap.get(node.getStorageID());
+    if (excessBlocks != null) {
+      if (excessBlocks.remove(block)) {
+        excessBlocksCount--;
+        if (NameNode.stateChangeLog.isDebugEnabled()) {
+          NameNode.stateChangeLog.debug("BLOCK* NameSystem.removeStoredBlock: " + block + " is removed from excessBlocks");
+        }
+        if (excessBlocks.size() == 0) {
+          excessReplicateMap.remove(node.getStorageID());
+        }
+      }
+    }
+    corruptReplicas.removeFromCorruptReplicasMap(block,node);
+  }
+}

@@ -1,0 +1,57 @@
+{
+  final Configuration conf=new Configuration();
+  final FileSystem lfs=FileSystem.getLocal(conf);
+  final Path rootTempDir=new Path(System.getProperty("test.build.data","/tmp")).makeQualified(lfs.getUri(),lfs.getWorkingDirectory());
+  final Path tempDir=new Path(rootTempDir,"TestCurrentJHParser");
+  lfs.delete(tempDir,true);
+  conf.setInt(TTConfig.TT_MAP_SLOTS,1);
+  conf.setInt(TTConfig.TT_REDUCE_SLOTS,1);
+  MiniMRCluster mrCluster=new MiniMRCluster(1,"file:///",1,null,null,new JobConf(conf));
+  Path inDir=new Path(tempDir,"input");
+  Path outDir=new Path(tempDir,"output");
+  JobHistoryParser parser=null;
+  RewindableInputStream ris=null;
+  ArrayList<String> seenEvents=new ArrayList<String>(15);
+  try {
+    JobConf jConf=mrCluster.createJobConf();
+    Job job=MapReduceTestUtil.createJob(jConf,inDir,outDir,1,1);
+    job.setJobSetupCleanupNeeded(false);
+    job.setOutputFormatClass(MyOutputFormat.class);
+    job.waitForCompletion(false);
+    assertTrue("Job failed",job.isSuccessful());
+    JobID id=job.getJobID();
+    JobClient jc=new JobClient(jConf);
+    String user=jc.getAllJobs()[0].getUsername();
+    Path jhPath=new Path(mrCluster.getJobTrackerRunner().getJobTracker().getJobHistoryDir());
+    Path inputPath=JobHistory.getJobHistoryFile(jhPath,id,user);
+    for (int i=0; i < 100; ++i) {
+      if (lfs.exists(inputPath)) {
+        break;
+      }
+      TimeUnit.MILLISECONDS.wait(100);
+    }
+    assertTrue("Missing job history file",lfs.exists(inputPath));
+    ris=getRewindableInputStream(inputPath,conf);
+    parser=JobHistoryParserFactory.getParser(ris);
+    JobBuilder builder=new JobBuilder(id.toString());
+    getHistoryEvents(parser,seenEvents,builder);
+    System.out.println("testCurrentJHParser validating using gold std ");
+    String[] goldLinesExpected=new String[]{JSE,JPCE,JIE,JSCE,TSE,ASE,MFE,TFE,TSE,ASE,RFE,TFE,JFE};
+    validateSeenHistoryEvents(seenEvents,goldLinesExpected);
+    Counters counters=job.getTaskReports(TaskType.MAP)[0].getTaskCounters();
+    LoggedJob loggedJob=builder.build();
+    LoggedTaskAttempt attempt=loggedJob.getMapTasks().get(0).getAttempts().get(0);
+    ResourceUsageMetrics metrics=attempt.getResourceUsageMetrics();
+    testResourceUsageMetricViaDeepCompare(metrics,counters.findCounter(TaskCounter.CPU_MILLISECONDS).getValue(),counters.findCounter(TaskCounter.VIRTUAL_MEMORY_BYTES).getValue(),counters.findCounter(TaskCounter.PHYSICAL_MEMORY_BYTES).getValue(),counters.findCounter(TaskCounter.COMMITTED_HEAP_BYTES).getValue(),true);
+  }
+  finally {
+    mrCluster.shutdown();
+    if (ris != null) {
+      ris.close();
+    }
+    if (parser != null) {
+      parser.close();
+    }
+    lfs.delete(tempDir,true);
+  }
+}

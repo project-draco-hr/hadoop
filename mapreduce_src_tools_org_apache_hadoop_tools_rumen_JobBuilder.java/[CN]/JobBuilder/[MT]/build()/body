@@ -1,0 +1,101 @@
+{
+  finalized=true;
+  result.setJobProperties(jobConfigurationParameters);
+  Histogram[] successfulMapAttemptTimes=new Histogram[ParsedHost.numberOfDistances() + 1];
+  for (int i=0; i < successfulMapAttemptTimes.length; ++i) {
+    successfulMapAttemptTimes[i]=new Histogram();
+  }
+  Histogram successfulReduceAttemptTimes=new Histogram();
+  Histogram[] failedMapAttemptTimes=new Histogram[ParsedHost.numberOfDistances() + 1];
+  for (int i=0; i < failedMapAttemptTimes.length; ++i) {
+    failedMapAttemptTimes[i]=new Histogram();
+  }
+  Histogram failedReduceAttemptTimes=new Histogram();
+  Histogram successfulNthMapperAttempts=new Histogram();
+  for (  LoggedTask task : result.getMapTasks()) {
+    for (    LoggedTaskAttempt attempt : task.getAttempts()) {
+      int distance=successfulMapAttemptTimes.length - 1;
+      Long runtime=null;
+      if (attempt.getFinishTime() > 0 && attempt.getStartTime() > 0) {
+        runtime=attempt.getFinishTime() - attempt.getStartTime();
+        if (attempt.getResult() == Values.SUCCESS) {
+          LoggedLocation host=attempt.getLocation();
+          List<LoggedLocation> locs=task.getPreferredLocations();
+          if (host != null && locs != null) {
+            for (            LoggedLocation loc : locs) {
+              ParsedHost preferedLoc=new ParsedHost(loc);
+              distance=Math.min(distance,preferedLoc.distance(new ParsedHost(host)));
+            }
+          }
+          if (attempt.getStartTime() > 0 && attempt.getFinishTime() > 0) {
+            if (runtime != null) {
+              successfulMapAttemptTimes[distance].enter(runtime);
+            }
+          }
+          String attemptID=attempt.getAttemptID();
+          if (attemptID != null) {
+            Matcher matcher=taskAttemptIDPattern.matcher(attemptID);
+            if (matcher.matches()) {
+              String attemptNumberString=matcher.group(1);
+              if (attemptNumberString != null) {
+                int attemptNumber=Integer.parseInt(attemptNumberString);
+                successfulNthMapperAttempts.enter(attemptNumber);
+              }
+            }
+          }
+        }
+ else {
+          if (attempt.getResult() == Pre21JobHistoryConstants.Values.FAILED) {
+            if (runtime != null) {
+              failedMapAttemptTimes[distance].enter(runtime);
+            }
+          }
+        }
+      }
+    }
+  }
+  for (  LoggedTask task : result.getReduceTasks()) {
+    for (    LoggedTaskAttempt attempt : task.getAttempts()) {
+      Long runtime=attempt.getFinishTime() - attempt.getStartTime();
+      if (attempt.getFinishTime() > 0 && attempt.getStartTime() > 0) {
+        runtime=attempt.getFinishTime() - attempt.getStartTime();
+      }
+      if (attempt.getResult() == Values.SUCCESS) {
+        if (runtime != null) {
+          successfulReduceAttemptTimes.enter(runtime);
+        }
+      }
+ else       if (attempt.getResult() == Pre21JobHistoryConstants.Values.FAILED) {
+        failedReduceAttemptTimes.enter(runtime);
+      }
+    }
+  }
+  result.setFailedMapAttemptCDFs(mapCDFArrayList(failedMapAttemptTimes));
+  LoggedDiscreteCDF failedReduce=new LoggedDiscreteCDF();
+  failedReduce.setCDF(failedReduceAttemptTimes,attemptTimesPercentiles,100);
+  result.setFailedReduceAttemptCDF(failedReduce);
+  result.setSuccessfulMapAttemptCDFs(mapCDFArrayList(successfulMapAttemptTimes));
+  LoggedDiscreteCDF succReduce=new LoggedDiscreteCDF();
+  succReduce.setCDF(successfulReduceAttemptTimes,attemptTimesPercentiles,100);
+  result.setSuccessfulReduceAttemptCDF(succReduce);
+  long totalSuccessfulAttempts=0L;
+  long maxTriesToSucceed=0L;
+  for (  Map.Entry<Long,Long> ent : successfulNthMapperAttempts) {
+    totalSuccessfulAttempts+=ent.getValue();
+    maxTriesToSucceed=Math.max(maxTriesToSucceed,ent.getKey());
+  }
+  if (totalSuccessfulAttempts > 0L) {
+    double[] successAfterI=new double[(int)maxTriesToSucceed + 1];
+    for (int i=0; i < successAfterI.length; ++i) {
+      successAfterI[i]=0.0D;
+    }
+    for (    Map.Entry<Long,Long> ent : successfulNthMapperAttempts) {
+      successAfterI[ent.getKey().intValue()]=((double)ent.getValue()) / totalSuccessfulAttempts;
+    }
+    result.setMapperTriesToSucceed(successAfterI);
+  }
+ else {
+    result.setMapperTriesToSucceed(null);
+  }
+  return result;
+}

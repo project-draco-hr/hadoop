@@ -1,0 +1,24 @@
+{
+  Path file=FileOutputFormat.getTaskOutputPath(job,name);
+  FileSystem fs=file.getFileSystem(job);
+  CompressionCodec codec=null;
+  CompressionType compressionType=CompressionType.NONE;
+  if (getCompressOutput(job)) {
+    compressionType=getOutputCompressionType(job);
+    Class<? extends CompressionCodec> codecClass=getOutputCompressorClass(job,DefaultCodec.class);
+    codec=ReflectionUtils.newInstance(codecClass,job);
+  }
+  final SequenceFile.Writer out=SequenceFile.createWriter(fs,job,file,getSequenceFileOutputKeyClass(job),getSequenceFileOutputValueClass(job),compressionType,codec,progress);
+  return new RecordWriter<BytesWritable,BytesWritable>(){
+    private WritableValueBytes wvaluebytes=new WritableValueBytes();
+    public void write(    BytesWritable bkey,    BytesWritable bvalue) throws IOException {
+      wvaluebytes.reset(bvalue);
+      out.appendRaw(bkey.getBytes(),0,bkey.getLength(),wvaluebytes);
+      wvaluebytes.reset(null);
+    }
+    public void close(    Reporter reporter) throws IOException {
+      out.close();
+    }
+  }
+;
+}

@@ -1,0 +1,31 @@
+{
+  this.systemJobDir=new Path(jobSubmitDir);
+  this.systemJobFile=new Path(systemJobDir,"job.xml");
+  this.id=jobid;
+  JobConf conf=new JobConf(systemJobFile);
+  this.localFs=FileSystem.getLocal(conf);
+  this.localJobDir=localFs.makeQualified(conf.getLocalPath(jobDir));
+  this.localJobFile=new Path(this.localJobDir,id + ".xml");
+  this.trackerDistributerdCacheManager=new TrackerDistributedCacheManager(conf,new DefaultTaskController());
+  this.taskDistributedCacheManager=trackerDistributerdCacheManager.newTaskDistributedCacheManager(conf);
+  taskDistributedCacheManager.setup(new LocalDirAllocator(MRConfig.LOCAL_DIR),new File(systemJobDir.toString()),"archive","archive");
+  if (DistributedCache.getSymlink(conf)) {
+    LOG.warn("LocalJobRunner does not support " + "symlinking into current working dir.");
+  }
+  TaskRunner.setupWorkDir(conf,new File(localJobDir.toUri()).getAbsoluteFile());
+  OutputStream out=localFs.create(localJobFile);
+  try {
+    conf.writeXml(out);
+  }
+  finally {
+    out.close();
+  }
+  this.job=new JobConf(localJobFile);
+  if (!taskDistributedCacheManager.getClassPaths().isEmpty()) {
+    setContextClassLoader(taskDistributedCacheManager.makeClassLoader(getContextClassLoader()));
+  }
+  profile=new JobProfile(job.getUser(),id,systemJobFile.toString(),"http://localhost:8080/",job.getJobName());
+  status=new JobStatus(id,0.0f,0.0f,JobStatus.RUNNING,profile.getUser(),profile.getJobName(),profile.getJobFile(),profile.getURL().toString());
+  jobs.put(id,this);
+  this.start();
+}

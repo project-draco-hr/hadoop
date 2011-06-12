@@ -1,0 +1,50 @@
+{
+  if (nodes == null || nodes.length == 0) {
+    String msg="Could not get block locations. " + "Source file \"" + src + "\" - Aborting...";
+    DFSClient.LOG.warn(msg);
+    setLastException(new IOException(msg));
+    streamerClosed=true;
+    return false;
+  }
+  boolean success=false;
+  long newGS=0L;
+  while (!success && !streamerClosed && dfsClient.clientRunning) {
+    boolean isRecovery=hasError;
+    if (errorIndex >= 0) {
+      StringBuilder pipelineMsg=new StringBuilder();
+      for (int j=0; j < nodes.length; j++) {
+        pipelineMsg.append(nodes[j].getName());
+        if (j < nodes.length - 1) {
+          pipelineMsg.append(", ");
+        }
+      }
+      if (nodes.length <= 1) {
+        lastException=new IOException("All datanodes " + pipelineMsg + " are bad. Aborting...");
+        streamerClosed=true;
+        return false;
+      }
+      DFSClient.LOG.warn("Error Recovery for block " + block + " in pipeline "+ pipelineMsg+ ": bad datanode "+ nodes[errorIndex].getName());
+      failed.add(nodes[errorIndex]);
+      DatanodeInfo[] newnodes=new DatanodeInfo[nodes.length - 1];
+      System.arraycopy(nodes,0,newnodes,0,errorIndex);
+      System.arraycopy(nodes,errorIndex + 1,newnodes,errorIndex,newnodes.length - errorIndex);
+      nodes=newnodes;
+      hasError=false;
+      lastException=null;
+      errorIndex=-1;
+    }
+    if (dfsClient.dtpReplaceDatanodeOnFailure.satisfy(blockReplication,nodes,isAppend,isHflushed)) {
+      addDatanode2ExistingPipeline();
+    }
+    LocatedBlock lb=dfsClient.namenode.updateBlockForPipeline(block,dfsClient.clientName);
+    newGS=lb.getBlock().getGenerationStamp();
+    accessToken=lb.getBlockToken();
+    success=createBlockOutputStream(nodes,newGS,isRecovery);
+  }
+  if (success) {
+    ExtendedBlock newBlock=new ExtendedBlock(block.getBlockPoolId(),block.getBlockId(),block.getNumBytes(),newGS);
+    dfsClient.namenode.updatePipeline(dfsClient.clientName,block,newBlock,nodes);
+    block=newBlock;
+  }
+  return false;
+}

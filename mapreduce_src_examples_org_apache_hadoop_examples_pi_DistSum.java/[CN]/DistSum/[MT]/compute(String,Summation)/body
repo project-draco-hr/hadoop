@@ -1,0 +1,31 @@
+{
+  if (sigma.getValue() != null)   throw new IOException("sigma.getValue() != null, sigma=" + sigma);
+  final FileSystem fs=FileSystem.get(getConf());
+  final Path dir=fs.makeQualified(new Path(parameters.remoteDir,name));
+  if (!Util.createNonexistingDirectory(fs,dir))   return;
+  final Job job=createJob(name,sigma);
+  final Path outdir=new Path(dir,"out");
+  FileOutputFormat.setOutputPath(job,outdir);
+  final String startmessage="steps/parts = " + sigma.E.getSteps() + "/"+ parameters.nParts+ " = "+ Util.long2string(sigma.E.getSteps() / parameters.nParts);
+  Util.runJob(name,job,parameters.machine,startmessage,timer);
+  final List<TaskResult> results=Util.readJobOutputs(fs,outdir);
+  Util.writeResults(name,results,fs,parameters.remoteDir);
+  fs.delete(dir,true);
+  final List<TaskResult> combined=Util.combine(results);
+  final PrintWriter out=Util.createWriter(parameters.localDir,name);
+  try {
+    for (    TaskResult r : combined) {
+      final String s=taskResult2string(name,r);
+      out.println(s);
+      out.flush();
+      Util.out.println(s);
+    }
+  }
+  finally {
+    out.close();
+  }
+  if (combined.size() == 1) {
+    final Summation s=combined.get(0).getElement();
+    if (sigma.contains(s) && s.contains(sigma))     sigma.setValue(s.getValue());
+  }
+}

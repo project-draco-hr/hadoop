@@ -1,0 +1,27 @@
+{
+  Configuration conf=new HdfsConfiguration();
+  MiniDFSCluster cluster=null;
+  FileSystem fileSys=null;
+  ExecutorService threadA=Executors.newSingleThreadExecutor();
+  ExecutorService threadB=Executors.newSingleThreadExecutor();
+  try {
+    cluster=new MiniDFSCluster.Builder(conf).numDataNodes(NUM_DATA_NODES).build();
+    cluster.waitActive();
+    fileSys=cluster.getFileSystem();
+    final FSNamesystem namesystem=cluster.getNamesystem();
+    FSImage fsimage=namesystem.getFSImage();
+    final FSEditLog editLog=fsimage.getEditLog();
+    doLogEdit(threadA,editLog,"thread-a 1");
+    assertEquals("logging edit without syncing should do not affect txid",0,editLog.getSyncTxId());
+    doCallLogSyncAll(threadB,editLog);
+    assertEquals("logSyncAll should sync thread A's transaction",1,editLog.getSyncTxId());
+    editLog.close();
+    doCallLogSync(threadA,editLog);
+  }
+  finally {
+    threadA.shutdown();
+    threadB.shutdown();
+    if (fileSys != null)     fileSys.close();
+    if (cluster != null)     cluster.shutdown();
+  }
+}

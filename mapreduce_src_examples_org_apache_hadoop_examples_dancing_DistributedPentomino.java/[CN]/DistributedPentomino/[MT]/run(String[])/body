@@ -1,0 +1,36 @@
+{
+  if (args.length == 0) {
+    System.out.println("pentomino <output>");
+    ToolRunner.printGenericCommandUsage(System.out);
+    return 2;
+  }
+  Configuration conf=getConf();
+  int width=conf.getInt(Pentomino.WIDTH,PENT_WIDTH);
+  int height=conf.getInt(Pentomino.HEIGHT,PENT_HEIGHT);
+  int depth=conf.getInt(Pentomino.DEPTH,PENT_DEPTH);
+  Class<? extends Pentomino> pentClass=conf.getClass(Pentomino.CLASS,OneSidedPentomino.class,Pentomino.class);
+  int numMaps=conf.getInt(MRJobConfig.NUM_MAPS,DEFAULT_MAPS);
+  Path output=new Path(args[0]);
+  Path input=new Path(output + "_input");
+  FileSystem fileSys=FileSystem.get(conf);
+  try {
+    Job job=new Job(conf);
+    FileInputFormat.setInputPaths(job,input);
+    FileOutputFormat.setOutputPath(job,output);
+    job.setJarByClass(PentMap.class);
+    job.setJobName("dancingElephant");
+    Pentomino pent=ReflectionUtils.newInstance(pentClass,conf);
+    pent.initialize(width,height);
+    long inputSize=createInputDirectory(fileSys,input,pent,depth);
+    FileInputFormat.setMaxInputSplitSize(job,(inputSize / numMaps));
+    job.setOutputKeyClass(Text.class);
+    job.setOutputValueClass(Text.class);
+    job.setMapperClass(PentMap.class);
+    job.setReducerClass(Reducer.class);
+    job.setNumReduceTasks(1);
+    return (job.waitForCompletion(true) ? 0 : 1);
+  }
+  finally {
+    fileSys.delete(input,true);
+  }
+}

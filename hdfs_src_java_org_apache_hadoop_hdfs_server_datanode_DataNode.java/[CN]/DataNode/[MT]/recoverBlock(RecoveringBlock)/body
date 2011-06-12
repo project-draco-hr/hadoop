@@ -1,0 +1,31 @@
+{
+  ExtendedBlock block=rBlock.getBlock();
+  String blookPoolId=block.getBlockPoolId();
+  DatanodeInfo[] targets=rBlock.getLocations();
+  DatanodeID[] datanodeids=(DatanodeID[])targets;
+  List<BlockRecord> syncList=new ArrayList<BlockRecord>(datanodeids.length);
+  int errorCount=0;
+  for (  DatanodeID id : datanodeids) {
+    try {
+      BPOfferService bpos=blockPoolManager.get(blookPoolId);
+      DatanodeRegistration bpReg=bpos.bpRegistration;
+      InterDatanodeProtocol datanode=bpReg.equals(id) ? this : DataNode.createInterDataNodeProtocolProxy(id,getConf(),socketTimeout);
+      ReplicaRecoveryInfo info=callInitReplicaRecovery(datanode,rBlock);
+      if (info != null && info.getGenerationStamp() >= block.getGenerationStamp() && info.getNumBytes() > 0) {
+        syncList.add(new BlockRecord(id,datanode,info));
+      }
+    }
+ catch (    RecoveryInProgressException ripE) {
+      InterDatanodeProtocol.LOG.warn("Recovery for replica " + block + " on data-node "+ id+ " is already in progress. Recovery id = "+ rBlock.getNewGenerationStamp()+ " is aborted.",ripE);
+      return;
+    }
+catch (    IOException e) {
+      ++errorCount;
+      InterDatanodeProtocol.LOG.warn("Failed to obtain replica info for block (=" + block + ") from datanode (="+ id+ ")",e);
+    }
+  }
+  if (errorCount == datanodeids.length) {
+    throw new IOException("All datanodes failed: block=" + block + ", datanodeids="+ Arrays.asList(datanodeids));
+  }
+  syncBlock(rBlock,syncList);
+}

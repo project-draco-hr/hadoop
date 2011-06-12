@@ -1,0 +1,26 @@
+{
+  if (NameNode.LOG.isDebugEnabled()) {
+    NameNode.LOG.debug("\n   Distributed upgrade for NameNode version " + getUpgradeVersion() + " to current LV "+ FSConstants.LAYOUT_VERSION+ " is processing upgrade command: "+ command.getAction()+ " status = "+ getUpgradeStatus()+ "%");
+  }
+  if (currentUpgrades == null) {
+    NameNode.LOG.info("Ignoring upgrade command: " + command.getAction() + " version "+ command.getVersion()+ ". No distributed upgrades are currently running on the NameNode");
+    return null;
+  }
+  UpgradeObjectNamenode curUO=(UpgradeObjectNamenode)currentUpgrades.first();
+  if (command.getVersion() != curUO.getVersion())   throw new IncorrectVersionException(command.getVersion(),"UpgradeCommand",curUO.getVersion());
+  UpgradeCommand reply=curUO.processUpgradeCommand(command);
+  if (curUO.getUpgradeStatus() < 100) {
+    return reply;
+  }
+  curUO.completeUpgrade();
+  NameNode.LOG.info("\n   Distributed upgrade for NameNode version " + curUO.getVersion() + " to current LV "+ FSConstants.LAYOUT_VERSION+ " is complete.");
+  currentUpgrades.remove(curUO);
+  if (currentUpgrades.isEmpty()) {
+    completeUpgrade();
+  }
+ else {
+    curUO=(UpgradeObjectNamenode)currentUpgrades.first();
+    this.broadcastCommand=curUO.startUpgrade();
+  }
+  return reply;
+}

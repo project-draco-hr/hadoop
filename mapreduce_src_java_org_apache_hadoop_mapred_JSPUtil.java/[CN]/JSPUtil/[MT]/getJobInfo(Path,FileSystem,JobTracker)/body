@@ -1,0 +1,21 @@
+{
+  String jobid=JobHistory.getJobIDFromHistoryFilePath(logFile).toString();
+  JobInfo jobInfo=null;
+synchronized (jobHistoryCache) {
+    jobInfo=jobHistoryCache.remove(jobid);
+    if (jobInfo == null) {
+      JobHistoryParser parser=new JobHistoryParser(fs,logFile);
+      jobInfo=parser.parse();
+      LOG.info("Loading Job History file " + jobid + ".   Cache size is "+ jobHistoryCache.size());
+    }
+    jobHistoryCache.put(jobid,jobInfo);
+    int CACHE_SIZE=jobTracker.conf.getInt(JTConfig.JT_JOBHISTORY_CACHE_SIZE,5);
+    if (jobHistoryCache.size() > CACHE_SIZE) {
+      Iterator<Map.Entry<String,JobInfo>> it=jobHistoryCache.entrySet().iterator();
+      String removeJobId=it.next().getKey();
+      it.remove();
+      LOG.info("Job History file removed form cache " + removeJobId);
+    }
+  }
+  return jobInfo;
+}

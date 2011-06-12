@@ -1,0 +1,40 @@
+{
+  TaskAttemptID taskId=finalStatus.getTaskID();
+  if (LOG.isDebugEnabled()) {
+    LOG.debug("Finishing running task id=" + taskId + ", now="+ now);
+  }
+  SimulatorTaskInProgress tip=tasks.get(taskId);
+  if (tip == null) {
+    throw new IllegalArgumentException("Unknown task attempt " + taskId + " completed");
+  }
+  TaskStatus currentStatus=tip.getTaskStatus();
+  if (currentStatus.getRunState() != State.RUNNING) {
+    throw new IllegalArgumentException("Task attempt to finish is not running: " + tip);
+  }
+  State finalRunState=finalStatus.getRunState();
+  if (finalRunState != State.SUCCEEDED && finalRunState != State.FAILED && finalRunState != State.KILLED) {
+    throw new IllegalArgumentException("Final run state for completed task can't be : " + finalRunState + " "+ tip);
+  }
+  if (now != finalStatus.getFinishTime()) {
+    throw new IllegalArgumentException("Current time does not match task finish time: now=" + now + ", finish="+ finalStatus.getFinishTime());
+  }
+  if (currentStatus.getIsMap() != finalStatus.getIsMap() || currentStatus.getNumSlots() != finalStatus.getNumSlots() || currentStatus.getPhase() != finalStatus.getPhase() || currentStatus.getStartTime() != finalStatus.getStartTime()) {
+    throw new IllegalArgumentException("Current status does not match final status");
+  }
+  currentStatus.setRunState(finalStatus.getRunState());
+  currentStatus.setFinishTime(finalStatus.getFinishTime());
+  currentStatus.setProgress(finalStatus.getProgress());
+  int numSlots=currentStatus.getNumSlots();
+  if (tip.isMapTask()) {
+    usedMapSlots-=numSlots;
+    if (usedMapSlots < 0) {
+      throw new IllegalStateException("TaskTracker reaches negative map slots: " + usedMapSlots);
+    }
+  }
+ else {
+    usedReduceSlots-=numSlots;
+    if (usedReduceSlots < 0) {
+      throw new IllegalStateException("TaskTracker reaches negative reduce slots: " + usedReduceSlots);
+    }
+  }
+}

@@ -1,0 +1,34 @@
+{
+  Path inPath=new Path(input);
+  FileSystem fs=inPath.getFileSystem(conf);
+  FileStatus[] inStatuses=fs.globStatus(inPath);
+  List<Path> inputPaths=new LinkedList<Path>();
+  if (inStatuses == null || inStatuses.length == 0) {
+    return inputPaths;
+  }
+  for (  FileStatus inStatus : inStatuses) {
+    Path thisPath=inStatus.getPath();
+    if (inStatus.isDirectory()) {
+      List<FileStatus> historyLogs=new ArrayList<FileStatus>();
+      RemoteIterator<LocatedFileStatus> iter=fs.listFiles(thisPath,isRecursive);
+      while (iter.hasNext()) {
+        LocatedFileStatus child=iter.next();
+        String fileName=child.getPath().getName();
+        if (!(fileName.endsWith(".crc") || fileName.startsWith("."))) {
+          historyLogs.add(child);
+        }
+      }
+      if (historyLogs.size() > 0) {
+        FileStatus[] sortableNames=historyLogs.toArray(new FileStatus[historyLogs.size()]);
+        Arrays.sort(sortableNames,new HistoryLogsComparator());
+        for (        FileStatus historyLog : sortableNames) {
+          inputPaths.add(historyLog.getPath());
+        }
+      }
+    }
+ else {
+      inputPaths.add(thisPath);
+    }
+  }
+  return inputPaths;
+}

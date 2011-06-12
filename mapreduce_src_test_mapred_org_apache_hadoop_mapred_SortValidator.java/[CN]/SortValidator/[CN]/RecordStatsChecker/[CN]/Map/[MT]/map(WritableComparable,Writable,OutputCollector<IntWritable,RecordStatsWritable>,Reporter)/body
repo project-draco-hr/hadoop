@@ -1,0 +1,32 @@
+{
+  if (recordId == -1) {
+    rawKey=createRaw(key.getClass());
+    rawValue=createRaw(value.getClass());
+  }
+  ++recordId;
+  if (this.key == sortOutput) {
+    if (prevKey == null) {
+      prevKey=key;
+      keyClass=prevKey.getClass();
+    }
+ else {
+      if (keyClass != key.getClass()) {
+        throw new IOException("Type mismatch in key: expected " + keyClass.getName() + ", received "+ key.getClass().getName());
+      }
+      if (prevKey.compareTo(key) > 0) {
+        throw new IOException("The 'map-reduce' framework wrongly" + " classifed (" + prevKey + ") > ("+ key+ ") "+ "for record# "+ recordId);
+      }
+      prevKey=key;
+    }
+    int keyPartition=partitioner.getPartition(key,value,noSortReducers);
+    if (partition != keyPartition) {
+      throw new IOException("Partitions do not match for record# " + recordId + " ! - '"+ partition+ "' v/s '"+ keyPartition+ "'");
+    }
+  }
+  byte[] keyBytes=rawKey.getRawBytes(key);
+  int keyBytesLen=rawKey.getRawBytesLength(key);
+  byte[] valueBytes=rawValue.getRawBytes(value);
+  int valueBytesLen=rawValue.getRawBytesLength(value);
+  int keyValueChecksum=(WritableComparator.hashBytes(keyBytes,keyBytesLen) ^ WritableComparator.hashBytes(valueBytes,valueBytesLen));
+  output.collect(this.key,new RecordStatsWritable((keyBytesLen + valueBytesLen),1,keyValueChecksum));
+}

@@ -1,0 +1,40 @@
+{
+  serverSocket=new ServerSocket(0);
+  Map<String,String> env=new HashMap<String,String>();
+  env.put("TMPDIR",System.getProperty("java.io.tmpdir"));
+  env.put(Submitter.PORT,Integer.toString(serverSocket.getLocalPort()));
+  Token<JobTokenIdentifier> jobToken=TokenCache.getJobToken(conf.getCredentials());
+  byte[] password=jobToken.getPassword();
+  String localPasswordFile=new File(".") + Path.SEPARATOR + "jobTokenPassword";
+  writePasswordToLocalFile(localPasswordFile,password,conf);
+  env.put("hadoop.pipes.shared.secret.location",localPasswordFile);
+  List<String> cmd=new ArrayList<String>();
+  String interpretor=conf.get(Submitter.INTERPRETOR);
+  if (interpretor != null) {
+    cmd.add(interpretor);
+  }
+  String executable=DistributedCache.getLocalCacheFiles(conf)[0].toString();
+  if (!new File(executable).canExecute()) {
+    FileUtil.chmod(executable,"u+x");
+  }
+  cmd.add(executable);
+  TaskAttemptID taskid=TaskAttemptID.forName(conf.get(MRJobConfig.TASK_ATTEMPT_ID));
+  File stdout=TaskLog.getTaskLogFile(taskid,false,TaskLog.LogName.STDOUT);
+  File stderr=TaskLog.getTaskLogFile(taskid,false,TaskLog.LogName.STDERR);
+  long logLength=TaskLog.getTaskLogLength(conf);
+  cmd=TaskLog.captureOutAndError(null,cmd,stdout,stderr,logLength,false);
+  process=runClient(cmd,env);
+  clientSocket=serverSocket.accept();
+  String challenge=getSecurityChallenge();
+  String digestToSend=createDigest(password,challenge);
+  String digestExpected=createDigest(password,digestToSend);
+  handler=new OutputHandler<K2,V2>(output,reporter,recordReader,digestExpected);
+  K2 outputKey=(K2)ReflectionUtils.newInstance(outputKeyClass,conf);
+  V2 outputValue=(V2)ReflectionUtils.newInstance(outputValueClass,conf);
+  downlink=new BinaryProtocol<K1,V1,K2,V2>(clientSocket,handler,outputKey,outputValue,conf);
+  downlink.authenticate(digestToSend,challenge);
+  waitForAuthentication();
+  LOG.debug("Authentication succeeded");
+  downlink.start();
+  downlink.setJobConf(conf);
+}

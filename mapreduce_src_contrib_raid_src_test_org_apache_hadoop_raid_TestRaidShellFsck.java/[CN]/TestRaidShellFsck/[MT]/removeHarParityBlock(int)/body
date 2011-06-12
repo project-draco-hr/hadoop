@@ -1,0 +1,22 @@
+{
+  Path harPath=new Path(RAID_PATH,HAR_NAME);
+  FileStatus[] listPaths=dfs.listStatus(harPath);
+  boolean deleted=false;
+  for (  FileStatus f : listPaths) {
+    if (f.getPath().getName().startsWith("part-")) {
+      final Path partPath=new Path(f.getPath().toUri().getPath());
+      final LocatedBlocks partBlocks=dfs.getClient().getNamenode().getBlockLocations(partPath.toString(),0,f.getLen());
+      if (partBlocks.locatedBlockCount() <= block) {
+        throw new IOException("invalid har block " + block);
+      }
+      final LocatedBlock partBlock=partBlocks.get(block);
+      removeAndReportBlock(dfs,partPath,partBlock);
+      LOG.info("removed block " + block + "/"+ partBlocks.locatedBlockCount()+ " of file "+ partPath.toString()+ " block size "+ partBlock.getBlockSize());
+      deleted=true;
+      break;
+    }
+  }
+  if (!deleted) {
+    throw new IOException("cannot find part file in " + harPath.toString());
+  }
+}

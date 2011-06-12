@@ -1,0 +1,41 @@
+{
+  Configuration conf=new Configuration();
+  conf.set(JTConfig.JT_HOSTS_EXCLUDE_FILENAME,"");
+  startCluster(2,1,0,UserGroupInformation.getLoginUser(),conf);
+  conf=mr.createJobConf(new JobConf(conf));
+  AdminOperationsProtocol client=getClient(conf,user1);
+  boolean success=false;
+  try {
+    client.refreshNodes();
+    success=true;
+  }
+ catch (  IOException ioe) {
+  }
+  assertFalse("Invalid user performed privileged refresh operation",success);
+  success=false;
+  client=getClient(conf,owner);
+  try {
+    client.refreshNodes();
+    success=true;
+  }
+ catch (  IOException ioe) {
+  }
+  assertTrue("Privileged user denied permission for refresh operation",success);
+  success=false;
+  client=getClient(conf,user4);
+  try {
+    client.refreshNodes();
+    success=true;
+  }
+ catch (  IOException ioe) {
+  }
+  assertFalse("Invalid user performed privileged refresh operation",success);
+  assertEquals("Trackers are lost upon refresh with empty hosts.exclude",2,jt.getClusterStatus(false).getTaskTrackers());
+  assertEquals("Excluded node count is incorrect",0,jt.getClusterStatus(false).getNumExcludedNodes());
+  Set<String> hosts=new HashSet<String>();
+  for (  TaskTrackerStatus status : jt.taskTrackers()) {
+    hosts.add(status.getHost());
+  }
+  assertEquals("Host is excluded upon refresh with empty hosts.exclude",2,hosts.size());
+  stopCluster();
+}

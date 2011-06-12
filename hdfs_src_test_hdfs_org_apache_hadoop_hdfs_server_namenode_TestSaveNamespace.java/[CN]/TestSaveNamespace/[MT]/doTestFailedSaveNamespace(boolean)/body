@@ -1,0 +1,42 @@
+{
+  Configuration conf=getConf();
+  NameNode.initMetrics(conf,NamenodeRole.ACTIVE);
+  DFSTestUtil.formatNameNode(conf);
+  FSNamesystem fsn=new FSNamesystem(conf);
+  final FSImage originalImage=fsn.dir.fsImage;
+  NNStorage storage=originalImage.getStorage();
+  storage.close();
+  NNStorage spyStorage=spy(storage);
+  originalImage.storage=spyStorage;
+  FSImage spyImage=spy(originalImage);
+  fsn.dir.fsImage=spyImage;
+  spyImage.storage.setStorageDirectories(FSNamesystem.getNamespaceDirs(conf),FSNamesystem.getNamespaceEditsDirs(conf));
+  doThrow(new IOException("Injected fault: saveFSImage")).when(spyImage).saveFSImage((File)anyObject());
+  try {
+    doAnEdit(fsn,1);
+    fsn.setSafeMode(SafeModeAction.SAFEMODE_ENTER);
+    try {
+      fsn.saveNamespace();
+      fail("saveNamespace did not fail even when all directories failed!");
+    }
+ catch (    IOException ioe) {
+      LOG.info("Got expected exception",ioe);
+    }
+    if (restoreStorageAfterFailure) {
+      Mockito.reset(spyImage);
+      spyStorage.setRestoreFailedStorage(true);
+      fsn.saveNamespace();
+      checkEditExists(fsn,1);
+    }
+    originalImage.close();
+    fsn.close();
+    fsn=null;
+    fsn=new FSNamesystem(conf);
+    checkEditExists(fsn,1);
+  }
+  finally {
+    if (fsn != null) {
+      fsn.close();
+    }
+  }
+}

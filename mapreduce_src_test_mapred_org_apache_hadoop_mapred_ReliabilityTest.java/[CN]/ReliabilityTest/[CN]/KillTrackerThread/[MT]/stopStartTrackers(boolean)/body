@@ -1,0 +1,41 @@
+{
+  if (considerMaps) {
+    LOG.info("Will STOP/RESUME tasktrackers based on Maps'" + " progress");
+  }
+ else {
+    LOG.info("Will STOP/RESUME tasktrackers based on " + "Reduces' progress");
+  }
+  LOG.info("Initial progress threshold: " + threshold + ". Threshold Multiplier: "+ thresholdMultiplier+ ". Number of iterations: "+ numIterations);
+  float thresholdVal=threshold;
+  int numIterationsDone=0;
+  while (!killed) {
+    try {
+      float progress;
+      if (jc.getJob(rJob.getID()).isComplete() || numIterationsDone == numIterations) {
+        break;
+      }
+      if (considerMaps) {
+        progress=jc.getJob(rJob.getID()).mapProgress();
+      }
+ else {
+        progress=jc.getJob(rJob.getID()).reduceProgress();
+      }
+      if (progress >= thresholdVal) {
+        numIterationsDone++;
+        ClusterStatus c;
+        stopTaskTrackers((c=jc.getClusterStatus(true)));
+        Thread.sleep((int)Math.ceil(1.5 * c.getTTExpiryInterval()));
+        startTaskTrackers();
+        thresholdVal=thresholdVal * thresholdMultiplier;
+      }
+      Thread.sleep(5000);
+    }
+ catch (    InterruptedException ie) {
+      killed=true;
+      return;
+    }
+catch (    Exception e) {
+      LOG.fatal(StringUtils.stringifyException(e));
+    }
+  }
+}

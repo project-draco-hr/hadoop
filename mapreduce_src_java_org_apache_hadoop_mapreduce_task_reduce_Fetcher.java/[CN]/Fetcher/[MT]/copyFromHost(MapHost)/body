@@ -1,0 +1,63 @@
+{
+  List<TaskAttemptID> maps=scheduler.getMapsForHost(host);
+  if (maps.size() == 0) {
+    return;
+  }
+  LOG.debug("Fetcher " + id + " going to fetch from "+ host);
+  for (  TaskAttemptID tmp : maps) {
+    LOG.debug(tmp);
+  }
+  Set<TaskAttemptID> remaining=new HashSet<TaskAttemptID>(maps);
+  DataInputStream input;
+  boolean connectSucceeded=false;
+  try {
+    URL url=getMapOutputURL(host,maps);
+    URLConnection connection=url.openConnection();
+    String msgToEncode=SecureShuffleUtils.buildMsgFrom(url);
+    String encHash=SecureShuffleUtils.hashFromString(msgToEncode,jobTokenSecret);
+    connection.addRequestProperty(SecureShuffleUtils.HTTP_HEADER_URL_HASH,encHash);
+    connection.setReadTimeout(readTimeout);
+    connect(connection,connectionTimeout);
+    connectSucceeded=true;
+    input=new DataInputStream(connection.getInputStream());
+    String replyHash=connection.getHeaderField(SecureShuffleUtils.HTTP_HEADER_REPLY_URL_HASH);
+    if (replyHash == null) {
+      throw new IOException("security validation of TT Map output failed");
+    }
+    LOG.debug("url=" + msgToEncode + ";encHash="+ encHash+ ";replyHash="+ replyHash);
+    SecureShuffleUtils.verifyReply(replyHash,encHash,jobTokenSecret);
+    LOG.info("for url=" + msgToEncode + " sent hash and receievd reply");
+  }
+ catch (  IOException ie) {
+    ioErrs.increment(1);
+    LOG.warn("Failed to connect to " + host + " with "+ remaining.size()+ " map outputs",ie);
+    if (!connectSucceeded) {
+      for (      TaskAttemptID left : remaining) {
+        scheduler.copyFailed(left,host,connectSucceeded);
+      }
+    }
+ else {
+      TaskAttemptID firstMap=maps.get(0);
+      scheduler.copyFailed(firstMap,host,connectSucceeded);
+    }
+    for (    TaskAttemptID left : remaining) {
+      scheduler.putBackKnownMapOutput(host,left);
+    }
+    return;
+  }
+  try {
+    boolean good=true;
+    while (!remaining.isEmpty() && good) {
+      good=copyMapOutput(host,input,remaining);
+    }
+    IOUtils.cleanup(LOG,input);
+    if (good && !remaining.isEmpty()) {
+      throw new IOException("server didn't return all expected map outputs: " + remaining.size() + " left.");
+    }
+  }
+  finally {
+    for (    TaskAttemptID left : remaining) {
+      scheduler.putBackKnownMapOutput(host,left);
+    }
+  }
+}

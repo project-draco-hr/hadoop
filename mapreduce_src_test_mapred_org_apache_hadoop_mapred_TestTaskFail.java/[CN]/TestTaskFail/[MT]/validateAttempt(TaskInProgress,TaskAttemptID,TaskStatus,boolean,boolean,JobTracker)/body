@@ -1,0 +1,25 @@
+{
+  assertEquals(isCleanup,tip.isCleanupAttempt(attemptId));
+  assertTrue(ts != null);
+  assertEquals(TaskStatus.State.FAILED,ts.getRunState());
+  String log=MapReduceTestUtil.readTaskLog(TaskLog.LogName.STDERR,attemptId,false);
+  assertTrue(log.contains(taskLog));
+  TaskTrackerStatus ttStatus=jt.getTaskTracker(tip.machineWhereTaskRan(attemptId)).getStatus();
+  String tasklogUrl=TaskLogServlet.getTaskLogUrl("localhost",String.valueOf(ttStatus.getHttpPort()),attemptId.toString()) + "&filter=STDERR";
+  assertEquals(HttpURLConnection.HTTP_OK,TestWebUIAuthorization.getHttpStatusCode(tasklogUrl,tip.getUser(),"GET"));
+  if (containsCleanupLog) {
+    assertTrue(log.contains(cleanupLog));
+  }
+  if (isCleanup) {
+    log=MapReduceTestUtil.readTaskLog(TaskLog.LogName.STDERR,attemptId,true);
+    assertTrue(log.contains(cleanupLog));
+    ttStatus=jt.getTaskTracker(tip.machineWhereCleanupRan(attemptId)).getStatus();
+    String cleanupTasklogUrl=TaskLogServlet.getTaskLogUrl("localhost",String.valueOf(ttStatus.getHttpPort()),attemptId.toString()) + "&filter=STDERR&cleanup=true";
+    assertEquals(HttpURLConnection.HTTP_OK,TestWebUIAuthorization.getHttpStatusCode(cleanupTasklogUrl,tip.getUser(),"GET"));
+    if (jt.taskTrackers().size() >= 2) {
+      String trackerRanTask=tip.machineWhereTaskRan(attemptId);
+      String trackerRanCleanupTask=tip.machineWhereCleanupRan(attemptId);
+      assertFalse(trackerRanTask.equals(trackerRanCleanupTask));
+    }
+  }
+}

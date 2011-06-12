@@ -1,0 +1,30 @@
+{
+  final FileSystem myFS=fs;
+  final String myName=generateLeafFileName(name);
+  final JobConf myJob=job;
+  final Progressable myProgressable=arg3;
+  return new RecordWriter<K,V>(){
+    TreeMap<String,RecordWriter<K,V>> recordWriters=new TreeMap<String,RecordWriter<K,V>>();
+    public void write(    K key,    V value) throws IOException {
+      String keyBasedPath=generateFileNameForKeyValue(key,value,myName);
+      String finalPath=getInputFileBasedOutputFileName(myJob,keyBasedPath);
+      K actualKey=generateActualKey(key,value);
+      V actualValue=generateActualValue(key,value);
+      RecordWriter<K,V> rw=this.recordWriters.get(finalPath);
+      if (rw == null) {
+        rw=getBaseRecordWriter(myFS,myJob,finalPath,myProgressable);
+        this.recordWriters.put(finalPath,rw);
+      }
+      rw.write(actualKey,actualValue);
+    }
+    public void close(    Reporter reporter) throws IOException {
+      Iterator<String> keys=this.recordWriters.keySet().iterator();
+      while (keys.hasNext()) {
+        RecordWriter<K,V> rw=this.recordWriters.get(keys.next());
+        rw.close(reporter);
+      }
+      this.recordWriters.clear();
+    }
+  }
+;
+}

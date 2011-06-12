@@ -1,0 +1,49 @@
+{
+  Map<LoggedNetworkTopology,Integer> levelMapping=new IdentityHashMap<LoggedNetworkTopology,Integer>();
+  Deque<LoggedNetworkTopology> unvisited=new ArrayDeque<LoggedNetworkTopology>();
+  unvisited.add(topology);
+  levelMapping.put(topology,0);
+  int leafLevel=-1;
+  for (LoggedNetworkTopology n=unvisited.poll(); n != null; n=unvisited.poll()) {
+    int level=levelMapping.get(n);
+    List<LoggedNetworkTopology> children=n.getChildren();
+    if (children == null || children.isEmpty()) {
+      if (leafLevel == -1) {
+        leafLevel=level;
+      }
+ else       if (leafLevel != level) {
+        throw new IllegalArgumentException("Leaf nodes are not on the same level");
+      }
+    }
+ else {
+      for (      LoggedNetworkTopology child : children) {
+        levelMapping.put(child,level + 1);
+        unvisited.addFirst(child);
+      }
+    }
+  }
+  Node[] path=new Node[leafLevel];
+  unvisited.add(topology);
+  for (LoggedNetworkTopology n=unvisited.poll(); n != null; n=unvisited.poll()) {
+    int level=levelMapping.get(n);
+    Node current;
+    if (level == leafLevel) {
+      MachineNode.Builder builder=new MachineNode.Builder(n.getName(),level);
+      if (defaultNode != null) {
+        builder.cloneFrom(defaultNode);
+      }
+      current=builder.build();
+    }
+ else {
+      current=(level == leafLevel - 1) ? new RackNode(n.getName(),level) : new Node(n.getName(),level);
+      path[level]=current;
+      for (      LoggedNetworkTopology child : n.getChildren()) {
+        unvisited.addFirst(child);
+      }
+    }
+    if (level != 0) {
+      path[level - 1].addChild(current);
+    }
+  }
+  root=path[0];
+}

@@ -1,0 +1,50 @@
+{
+  if (!getIsJavaMapper(conf)) {
+    conf.setMapRunnerClass(PipesMapRunner.class);
+    setJavaPartitioner(conf,conf.getPartitionerClass());
+    conf.setPartitionerClass(PipesPartitioner.class);
+  }
+  if (!getIsJavaReducer(conf)) {
+    conf.setReducerClass(PipesReducer.class);
+    if (!getIsJavaRecordWriter(conf)) {
+      conf.setOutputFormat(NullOutputFormat.class);
+    }
+  }
+  String textClassname=Text.class.getName();
+  setIfUnset(conf,MRJobConfig.MAP_OUTPUT_KEY_CLASS,textClassname);
+  setIfUnset(conf,MRJobConfig.MAP_OUTPUT_VALUE_CLASS,textClassname);
+  setIfUnset(conf,MRJobConfig.OUTPUT_KEY_CLASS,textClassname);
+  setIfUnset(conf,MRJobConfig.OUTPUT_VALUE_CLASS,textClassname);
+  if (!getIsJavaRecordReader(conf) && !getIsJavaMapper(conf)) {
+    conf.setClass(Submitter.INPUT_FORMAT,conf.getInputFormat().getClass(),InputFormat.class);
+    conf.setInputFormat(PipesNonJavaInputFormat.class);
+  }
+  String exec=getExecutable(conf);
+  if (exec == null) {
+    throw new IllegalArgumentException("No application program defined.");
+  }
+  if (exec.contains("#")) {
+    DistributedCache.createSymlink(conf);
+    String defScript="$HADOOP_PREFIX/src/c++/pipes/debug/pipes-default-script";
+    setIfUnset(conf,MRJobConfig.MAP_DEBUG_SCRIPT,defScript);
+    setIfUnset(conf,MRJobConfig.REDUCE_DEBUG_SCRIPT,defScript);
+  }
+  URI[] fileCache=DistributedCache.getCacheFiles(conf);
+  if (fileCache == null) {
+    fileCache=new URI[1];
+  }
+ else {
+    URI[] tmp=new URI[fileCache.length + 1];
+    System.arraycopy(fileCache,0,tmp,1,fileCache.length);
+    fileCache=tmp;
+  }
+  try {
+    fileCache[0]=new URI(exec);
+  }
+ catch (  URISyntaxException e) {
+    IOException ie=new IOException("Problem parsing execable URI " + exec);
+    ie.initCause(e);
+    throw ie;
+  }
+  DistributedCache.setCacheFiles(fileCache,conf);
+}

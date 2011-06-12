@@ -1,0 +1,29 @@
+{
+  Path logFile=getJobHistoryFile(logDir,jobId,getUserName(jobConf));
+  if (logDir == null) {
+    LOG.info("Log Directory is null, returning");
+    throw new IOException("Missing Log Directory for History");
+  }
+  int defaultBufferSize=logDirFs.getConf().getInt("io.file.buffer.size",4096);
+  LOG.info("SetupWriter, creating file " + logFile);
+  FSDataOutputStream out=logDirFs.create(logFile,new FsPermission(JobHistory.HISTORY_FILE_PERMISSION),true,defaultBufferSize,logDirFs.getDefaultReplication(),jobHistoryBlockSize,null);
+  EventWriter writer=new EventWriter(out);
+  Path logDirConfPath=getConfFile(logDir,jobId);
+  LOG.info("LogDirConfPath is " + logDirConfPath);
+  FSDataOutputStream jobFileOut=null;
+  try {
+    if (logDirConfPath != null) {
+      defaultBufferSize=logDirFs.getConf().getInt("io.file.buffer.size",4096);
+      if (!logDirFs.exists(logDirConfPath)) {
+        jobFileOut=logDirFs.create(logDirConfPath,new FsPermission(JobHistory.HISTORY_FILE_PERMISSION),true,defaultBufferSize,logDirFs.getDefaultReplication(),logDirFs.getDefaultBlockSize(),null);
+        jobConf.writeXml(jobFileOut);
+        jobFileOut.close();
+      }
+    }
+  }
+ catch (  IOException e) {
+    LOG.info("Failed to close the job configuration file " + StringUtils.stringifyException(e));
+  }
+  MetaInfo fi=new MetaInfo(logFile,logDirConfPath,writer);
+  fileMap.put(jobId,fi);
+}

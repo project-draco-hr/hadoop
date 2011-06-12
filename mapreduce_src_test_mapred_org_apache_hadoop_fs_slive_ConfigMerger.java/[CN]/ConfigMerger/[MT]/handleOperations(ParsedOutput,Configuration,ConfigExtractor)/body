@@ -1,0 +1,77 @@
+{
+  Map<OperationType,OperationData> operations=getBaseOperations();
+  Map<OperationType,OperationData> cfgOperations=extractor.getOperations();
+  for (  OperationType opType : cfgOperations.keySet()) {
+    operations.put(opType,cfgOperations.get(opType));
+  }
+  for (  OperationType opType : OperationType.values()) {
+    String opName=opType.lowerName();
+    String opVal=opts.getValue(opName);
+    if (opVal != null) {
+      operations.put(opType,new OperationData(opVal));
+    }
+  }
+{
+    Map<OperationType,OperationData> cleanedOps=new HashMap<OperationType,OperationData>();
+    for (    OperationType opType : operations.keySet()) {
+      OperationData data=operations.get(opType);
+      if (data.getPercent() == null || data.getPercent() > 0.0d) {
+        cleanedOps.put(opType,data);
+      }
+    }
+    operations=cleanedOps;
+  }
+  if (operations.isEmpty()) {
+    throw new ConfigException("No operations provided!");
+  }
+  double currPct=0;
+  int needFill=0;
+  for (  OperationType type : operations.keySet()) {
+    OperationData op=operations.get(type);
+    if (op.getPercent() != null) {
+      currPct+=op.getPercent();
+    }
+ else {
+      needFill++;
+    }
+  }
+  if (currPct > 1) {
+    throw new ConfigException("Unable to have accumlative percent greater than 100%");
+  }
+  if (needFill > 0 && currPct < 1) {
+    double leftOver=1.0 - currPct;
+    Map<OperationType,OperationData> mpcp=new HashMap<OperationType,OperationData>();
+    for (    OperationType type : operations.keySet()) {
+      OperationData op=operations.get(type);
+      if (op.getPercent() == null) {
+        op=new OperationData(op.getDistribution(),(leftOver / needFill));
+      }
+      mpcp.put(type,op);
+    }
+    operations=mpcp;
+  }
+ else   if (needFill == 0 && currPct < 1) {
+    double leftOver=1.0 - currPct;
+    Map<OperationType,OperationData> mpcp=new HashMap<OperationType,OperationData>();
+    double each=leftOver / operations.keySet().size();
+    for (    OperationType t : operations.keySet()) {
+      OperationData op=operations.get(t);
+      op=new OperationData(op.getDistribution(),(op.getPercent() + each));
+      mpcp.put(t,op);
+    }
+    operations=mpcp;
+  }
+ else   if (needFill > 0 && currPct >= 1) {
+    throw new ConfigException(needFill + " unfilled operations but no percentage left to fill with");
+  }
+  for (  OperationType opType : operations.keySet()) {
+    String opName=opType.lowerName();
+    OperationData opData=operations.get(opType);
+    String distr=opData.getDistribution().lowerName();
+    String ratio=new Double(opData.getPercent() * 100.0d).toString();
+    base.set(String.format(Constants.OP,opName),opData.toString());
+    base.set(String.format(Constants.OP_DISTR,opName),distr);
+    base.set(String.format(Constants.OP_PERCENT,opName),ratio);
+  }
+  return base;
+}

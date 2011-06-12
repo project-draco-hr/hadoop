@@ -1,0 +1,36 @@
+{
+  final int srcCount=job.getInt(OP_COUNT_LABEL,-1);
+  final int targetcount=srcCount / numSplits;
+  String srclist=job.get(OP_LIST_LABEL,"");
+  if (srcCount < 0 || "".equals(srclist)) {
+    throw new RuntimeException("Invalid metadata: #files(" + srcCount + ") listuri("+ srclist+ ")");
+  }
+  Path srcs=new Path(srclist);
+  FileSystem fs=srcs.getFileSystem(job);
+  List<FileSplit> splits=new ArrayList<FileSplit>(numSplits);
+  Text key=new Text();
+  FileOperation value=new FileOperation();
+  SequenceFile.Reader in=null;
+  long prev=0L;
+  int count=0;
+  try {
+    for (in=new SequenceFile.Reader(fs,srcs,job); in.next(key,value); ) {
+      long curr=in.getPosition();
+      long delta=curr - prev;
+      if (++count > targetcount) {
+        count=0;
+        splits.add(new FileSplit(srcs,prev,delta,(String[])null));
+        prev=curr;
+      }
+    }
+  }
+  finally {
+    in.close();
+  }
+  long remaining=fs.getFileStatus(srcs).getLen() - prev;
+  if (remaining != 0) {
+    splits.add(new FileSplit(srcs,prev,remaining,(String[])null));
+  }
+  LOG.info("numSplits=" + numSplits + ", splits.size()="+ splits.size());
+  return splits.toArray(new FileSplit[splits.size()]);
+}

@@ -1,0 +1,34 @@
+{
+  Assume.assumeTrue(FD_DIR.exists());
+  BlockTokenSecretManager sm=new BlockTokenSecretManager(true,blockKeyUpdateInterval,blockTokenLifetime);
+  Token<BlockTokenIdentifier> token=sm.generateToken(block3,EnumSet.allOf(BlockTokenSecretManager.AccessMode.class));
+  final Server server=createMockDatanode(sm,token);
+  server.start();
+  final InetSocketAddress addr=NetUtils.getConnectAddress(server);
+  DatanodeID fakeDnId=new DatanodeID("localhost:" + addr.getPort(),"fake-storage",0,addr.getPort());
+  ExtendedBlock b=new ExtendedBlock("fake-pool",new Block(12345L));
+  LocatedBlock fakeBlock=new LocatedBlock(b,new DatanodeInfo[0]);
+  fakeBlock.setBlockToken(token);
+  ClientDatanodeProtocol proxyToNoWhere=RPC.getProxy(ClientDatanodeProtocol.class,ClientDatanodeProtocol.versionID,new InetSocketAddress("1.1.1.1",1),UserGroupInformation.createRemoteUser("junk"),conf,NetUtils.getDefaultSocketFactory(conf));
+  ClientDatanodeProtocol proxy=null;
+  int fdsAtStart=countOpenFileDescriptors();
+  try {
+    long endTime=System.currentTimeMillis() + 3000;
+    while (System.currentTimeMillis() < endTime) {
+      proxy=DFSTestUtil.createClientDatanodeProtocolProxy(fakeDnId,conf,1000,fakeBlock);
+      assertEquals(block3.getBlockId(),proxy.getReplicaVisibleLength(block3));
+      if (proxy != null) {
+        RPC.stopProxy(proxy);
+      }
+      LOG.info("Num open fds:" + countOpenFileDescriptors());
+    }
+    int fdsAtEnd=countOpenFileDescriptors();
+    if (fdsAtEnd - fdsAtStart > 50) {
+      fail("Leaked " + (fdsAtEnd - fdsAtStart) + " fds!");
+    }
+  }
+  finally {
+    server.stop();
+  }
+  RPC.stopProxy(proxyToNoWhere);
+}

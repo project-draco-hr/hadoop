@@ -1,0 +1,48 @@
+{
+  updateCurrentThreadName("Copying block " + block);
+  if (datanode.isBlockTokenEnabled) {
+    try {
+      datanode.blockPoolTokenSecretManager.checkAccess(blockToken,null,block,BlockTokenSecretManager.AccessMode.COPY);
+    }
+ catch (    InvalidToken e) {
+      LOG.warn("Invalid access token in request from " + remoteAddress + " for OP_COPY_BLOCK for block "+ block+ " : "+ e.getLocalizedMessage());
+      sendResponse(s,ERROR_ACCESS_TOKEN,datanode.socketWriteTimeout);
+      return;
+    }
+  }
+  if (!dataXceiverServer.balanceThrottler.acquire()) {
+    LOG.info("Not able to copy block " + block.getBlockId() + " to "+ s.getRemoteSocketAddress()+ " because threads quota is exceeded.");
+    sendResponse(s,ERROR,datanode.socketWriteTimeout);
+    return;
+  }
+  BlockSender blockSender=null;
+  DataOutputStream reply=null;
+  boolean isOpSuccess=true;
+  try {
+    blockSender=new BlockSender(block,0,-1,false,false,false,datanode);
+    OutputStream baseStream=NetUtils.getOutputStream(s,datanode.socketWriteTimeout);
+    reply=new DataOutputStream(new BufferedOutputStream(baseStream,SMALL_BUFFER_SIZE));
+    writeResponse(SUCCESS,reply);
+    long read=blockSender.sendBlock(reply,baseStream,dataXceiverServer.balanceThrottler);
+    datanode.metrics.incrBytesRead((int)read);
+    datanode.metrics.incrBlocksRead();
+    LOG.info("Copied block " + block + " to "+ s.getRemoteSocketAddress());
+  }
+ catch (  IOException ioe) {
+    isOpSuccess=false;
+    throw ioe;
+  }
+ finally {
+    dataXceiverServer.balanceThrottler.release();
+    if (isOpSuccess) {
+      try {
+        reply.writeChar('d');
+      }
+ catch (      IOException ignored) {
+      }
+    }
+    IOUtils.closeStream(reply);
+    IOUtils.closeStream(blockSender);
+  }
+  datanode.metrics.addCopyBlockOp(elapsed());
+}

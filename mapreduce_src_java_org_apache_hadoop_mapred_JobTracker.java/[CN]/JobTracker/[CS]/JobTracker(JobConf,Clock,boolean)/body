@@ -1,0 +1,69 @@
+{
+  this.clock=clock;
+  this.conf=conf;
+  trackerIdentifier=getDateFormat().format(new Date());
+  if (fs == null) {
+    fs=FileSystem.get(conf);
+  }
+  this.localFs=FileSystem.getLocal(conf);
+  tasktrackerExpiryInterval=conf.getLong("mapred.tasktracker.expiry.interval",10 * 60 * 1000);
+  retiredJobsCacheSize=conf.getInt("mapred.job.tracker.retiredjobs.cache.size",1000);
+  MAX_BLACKLISTS_PER_TRACKER=conf.getInt("mapred.max.tracker.blacklists",4);
+  NUM_HEARTBEATS_IN_SECOND=conf.getInt("mapred.heartbeats.in.second",100);
+  InetSocketAddress addr=getAddress(conf);
+  this.localMachine=addr.getHostName();
+  this.port=addr.getPort();
+  UserGroupInformation.setConfiguration(conf);
+  SecurityUtil.login(conf,JTConfig.JT_KEYTAB_FILE,JTConfig.JT_USER_NAME,localMachine);
+  secretManager=null;
+  this.hostsReader=new HostsFileReader(conf.get(JTConfig.JT_HOSTS_FILENAME,""),conf.get(JTConfig.JT_HOSTS_EXCLUDE_FILENAME,""));
+  Configuration clusterConf=new Configuration(this.conf);
+  queueManager=new QueueManager(clusterConf);
+  aclsManager=new ACLsManager(conf,new JobACLsManager(conf),queueManager);
+  LOG.info("Starting jobtracker with owner as " + getMROwner().getShortUserName());
+  Class<? extends TaskScheduler> schedulerClass=conf.getClass(JTConfig.JT_TASK_SCHEDULER,JobQueueTaskScheduler.class,TaskScheduler.class);
+  taskScheduler=(TaskScheduler)ReflectionUtils.newInstance(schedulerClass,conf);
+  InetSocketAddress infoSocAddr=NetUtils.createSocketAddr(conf.get(JTConfig.JT_HTTP_ADDRESS,"0.0.0.0:50030"));
+  String infoBindAddress=infoSocAddr.getHostName();
+  int tmpInfoPort=infoSocAddr.getPort();
+  this.startTime=clock.getTime();
+  infoServer=new HttpServer("job",infoBindAddress,tmpInfoPort,tmpInfoPort == 0,conf);
+  infoServer.setAttribute("job.tracker",this);
+  FileSystem historyFS=null;
+  jobHistory=new JobHistory();
+  final JobTracker jtFinal=this;
+  try {
+    historyFS=getMROwner().doAs(new PrivilegedExceptionAction<FileSystem>(){
+      public FileSystem run() throws IOException {
+        jobHistory.init(jtFinal,conf,jtFinal.localMachine,jtFinal.startTime);
+        jobHistory.initDone(conf,fs);
+        final String historyLogDir=jobHistory.getCompletedJobHistoryLocation().toString();
+        infoServer.setAttribute("historyLogDir",historyLogDir);
+        return new Path(historyLogDir).getFileSystem(conf);
+      }
+    }
+);
+  }
+ catch (  InterruptedException e1) {
+    throw (IOException)new IOException().initCause(e1);
+  }
+  infoServer.setAttribute("fileSys",historyFS);
+  infoServer.addServlet("reducegraph","/taskgraph",TaskGraphServlet.class);
+  infoServer.start();
+  this.infoPort=this.infoServer.getPort();
+  JobTrackerInstrumentation tmp;
+  try {
+    Class<? extends JobTrackerInstrumentation> metricsInst=getInstrumentationClass(conf);
+    java.lang.reflect.Constructor<? extends JobTrackerInstrumentation> c=metricsInst.getConstructor(new Class[]{JobTracker.class,JobConf.class});
+    tmp=c.newInstance(this,conf);
+  }
+ catch (  Exception e) {
+    LOG.error("failed to initialize job tracker metrics",e);
+    tmp=new JobTrackerMetricsInst(this,conf);
+  }
+  myInstrumentation=tmp;
+  recoveryManager=new RecoveryManager();
+  this.dnsToSwitchMapping=ReflectionUtils.newInstance(conf.getClass(CommonConfigurationKeys.NET_TOPOLOGY_NODE_SWITCH_MAPPING_IMPL_KEY,ScriptBasedMapping.class,DNSToSwitchMapping.class),conf);
+  this.numTaskCacheLevels=conf.getInt("mapred.task.cache.levels",NetworkTopology.DEFAULT_HOST_LEVEL);
+  completedJobStatusStore=new CompletedJobStatusStore(conf,aclsManager);
+}

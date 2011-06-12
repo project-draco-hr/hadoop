@@ -1,0 +1,29 @@
+{
+  JobConf conf=new JobConf(cluster.createJobConf());
+  conf.set(MRJobConfig.JOB_ACL_VIEW_JOB,viewColleague + " group3");
+  conf.set(MRJobConfig.JOB_ACL_MODIFY_JOB," group1,group3");
+  String jobTrackerJSP=jtURL + "/jobtracker.jsp?a=b";
+  Job job=startSleepJobAsUser(jobSubmitter,conf);
+  org.apache.hadoop.mapreduce.JobID jobid=job.getJobID();
+  getTIPId(cluster,jobid);
+  String url=jtURL + "/jobdetails.jsp?" + "action=kill&jobid="+ jobid.toString();
+  try {
+    assertEquals(HttpURLConnection.HTTP_UNAUTHORIZED,getHttpStatusCode(url,viewColleague,"POST"));
+    assertEquals(HttpURLConnection.HTTP_UNAUTHORIZED,getHttpStatusCode(url,unauthorizedUser,"POST"));
+    assertEquals(HttpURLConnection.HTTP_UNAUTHORIZED,getHttpStatusCode(url,modifyColleague,"POST"));
+    assertEquals(HttpURLConnection.HTTP_OK,getHttpStatusCode(url,viewAndModifyColleague,"POST"));
+    assertTrue("killJob using jobdetails.jsp failed for a job for which " + "user has job-view and job-modify permissions",job.isComplete());
+  }
+  finally {
+    if (!job.isComplete()) {
+      LOG.info("Killing job " + jobid + " from finally block");
+      assertEquals(HttpURLConnection.HTTP_OK,getHttpStatusCode(jobTrackerJSP + "&killJobs=true&jobCheckBox=" + jobid.toString(),jobSubmitter,"GET"));
+    }
+  }
+  confirmJobDetailsJSPKillJobAsUser(cluster,conf,jtURL,jobTrackerJSP,jobSubmitter);
+  confirmJobDetailsJSPKillJobAsUser(cluster,conf,jtURL,jobTrackerJSP,mrOwner);
+  confirmJobDetailsJSPKillJobAsUser(cluster,conf,jtURL,jobTrackerJSP,superGroupMember);
+  confirmJobDetailsJSPKillJobAsUser(cluster,conf,jtURL,jobTrackerJSP,mrAdminGroupMember);
+  confirmJobDetailsJSPKillJobAsUser(cluster,conf,jtURL,jobTrackerJSP,mrAdminUser);
+  confirmJobDetailsJSPKillJobAsUser(cluster,conf,jtURL,jobTrackerJSP,qAdmin);
+}

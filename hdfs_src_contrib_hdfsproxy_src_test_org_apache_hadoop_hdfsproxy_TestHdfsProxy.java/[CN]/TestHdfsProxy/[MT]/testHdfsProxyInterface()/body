@@ -1,0 +1,50 @@
+{
+  MiniDFSCluster cluster=null;
+  HdfsProxy proxy=null;
+  try {
+    final UserGroupInformation CLIENT_UGI=UserGroupInformation.getCurrentUser();
+    final String testUser=CLIENT_UGI.getShortUserName();
+    final String testGroup=CLIENT_UGI.getGroupNames()[0];
+    final Configuration dfsConf=new HdfsConfiguration();
+    dfsConf.set("hadoop.proxyuser." + testUser + ".groups",testGroup);
+    dfsConf.set("hadoop.proxyuser." + testGroup + ".hosts","localhost,127.0.0.1");
+    dfsConf.set("hadoop.proxyuser." + testUser + ".hosts","localhost,127.0.0.1");
+    cluster=new MiniDFSCluster.Builder(dfsConf).numDataNodes(2).build();
+    cluster.waitActive();
+    final FileSystem localfs=FileSystem.get(LOCAL_FS,dfsConf);
+    final FileSystem hdfs=cluster.getFileSystem();
+    final Configuration proxyConf=new HdfsConfiguration(false);
+    proxyConf.set("hdfsproxy.dfs.namenode.address",hdfs.getUri().getHost() + ":" + hdfs.getUri().getPort());
+    proxyConf.set("hdfsproxy.https.address","localhost:0");
+    final String namenode=hdfs.getUri().toString();
+    if (namenode.startsWith("hdfs://")) {
+      MyFile[] files=createFiles(LOCAL_FS,TEST_ROOT_DIR + "/srcdat");
+      hdfs.copyFromLocalFile(new Path("file:///" + TEST_ROOT_DIR + "/srcdat"),new Path(namenode + "/destdat"));
+      assertTrue("Source and destination directories do not match.",checkFiles(hdfs,"/destdat",files));
+      proxyConf.set("proxy.http.test.listener.addr","localhost:0");
+      proxy=new HdfsProxy(proxyConf);
+      proxy.start();
+      InetSocketAddress proxyAddr=NetUtils.createSocketAddr("localhost:0");
+      final String realProxyAddr=proxyAddr.getHostName() + ":" + proxy.getPort();
+      final Path proxyUrl=new Path("hftp://" + realProxyAddr);
+      final FileSystem hftp=proxyUrl.getFileSystem(dfsConf);
+      FileUtil.copy(hftp,new Path(proxyUrl,"/destdat"),hdfs,new Path(namenode + "/copied1"),false,true,proxyConf);
+      assertTrue("Source and copied directories do not match.",checkFiles(hdfs,"/copied1",files));
+      FileUtil.copy(hftp,new Path(proxyUrl,"/destdat"),localfs,new Path(TEST_ROOT_DIR + "/copied2"),false,true,proxyConf);
+      assertTrue("Source and copied directories do not match.",checkFiles(localfs,TEST_ROOT_DIR + "/copied2",files));
+      deldir(hdfs,"/destdat");
+      deldir(hdfs,"/logs");
+      deldir(hdfs,"/copied1");
+      deldir(localfs,TEST_ROOT_DIR + "/srcdat");
+      deldir(localfs,TEST_ROOT_DIR + "/copied2");
+    }
+  }
+  finally {
+    if (cluster != null) {
+      cluster.shutdown();
+    }
+    if (proxy != null) {
+      proxy.stop();
+    }
+  }
+}

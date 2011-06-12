@@ -1,0 +1,28 @@
+{
+  try {
+    Path inputDir=getGridmixInputDataPath(ioPath);
+    GridmixJobSubmissionPolicy policy=GridmixJobSubmissionPolicy.getPolicy(conf,GridmixJobSubmissionPolicy.STRESS);
+    LOG.info(" Submission policy is " + policy.name());
+    statistics=new Statistics(conf,policy.getPollingInterval(),startFlag);
+    monitor=createJobMonitor(statistics);
+    int noOfSubmitterThreads=(policy == GridmixJobSubmissionPolicy.SERIAL) ? 1 : Runtime.getRuntime().availableProcessors() + 1;
+    int numThreads=conf.getInt(GRIDMIX_SUB_THR,noOfSubmitterThreads);
+    int queueDep=conf.getInt(GRIDMIX_QUE_DEP,5);
+    submitter=createJobSubmitter(monitor,numThreads,queueDep,new FilePool(conf,inputDir),userResolver,statistics);
+    distCacheEmulator=new DistributedCacheEmulator(conf,ioPath);
+    factory=createJobFactory(submitter,traceIn,scratchDir,conf,startFlag,userResolver);
+    factory.jobCreator.setDistCacheEmulator(distCacheEmulator);
+    if (policy == GridmixJobSubmissionPolicy.SERIAL) {
+      statistics.addJobStatsListeners(factory);
+    }
+ else {
+      statistics.addClusterStatsObservers(factory);
+    }
+    monitor.start();
+    submitter.start();
+  }
+ catch (  Exception e) {
+    LOG.error(" Exception at start ",e);
+    throw new IOException(e);
+  }
+}

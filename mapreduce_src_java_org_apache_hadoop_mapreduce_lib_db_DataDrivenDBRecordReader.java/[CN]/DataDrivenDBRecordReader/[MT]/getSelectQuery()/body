@@ -1,0 +1,39 @@
+{
+  StringBuilder query=new StringBuilder();
+  DataDrivenDBInputFormat.DataDrivenDBInputSplit dataSplit=(DataDrivenDBInputFormat.DataDrivenDBInputSplit)getSplit();
+  DBConfiguration dbConf=getDBConf();
+  String[] fieldNames=getFieldNames();
+  String tableName=getTableName();
+  String conditions=getConditions();
+  StringBuilder conditionClauses=new StringBuilder();
+  conditionClauses.append("( ").append(dataSplit.getLowerClause());
+  conditionClauses.append(" ) AND ( ").append(dataSplit.getUpperClause());
+  conditionClauses.append(" )");
+  if (dbConf.getInputQuery() == null) {
+    query.append("SELECT ");
+    for (int i=0; i < fieldNames.length; i++) {
+      query.append(fieldNames[i]);
+      if (i != fieldNames.length - 1) {
+        query.append(", ");
+      }
+    }
+    query.append(" FROM ").append(tableName);
+    if (!dbProductName.startsWith("ORACLE")) {
+      query.append(" AS ").append(tableName);
+    }
+    query.append(" WHERE ");
+    if (conditions != null && conditions.length() > 0) {
+      query.append("( ").append(conditions).append(" ) AND ");
+    }
+    query.append(conditionClauses.toString());
+  }
+ else {
+    String inputQuery=dbConf.getInputQuery();
+    if (inputQuery.indexOf(DataDrivenDBInputFormat.SUBSTITUTE_TOKEN) == -1) {
+      LOG.error("Could not find the clause substitution token " + DataDrivenDBInputFormat.SUBSTITUTE_TOKEN + " in the query: ["+ inputQuery+ "]. Parallel splits may not work correctly.");
+    }
+    query.append(inputQuery.replace(DataDrivenDBInputFormat.SUBSTITUTE_TOKEN,conditionClauses.toString()));
+  }
+  LOG.debug("Using query: " + query.toString());
+  return query.toString();
+}

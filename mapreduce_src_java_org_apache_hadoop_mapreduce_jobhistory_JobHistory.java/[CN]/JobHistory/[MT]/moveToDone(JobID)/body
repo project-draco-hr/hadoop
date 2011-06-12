@@ -1,0 +1,42 @@
+{
+  final List<Path> paths=new ArrayList<Path>();
+  final MetaInfo metaInfo=fileMap.get(id);
+  if (metaInfo == null) {
+    LOG.info("No file for job-history with " + id + " found in cache!");
+    return;
+  }
+  final Path historyFile=metaInfo.getHistoryFile();
+  if (historyFile == null) {
+    LOG.info("No file for job-history with " + id + " found in cache!");
+  }
+ else {
+    paths.add(historyFile);
+  }
+  final Path confPath=metaInfo.getConfFile();
+  if (confPath == null) {
+    LOG.info("No file for jobconf with " + id + " found in cache!");
+  }
+ else {
+    paths.add(confPath);
+  }
+  executor.execute(new Runnable(){
+    public void run(){
+      try {
+        for (        Path path : paths) {
+          moveToDoneNow(path,new Path(done,path.getName()));
+        }
+      }
+ catch (      Throwable e) {
+        LOG.error("Unable to move history file to DONE folder.",e);
+      }
+      String historyFileDonePath=null;
+      if (historyFile != null) {
+        historyFileDonePath=new Path(done,historyFile.getName()).toString();
+      }
+      jobHistoryFileMap.put(id,new MovedFileInfo(historyFileDonePath,System.currentTimeMillis()));
+      jobTracker.retireJob(org.apache.hadoop.mapred.JobID.downgrade(id),historyFileDonePath);
+      fileMap.remove(id);
+    }
+  }
+);
+}

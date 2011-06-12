@@ -1,0 +1,24 @@
+{
+  long expiryTime;
+  writeLock();
+  try {
+    if (isInSafeMode()) {
+      throw new SafeModeException("Cannot renew delegation token",safeMode);
+    }
+    if (!isAllowedDelegationTokenOp()) {
+      throw new IOException("Delegation Token can be renewed only with kerberos or web authentication");
+    }
+    String renewer=UserGroupInformation.getCurrentUser().getShortUserName();
+    expiryTime=dtSecretManager.renewToken(token,renewer);
+    DelegationTokenIdentifier id=new DelegationTokenIdentifier();
+    ByteArrayInputStream buf=new ByteArrayInputStream(token.getIdentifier());
+    DataInputStream in=new DataInputStream(buf);
+    id.readFields(in);
+    getEditLog().logRenewDelegationToken(id,expiryTime);
+  }
+  finally {
+    writeUnlock();
+  }
+  getEditLog().logSync();
+  return expiryTime;
+}

@@ -1,0 +1,18 @@
+{
+  job.setInputFormatClass(RandomInputFormat.class);
+  job.setMapperClass(RandomMapOutput.class);
+  Configuration conf=job.getConfiguration();
+  final ClusterStatus cluster=new JobClient(conf).getClusterStatus();
+  int numMapsPerHost=conf.getInt(RandomTextWriter.MAPS_PER_HOST,10);
+  long numBytesToWritePerMap=conf.getLong(RandomTextWriter.BYTES_PER_MAP,1 * 1024 * 1024* 1024);
+  if (numBytesToWritePerMap == 0) {
+    throw new IOException("Cannot have " + RandomTextWriter.BYTES_PER_MAP + " set to 0");
+  }
+  long totalBytesToWrite=conf.getLong(RandomTextWriter.TOTAL_BYTES,numMapsPerHost * numBytesToWritePerMap * cluster.getTaskTrackers());
+  int numMaps=(int)(totalBytesToWrite / numBytesToWritePerMap);
+  if (numMaps == 0 && totalBytesToWrite > 0) {
+    numMaps=1;
+    conf.setLong(RandomTextWriter.BYTES_PER_MAP,totalBytesToWrite);
+  }
+  conf.setInt(MRJobConfig.NUM_MAPS,numMaps);
+}

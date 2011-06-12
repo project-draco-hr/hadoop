@@ -1,0 +1,27 @@
+{
+  String binaryTokenFilename=conf.get("mapreduce.job.credentials.binary");
+  if (binaryTokenFilename != null) {
+    Credentials binary=Credentials.readTokenStorageFile(new Path("file:///" + binaryTokenFilename),conf);
+    credentials.addAll(binary);
+  }
+  String tokensFileName=conf.get("mapreduce.job.credentials.json");
+  if (tokensFileName != null) {
+    LOG.info("loading user's secret keys from " + tokensFileName);
+    String localFileName=new Path(tokensFileName).toUri().getPath();
+    boolean json_error=false;
+    try {
+      ObjectMapper mapper=new ObjectMapper();
+      Map<String,String> nm=mapper.readValue(new File(localFileName),Map.class);
+      for (      Map.Entry<String,String> ent : nm.entrySet()) {
+        credentials.addSecretKey(new Text(ent.getKey()),ent.getValue().getBytes());
+      }
+    }
+ catch (    JsonMappingException e) {
+      json_error=true;
+    }
+catch (    JsonParseException e) {
+      json_error=true;
+    }
+    if (json_error)     LOG.warn("couldn't parse Token Cache JSON file with user secret keys");
+  }
+}

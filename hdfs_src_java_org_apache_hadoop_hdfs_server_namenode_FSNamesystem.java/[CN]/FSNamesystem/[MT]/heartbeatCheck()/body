@@ -1,0 +1,48 @@
+{
+  if (isInSafeMode()) {
+    return;
+  }
+  boolean allAlive=false;
+  while (!allAlive) {
+    boolean foundDead=false;
+    DatanodeID nodeID=null;
+synchronized (heartbeats) {
+      for (Iterator<DatanodeDescriptor> it=heartbeats.iterator(); it.hasNext(); ) {
+        DatanodeDescriptor nodeInfo=it.next();
+        if (isDatanodeDead(nodeInfo)) {
+          expiredHeartbeats.incr();
+          foundDead=true;
+          nodeID=nodeInfo;
+          break;
+        }
+      }
+    }
+    if (foundDead) {
+      writeLock();
+      if (isInSafeMode()) {
+        return;
+      }
+      try {
+synchronized (heartbeats) {
+synchronized (datanodeMap) {
+            DatanodeDescriptor nodeInfo=null;
+            try {
+              nodeInfo=getDatanode(nodeID);
+            }
+ catch (            IOException e) {
+              nodeInfo=null;
+            }
+            if (nodeInfo != null && isDatanodeDead(nodeInfo)) {
+              NameNode.stateChangeLog.info("BLOCK* NameSystem.heartbeatCheck: " + "lost heartbeat from " + nodeInfo.getName());
+              removeDatanode(nodeInfo);
+            }
+          }
+        }
+      }
+  finally {
+        writeUnlock();
+      }
+    }
+    allAlive=!foundDead;
+  }
+}

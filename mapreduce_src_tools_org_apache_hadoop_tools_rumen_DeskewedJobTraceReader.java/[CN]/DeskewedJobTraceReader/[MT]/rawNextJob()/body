@@ -1,0 +1,25 @@
+{
+  LoggedJob result=reader.getNext();
+  if ((!abortOnUnfixableSkew || skewBufferLength > 0) && result != null) {
+    long thisTime=result.getSubmitTime();
+    if (submitTimesSoFar.contains(thisTime)) {
+      Integer myCount=countedRepeatedSubmitTimesSoFar.get(thisTime);
+      countedRepeatedSubmitTimesSoFar.put(thisTime,myCount == null ? 2 : myCount + 1);
+    }
+ else {
+      submitTimesSoFar.add(thisTime);
+    }
+    if (thisTime < skewMeasurementLatestSubmitTime) {
+      Iterator<Long> endCursor=submitTimesSoFar.descendingIterator();
+      int thisJobNeedsSkew=0;
+      Long keyNeedingSkew;
+      while (endCursor.hasNext() && (keyNeedingSkew=endCursor.next()) > thisTime) {
+        Integer keyNeedsSkewAmount=countedRepeatedSubmitTimesSoFar.get(keyNeedingSkew);
+        thisJobNeedsSkew+=keyNeedsSkewAmount == null ? 1 : keyNeedsSkewAmount;
+      }
+      maxSkewBufferNeeded=Math.max(maxSkewBufferNeeded,thisJobNeedsSkew);
+    }
+    skewMeasurementLatestSubmitTime=Math.max(thisTime,skewMeasurementLatestSubmitTime);
+  }
+  return result;
+}

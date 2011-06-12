@@ -1,0 +1,42 @@
+{
+  TaskInfo taskInfo=getTaskInfo(loggedTask);
+  State state=convertState(loggedAttempt.getResult());
+  if (loggedTask.getTaskType() == Values.MAP) {
+    long taskTime;
+    if (loggedAttempt.getStartTime() == 0) {
+      int locality=getLocality(loggedTask,loggedAttempt);
+      taskTime=makeUpMapRuntime(state,locality);
+    }
+ else {
+      taskTime=loggedAttempt.getFinishTime() - loggedAttempt.getStartTime();
+    }
+    taskTime=sanitizeTaskRuntime(taskTime,loggedAttempt.getAttemptID());
+    return new MapTaskAttemptInfo(state,taskInfo,taskTime);
+  }
+ else   if (loggedTask.getTaskType() == Values.REDUCE) {
+    long startTime=loggedAttempt.getStartTime();
+    long mergeDone=loggedAttempt.getSortFinished();
+    long shuffleDone=loggedAttempt.getShuffleFinished();
+    long finishTime=loggedAttempt.getFinishTime();
+    if (startTime <= 0 || startTime >= finishTime) {
+      long reduceTime=makeUpReduceRuntime(state);
+      return new ReduceTaskAttemptInfo(state,taskInfo,0,0,reduceTime);
+    }
+ else {
+      if (shuffleDone <= 0) {
+        shuffleDone=startTime;
+      }
+      if (mergeDone <= 0) {
+        mergeDone=finishTime;
+      }
+      long shuffleTime=shuffleDone - startTime;
+      long mergeTime=mergeDone - shuffleDone;
+      long reduceTime=finishTime - mergeDone;
+      reduceTime=sanitizeTaskRuntime(reduceTime,loggedAttempt.getAttemptID());
+      return new ReduceTaskAttemptInfo(state,taskInfo,shuffleTime,mergeTime,reduceTime);
+    }
+  }
+ else {
+    throw new IllegalArgumentException("taskType for " + loggedTask.getTaskID() + " is neither MAP nor REDUCE: "+ loggedTask.getTaskType());
+  }
+}

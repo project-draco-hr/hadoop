@@ -1,0 +1,29 @@
+{
+  JobInfo info=infos.get(job);
+  if (info == null) {
+    LOG.error("getAllowedLocalityLevel called on job " + job + ", which does not have a JobInfo in infos");
+    return LocalityLevel.ANY;
+  }
+  if (job.nonLocalMaps.size() > 0) {
+    return LocalityLevel.ANY;
+  }
+  Pool pool=poolMgr.getPool(job);
+  PoolSchedulable sched=pool.getMapSchedulable();
+  long minShareTimeout=poolMgr.getMinSharePreemptionTimeout(pool.getName());
+  long fairShareTimeout=poolMgr.getFairSharePreemptionTimeout();
+  if (currentTime - sched.getLastTimeAtMinShare() > minShareTimeout || currentTime - sched.getLastTimeAtHalfFairShare() > fairShareTimeout) {
+    eventLog.log("INFO","No delay scheduling for " + job.getJobID() + " because it is being starved");
+    return LocalityLevel.ANY;
+  }
+switch (info.lastMapLocalityLevel) {
+case NODE:
+    if (info.timeWaitedForLocalMap >= nodeLocalityDelay + rackLocalityDelay)     return LocalityLevel.ANY;
+ else     if (info.timeWaitedForLocalMap >= nodeLocalityDelay)     return LocalityLevel.RACK;
+ else     return LocalityLevel.NODE;
+case RACK:
+  if (info.timeWaitedForLocalMap >= rackLocalityDelay)   return LocalityLevel.ANY;
+ else   return LocalityLevel.RACK;
+default :
+return LocalityLevel.ANY;
+}
+}

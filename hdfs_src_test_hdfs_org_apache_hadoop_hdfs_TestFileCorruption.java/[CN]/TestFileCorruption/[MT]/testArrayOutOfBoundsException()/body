@@ -1,0 +1,35 @@
+{
+  MiniDFSCluster cluster=null;
+  try {
+    Configuration conf=new HdfsConfiguration();
+    cluster=new MiniDFSCluster.Builder(conf).numDataNodes(2).build();
+    cluster.waitActive();
+    FileSystem fs=cluster.getFileSystem();
+    final Path FILE_PATH=new Path("/tmp.txt");
+    final long FILE_LEN=1L;
+    DFSTestUtil.createFile(fs,FILE_PATH,FILE_LEN,(short)2,1L);
+    final String bpid=cluster.getNamesystem().getBlockPoolId();
+    File storageDir=MiniDFSCluster.getStorageDir(0,0);
+    File dataDir=MiniDFSCluster.getFinalizedDir(storageDir,bpid);
+    ExtendedBlock blk=getBlock(bpid,dataDir);
+    if (blk == null) {
+      storageDir=MiniDFSCluster.getStorageDir(0,1);
+      dataDir=MiniDFSCluster.getFinalizedDir(storageDir,bpid);
+      blk=getBlock(bpid,dataDir);
+    }
+    assertFalse(blk == null);
+    cluster.startDataNodes(conf,1,true,null,null);
+    ArrayList<DataNode> datanodes=cluster.getDataNodes();
+    assertEquals(datanodes.size(),3);
+    DataNode dataNode=datanodes.get(2);
+    DatanodeRegistration dnR=DataNodeTestUtils.getDNRegistrationForBP(dataNode,blk.getBlockPoolId());
+    cluster.getNamesystem().markBlockAsCorrupt(blk,new DatanodeInfo(dnR));
+    fs.open(FILE_PATH);
+    fs.delete(FILE_PATH,false);
+  }
+  finally {
+    if (cluster != null) {
+      cluster.shutdown();
+    }
+  }
+}

@@ -1,0 +1,32 @@
+{
+  OperationOutput collector=null;
+  int reduceAm=0;
+  int errorAm=0;
+  logAndSetStatus(reporter,"Iterating over reduction values for key " + key);
+  while (values.hasNext()) {
+    Text value=values.next();
+    try {
+      OperationOutput val=new OperationOutput(key,value);
+      if (collector == null) {
+        collector=val;
+      }
+ else {
+        collector=OperationOutput.merge(collector,val);
+      }
+      LOG.info("Combined " + val + " into/with "+ collector);
+      ++reduceAm;
+    }
+ catch (    Exception e) {
+      ++errorAm;
+      logAndSetStatus(reporter,"Error iterating over reduction input " + value + " due to : "+ StringUtils.stringifyException(e));
+      if (getConfig().shouldExitOnFirstError()) {
+        break;
+      }
+    }
+  }
+  logAndSetStatus(reporter,"Reduced " + reduceAm + " values with "+ errorAm+ " errors");
+  if (collector != null) {
+    logAndSetStatus(reporter,"Writing output " + collector.getKey() + " : "+ collector.getOutputValue());
+    output.collect(collector.getKey(),collector.getOutputValue());
+  }
+}

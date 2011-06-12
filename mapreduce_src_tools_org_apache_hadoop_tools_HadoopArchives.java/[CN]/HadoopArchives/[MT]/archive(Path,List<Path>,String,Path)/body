@@ -1,0 +1,88 @@
+{
+  checkPaths(conf,srcPaths);
+  int numFiles=0;
+  long totalSize=0;
+  FileSystem fs=parentPath.getFileSystem(conf);
+  this.blockSize=conf.getLong(HAR_BLOCKSIZE_LABEL,blockSize);
+  this.partSize=conf.getLong(HAR_PARTSIZE_LABEL,partSize);
+  conf.setLong(HAR_BLOCKSIZE_LABEL,blockSize);
+  conf.setLong(HAR_PARTSIZE_LABEL,partSize);
+  conf.set(DST_HAR_LABEL,archiveName);
+  conf.set(SRC_PARENT_LABEL,parentPath.makeQualified(fs).toString());
+  Path outputPath=new Path(dest,archiveName);
+  FileOutputFormat.setOutputPath(conf,outputPath);
+  FileSystem outFs=outputPath.getFileSystem(conf);
+  if (outFs.exists(outputPath) || outFs.isFile(dest)) {
+    throw new IOException("Invalid Output: " + outputPath);
+  }
+  conf.set(DST_DIR_LABEL,outputPath.toString());
+  Path stagingArea;
+  try {
+    stagingArea=JobSubmissionFiles.getStagingDir(new Cluster(conf),conf);
+  }
+ catch (  InterruptedException ie) {
+    throw new IOException(ie);
+  }
+  Path jobDirectory=new Path(stagingArea,NAME + "_" + Integer.toString(new Random().nextInt(Integer.MAX_VALUE),36));
+  FsPermission mapredSysPerms=new FsPermission(JobSubmissionFiles.JOB_DIR_PERMISSION);
+  FileSystem.mkdirs(jobDirectory.getFileSystem(conf),jobDirectory,mapredSysPerms);
+  conf.set(JOB_DIR_LABEL,jobDirectory.toString());
+  FileSystem jobfs=jobDirectory.getFileSystem(conf);
+  Path srcFiles=new Path(jobDirectory,"_har_src_files");
+  conf.set(SRC_LIST_LABEL,srcFiles.toString());
+  SequenceFile.Writer srcWriter=SequenceFile.createWriter(jobfs,conf,srcFiles,LongWritable.class,HarEntry.class,SequenceFile.CompressionType.NONE);
+  try {
+    writeTopLevelDirs(srcWriter,srcPaths,parentPath);
+    srcWriter.sync();
+    for (    Path src : srcPaths) {
+      ArrayList<FileStatusDir> allFiles=new ArrayList<FileStatusDir>();
+      FileStatus fstatus=fs.getFileStatus(src);
+      FileStatusDir fdir=new FileStatusDir(fstatus,null);
+      recursivels(fs,fdir,allFiles);
+      for (      FileStatusDir statDir : allFiles) {
+        FileStatus stat=statDir.getFileStatus();
+        long len=stat.isDirectory() ? 0 : stat.getLen();
+        final Path path=relPathToRoot(stat.getPath(),parentPath);
+        final String[] children;
+        if (stat.isDirectory()) {
+          FileStatus[] list=statDir.getChildren();
+          children=new String[list.length];
+          for (int i=0; i < list.length; i++) {
+            children[i]=list[i].getPath().getName();
+          }
+        }
+ else {
+          children=null;
+        }
+        append(srcWriter,len,path.toString(),children);
+        srcWriter.sync();
+        numFiles++;
+        totalSize+=len;
+      }
+    }
+  }
+  finally {
+    srcWriter.close();
+  }
+  jobfs.setReplication(srcFiles,(short)10);
+  conf.setInt(SRC_COUNT_LABEL,numFiles);
+  conf.setLong(TOTAL_SIZE_LABEL,totalSize);
+  int numMaps=(int)(totalSize / partSize);
+  conf.setNumMapTasks(numMaps == 0 ? 1 : numMaps);
+  conf.setNumReduceTasks(1);
+  conf.setInputFormat(HArchiveInputFormat.class);
+  conf.setOutputFormat(NullOutputFormat.class);
+  conf.setMapperClass(HArchivesMapper.class);
+  conf.setReducerClass(HArchivesReducer.class);
+  conf.setMapOutputKeyClass(IntWritable.class);
+  conf.setMapOutputValueClass(Text.class);
+  FileInputFormat.addInputPath(conf,jobDirectory);
+  conf.setSpeculativeExecution(false);
+  JobClient.runJob(conf);
+  try {
+    jobfs.delete(jobDirectory,true);
+  }
+ catch (  IOException ie) {
+    LOG.info("Unable to clean tmp directory " + jobDirectory);
+  }
+}

@@ -1,0 +1,106 @@
+{
+  try {
+    this.block=block;
+synchronized (datanode.data) {
+      this.replica=datanode.data.getReplica(block.getBlockPoolId(),block.getBlockId());
+      if (replica == null) {
+        throw new ReplicaNotFoundException(block);
+      }
+      this.replicaVisibleLength=replica.getVisibleLength();
+    }
+    long minEndOffset=startOffset + length;
+    ChunkChecksum chunkChecksum=null;
+    if (replica instanceof ReplicaBeingWritten) {
+      for (int i=0; i < 30 && replica.getBytesOnDisk() < minEndOffset; i++) {
+        try {
+          Thread.sleep(100);
+        }
+ catch (        InterruptedException ie) {
+          throw new IOException(ie);
+        }
+      }
+      long currentBytesOnDisk=replica.getBytesOnDisk();
+      if (currentBytesOnDisk < minEndOffset) {
+        throw new IOException(String.format("need %d bytes, but only %d bytes available",minEndOffset,currentBytesOnDisk));
+      }
+      ReplicaInPipeline rip=(ReplicaInPipeline)replica;
+      chunkChecksum=rip.getLastChecksumAndDataLen();
+    }
+    if (replica.getGenerationStamp() < block.getGenerationStamp()) {
+      throw new IOException("replica.getGenerationStamp() < block.getGenerationStamp(), block=" + block + ", replica="+ replica);
+    }
+    if (replicaVisibleLength < 0) {
+      throw new IOException("The replica is not readable, block=" + block + ", replica="+ replica);
+    }
+    if (DataNode.LOG.isDebugEnabled()) {
+      DataNode.LOG.debug("block=" + block + ", replica="+ replica);
+    }
+    this.chunkOffsetOK=chunkOffsetOK;
+    this.corruptChecksumOk=corruptChecksumOk;
+    this.verifyChecksum=verifyChecksum;
+    this.transferToAllowed=datanode.transferToAllowed && (!is32Bit || length < (long)Integer.MAX_VALUE);
+    this.clientTraceFmt=clientTraceFmt;
+    if (!corruptChecksumOk || datanode.data.metaFileExists(block)) {
+      checksumIn=new DataInputStream(new BufferedInputStream(datanode.data.getMetaDataInputStream(block),BUFFER_SIZE));
+      BlockMetadataHeader header=BlockMetadataHeader.readHeader(checksumIn);
+      short version=header.getVersion();
+      if (version != FSDataset.METADATA_VERSION) {
+        LOG.warn("Wrong version (" + version + ") for metadata file for "+ block+ " ignoring ...");
+      }
+      checksum=header.getChecksum();
+    }
+ else {
+      LOG.warn("Could not find metadata file for " + block);
+      checksum=DataChecksum.newDataChecksum(DataChecksum.CHECKSUM_NULL,16 * 1024);
+    }
+    bytesPerChecksum=checksum.getBytesPerChecksum();
+    if (bytesPerChecksum > 10 * 1024 * 1024 && bytesPerChecksum > replicaVisibleLength) {
+      checksum=DataChecksum.newDataChecksum(checksum.getChecksumType(),Math.max((int)replicaVisibleLength,10 * 1024 * 1024));
+      bytesPerChecksum=checksum.getBytesPerChecksum();
+    }
+    checksumSize=checksum.getChecksumSize();
+    if (length < 0) {
+      length=replicaVisibleLength;
+    }
+    if (chunkChecksum != null) {
+      endOffset=chunkChecksum.getDataLength();
+    }
+ else {
+      endOffset=replica.getBytesOnDisk();
+    }
+    if (startOffset < 0 || startOffset > endOffset || (length + startOffset) > endOffset) {
+      String msg=" Offset " + startOffset + " and length "+ length+ " don't match block "+ block+ " ( blockLen "+ endOffset+ " )";
+      LOG.warn(datanode.getDNRegistrationForBP(block.getBlockPoolId()) + ":sendBlock() : " + msg);
+      throw new IOException(msg);
+    }
+    offset=(startOffset - (startOffset % bytesPerChecksum));
+    if (length >= 0) {
+      long tmpLen=startOffset + length;
+      if (tmpLen % bytesPerChecksum != 0) {
+        tmpLen+=(bytesPerChecksum - tmpLen % bytesPerChecksum);
+      }
+      if (tmpLen < endOffset) {
+        endOffset=tmpLen;
+      }
+ else       if (chunkChecksum != null) {
+        this.lastChunkChecksum=chunkChecksum;
+      }
+    }
+    if (offset > 0) {
+      long checksumSkip=(offset / bytesPerChecksum) * checksumSize;
+      if (checksumSkip > 0) {
+        IOUtils.skipFully(checksumIn,checksumSkip);
+      }
+    }
+    seqno=0;
+    if (DataNode.LOG.isDebugEnabled()) {
+      DataNode.LOG.debug("replica=" + replica);
+    }
+    blockIn=datanode.data.getBlockInputStream(block,offset);
+  }
+ catch (  IOException ioe) {
+    IOUtils.closeStream(this);
+    IOUtils.closeStream(blockIn);
+    throw ioe;
+  }
+}

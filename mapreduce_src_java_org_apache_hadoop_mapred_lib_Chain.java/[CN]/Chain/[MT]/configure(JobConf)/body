@@ -1,0 +1,33 @@
+{
+  String prefix=getPrefix(isMap);
+  chainJobConf=jobConf;
+  SerializationFactory serializationFactory=new SerializationFactory(chainJobConf);
+  int index=jobConf.getInt(prefix + CHAIN_MAPPER_SIZE,0);
+  for (int i=0; i < index; i++) {
+    Class<? extends Mapper> klass=jobConf.getClass(prefix + CHAIN_MAPPER_CLASS + i,null,Mapper.class);
+    JobConf mConf=new JobConf(getChainElementConf(jobConf,prefix + CHAIN_MAPPER_CONFIG + i));
+    Mapper mapper=ReflectionUtils.newInstance(klass,mConf);
+    mappers.add(mapper);
+    if (mConf.getBoolean(MAPPER_BY_VALUE,true)) {
+      mappersKeySerialization.add(serializationFactory.getSerialization(mConf.getClass(MAPPER_OUTPUT_KEY_CLASS,null)));
+      mappersValueSerialization.add(serializationFactory.getSerialization(mConf.getClass(MAPPER_OUTPUT_VALUE_CLASS,null)));
+    }
+ else {
+      mappersKeySerialization.add(null);
+      mappersValueSerialization.add(null);
+    }
+  }
+  Class<? extends Reducer> klass=jobConf.getClass(prefix + CHAIN_REDUCER_CLASS,null,Reducer.class);
+  if (klass != null) {
+    JobConf rConf=new JobConf(getChainElementConf(jobConf,prefix + CHAIN_REDUCER_CONFIG));
+    reducer=ReflectionUtils.newInstance(klass,rConf);
+    if (rConf.getBoolean(REDUCER_BY_VALUE,true)) {
+      reducerKeySerialization=serializationFactory.getSerialization(rConf.getClass(REDUCER_OUTPUT_KEY_CLASS,null));
+      reducerValueSerialization=serializationFactory.getSerialization(rConf.getClass(REDUCER_OUTPUT_VALUE_CLASS,null));
+    }
+ else {
+      reducerKeySerialization=null;
+      reducerValueSerialization=null;
+    }
+  }
+}

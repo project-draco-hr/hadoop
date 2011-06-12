@@ -1,0 +1,38 @@
+{
+  if (newRootQueues == null) {
+    throw new IOException("Cannot initialize the queues with null root-queues!");
+  }
+  if (0 == newRootQueues.size()) {
+    throw new IllegalStateException("System has no queue configured!");
+  }
+  AbstractQueue newRootAbstractQueue;
+  try {
+    newRootAbstractQueue=new QueueHierarchyBuilder().createHierarchy(newRootQueues,schedConf);
+  }
+ catch (  Throwable e) {
+    LOG.error("Exception while tryign to (re)initializing queues : " + StringUtils.stringifyException(e));
+    LOG.info("(Re)initializing the queues with the new configuration " + "failed, so keeping the old configuration.");
+    throw e;
+  }
+  if (refreshingQueues) {
+synchronized (this) {
+      AbstractQueueComparator comparator=new AbstractQueueComparator();
+      this.root.sort(comparator);
+      newRootAbstractQueue.sort(comparator);
+      root.validateAndCopyQueueContexts(newRootAbstractQueue);
+    }
+  }
+ else {
+    this.root=newRootAbstractQueue;
+    addJobQueuesToJobQueuesManager();
+  }
+  List<AbstractQueue> allQueues=new ArrayList<AbstractQueue>();
+  allQueues.addAll(getRoot().getDescendantContainerQueues());
+  allQueues.addAll(getRoot().getDescendentJobQueues());
+  for (  AbstractQueue queue : allQueues) {
+    if (!refreshingQueues) {
+      createDisplayInfo(taskTrackerManager.getQueueManager(),queue.getName());
+    }
+    addToQueueInfoMap(queue.getQueueSchedulingContext());
+  }
+}

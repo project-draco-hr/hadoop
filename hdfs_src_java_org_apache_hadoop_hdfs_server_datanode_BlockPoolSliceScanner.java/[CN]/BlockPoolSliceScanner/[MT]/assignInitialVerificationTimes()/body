@@ -1,0 +1,62 @@
+{
+  int numBlocks=1;
+  LogFileHandler log=null;
+synchronized (this) {
+    log=verificationLog;
+    numBlocks=Math.max(blockMap.size(),1);
+  }
+  long now=System.currentTimeMillis();
+  LogFileHandler.Reader logReader[]=new LogFileHandler.Reader[2];
+  try {
+    if (log != null) {
+      logReader[0]=log.getCurrentFileReader();
+      logReader[1]=log.getPreviousFileReader();
+    }
+  }
+ catch (  IOException e) {
+    LOG.warn("Could not read previous verification times : " + StringUtils.stringifyException(e));
+  }
+  try {
+    for (    LogFileHandler.Reader reader : logReader) {
+      while (logReader != null && reader.hasNext()) {
+        if (!datanode.shouldRun || datanode.blockScanner.blockScannerThread.isInterrupted()) {
+          return false;
+        }
+        LogEntry entry=LogEntry.parseEntry(reader.next());
+        if (entry != null) {
+          updateBlockInfo(entry);
+          if (now - entry.verificationTime < scanPeriod) {
+            BlockScanInfo info=blockMap.get(new Block(entry.blockId,0,entry.genStamp));
+            if (info != null) {
+              if (processedBlocks.get(entry.blockId) == null) {
+                updateBytesLeft(-info.block.getNumBytes());
+                processedBlocks.put(entry.blockId,1);
+              }
+              if (reader.file == log.prevFile) {
+                log.appendLine(entry.verificationTime,entry.genStamp,entry.blockId);
+              }
+            }
+          }
+        }
+      }
+    }
+  }
+  finally {
+    IOUtils.closeStream(logReader[0]);
+    IOUtils.closeStream(logReader[1]);
+  }
+  long verifyInterval=(long)(Math.min(scanPeriod / 2.0 / numBlocks,10 * 60 * 1000));
+  long lastScanTime=System.currentTimeMillis() - scanPeriod;
+synchronized (this) {
+    if (blockInfoSet.size() > 0) {
+      BlockScanInfo info;
+      while ((info=blockInfoSet.first()).lastScanTime < 0) {
+        delBlockInfo(info);
+        info.lastScanTime=lastScanTime;
+        lastScanTime+=verifyInterval;
+        addBlockInfo(info);
+      }
+    }
+  }
+  return true;
+}

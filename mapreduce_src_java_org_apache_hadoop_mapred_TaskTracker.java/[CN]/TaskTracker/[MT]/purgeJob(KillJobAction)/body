@@ -1,0 +1,38 @@
+{
+  JobID jobId=action.getJobID();
+  LOG.info("Received 'KillJobAction' for job: " + jobId);
+  RunningJob rjob=null;
+synchronized (runningJobs) {
+    rjob=runningJobs.get(jobId);
+  }
+  if (rjob == null) {
+    LOG.warn("Unknown job " + jobId + " being deleted.");
+  }
+ else {
+synchronized (rjob) {
+      for (      TaskInProgress tip : rjob.tasks) {
+        tip.jobHasFinished(false);
+        Task t=tip.getTask();
+        if (t.isMapTask()) {
+          indexCache.removeMap(tip.getTask().getTaskID().toString());
+        }
+      }
+      if (!rjob.keepJobFiles) {
+        removeJobFiles(rjob.jobConf.getUser(),rjob.getJobID());
+      }
+      long now=System.currentTimeMillis();
+      taskLogCleanupThread.markJobLogsForDeletion(now,rjob.jobConf,rjob.jobid);
+      rjob.tasks.clear();
+      try {
+        FileSystem.closeAllForUGI(rjob.getUGI());
+      }
+ catch (      IOException ie) {
+        LOG.warn("Ignoring exception " + StringUtils.stringifyException(ie) + " while closing FileSystem for "+ rjob.getUGI());
+      }
+    }
+  }
+synchronized (runningJobs) {
+    runningJobs.remove(jobId);
+  }
+  getJobTokenSecretManager().removeTokenForJob(jobId.toString());
+}

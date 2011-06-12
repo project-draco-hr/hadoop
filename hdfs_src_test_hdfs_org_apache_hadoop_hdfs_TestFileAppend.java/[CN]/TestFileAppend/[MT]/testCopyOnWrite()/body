@@ -1,0 +1,42 @@
+{
+  Configuration conf=new HdfsConfiguration();
+  if (simulatedStorage) {
+    conf.setBoolean(SimulatedFSDataset.CONFIG_PROPERTY_SIMULATED,true);
+  }
+  MiniDFSCluster cluster=new MiniDFSCluster.Builder(conf).build();
+  FileSystem fs=cluster.getFileSystem();
+  InetSocketAddress addr=new InetSocketAddress("localhost",cluster.getNameNodePort());
+  DFSClient client=new DFSClient(addr,conf);
+  try {
+    Path file1=new Path("/filestatus.dat");
+    FSDataOutputStream stm=AppendTestUtil.createFile(fs,file1,1);
+    writeFile(stm);
+    stm.close();
+    DataNode[] dn=cluster.listDataNodes();
+    assertTrue("There should be only one datanode but found " + dn.length,dn.length == 1);
+    LocatedBlocks locations=client.getNamenode().getBlockLocations(file1.toString(),0,Long.MAX_VALUE);
+    List<LocatedBlock> blocks=locations.getLocatedBlocks();
+    FSDataset dataset=(FSDataset)dn[0].data;
+    for (int i=0; i < blocks.size(); i=i + 2) {
+      ExtendedBlock b=blocks.get(i).getBlock();
+      File f=dataset.getFile(b.getBlockPoolId(),b.getLocalBlock());
+      File link=new File(f.toString() + ".link");
+      System.out.println("Creating hardlink for File " + f + " to "+ link);
+      HardLink.createHardLink(f,link);
+    }
+    for (int i=0; i < blocks.size(); i++) {
+      ExtendedBlock b=blocks.get(i).getBlock();
+      System.out.println("testCopyOnWrite detaching block " + b);
+      assertTrue("Detaching block " + b + " should have returned true",dataset.unlinkBlock(b,1));
+    }
+    for (int i=0; i < blocks.size(); i++) {
+      ExtendedBlock b=blocks.get(i).getBlock();
+      System.out.println("testCopyOnWrite detaching block " + b);
+      assertTrue("Detaching block " + b + " should have returned false",!dataset.unlinkBlock(b,1));
+    }
+  }
+  finally {
+    fs.close();
+    cluster.shutdown();
+  }
+}

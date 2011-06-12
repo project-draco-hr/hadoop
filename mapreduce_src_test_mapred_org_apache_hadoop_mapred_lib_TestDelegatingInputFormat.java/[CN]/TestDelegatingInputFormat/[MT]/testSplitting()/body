@@ -1,0 +1,44 @@
+{
+  JobConf conf=new JobConf();
+  MiniDFSCluster dfs=null;
+  try {
+    dfs=new MiniDFSCluster(conf,4,true,new String[]{"/rack0","/rack0","/rack1","/rack1"},new String[]{"host0","host1","host2","host3"});
+    FileSystem fs=dfs.getFileSystem();
+    Path path=getPath("/foo/bar",fs);
+    Path path2=getPath("/foo/baz",fs);
+    Path path3=getPath("/bar/bar",fs);
+    Path path4=getPath("/bar/baz",fs);
+    final int numSplits=100;
+    MultipleInputs.addInputPath(conf,path,TextInputFormat.class,MapClass.class);
+    MultipleInputs.addInputPath(conf,path2,TextInputFormat.class,MapClass2.class);
+    MultipleInputs.addInputPath(conf,path3,KeyValueTextInputFormat.class,MapClass.class);
+    MultipleInputs.addInputPath(conf,path4,TextInputFormat.class,MapClass2.class);
+    DelegatingInputFormat inFormat=new DelegatingInputFormat();
+    InputSplit[] splits=inFormat.getSplits(conf,numSplits);
+    int[] bins=new int[3];
+    for (    InputSplit split : splits) {
+      assertTrue(split instanceof TaggedInputSplit);
+      final TaggedInputSplit tis=(TaggedInputSplit)split;
+      int index=-1;
+      if (tis.getInputFormatClass().equals(KeyValueTextInputFormat.class)) {
+        index=0;
+      }
+ else       if (tis.getMapperClass().equals(MapClass.class)) {
+        index=1;
+      }
+ else {
+        index=2;
+      }
+      bins[index]++;
+    }
+    for (    int count : bins) {
+      assertEquals(numSplits,count);
+    }
+    assertTrue(true);
+  }
+  finally {
+    if (dfs != null) {
+      dfs.shutdown();
+    }
+  }
+}

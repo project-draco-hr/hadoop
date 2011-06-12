@@ -1,0 +1,48 @@
+{
+  if (buf == null) {
+    int chunkSize=bytesPerChecksum + checksumSize;
+    int chunksPerPacket=(datanode.writePacketSize - PacketHeader.PKT_HEADER_LEN + chunkSize - 1) / chunkSize;
+    buf=ByteBuffer.allocate(PacketHeader.PKT_HEADER_LEN + Math.max(chunksPerPacket,1) * chunkSize);
+    buf.limit(0);
+  }
+  if (bufRead > buf.limit()) {
+    buf.limit(bufRead);
+  }
+  while (buf.remaining() < SIZE_OF_INTEGER) {
+    if (buf.position() > 0) {
+      shiftBufData();
+    }
+    readToBuf(-1);
+  }
+  buf.mark();
+  int payloadLen=buf.getInt();
+  buf.reset();
+  if (payloadLen < 0 || payloadLen > (100 * 1024 * 1024)) {
+    throw new IOException("Incorrect value for packet payload : " + payloadLen);
+  }
+  int pktSize=payloadLen + PacketHeader.PKT_HEADER_LEN - SIZE_OF_INTEGER;
+  if (buf.remaining() < pktSize) {
+    int toRead=pktSize - buf.remaining();
+    int spaceLeft=buf.capacity() - buf.limit();
+    if (toRead > spaceLeft && buf.position() > 0) {
+      shiftBufData();
+      spaceLeft=buf.capacity() - buf.limit();
+    }
+    if (toRead > spaceLeft) {
+      byte oldBuf[]=buf.array();
+      int toCopy=buf.limit();
+      buf=ByteBuffer.allocate(toCopy + toRead);
+      System.arraycopy(oldBuf,0,buf.array(),0,toCopy);
+      buf.limit(toCopy);
+    }
+    while (toRead > 0) {
+      toRead-=readToBuf(toRead);
+    }
+  }
+  if (buf.remaining() > pktSize) {
+    buf.limit(buf.position() + pktSize);
+  }
+  if (pktSize > maxPacketReadLen) {
+    maxPacketReadLen=pktSize;
+  }
+}

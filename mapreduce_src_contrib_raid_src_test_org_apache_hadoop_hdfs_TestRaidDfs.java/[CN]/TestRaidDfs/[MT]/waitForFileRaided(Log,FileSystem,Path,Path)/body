@@ -1,0 +1,37 @@
+{
+  FileStatus parityStat=null;
+  String fileName=file.getName().toString();
+  while (parityStat == null) {
+    logger.info("Waiting for files to be raided.");
+    try {
+      FileStatus[] listPaths=fileSys.listStatus(destPath);
+      if (listPaths != null) {
+        for (        FileStatus f : listPaths) {
+          logger.info("File raided so far : " + f.getPath());
+          String found=f.getPath().getName().toString();
+          if (fileName.equals(found)) {
+            parityStat=f;
+            break;
+          }
+        }
+      }
+    }
+ catch (    FileNotFoundException e) {
+    }
+    Thread.sleep(1000);
+  }
+  while (true) {
+    LocatedBlocks locations=null;
+    DistributedFileSystem dfs=(DistributedFileSystem)fileSys;
+    locations=RaidDFSUtil.getBlockLocations(dfs,file.toUri().getPath(),0,parityStat.getLen());
+    if (!locations.isUnderConstruction()) {
+      break;
+    }
+    Thread.sleep(1000);
+  }
+  while (true) {
+    FileStatus stat=fileSys.getFileStatus(file);
+    if (stat.getReplication() == 1)     break;
+    Thread.sleep(1000);
+  }
+}

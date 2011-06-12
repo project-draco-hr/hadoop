@@ -1,0 +1,34 @@
+{
+  Configuration conf=new HdfsConfiguration();
+  MiniDFSCluster cluster=null;
+  cluster=new MiniDFSCluster.Builder(conf).numDataNodes(NUM_DATA_NODES).build();
+  cluster.waitActive();
+  final FSNamesystem fsn=cluster.getNamesystem();
+  final FSImage originalImage=fsn.getFSImage();
+  NNStorage storage=originalImage.getStorage();
+  NNStorage spyStorage=spy(storage);
+  originalImage.storage=spyStorage;
+  final FSEditLog editLog=originalImage.getEditLog();
+  FSEditLog spyLog=spy(editLog);
+  FSImage spyImage=spy(originalImage);
+  fsn.dir.fsImage=spyImage;
+  spyImage.storage.setStorageDirectories(FSNamesystem.getNamespaceDirs(conf),FSNamesystem.getNamespaceEditsDirs(conf));
+  doThrow(new IOException("Injected fault: open")).when(spyLog).addNewEditLogStream((File)anyObject());
+  try {
+    spyLog.close();
+    spyLog.open();
+    fail("open did not fail even when all directories failed!");
+  }
+ catch (  IOException ioe) {
+    LOG.info("Got expected exception",ioe);
+  }
+ finally {
+    spyLog.close();
+  }
+  Mockito.reset(spyLog);
+  spyImage.storage.setStorageDirectories(FSNamesystem.getNamespaceDirs(conf),FSNamesystem.getNamespaceEditsDirs(conf));
+  spyLog.open();
+  spyLog.close();
+  originalImage.close();
+  fsn.close();
+}

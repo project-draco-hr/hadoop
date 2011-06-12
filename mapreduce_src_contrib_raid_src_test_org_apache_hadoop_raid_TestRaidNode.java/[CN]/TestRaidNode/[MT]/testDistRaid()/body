@@ -1,0 +1,65 @@
+{
+  LOG.info("Test testDistRaid started.");
+  long targetReplication=2;
+  long metaReplication=2;
+  long stripeLength=3;
+  short srcReplication=1;
+  createClusters(false);
+  ConfigBuilder cb=new ConfigBuilder();
+  cb.addPolicy("policy1","/user/dhruba/raidtest",srcReplication,targetReplication,metaReplication,stripeLength);
+  cb.addPolicy("policy2","/user/dhruba/raidtest2",srcReplication,targetReplication,metaReplication,stripeLength);
+  cb.persist();
+  RaidNode cnode=null;
+  try {
+    createTestFiles("/user/dhruba/raidtest/","/destraid/user/dhruba/raidtest");
+    createTestFiles("/user/dhruba/raidtest2/","/destraid/user/dhruba/raidtest2");
+    LOG.info("Test testDistRaid created test files");
+    Configuration localConf=new Configuration(conf);
+    localConf.set(RaidNode.RAID_LOCATION_KEY,"/destraid");
+    cnode=RaidNode.createRaidNode(null,localConf);
+    for (    PolicyList policyList : cnode.getAllPolicies()) {
+      for (      PolicyInfo p : policyList.getAll()) {
+        if (p.getName().equals("policy1")) {
+          Path srcPath=new Path("/user/dhruba/raidtest");
+          FileSystem fs=srcPath.getFileSystem(conf);
+          assertTrue(p.getSrcPath().equals(srcPath.makeQualified(fs.getUri(),fs.getWorkingDirectory())));
+        }
+ else {
+          assertTrue(p.getName().equals("policy2"));
+          Path srcPath=new Path("/user/dhruba/raidtest2");
+          FileSystem fs=srcPath.getFileSystem(conf);
+          assertTrue(p.getSrcPath().equals(srcPath.makeQualified(fs.getUri(),fs.getWorkingDirectory())));
+        }
+        assertEquals(targetReplication,Integer.parseInt(p.getProperty("targetReplication")));
+        assertEquals(metaReplication,Integer.parseInt(p.getProperty("metaReplication")));
+        assertEquals(stripeLength,Integer.parseInt(p.getProperty("stripeLength")));
+      }
+    }
+    long start=System.currentTimeMillis();
+    final int MAX_WAITTIME=300000;
+    assertTrue("cnode is not DistRaidNode",cnode instanceof DistRaidNode);
+    DistRaidNode dcnode=(DistRaidNode)cnode;
+    while (dcnode.jobMonitor.jobsMonitored() < 2 && System.currentTimeMillis() - start < MAX_WAITTIME) {
+      Thread.sleep(1000);
+    }
+    assertEquals(dcnode.jobMonitor.jobsMonitored(),2);
+    start=System.currentTimeMillis();
+    while (dcnode.jobMonitor.jobsSucceeded() < 2 && System.currentTimeMillis() - start < MAX_WAITTIME) {
+      Thread.sleep(1000);
+    }
+    assertEquals(dcnode.jobMonitor.jobsSucceeded(),2);
+    LOG.info("Test testDistRaid successful.");
+  }
+ catch (  Exception e) {
+    LOG.info("testDistRaid Exception " + e + StringUtils.stringifyException(e));
+    throw e;
+  }
+ finally {
+    if (cnode != null) {
+      cnode.stop();
+      cnode.join();
+    }
+    stopClusters();
+  }
+  LOG.info("Test testDistRaid completed.");
+}

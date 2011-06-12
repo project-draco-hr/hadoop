@@ -1,0 +1,52 @@
+{
+  Configuration conf=new Configuration();
+  MiniDFSCluster cluster=new MiniDFSCluster.Builder(conf).build();
+  FileSystem fs=cluster.getFileSystem();
+  Path p=new Path("/hflush-and-close.dat");
+  final FSDataOutputStream stm=createFile(fs,p,1);
+  ArrayList<Thread> flushers=new ArrayList<Thread>();
+  final AtomicReference<Throwable> thrown=new AtomicReference<Throwable>();
+  try {
+    for (int i=0; i < 10; i++) {
+      Thread flusher=new Thread(){
+        public void run(){
+          try {
+            while (true) {
+              try {
+                stm.hflush();
+              }
+ catch (              IOException ioe) {
+                if (!ioe.toString().contains("DFSOutputStream is closed")) {
+                  throw ioe;
+                }
+ else {
+                  return;
+                }
+              }
+            }
+          }
+ catch (          Throwable t) {
+            thrown.set(t);
+          }
+        }
+      }
+;
+      flusher.start();
+      flushers.add(flusher);
+    }
+    for (int i=0; i < 10000; i++) {
+      stm.write(1);
+    }
+    stm.close();
+    for (    Thread t : flushers) {
+      t.join();
+    }
+    if (thrown.get() != null) {
+      throw thrown.get();
+    }
+  }
+  finally {
+    fs.close();
+    cluster.shutdown();
+  }
+}

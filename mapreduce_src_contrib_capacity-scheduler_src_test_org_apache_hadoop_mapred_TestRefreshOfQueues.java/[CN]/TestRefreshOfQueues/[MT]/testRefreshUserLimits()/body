@@ -1,0 +1,35 @@
+{
+  JobQueueInfo[] queues=TestQueueManagerRefresh.getSimpleQueueHierarchy();
+  queues[0].getProperties().setProperty(CapacitySchedulerConf.CAPACITY_PROPERTY,String.valueOf(100));
+  queues[1].getProperties().setProperty(CapacitySchedulerConf.CAPACITY_PROPERTY,String.valueOf(50));
+  queues[2].getProperties().setProperty(CapacitySchedulerConf.CAPACITY_PROPERTY,String.valueOf(50));
+  queues[2].getProperties().setProperty(CapacitySchedulerConf.MINIMUM_USER_LIMIT_PERCENT_PROPERTY,String.valueOf(100));
+  QueueManagerTestUtils.writeQueueConfigurationFile(queueConfigFile.getAbsolutePath(),new JobQueueInfo[]{queues[0]});
+  setupAndStartSchedulerFramework(1,2,2);
+  FakeJobInProgress job1=taskTrackerManager.submitJobAndInit(JobStatus.PREP,2,2,queues[2].getQueueName(),"user1");
+  FakeJobInProgress job2=taskTrackerManager.submitJobAndInit(JobStatus.PREP,2,2,queues[2].getQueueName(),"user2");
+  Map<String,String> expectedStrings=new HashMap<String,String>();
+  expectedStrings.put(MAP,"attempt_test_0001_m_000001_0 on tt1");
+  expectedStrings.put(REDUCE,"attempt_test_0001_r_000001_0 on tt1");
+  checkMultipleTaskAssignment(taskTrackerManager,scheduler,"tt1",expectedStrings);
+  expectedStrings.clear();
+  expectedStrings.put(MAP,"attempt_test_0001_m_000002_0 on tt1");
+  expectedStrings.put(REDUCE,"attempt_test_0001_r_000002_0 on tt1");
+  checkMultipleTaskAssignment(taskTrackerManager,scheduler,"tt1",expectedStrings);
+  assertNull(scheduler.assignTasks(taskTrackerManager.getTaskTracker("tt1")));
+  taskTrackerManager.killJob(job1.getJobID());
+  taskTrackerManager.killJob(job2.getJobID());
+  queues[2].getProperties().setProperty(CapacitySchedulerConf.MINIMUM_USER_LIMIT_PERCENT_PROPERTY,String.valueOf(50));
+  QueueManagerTestUtils.writeQueueConfigurationFile(queueConfigFile.getAbsolutePath(),new JobQueueInfo[]{queues[0]});
+  refreshQueues(taskTrackerManager.getQueueManager(),null,scheduler);
+  job1=taskTrackerManager.submitJobAndInit(JobStatus.PREP,2,2,queues[1].getQueueName(),"user1");
+  job2=taskTrackerManager.submitJobAndInit(JobStatus.PREP,2,2,queues[2].getQueueName(),"user2");
+  expectedStrings.clear();
+  expectedStrings.put(MAP,"attempt_test_0003_m_000001_0 on tt1");
+  expectedStrings.put(REDUCE,"attempt_test_0003_r_000001_0 on tt1");
+  checkMultipleTaskAssignment(taskTrackerManager,scheduler,"tt1",expectedStrings);
+  expectedStrings.clear();
+  expectedStrings.put(MAP,"attempt_test_0004_m_000001_0 on tt1");
+  expectedStrings.put(REDUCE,"attempt_test_0004_r_000001_0 on tt1");
+  checkMultipleTaskAssignment(taskTrackerManager,scheduler,"tt1",expectedStrings);
+}

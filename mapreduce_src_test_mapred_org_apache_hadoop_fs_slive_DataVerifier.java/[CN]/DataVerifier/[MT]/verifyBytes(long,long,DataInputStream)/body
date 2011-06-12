@@ -1,0 +1,67 @@
+{
+  if (byteAm <= 0) {
+    return new VerifyOutput(0,0,0,0);
+  }
+  long chunksSame=0;
+  long chunksDifferent=0;
+  long readTime=0;
+  long bytesLeft=byteAm;
+  long bufLeft=0;
+  long bufRead=0;
+  long seqNum=0;
+  DataHasher hasher=null;
+  ByteBuffer readBuf=ByteBuffer.wrap(new byte[bufferSize]);
+  while (bytesLeft > 0) {
+    if (bufLeft <= 0) {
+      if (bytesLeft < DataWriter.getHeaderLength()) {
+        break;
+      }
+      ReadInfo header=null;
+      try {
+        header=readHeader(in);
+      }
+ catch (      EOFException e) {
+        break;
+      }
+      ++seqNum;
+      hasher=new DataHasher(header.getHashValue());
+      bufLeft=header.getByteAm();
+      readTime+=header.getTimeTaken();
+      bytesRead+=header.getBytesRead();
+      bytesLeft-=header.getBytesRead();
+      bufRead=0;
+      if (bufLeft > bytesLeft) {
+        bufLeft=bytesLeft;
+      }
+      if (bufLeft <= 0) {
+        continue;
+      }
+    }
+    int bufSize=bufferSize;
+    if (bytesLeft < bufSize) {
+      bufSize=(int)bytesLeft;
+    }
+    if (bufLeft < bufSize) {
+      bufSize=(int)bufLeft;
+    }
+    try {
+      readBuf.rewind();
+      long startTime=Timer.now();
+      in.readFully(readBuf.array(),0,bufSize);
+      readTime+=Timer.elapsed(startTime);
+    }
+ catch (    EOFException e) {
+      throw new BadFileException("Could not read the number of expected data bytes " + bufSize + " due to unexpected end of file during sequence "+ seqNum,e);
+    }
+    bytesRead+=bufSize;
+    bytesLeft-=bufSize;
+    bufLeft-=bufSize;
+    readBuf.rewind();
+    long vOffset=determineOffset(bufRead);
+    bufRead+=bufSize;
+    VerifyInfo verifyRes=verifyBuffer(readBuf,bufSize,vOffset,hasher);
+    chunksSame+=verifyRes.getSame();
+    chunksDifferent+=verifyRes.getDifferent();
+  }
+  return new VerifyOutput(chunksSame,chunksDifferent,bytesRead,readTime);
+}

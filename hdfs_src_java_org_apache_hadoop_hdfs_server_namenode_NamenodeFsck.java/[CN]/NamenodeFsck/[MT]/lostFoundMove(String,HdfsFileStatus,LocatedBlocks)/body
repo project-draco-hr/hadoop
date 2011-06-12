@@ -1,0 +1,62 @@
+{
+  final DFSClient dfs=new DFSClient(NameNode.getAddress(conf),conf);
+  try {
+    if (!lfInited) {
+      lostFoundInit(dfs);
+    }
+    if (!lfInitedOk) {
+      return;
+    }
+    String fullName=file.getFullName(parent);
+    String target=lostFound + fullName;
+    String errmsg="Failed to move " + fullName + " to /lost+found";
+    try {
+      if (!namenode.mkdirs(target,file.getPermission(),true)) {
+        LOG.warn(errmsg);
+        return;
+      }
+      int chain=0;
+      OutputStream fos=null;
+      for (      LocatedBlock lBlk : blocks.getLocatedBlocks()) {
+        LocatedBlock lblock=lBlk;
+        DatanodeInfo[] locs=lblock.getLocations();
+        if (locs == null || locs.length == 0) {
+          if (fos != null) {
+            fos.flush();
+            fos.close();
+            fos=null;
+          }
+          continue;
+        }
+        if (fos == null) {
+          fos=dfs.create(target + "/" + chain,true);
+          if (fos != null)           chain++;
+ else {
+            LOG.warn(errmsg + ": could not store chain " + chain);
+            continue;
+          }
+        }
+        try {
+          copyBlock(dfs,lblock,fos);
+        }
+ catch (        Exception e) {
+          e.printStackTrace();
+          LOG.warn(" - could not copy block " + lblock.getBlock() + " to "+ target);
+          fos.flush();
+          fos.close();
+          fos=null;
+        }
+      }
+      if (fos != null)       fos.close();
+      LOG.warn("\n - moved corrupted file " + fullName + " to /lost+found");
+      dfs.delete(fullName,true);
+    }
+ catch (    Exception e) {
+      e.printStackTrace();
+      LOG.warn(errmsg + ": " + e.getMessage());
+    }
+  }
+  finally {
+    dfs.close();
+  }
+}

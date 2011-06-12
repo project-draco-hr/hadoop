@@ -1,0 +1,48 @@
+{
+  final double avg=totalUsed * 100.0 / totalCapacity;
+  LOG.info("BALANCER 0: totalUsed=" + totalUsed + ", totalCapacity="+ totalCapacity+ ", avg="+ avg);
+  wait(s.clients,totalUsed,totalCapacity);
+  LOG.info("BALANCER 1");
+  final List<InetSocketAddress> namenodes=DFSUtil.getNNServiceRpcAddresses(s.conf);
+  final int r=Balancer.run(namenodes,Balancer.Parameters.DEFALUT,s.conf);
+  Assert.assertEquals(Balancer.ReturnStatus.SUCCESS.code,r);
+  LOG.info("BALANCER 2");
+  wait(s.clients,totalUsed,totalCapacity);
+  LOG.info("BALANCER 3");
+  int i=0;
+  for (boolean balanced=false; !balanced; i++) {
+    final long[] used=new long[s.cluster.getDataNodes().size()];
+    final long[] cap=new long[used.length];
+    for (int n=0; n < s.clients.length; n++) {
+      final DatanodeInfo[] datanodes=s.clients[n].getDatanodeReport(DatanodeReportType.ALL);
+      Assert.assertEquals(datanodes.length,used.length);
+      for (int d=0; d < datanodes.length; d++) {
+        if (n == 0) {
+          used[d]=datanodes[d].getDfsUsed();
+          cap[d]=datanodes[d].getCapacity();
+          if (i % 100 == 0) {
+            LOG.warn("datanodes[" + d + "]: getDfsUsed()="+ datanodes[d].getDfsUsed()+ ", getCapacity()="+ datanodes[d].getCapacity());
+          }
+        }
+ else {
+          Assert.assertEquals(used[d],datanodes[d].getDfsUsed());
+          Assert.assertEquals(cap[d],datanodes[d].getCapacity());
+        }
+      }
+    }
+    balanced=true;
+    for (int d=0; d < used.length; d++) {
+      final double p=used[d] * 100.0 / cap[d];
+      balanced=p <= avg + Balancer.Parameters.DEFALUT.threshold;
+      if (!balanced) {
+        if (i % 100 == 0) {
+          LOG.warn("datanodes " + d + " is not yet balanced: "+ "used="+ used[d]+ ", cap="+ cap[d]+ ", avg="+ avg);
+          LOG.warn("TestBalancer.sum(used)=" + TestBalancer.sum(used) + ", TestBalancer.sum(cap)="+ TestBalancer.sum(cap));
+        }
+        sleep(100);
+        break;
+      }
+    }
+  }
+  LOG.info("BALANCER 6");
+}

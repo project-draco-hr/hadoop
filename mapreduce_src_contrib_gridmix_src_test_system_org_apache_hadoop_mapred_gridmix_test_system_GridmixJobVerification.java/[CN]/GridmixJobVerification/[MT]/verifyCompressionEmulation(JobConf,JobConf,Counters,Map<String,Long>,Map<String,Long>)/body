@@ -1,0 +1,27 @@
+{
+  if (simuJobConf.getBoolean(compEmulKey,false)) {
+    String inputDir=origJobConf.get(fileInputFormatKey);
+    Assert.assertNotNull(fileInputFormatKey + " is Null",inputDir);
+    long simMapInputBytes=getCounterValue(counters,"HDFS_BYTES_READ");
+    long uncompressedInputSize=origMapJobCounters.get("MAP_INPUT_BYTES");
+    long simReduceInputBytes=getCounterValue(counters,"REDUCE_SHUFFLE_BYTES");
+    long simMapOutputBytes=getCounterValue(counters,"MAP_OUTPUT_BYTES");
+    if (inputDir.contains(".gz") || inputDir.contains(".tgz") || inputDir.contains(".bz")) {
+      Assert.assertTrue("Input decompression attribute has been not set for " + "for compressed input",simuJobConf.getBoolean(inputDecompKey,false));
+      float INPUT_COMP_RATIO=getExpectedCompressionRatio(simuJobConf,mapInputCompRatio);
+      float INTERMEDIATE_COMP_RATIO=getExpectedCompressionRatio(simuJobConf,mapOutputCompRatio);
+      assertMapInputCompressionRatio(simMapInputBytes,uncompressedInputSize,INPUT_COMP_RATIO);
+      assertMapOuputCompressionRatio(simReduceInputBytes,simMapOutputBytes,INTERMEDIATE_COMP_RATIO);
+    }
+ else {
+      Assert.assertEquals("MAP input bytes has not matched.",convertBytes(uncompressedInputSize),convertBytes(simMapInputBytes));
+    }
+    Assert.assertEquals("Simulated job output format has not matched with " + "original job output format.",origJobConf.getBoolean(fileOutputFormatKey,false),simuJobConf.getBoolean(fileOutputFormatKey,false));
+    if (simuJobConf.getBoolean(fileOutputFormatKey,false)) {
+      float OUTPUT_COMP_RATIO=getExpectedCompressionRatio(simuJobConf,reduceOutputCompRatio);
+      long simReduceOutputBytes=getCounterValue(counters,"HDFS_BYTES_WRITTEN");
+      long origReduceOutputBytes=origReduceCounters.get("REDUCE_OUTPUT_BYTES");
+      assertReduceOutputCompressionRatio(simReduceOutputBytes,origReduceOutputBytes,OUTPUT_COMP_RATIO);
+    }
+  }
+}

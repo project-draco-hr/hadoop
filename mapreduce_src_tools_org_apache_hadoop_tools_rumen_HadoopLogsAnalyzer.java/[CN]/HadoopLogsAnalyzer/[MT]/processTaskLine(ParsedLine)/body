@@ -1,0 +1,63 @@
+{
+  if (jobBeingTraced != null) {
+    String taskID=line.get("TASKID");
+    String taskType=line.get("TASK_TYPE");
+    String startTime=line.get("START_TIME");
+    String status=line.get("TASK_STATUS");
+    String finishTime=line.get("FINISH_TIME");
+    String splits=line.get("SPLITS");
+    LoggedTask task=tasksInCurrentJob.get(taskID);
+    boolean taskAlreadyLogged=task != null;
+    if (task == null) {
+      task=new LoggedTask();
+    }
+    if (splits != null) {
+      ArrayList<LoggedLocation> locations=null;
+      StringTokenizer tok=new StringTokenizer(splits,",",false);
+      if (tok.countTokens() <= MAXIMUM_PREFERRED_LOCATIONS) {
+        locations=new ArrayList<LoggedLocation>();
+      }
+      while (tok.hasMoreTokens()) {
+        String nextSplit=tok.nextToken();
+        ParsedHost node=getAndRecordParsedHost(nextSplit);
+        if (locations != null && node != null) {
+          locations.add(node.makeLoggedLocation());
+        }
+      }
+      task.setPreferredLocations(locations);
+    }
+    task.setTaskID(taskID);
+    if (startTime != null) {
+      task.setStartTime(Long.parseLong(startTime));
+    }
+    if (finishTime != null) {
+      task.setFinishTime(Long.parseLong(finishTime));
+    }
+    Pre21JobHistoryConstants.Values typ;
+    Pre21JobHistoryConstants.Values stat;
+    try {
+      stat=status == null ? null : Pre21JobHistoryConstants.Values.valueOf(status);
+    }
+ catch (    IllegalArgumentException e) {
+      LOG.error("A task status you don't know about is \"" + status + "\".",e);
+      stat=null;
+    }
+    task.setTaskStatus(stat);
+    try {
+      typ=taskType == null ? null : Pre21JobHistoryConstants.Values.valueOf(taskType);
+    }
+ catch (    IllegalArgumentException e) {
+      LOG.error("A task type you don't know about is \"" + taskType + "\".",e);
+      typ=null;
+    }
+    if (typ == null) {
+      return;
+    }
+    task.setTaskType(typ);
+    List<LoggedTask> vec=typ == Pre21JobHistoryConstants.Values.MAP ? jobBeingTraced.getMapTasks() : typ == Pre21JobHistoryConstants.Values.REDUCE ? jobBeingTraced.getReduceTasks() : jobBeingTraced.getOtherTasks();
+    if (!taskAlreadyLogged) {
+      vec.add(task);
+      tasksInCurrentJob.put(taskID,task);
+    }
+  }
+}

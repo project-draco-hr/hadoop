@@ -1,0 +1,31 @@
+{
+  try {
+    v.start();
+    v.visitEnclosingElement(EditsElement.EDITS);
+    IntToken editsVersionToken=v.visitInt(EditsElement.EDITS_VERSION);
+    editsVersion=editsVersionToken.value;
+    if (!canLoadVersion(editsVersion)) {
+      throw new IOException("Cannot process editLog version " + editsVersionToken.value);
+    }
+    FSEditLogOpCodes editsOpCode;
+    do {
+      v.visitEnclosingElement(EditsElement.RECORD);
+      ByteToken opCodeToken=v.visitByte(EditsElement.OPCODE);
+      editsOpCode=FSEditLogOpCodes.fromByte(opCodeToken.value);
+      v.visitEnclosingElement(EditsElement.DATA);
+      visitOpCode(editsOpCode);
+      v.leaveEnclosingElement();
+      if (editsOpCode != FSEditLogOpCodes.OP_INVALID && LayoutVersion.supports(Feature.EDITS_CHESKUM,editsVersion)) {
+        v.visitInt(EditsElement.CHECKSUM);
+      }
+      v.leaveEnclosingElement();
+    }
+ while (editsOpCode != FSEditLogOpCodes.OP_INVALID);
+    v.leaveEnclosingElement();
+    v.finish();
+  }
+ catch (  IOException e) {
+    v.finishAbnormally();
+    throw e;
+  }
+}

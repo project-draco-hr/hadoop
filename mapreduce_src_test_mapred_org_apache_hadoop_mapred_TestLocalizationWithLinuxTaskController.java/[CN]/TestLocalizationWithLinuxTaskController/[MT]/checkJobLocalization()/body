@@ -1,0 +1,29 @@
+{
+  String expectedDirPerms=taskTrackerUserName.equals(task.getUser()) ? "drwxrws---" : "dr-xrws---";
+  String expectedFilePerms=taskTrackerUserName.equals(task.getUser()) ? "-rwxrwx---" : "-r-xrwx---";
+  for (  String localDir : trackerFConf.getStrings(MRConfig.LOCAL_DIR)) {
+    File jobDir=new File(localDir,TaskTracker.getLocalJobDir(task.getUser(),jobId.toString()));
+    checkFilePermissions(jobDir.getAbsolutePath(),expectedDirPerms,task.getUser(),ClusterWithLinuxTaskController.taskTrackerSpecialGroup);
+  }
+  List<Path> dirs=new ArrayList<Path>();
+  Path jarsDir=lDirAlloc.getLocalPathToRead(TaskTracker.getJobJarsDir(task.getUser(),jobId.toString()),trackerFConf);
+  dirs.add(jarsDir);
+  dirs.add(new Path(jarsDir,"lib"));
+  for (  Path dir : dirs) {
+    checkFilePermissions(dir.toUri().getPath(),expectedDirPerms,task.getUser(),ClusterWithLinuxTaskController.taskTrackerSpecialGroup);
+  }
+  Path jobWorkDir=lDirAlloc.getLocalPathToRead(TaskTracker.getJobWorkDir(task.getUser(),jobId.toString()),trackerFConf);
+  checkFilePermissions(jobWorkDir.toUri().getPath(),"drwxrws---",task.getUser(),ClusterWithLinuxTaskController.taskTrackerSpecialGroup);
+  List<Path> files=new ArrayList<Path>();
+  files.add(lDirAlloc.getLocalPathToRead(TaskTracker.getLocalJobConfFile(task.getUser(),jobId.toString()),trackerFConf));
+  files.add(lDirAlloc.getLocalPathToRead(TaskTracker.getJobJarFile(task.getUser(),jobId.toString()),trackerFConf));
+  files.add(new Path(jarsDir,"lib" + Path.SEPARATOR + "lib1.jar"));
+  files.add(new Path(jarsDir,"lib" + Path.SEPARATOR + "lib2.jar"));
+  for (  Path file : files) {
+    checkFilePermissions(file.toUri().getPath(),expectedFilePerms,task.getUser(),ClusterWithLinuxTaskController.taskTrackerSpecialGroup);
+  }
+  File jobLogDir=TaskLog.getJobDir(jobId);
+  checkFilePermissions(jobLogDir.toString(),expectedDirPerms,task.getUser(),ClusterWithLinuxTaskController.taskTrackerSpecialGroup);
+  checkFilePermissions(jobLogDir.toString() + Path.SEPARATOR + TaskTracker.jobACLsFile,expectedFilePerms,task.getUser(),ClusterWithLinuxTaskController.taskTrackerSpecialGroup);
+  validateJobACLsFileContent();
+}

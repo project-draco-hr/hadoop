@@ -1,0 +1,18 @@
+{
+  boolean isCompressed=getCompressOutput(job);
+  String keyValueSeparator=job.get("mapreduce.output.textoutputformat.separator","\t");
+  if (!isCompressed) {
+    Path file=FileOutputFormat.getTaskOutputPath(job,name);
+    FileSystem fs=file.getFileSystem(job);
+    FSDataOutputStream fileOut=fs.create(file,progress);
+    return new LineRecordWriter<K,V>(fileOut,keyValueSeparator);
+  }
+ else {
+    Class<? extends CompressionCodec> codecClass=getOutputCompressorClass(job,GzipCodec.class);
+    CompressionCodec codec=ReflectionUtils.newInstance(codecClass,job);
+    Path file=FileOutputFormat.getTaskOutputPath(job,name + codec.getDefaultExtension());
+    FileSystem fs=file.getFileSystem(job);
+    FSDataOutputStream fileOut=fs.create(file,progress);
+    return new LineRecordWriter<K,V>(new DataOutputStream(codec.createOutputStream(fileOut)),keyValueSeparator);
+  }
+}

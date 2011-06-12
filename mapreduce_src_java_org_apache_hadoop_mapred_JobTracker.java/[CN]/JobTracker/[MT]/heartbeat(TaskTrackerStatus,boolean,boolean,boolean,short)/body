@@ -1,0 +1,80 @@
+{
+  if (LOG.isDebugEnabled()) {
+    LOG.debug("Got heartbeat from: " + status.getTrackerName() + " (restarted: "+ restarted+ " initialContact: "+ initialContact+ " acceptNewTasks: "+ acceptNewTasks+ ")"+ " with responseId: "+ responseId);
+  }
+  if (!acceptTaskTracker(status)) {
+    throw new DisallowedTaskTrackerException(status);
+  }
+  String trackerName=status.getTrackerName();
+  long now=clock.getTime();
+  boolean isBlacklisted=false;
+  if (restarted) {
+    faultyTrackers.markTrackerHealthy(status.getHost());
+  }
+ else {
+    isBlacklisted=faultyTrackers.shouldAssignTasksToTracker(status.getHost(),now);
+  }
+  HeartbeatResponse prevHeartbeatResponse=trackerToHeartbeatResponseMap.get(trackerName);
+  if (initialContact != true) {
+    if (prevHeartbeatResponse == null) {
+      LOG.warn("Serious problem, cannot find record of 'previous' " + "heartbeat for '" + trackerName + "'; reinitializing the tasktracker");
+      return new HeartbeatResponse(responseId,new TaskTrackerAction[]{new ReinitTrackerAction()});
+    }
+ else {
+      if (prevHeartbeatResponse.getResponseId() != responseId) {
+        LOG.info("Ignoring 'duplicate' heartbeat from '" + trackerName + "'; resending the previous 'lost' response");
+        return prevHeartbeatResponse;
+      }
+    }
+  }
+  short newResponseId=(short)(responseId + 1);
+  status.setLastSeen(now);
+  if (!processHeartbeat(status,initialContact)) {
+    if (prevHeartbeatResponse != null) {
+      trackerToHeartbeatResponseMap.remove(trackerName);
+    }
+    return new HeartbeatResponse(newResponseId,new TaskTrackerAction[]{new ReinitTrackerAction()});
+  }
+  HeartbeatResponse response=new HeartbeatResponse(newResponseId,null);
+  List<TaskTrackerAction> actions=new ArrayList<TaskTrackerAction>();
+  isBlacklisted=faultyTrackers.isBlacklisted(status.getHost());
+  if (acceptNewTasks && !isBlacklisted) {
+    TaskTrackerStatus taskTrackerStatus=getTaskTrackerStatus(trackerName);
+    if (taskTrackerStatus == null) {
+      LOG.warn("Unknown task tracker polling; ignoring: " + trackerName);
+    }
+ else {
+      List<Task> tasks=getSetupAndCleanupTasks(taskTrackerStatus);
+      if (tasks == null) {
+        tasks=taskScheduler.assignTasks(taskTrackers.get(trackerName));
+      }
+      if (tasks != null) {
+        for (        Task task : tasks) {
+          expireLaunchingTasks.addNewTask(task.getTaskID());
+          if (LOG.isDebugEnabled()) {
+            LOG.debug(trackerName + " -> LaunchTask: " + task.getTaskID());
+          }
+          actions.add(new LaunchTaskAction(task));
+        }
+      }
+    }
+  }
+  List<TaskTrackerAction> killTasksList=getTasksToKill(trackerName);
+  if (killTasksList != null) {
+    actions.addAll(killTasksList);
+  }
+  List<TaskTrackerAction> killJobsList=getJobsForCleanup(trackerName);
+  if (killJobsList != null) {
+    actions.addAll(killJobsList);
+  }
+  List<TaskTrackerAction> commitTasksList=getTasksToSave(status);
+  if (commitTasksList != null) {
+    actions.addAll(commitTasksList);
+  }
+  int nextInterval=getNextHeartbeatInterval();
+  response.setHeartbeatInterval(nextInterval);
+  response.setActions(actions.toArray(new TaskTrackerAction[actions.size()]));
+  trackerToHeartbeatResponseMap.put(trackerName,response);
+  removeMarkedTasks(trackerName);
+  return response;
+}

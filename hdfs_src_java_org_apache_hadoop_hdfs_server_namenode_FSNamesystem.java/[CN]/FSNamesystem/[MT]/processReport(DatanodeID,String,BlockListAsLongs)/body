@@ -1,0 +1,22 @@
+{
+  long startTime, endTime;
+  writeLock();
+  startTime=now();
+  try {
+    DatanodeDescriptor node=getDatanode(nodeID);
+    if (node == null || !node.isAlive) {
+      throw new IOException("ProcessReport from dead or unregistered node: " + nodeID.getName());
+    }
+    if (isInStartupSafeMode() && node.numBlocks() > 0) {
+      NameNode.stateChangeLog.info("BLOCK* NameSystem.processReport: " + "discarded non-initial block report from " + nodeID.getName() + " because namenode still in startup phase");
+      return;
+    }
+    blockManager.processReport(node,newReport);
+  }
+  finally {
+    endTime=now();
+    writeUnlock();
+  }
+  NameNode.getNameNodeMetrics().addBlockReport((int)(endTime - startTime));
+  NameNode.stateChangeLog.info("BLOCK* NameSystem.processReport: from " + nodeID.getName() + ", blocks: "+ newReport.getNumberOfBlocks()+ ", processing time: "+ (endTime - startTime)+ " msecs");
+}

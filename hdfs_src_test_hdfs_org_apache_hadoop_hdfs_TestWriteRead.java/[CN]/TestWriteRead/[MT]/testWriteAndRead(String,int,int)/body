@@ -1,0 +1,90 @@
+{
+  int countOfFailures=0;
+  long byteVisibleToRead=0;
+  FSDataOutputStream out=null;
+  byte[] outBuffer=new byte[BUFFER_SIZE];
+  byte[] inBuffer=new byte[BUFFER_SIZE];
+  for (int i=0; i < BUFFER_SIZE; i++) {
+    outBuffer[i]=(byte)(i & 0x00ff);
+  }
+  try {
+    Path path=getFullyQualifiedPath(fname);
+    long fileLengthBeforeOpen=0;
+    if (ifExists(path)) {
+      if (truncateOption) {
+        out=useFCOption ? mfc.create(path,EnumSet.of(CreateFlag.OVERWRITE)) : mfs.create(path,truncateOption);
+        LOG.info("File already exists. File open with Truncate mode: " + path);
+      }
+ else {
+        out=useFCOption ? mfc.create(path,EnumSet.of(CreateFlag.APPEND)) : mfs.append(path);
+        fileLengthBeforeOpen=getFileLengthFromNN(path);
+        LOG.info("File already exists of size " + fileLengthBeforeOpen + " File open for Append mode: "+ path);
+      }
+    }
+ else {
+      out=useFCOption ? mfc.create(path,EnumSet.of(CreateFlag.CREATE)) : mfs.create(path);
+    }
+    long totalByteWritten=fileLengthBeforeOpen;
+    long totalByteVisible=fileLengthBeforeOpen;
+    long totalByteWrittenButNotVisible=0;
+    boolean toFlush;
+    for (int i=0; i < loopN; i++) {
+      toFlush=(i % 2) == 0;
+      writeData(out,outBuffer,chunkSize);
+      totalByteWritten+=chunkSize;
+      if (toFlush) {
+        out.hflush();
+        totalByteVisible+=chunkSize + totalByteWrittenButNotVisible;
+        totalByteWrittenButNotVisible=0;
+      }
+ else {
+        totalByteWrittenButNotVisible+=chunkSize;
+      }
+      if (verboseOption) {
+        LOG.info("TestReadWrite - Written " + chunkSize + ". Total written = "+ totalByteWritten+ ". TotalByteVisible = "+ totalByteVisible+ " to file "+ fname);
+      }
+      byteVisibleToRead=readData(fname,inBuffer,totalByteVisible);
+      String readmsg="Written=" + totalByteWritten + " ; Expected Visible="+ totalByteVisible+ " ; Got Visible="+ byteVisibleToRead+ " of file "+ fname;
+      if (byteVisibleToRead >= totalByteVisible && byteVisibleToRead <= totalByteWritten) {
+        readmsg="pass: reader sees expected number of visible byte. " + readmsg + " [pass]";
+      }
+ else {
+        countOfFailures++;
+        readmsg="fail: reader see different number of visible byte. " + readmsg + " [fail]";
+        if (abortTestOnFailure) {
+          throw new IOException(readmsg);
+        }
+      }
+      LOG.info(readmsg);
+    }
+    writeData(out,outBuffer,chunkSize);
+    totalByteWritten+=chunkSize;
+    totalByteVisible+=chunkSize + totalByteWrittenButNotVisible;
+    totalByteWrittenButNotVisible+=0;
+    out.close();
+    byteVisibleToRead=readData(fname,inBuffer,totalByteVisible);
+    String readmsg2="Written=" + totalByteWritten + " ; Expected Visible="+ totalByteVisible+ " ; Got Visible="+ byteVisibleToRead+ " of file "+ fname;
+    String readmsg;
+    if (byteVisibleToRead >= totalByteVisible && byteVisibleToRead <= totalByteWritten) {
+      readmsg="pass: reader sees expected number of visible byte on close. " + readmsg2 + " [pass]";
+    }
+ else {
+      countOfFailures++;
+      readmsg="fail: reader sees different number of visible byte on close. " + readmsg2 + " [fail]";
+      LOG.info(readmsg);
+      if (abortTestOnFailure)       throw new IOException(readmsg);
+    }
+    long lenFromFc=getFileLengthFromNN(path);
+    if (lenFromFc != byteVisibleToRead) {
+      readmsg="fail: reader sees different number of visible byte from NN " + readmsg2 + " [fail]";
+      throw new IOException(readmsg);
+    }
+  }
+ catch (  IOException e) {
+    throw new IOException("##### Caught Exception in testAppendWriteAndRead. Close file. " + "Total Byte Read so far = " + byteVisibleToRead,e);
+  }
+ finally {
+    if (out != null)     out.close();
+  }
+  return -countOfFailures;
+}

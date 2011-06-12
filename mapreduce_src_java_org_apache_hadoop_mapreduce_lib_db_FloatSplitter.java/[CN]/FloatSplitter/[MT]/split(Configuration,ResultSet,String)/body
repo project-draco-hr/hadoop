@@ -1,0 +1,34 @@
+{
+  LOG.warn("Generating splits for a floating-point index column. Due to the");
+  LOG.warn("imprecise representation of floating-point values in Java, this");
+  LOG.warn("may result in an incomplete import.");
+  LOG.warn("You are strongly encouraged to choose an integral split column.");
+  List<InputSplit> splits=new ArrayList<InputSplit>();
+  if (results.getString(1) == null && results.getString(2) == null) {
+    splits.add(new DataDrivenDBInputFormat.DataDrivenDBInputSplit(colName + " IS NULL",colName + " IS NULL"));
+    return splits;
+  }
+  double minVal=results.getDouble(1);
+  double maxVal=results.getDouble(2);
+  int numSplits=conf.getInt(MRJobConfig.NUM_MAPS,1);
+  double splitSize=(maxVal - minVal) / (double)numSplits;
+  if (splitSize < MIN_INCREMENT) {
+    splitSize=MIN_INCREMENT;
+  }
+  String lowClausePrefix=colName + " >= ";
+  String highClausePrefix=colName + " < ";
+  double curLower=minVal;
+  double curUpper=curLower + splitSize;
+  while (curUpper < maxVal) {
+    splits.add(new DataDrivenDBInputFormat.DataDrivenDBInputSplit(lowClausePrefix + Double.toString(curLower),highClausePrefix + Double.toString(curUpper)));
+    curLower=curUpper;
+    curUpper+=splitSize;
+  }
+  if (curLower <= maxVal || splits.size() == 1) {
+    splits.add(new DataDrivenDBInputFormat.DataDrivenDBInputSplit(lowClausePrefix + Double.toString(curUpper),colName + " <= " + Double.toString(maxVal)));
+  }
+  if (results.getString(1) == null || results.getString(2) == null) {
+    splits.add(new DataDrivenDBInputFormat.DataDrivenDBInputSplit(colName + " IS NULL",colName + " IS NULL"));
+  }
+  return splits;
+}

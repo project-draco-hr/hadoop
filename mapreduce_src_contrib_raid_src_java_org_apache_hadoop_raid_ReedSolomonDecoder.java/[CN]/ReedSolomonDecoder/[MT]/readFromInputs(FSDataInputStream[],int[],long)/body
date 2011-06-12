@@ -1,0 +1,31 @@
+{
+  for (int i=0; i < inputs.length; i++) {
+    long curPos=inputs[i].getPos();
+    try {
+      RaidUtils.readTillEnd(inputs[i],readBufs[i],true);
+      continue;
+    }
+ catch (    BlockMissingException e) {
+      LOG.error("Encountered BlockMissingException in stream " + i);
+    }
+catch (    ChecksumException e) {
+      LOG.error("Encountered ChecksumException in stream " + i);
+    }
+    if (erasedLocations.length == paritySize) {
+      String msg="Too many read errors";
+      LOG.error(msg);
+      throw new IOException(msg);
+    }
+    int[] newErasedLocations=new int[erasedLocations.length + 1];
+    for (int j=0; j < erasedLocations.length; j++) {
+      newErasedLocations[j]=erasedLocations[j];
+    }
+    newErasedLocations[newErasedLocations.length - 1]=i;
+    erasedLocations=newErasedLocations;
+    LOG.info("Using zeros for stream " + i);
+    inputs[i]=new FSDataInputStream(new RaidUtils.ZeroInputStream(curPos + limit));
+    inputs[i].seek(curPos);
+    RaidUtils.readTillEnd(inputs[i],readBufs[i],true);
+  }
+  return erasedLocations;
+}

@@ -1,0 +1,86 @@
+{
+  cluster=new MiniDFSCluster.Builder(CONF).build();
+  try {
+    cluster.waitActive();
+    bpid=cluster.getNamesystem().getBlockPoolId();
+    fds=(FSDataset)cluster.getDataNodes().get(0).getFSDataset();
+    CONF.setInt(DFSConfigKeys.DFS_DATANODE_DIRECTORYSCAN_THREADS_KEY,parallelism);
+    DataNode dn=cluster.getDataNodes().get(0);
+    scanner=new DirectoryScanner(dn,fds,CONF);
+    scanner.setRetainDiffs(true);
+    createFile("/tmp/t1",10000);
+    long totalBlocks=100;
+    scan(100,0,0,0,0,0);
+    long blockId=deleteMetaFile();
+    scan(totalBlocks,1,1,0,0,1);
+    verifyGenStamp(blockId,GenerationStamp.GRANDFATHER_GENERATION_STAMP);
+    scan(totalBlocks,0,0,0,0,0);
+    blockId=deleteBlockFile();
+    scan(totalBlocks,1,0,1,0,0);
+    totalBlocks--;
+    verifyDeletion(blockId);
+    scan(totalBlocks,0,0,0,0,0);
+    blockId=createBlockFile();
+    totalBlocks++;
+    scan(totalBlocks,1,1,0,1,0);
+    verifyAddition(blockId,GenerationStamp.GRANDFATHER_GENERATION_STAMP,0);
+    scan(totalBlocks,0,0,0,0,0);
+    blockId=createMetaFile();
+    scan(totalBlocks + 1,1,0,1,1,0);
+    File metafile=new File(getMetaFile(blockId));
+    assertTrue(!metafile.exists());
+    scan(totalBlocks,0,0,0,0,0);
+    blockId=createBlockMetaFile();
+    totalBlocks++;
+    scan(totalBlocks,1,0,0,1,0);
+    verifyAddition(blockId,DEFAULT_GEN_STAMP,0);
+    scan(totalBlocks,0,0,0,0,0);
+    for (int i=0; i < 10; i++) {
+      blockId=deleteMetaFile();
+    }
+    scan(totalBlocks,10,10,0,0,10);
+    scan(totalBlocks,0,0,0,0,0);
+    for (int i=0; i < 10; i++) {
+      blockId=deleteBlockFile();
+    }
+    scan(totalBlocks,10,0,10,0,0);
+    totalBlocks-=10;
+    scan(totalBlocks,0,0,0,0,0);
+    for (int i=0; i < 10; i++) {
+      blockId=createBlockFile();
+    }
+    totalBlocks+=10;
+    scan(totalBlocks,10,10,0,10,0);
+    scan(totalBlocks,0,0,0,0,0);
+    for (int i=0; i < 10; i++) {
+      blockId=createMetaFile();
+    }
+    scan(totalBlocks + 10,10,0,10,10,0);
+    scan(totalBlocks,0,0,0,0,0);
+    for (int i=0; i < 10; i++) {
+      blockId=createBlockMetaFile();
+    }
+    totalBlocks+=10;
+    scan(totalBlocks,10,0,0,10,0);
+    scan(totalBlocks,0,0,0,0,0);
+    for (int i=0; i < 10; i++) {
+      truncateBlockFile();
+    }
+    scan(totalBlocks,10,0,0,0,10);
+    scan(totalBlocks,0,0,0,0,0);
+    createMetaFile();
+    createBlockFile();
+    createBlockMetaFile();
+    deleteMetaFile();
+    deleteBlockFile();
+    truncateBlockFile();
+    scan(totalBlocks + 3,6,2,2,3,2);
+    scan(totalBlocks + 1,0,0,0,0,0);
+    scanner.shutdown();
+    assertFalse(scanner.getRunStatus());
+  }
+  finally {
+    scanner.shutdown();
+    cluster.shutdown();
+  }
+}

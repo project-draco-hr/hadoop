@@ -1,0 +1,33 @@
+{
+  KerberosName jtKrbName=new KerberosName(conf.get(JTConfig.JT_USER_NAME,""));
+  String delegTokenRenewer=jtKrbName.getShortName();
+  boolean readFile=true;
+  String fsName=fs.getCanonicalServiceName();
+  if (TokenCache.getDelegationToken(credentials,fsName) == null) {
+    if (readFile) {
+      readFile=false;
+      String binaryTokenFilename=conf.get("mapreduce.job.credentials.binary");
+      if (binaryTokenFilename != null) {
+        Credentials binary;
+        try {
+          binary=Credentials.readTokenStorageFile(new Path("file:///" + binaryTokenFilename),conf);
+        }
+ catch (        IOException e) {
+          throw new RuntimeException(e);
+        }
+        credentials.addAll(binary);
+      }
+      if (TokenCache.getDelegationToken(credentials,fsName) != null) {
+        LOG.debug("DT for " + fsName + " is already present");
+        return;
+      }
+    }
+    Token<?> token=fs.getDelegationToken(delegTokenRenewer);
+    if (token != null) {
+      Text fsNameText=new Text(fsName);
+      token.setService(fsNameText);
+      credentials.addToken(fsNameText,token);
+      LOG.info("Got dt for " + fs.getUri() + ";uri="+ fsName+ ";t.service="+ token.getService());
+    }
+  }
+}

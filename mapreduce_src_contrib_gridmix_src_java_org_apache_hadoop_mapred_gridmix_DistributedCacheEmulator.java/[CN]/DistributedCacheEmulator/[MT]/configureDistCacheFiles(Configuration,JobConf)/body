@@ -1,0 +1,33 @@
+{
+  if (shouldEmulateDistCacheLoad()) {
+    String[] files=jobConf.getStrings(MRJobConfig.CACHE_FILES);
+    if (files != null) {
+      List<String> cacheFiles=new ArrayList<String>();
+      List<String> localCacheFiles=new ArrayList<String>();
+      String[] visibilities=jobConf.getStrings(MRJobConfig.CACHE_FILE_VISIBILITIES);
+      String[] timeStamps=jobConf.getStrings(MRJobConfig.CACHE_FILE_TIMESTAMPS);
+      String[] fileSizes=jobConf.getStrings(MRJobConfig.CACHE_FILES_SIZES);
+      String user=jobConf.getUser();
+      for (int i=0; i < files.length; i++) {
+        boolean visibility=(visibilities == null) ? true : Boolean.valueOf(visibilities[i]);
+        if (isLocalDistCacheFile(files[i],user,visibility)) {
+          String fileId=MD5Hash.digest(files[i] + timeStamps[i]).toString();
+          long fileSize=Long.valueOf(fileSizes[i]);
+          Path mappedLocalFilePath=PseudoLocalFs.generateFilePath(fileId,fileSize).makeQualified(pseudoLocalFs.getUri(),pseudoLocalFs.getWorkingDirectory());
+          pseudoLocalFs.create(mappedLocalFilePath);
+          localCacheFiles.add(mappedLocalFilePath.toUri().toString());
+        }
+ else {
+          String mappedPath=mapDistCacheFilePath(files[i],timeStamps[i],visibility,user);
+          cacheFiles.add(mappedPath);
+        }
+      }
+      if (cacheFiles.size() > 0) {
+        conf.setStrings(MRJobConfig.CACHE_FILES,cacheFiles.toArray(new String[cacheFiles.size()]));
+      }
+      if (localCacheFiles.size() > 0) {
+        conf.setStrings("tmpfiles",localCacheFiles.toArray(new String[localCacheFiles.size()]));
+      }
+    }
+  }
+}

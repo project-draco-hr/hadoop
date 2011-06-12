@@ -1,0 +1,39 @@
+{
+  try {
+    startFlag.await();
+    if (Thread.currentThread().isInterrupted()) {
+      return;
+    }
+    final long initTime=TimeUnit.MILLISECONDS.convert(System.nanoTime(),TimeUnit.NANOSECONDS);
+    LOG.info("START REPLAY @ " + initTime);
+    long first=-1;
+    long last=-1;
+    while (!Thread.currentThread().isInterrupted()) {
+      try {
+        final JobStory job=getNextJobFiltered();
+        if (null == job) {
+          return;
+        }
+        if (first < 0) {
+          first=job.getSubmissionTime();
+        }
+        final long current=job.getSubmissionTime();
+        if (current < last) {
+          LOG.warn("Job " + job.getJobID() + " out of order");
+          continue;
+        }
+        last=current;
+        submitter.add(jobCreator.createGridmixJob(conf,initTime + Math.round(rateFactor * (current - first)),job,scratch,userResolver.getTargetUgi(UserGroupInformation.createRemoteUser(job.getUser())),sequence.getAndIncrement()));
+      }
+ catch (      IOException e) {
+        error=e;
+        return;
+      }
+    }
+  }
+ catch (  InterruptedException e) {
+  }
+ finally {
+    IOUtils.cleanup(null,jobProducer);
+  }
+}

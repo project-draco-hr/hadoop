@@ -1,0 +1,21 @@
+{
+  String jobid=JobHistory.getJobIDFromHistoryFilePath(logFile).toString();
+  String user=request.getRemoteUser();
+  JobInfo jobInfo=JSPUtil.getJobInfo(logFile,fs,jobTracker);
+  if (user != null) {
+    try {
+      final UserGroupInformation ugi=UserGroupInformation.createRemoteUser(user);
+      AccessControlList viewJobAcl=jobInfo.getJobACLs().get(JobACL.VIEW_JOB);
+      if (viewJobAcl == null) {
+        viewJobAcl=new AccessControlList("*");
+      }
+      jobTracker.getACLsManager().checkAccess(jobid,ugi,jobInfo.getJobQueueName(),Operation.VIEW_JOB_DETAILS,jobInfo.getUsername(),viewJobAcl);
+    }
+ catch (    AccessControlException e) {
+      String errMsg=String.format("User %s failed to view %s!<br><br>%s" + "<hr>" + "<a href=\"jobhistory.jsp\">Go back to JobHistory</a><br>"+ "<a href=\"jobtracker.jsp\">Go back to JobTracker</a>",user,jobid,e.getMessage());
+      JSPUtil.setErrorAndForward(errMsg,request,response);
+      return null;
+    }
+  }
+  return jobInfo;
+}

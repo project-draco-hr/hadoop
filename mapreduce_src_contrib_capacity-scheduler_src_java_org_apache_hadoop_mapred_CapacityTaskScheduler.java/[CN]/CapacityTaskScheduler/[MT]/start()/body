@@ -1,0 +1,23 @@
+{
+  if (started)   return;
+  super.start();
+  MemoryMatcher.initializeMemoryRelatedConf(conf);
+  QueueManager queueManager=taskTrackerManager.getQueueManager();
+  CapacitySchedulerConf schedConf=new CapacitySchedulerConf();
+  try {
+    initializeQueues(queueManager.getRoot().getJobQueueInfo().getChildren(),schedConf,false);
+  }
+ catch (  Throwable e) {
+    LOG.error("Couldn't initialize queues because of the excecption : " + StringUtils.stringifyException(e));
+    throw new IOException(e);
+  }
+  taskTrackerManager.addJobInProgressListener(jobQueuesManager);
+  if (initializationPoller == null) {
+    this.initializationPoller=new JobInitializationPoller(jobQueuesManager,taskTrackerManager);
+  }
+  initializationPoller.init(jobQueuesManager.getJobQueueNames(),schedConf);
+  initializationPoller.setDaemon(true);
+  initializationPoller.start();
+  started=true;
+  LOG.info("Capacity scheduler started successfully");
+}

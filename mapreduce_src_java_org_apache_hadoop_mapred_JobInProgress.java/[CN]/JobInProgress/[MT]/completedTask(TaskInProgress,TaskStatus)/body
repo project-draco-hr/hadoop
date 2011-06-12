@@ -1,0 +1,82 @@
+{
+  TaskAttemptID taskid=status.getTaskID();
+  final JobTrackerInstrumentation metrics=jobtracker.getInstrumentation();
+  meterTaskAttempt(tip,status);
+  if (tip.isComplete()) {
+    tip.alreadyCompletedTask(taskid);
+    if (this.status.getRunState() != JobStatus.RUNNING) {
+      jobtracker.markCompletedTaskAttempt(status.getTaskTracker(),taskid);
+    }
+    return false;
+  }
+  boolean wasSpeculating=tip.isSpeculating();
+  LOG.info("Task '" + taskid + "' has completed "+ tip.getTIPId()+ " successfully.");
+  tip.completed(taskid);
+  resourceEstimator.updateWithCompletedTask(status,tip);
+  TaskTrackerStatus ttStatus=this.jobtracker.getTaskTrackerStatus(status.getTaskTracker());
+  String trackerHostname=jobtracker.getNode(ttStatus.getHost()).toString();
+  TaskType taskType=getTaskType(tip);
+  TaskAttemptStartedEvent tse=new TaskAttemptStartedEvent(status.getTaskID(),taskType,status.getStartTime(),status.getTaskTracker(),ttStatus.getHttpPort());
+  jobHistory.logEvent(tse,status.getTaskID().getJobID());
+  if (status.getIsMap()) {
+    MapAttemptFinishedEvent mfe=new MapAttemptFinishedEvent(status.getTaskID(),taskType,TaskStatus.State.SUCCEEDED.toString(),status.getMapFinishTime(),status.getFinishTime(),trackerHostname,status.getStateString(),new org.apache.hadoop.mapreduce.Counters(status.getCounters()));
+    jobHistory.logEvent(mfe,status.getTaskID().getJobID());
+  }
+ else {
+    ReduceAttemptFinishedEvent rfe=new ReduceAttemptFinishedEvent(status.getTaskID(),taskType,TaskStatus.State.SUCCEEDED.toString(),status.getShuffleFinishTime(),status.getSortFinishTime(),status.getFinishTime(),trackerHostname,status.getStateString(),new org.apache.hadoop.mapreduce.Counters(status.getCounters()));
+    jobHistory.logEvent(rfe,status.getTaskID().getJobID());
+  }
+  TaskFinishedEvent tfe=new TaskFinishedEvent(tip.getTIPId(),tip.getExecFinishTime(),taskType,TaskStatus.State.SUCCEEDED.toString(),new org.apache.hadoop.mapreduce.Counters(status.getCounters()));
+  jobHistory.logEvent(tfe,tip.getJob().getJobID());
+  if (tip.isJobSetupTask()) {
+    killSetupTip(!tip.isMapTask());
+    setupComplete();
+  }
+ else   if (tip.isJobCleanupTask()) {
+    if (tip.isMapTask()) {
+      cleanup[1].kill();
+    }
+ else {
+      cleanup[0].kill();
+    }
+    if (jobFailed) {
+      terminateJob(JobStatus.FAILED);
+    }
+    if (jobKilled) {
+      terminateJob(JobStatus.KILLED);
+    }
+ else {
+      jobComplete();
+    }
+    jobtracker.markCompletedTaskAttempt(status.getTaskTracker(),taskid);
+  }
+ else   if (tip.isMapTask()) {
+    runningMapTasks-=1;
+    finishedMapTasks+=1;
+    metrics.completeMap(taskid);
+    if (!tip.isJobSetupTask() && hasSpeculativeMaps) {
+      updateTaskTrackerStats(tip,ttStatus,trackerMapStats,mapTaskStats);
+    }
+    retireMap(tip);
+    if ((finishedMapTasks + failedMapTIPs) == (numMapTasks)) {
+      this.status.setMapProgress(1.0f);
+    }
+  }
+ else {
+    runningReduceTasks-=1;
+    finishedReduceTasks+=1;
+    metrics.completeReduce(taskid);
+    if (!tip.isJobSetupTask() && hasSpeculativeReduces) {
+      updateTaskTrackerStats(tip,ttStatus,trackerReduceStats,reduceTaskStats);
+    }
+    retireReduce(tip);
+    if ((finishedReduceTasks + failedReduceTIPs) == (numReduceTasks)) {
+      this.status.setReduceProgress(1.0f);
+    }
+  }
+  decrementSpeculativeCount(wasSpeculating,tip);
+  if (!jobSetupCleanupNeeded && canLaunchJobCleanupTask()) {
+    jobComplete();
+  }
+  return true;
+}

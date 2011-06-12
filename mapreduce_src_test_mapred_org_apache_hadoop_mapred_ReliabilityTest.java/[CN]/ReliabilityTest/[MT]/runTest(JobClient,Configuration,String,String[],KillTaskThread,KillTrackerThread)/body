@@ -1,0 +1,47 @@
+{
+  Thread t=new Thread("Job Test"){
+    public void run(){
+      try {
+        Class<?> jobClassObj=conf.getClassByName(jobClass);
+        int status=ToolRunner.run(conf,(Tool)(jobClassObj.newInstance()),args);
+        checkJobExitStatus(status,jobClass);
+      }
+ catch (      Exception e) {
+        LOG.fatal("JOB " + jobClass + " failed to run");
+        System.exit(-1);
+      }
+    }
+  }
+;
+  t.setDaemon(true);
+  t.start();
+  JobStatus[] jobs;
+  while ((jobs=jc.jobsToComplete()).length == 0) {
+    LOG.info("Waiting for the job " + jobClass + " to start");
+    Thread.sleep(1000);
+  }
+  JobID jobId=jobs[jobs.length - 1].getJobID();
+  RunningJob rJob=jc.getJob(jobId);
+  if (rJob.isComplete()) {
+    LOG.error("The last job returned by the querying JobTracker is complete :" + rJob.getJobID() + " .Exiting the test");
+    System.exit(-1);
+  }
+  while (rJob.getJobState() == JobStatus.PREP) {
+    LOG.info("JobID : " + jobId + " not started RUNNING yet");
+    Thread.sleep(1000);
+    rJob=jc.getJob(jobId);
+  }
+  if (killTaskThread != null) {
+    killTaskThread.setRunningJob(rJob);
+    killTaskThread.start();
+    killTaskThread.join();
+    LOG.info("DONE WITH THE TASK KILL/FAIL TESTS");
+  }
+  if (killTrackerThread != null) {
+    killTrackerThread.setRunningJob(rJob);
+    killTrackerThread.start();
+    killTrackerThread.join();
+    LOG.info("DONE WITH THE TESTS TO DO WITH LOST TASKTRACKERS");
+  }
+  t.join();
+}

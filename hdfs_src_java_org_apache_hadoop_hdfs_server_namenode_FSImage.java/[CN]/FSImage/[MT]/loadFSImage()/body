@@ -1,0 +1,55 @@
+{
+  long latestNameCheckpointTime=Long.MIN_VALUE;
+  long latestEditsCheckpointTime=Long.MIN_VALUE;
+  boolean needToSave=false;
+  isUpgradeFinalized=true;
+  StorageDirectory latestNameSD=null;
+  StorageDirectory latestEditsSD=null;
+  Collection<String> imageDirs=new ArrayList<String>();
+  Collection<String> editsDirs=new ArrayList<String>();
+  Set<Long> checkpointTimes=new HashSet<Long>();
+  for (Iterator<StorageDirectory> it=storage.dirIterator(); it.hasNext(); ) {
+    StorageDirectory sd=it.next();
+    if (!sd.getVersionFile().exists()) {
+      needToSave|=true;
+      continue;
+    }
+    boolean imageExists=false;
+    boolean editsExists=false;
+    if (sd.getStorageDirType().isOfType(NameNodeDirType.IMAGE)) {
+      imageExists=NNStorage.getStorageFile(sd,NameNodeFile.IMAGE).exists();
+      imageDirs.add(sd.getRoot().getCanonicalPath());
+    }
+    if (sd.getStorageDirType().isOfType(NameNodeDirType.EDITS)) {
+      editsExists=NNStorage.getStorageFile(sd,NameNodeFile.EDITS).exists();
+      editsDirs.add(sd.getRoot().getCanonicalPath());
+    }
+    long checkpointTime=storage.readCheckpointTime(sd);
+    checkpointTimes.add(checkpointTime);
+    if (sd.getStorageDirType().isOfType(NameNodeDirType.IMAGE) && (latestNameCheckpointTime < checkpointTime) && imageExists) {
+      latestNameCheckpointTime=checkpointTime;
+      latestNameSD=sd;
+    }
+    if (sd.getStorageDirType().isOfType(NameNodeDirType.EDITS) && (latestEditsCheckpointTime < checkpointTime) && editsExists) {
+      latestEditsCheckpointTime=checkpointTime;
+      latestEditsSD=sd;
+    }
+    if (checkpointTime <= 0L)     needToSave|=true;
+    isUpgradeFinalized=isUpgradeFinalized && !sd.getPreviousDir().exists();
+  }
+  if (latestNameSD == null)   throw new IOException("Image file is not found in " + imageDirs);
+  if (latestEditsSD == null)   throw new IOException("Edits file is not found in " + editsDirs);
+  if (latestNameCheckpointTime > latestEditsCheckpointTime && latestNameSD != latestEditsSD && latestNameSD.getStorageDirType() == NameNodeDirType.IMAGE && latestEditsSD.getStorageDirType() == NameNodeDirType.EDITS) {
+    LOG.error("This is a rare failure scenario!!!");
+    LOG.error("Image checkpoint time " + latestNameCheckpointTime + " > edits checkpoint time "+ latestEditsCheckpointTime);
+    LOG.error("Name-node will treat the image as the latest state of " + "the namespace. Old edits will be discarded.");
+  }
+ else   if (latestNameCheckpointTime != latestEditsCheckpointTime)   throw new IOException("Inconsistent storage detected, " + "image and edits checkpoint times do not match. " + "image checkpoint time = " + latestNameCheckpointTime + "edits checkpoint time = "+ latestEditsCheckpointTime);
+  needToSave|=checkpointTimes.size() != 1;
+  needToSave|=recoverInterruptedCheckpoint(latestNameSD,latestEditsSD);
+  latestNameSD.read();
+  needToSave|=loadFSImage(NNStorage.getStorageFile(latestNameSD,NameNodeFile.IMAGE));
+  if (latestNameCheckpointTime > latestEditsCheckpointTime)   needToSave|=true;
+ else   needToSave|=(loadFSEdits(latestEditsSD) > 0);
+  return needToSave;
+}

@@ -1,0 +1,55 @@
+{
+  Configuration conf=new Configuration(cluster.getConf());
+  TaskInfo taskInfo=null;
+  SleepJob job=new SleepJob();
+  job.setConf(conf);
+  Job slpJob=job.createJob(3,1,4000,4000,100,100);
+  JobConf jobConf=new JobConf(conf);
+  jobConf.setMaxMapAttempts(20);
+  jobConf.setMaxReduceAttempts(20);
+  slpJob.submit();
+  RunningJob runJob=jobClient.getJob(org.apache.hadoop.mapred.JobID.downgrade(slpJob.getJobID()));
+  JobID id=runJob.getID();
+  JobInfo jInfo=remoteJTClient.getJobInfo(id);
+  int counter=0;
+  while (counter < 60) {
+    if (jInfo.getStatus().getRunState() == JobStatus.RUNNING) {
+      break;
+    }
+ else {
+      UtilsForTests.waitFor(1000);
+      jInfo=remoteJTClient.getJobInfo(id);
+    }
+    counter++;
+  }
+  Assert.assertTrue("Job has not been started for 1 min.",counter != 60);
+  TaskInfo[] taskInfos=remoteJTClient.getTaskInfo(id);
+  for (  TaskInfo taskinfo : taskInfos) {
+    if (!taskinfo.isSetupOrCleanup()) {
+      taskInfo=taskinfo;
+    }
+  }
+  counter=0;
+  taskInfo=remoteJTClient.getTaskInfo(taskInfo.getTaskID());
+  while (counter < 60) {
+    if (taskInfo.getTaskStatus().length > 0) {
+      if (taskInfo.getTaskStatus()[0].getRunState() == TaskStatus.State.RUNNING) {
+        break;
+      }
+    }
+    UtilsForTests.waitFor(1000);
+    taskInfo=remoteJTClient.getTaskInfo(taskInfo.getTaskID());
+    counter++;
+  }
+  Assert.assertTrue("Task has not been started for 1 min.",counter != 60);
+  NetworkedJob networkJob=new JobClient.NetworkedJob(jInfo.getStatus(),jobClient.cluster);
+  TaskID tID=TaskID.downgrade(taskInfo.getTaskID());
+  TaskAttemptID taskAttID=new TaskAttemptID(tID,0);
+  networkJob.killTask(taskAttID,false);
+  LOG.info("Waiting till the job is completed...");
+  while (!jInfo.getStatus().isJobComplete()) {
+    UtilsForTests.waitFor(100);
+    jInfo=remoteJTClient.getJobInfo(id);
+  }
+  Assert.assertEquals("JobStatus",jInfo.getStatus().getRunState(),JobStatus.SUCCEEDED);
+}

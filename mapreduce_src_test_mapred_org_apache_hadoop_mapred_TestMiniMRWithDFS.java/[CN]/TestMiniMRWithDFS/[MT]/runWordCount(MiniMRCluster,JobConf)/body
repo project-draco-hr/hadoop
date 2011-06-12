@@ -1,0 +1,34 @@
+{
+  LOG.info("runWordCount");
+  String pattern=TaskAttemptID.getTaskAttemptIDsPattern(null,null,TaskType.MAP,1,null);
+  jobConf.setKeepTaskFilesPattern(pattern);
+  TestResult result;
+  final Path inDir=new Path("./wc/input");
+  final Path outDir=new Path("./wc/output");
+  String input="The quick brown fox\nhas many silly\nred fox sox\n";
+  result=launchWordCount(jobConf,inDir,outDir,input,3,1);
+  assertEquals("The\t1\nbrown\t1\nfox\t2\nhas\t1\nmany\t1\n" + "quick\t1\nred\t1\nsilly\t1\nsox\t1\n",result.output);
+  JobID jobid=result.job.getID();
+  TaskAttemptID taskid=new TaskAttemptID(new TaskID(jobid,TaskType.MAP,1),0);
+  String userName=UserGroupInformation.getLoginUser().getUserName();
+  checkTaskDirectories(mr,userName,new String[]{jobid.toString()},new String[]{taskid.toString()});
+  jobConf=mr.createJobConf();
+  input="owen is oom";
+  result=launchWordCount(jobConf,inDir,outDir,input,0,1);
+  assertEquals("is\t1\noom\t1\nowen\t1\n",result.output);
+  Counters counters=result.job.getCounters();
+  long hdfsRead=counters.findCounter(Task.FILESYSTEM_COUNTER_GROUP,Task.getFileSystemCounterNames("hdfs")[0]).getCounter();
+  long hdfsWrite=counters.findCounter(Task.FILESYSTEM_COUNTER_GROUP,Task.getFileSystemCounterNames("hdfs")[1]).getCounter();
+  long rawSplitBytesRead=counters.findCounter(TaskCounter.SPLIT_RAW_BYTES).getCounter();
+  assertEquals(result.output.length(),hdfsWrite);
+  assertEquals(input.length() + rawSplitBytesRead,hdfsRead);
+{
+    FileSystem localfs=FileSystem.getLocal(jobConf);
+    String TEST_ROOT_DIR=new File(System.getProperty("test.build.data","/tmp")).toString().replace(' ','+');
+    Path localIn=localfs.makeQualified(new Path(TEST_ROOT_DIR + "/local/in"));
+    Path localOut=localfs.makeQualified(new Path(TEST_ROOT_DIR + "/local/out"));
+    result=launchWordCount(jobConf,localIn,localOut,"all your base belong to us",1,1);
+    assertEquals("all\t1\nbase\t1\nbelong\t1\nto\t1\nus\t1\nyour\t1\n",result.output);
+    assertTrue("outputs on localfs",localfs.exists(localOut));
+  }
+}

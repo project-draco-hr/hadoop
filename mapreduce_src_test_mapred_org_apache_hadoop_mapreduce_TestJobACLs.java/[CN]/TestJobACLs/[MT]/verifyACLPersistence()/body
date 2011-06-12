@@ -1,0 +1,42 @@
+{
+  final Configuration myConf=mr.createJobConf();
+  myConf.set(MRJobConfig.JOB_ACL_VIEW_JOB,viewColleague + " group2");
+  Job job=submitJobAsUser(myConf,jobSubmitter);
+  final JobID jobId=job.getJobID();
+  job.killJob();
+  while (job.getJobState() != JobStatus.State.KILLED) {
+    LOG.info("Waiting for the job to be killed successfully..");
+    Thread.sleep(200);
+  }
+  tearDown();
+  startCluster(true);
+  final Configuration myNewJobConf=mr.createJobConf();
+  verifyViewJobAsAuthorizedUser(myNewJobConf,jobId,viewColleague);
+  verifyViewJobAsAuthorizedUser(myNewJobConf,jobId,qAdmin);
+  UserGroupInformation unauthorizedUGI=UserGroupInformation.createUserForTesting(modifyColleague,new String[]{});
+  unauthorizedUGI.doAs(new PrivilegedExceptionAction<Object>(){
+    @SuppressWarnings("null") @Override public Object run(){
+      Job myJob=null;
+      try {
+        Cluster cluster=new Cluster(myNewJobConf);
+        myJob=cluster.getJob(jobId);
+      }
+ catch (      Exception e) {
+        fail("Exception .." + e);
+      }
+      assertNotNull("Job " + jobId + " is not known to the JobTracker!",myJob);
+      try {
+        myJob.getCounters();
+        fail("AccessControlException expected..");
+      }
+ catch (      IOException ioe) {
+        assertTrue(ioe.getMessage().contains(" cannot perform operation " + Operation.VIEW_JOB_COUNTERS));
+      }
+catch (      InterruptedException e) {
+        fail("Exception .. interrupted.." + e);
+      }
+      return null;
+    }
+  }
+);
+}

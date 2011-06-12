@@ -1,0 +1,31 @@
+{
+  Path[] paths=FileUtil.stat2Paths(listStatus(job));
+  List<MultiFileSplit> splits=new ArrayList<MultiFileSplit>(Math.min(numSplits,paths.length));
+  if (paths.length != 0) {
+    long[] lengths=new long[paths.length];
+    long totLength=0;
+    for (int i=0; i < paths.length; i++) {
+      FileSystem fs=paths[i].getFileSystem(job);
+      lengths[i]=fs.getContentSummary(paths[i]).getLength();
+      totLength+=lengths[i];
+    }
+    double avgLengthPerSplit=((double)totLength) / numSplits;
+    long cumulativeLength=0;
+    int startIndex=0;
+    for (int i=0; i < numSplits; i++) {
+      int splitSize=findSize(i,avgLengthPerSplit,cumulativeLength,startIndex,lengths);
+      if (splitSize != 0) {
+        Path[] splitPaths=new Path[splitSize];
+        long[] splitLengths=new long[splitSize];
+        System.arraycopy(paths,startIndex,splitPaths,0,splitSize);
+        System.arraycopy(lengths,startIndex,splitLengths,0,splitSize);
+        splits.add(new MultiFileSplit(job,splitPaths,splitLengths));
+        startIndex+=splitSize;
+        for (        long l : splitLengths) {
+          cumulativeLength+=l;
+        }
+      }
+    }
+  }
+  return splits.toArray(new MultiFileSplit[splits.size()]);
+}

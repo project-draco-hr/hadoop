@@ -1,0 +1,32 @@
+{
+  final Path file=getTestPath("testFileAdd");
+  createFile(file,3200,(short)3);
+  final long blockCount=32;
+  int blockCapacity=namesystem.getBlockCapacity();
+  updateMetrics();
+  assertGauge("BlockCapacity",blockCapacity,getMetrics(NS_METRICS));
+  MetricsRecordBuilder rb=getMetrics(NN_METRICS);
+  assertCounter("CreateFileOps",1L,rb);
+  assertCounter("FilesCreated",(long)file.depth(),rb);
+  int threshold=(int)(blockCapacity * BlockManager.DEFAULT_MAP_LOAD_FACTOR);
+  while (threshold < blockCount) {
+    blockCapacity<<=1;
+  }
+  updateMetrics();
+  long filesTotal=file.depth() + 1;
+  rb=getMetrics(NS_METRICS);
+  assertGauge("FilesTotal",filesTotal,rb);
+  assertGauge("BlocksTotal",blockCount,rb);
+  assertGauge("BlockCapacity",blockCapacity,rb);
+  fs.delete(file,true);
+  filesTotal--;
+  Thread.sleep(DFS_REPLICATION_INTERVAL * (DATANODE_COUNT + 1) * 1000);
+  updateMetrics();
+  rb=getMetrics(NS_METRICS);
+  assertGauge("FilesTotal",filesTotal,rb);
+  assertGauge("BlocksTotal",0L,rb);
+  assertGauge("PendingDeletionBlocks",0L,rb);
+  rb=getMetrics(NN_METRICS);
+  assertCounter("DeleteFileOps",1L,rb);
+  assertCounter("FilesDeleted",1L,rb);
+}

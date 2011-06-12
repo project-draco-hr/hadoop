@@ -1,0 +1,86 @@
+{
+  if (LOG.isDebugEnabled()) {
+    LOG.debug("Receiving one packet for block " + block + " of length "+ len+ " seqno "+ seqno+ " offsetInBlock "+ offsetInBlock+ " lastPacketInBlock "+ lastPacketInBlock);
+  }
+  long firstByteInBlock=offsetInBlock;
+  offsetInBlock+=len;
+  if (replicaInfo.getNumBytes() < offsetInBlock) {
+    replicaInfo.setNumBytes(offsetInBlock);
+  }
+  if (responder != null) {
+    ((PacketResponder)responder.getRunnable()).enqueue(seqno,lastPacketInBlock,offsetInBlock);
+  }
+  if (mirrorOut != null && !mirrorError) {
+    try {
+      mirrorOut.write(buf.array(),buf.position(),buf.remaining());
+      mirrorOut.flush();
+    }
+ catch (    IOException e) {
+      handleMirrorOutError(e);
+    }
+  }
+  buf.position(endOfHeader);
+  if (lastPacketInBlock || len == 0) {
+    if (LOG.isDebugEnabled()) {
+      LOG.debug("Receiving an empty packet or the end of the block " + block);
+    }
+  }
+ else {
+    int checksumLen=((len + bytesPerChecksum - 1) / bytesPerChecksum) * checksumSize;
+    if (buf.remaining() != (checksumLen + len)) {
+      throw new IOException("Data remaining in packet does not match" + "sum of checksumLen and dataLen " + " size remaining: " + buf.remaining() + " data len: "+ len+ " checksum Len: "+ checksumLen);
+    }
+    int checksumOff=buf.position();
+    int dataOff=checksumOff + checksumLen;
+    byte pktBuf[]=buf.array();
+    buf.position(buf.limit());
+    if (mirrorOut == null || isDatanode) {
+      verifyChunks(pktBuf,dataOff,len,pktBuf,checksumOff);
+    }
+    byte[] lastChunkChecksum;
+    try {
+      long onDiskLen=replicaInfo.getBytesOnDisk();
+      if (onDiskLen < offsetInBlock) {
+        if (onDiskLen % bytesPerChecksum != 0) {
+          adjustCrcFilePosition();
+        }
+        if (firstByteInBlock % bytesPerChecksum != 0) {
+          LOG.info("Packet starts at " + firstByteInBlock + " for block "+ block+ " which is not a multiple of bytesPerChecksum "+ bytesPerChecksum);
+          long offsetInChecksum=BlockMetadataHeader.getHeaderSize() + onDiskLen / bytesPerChecksum * checksumSize;
+          computePartialChunkCrc(onDiskLen,offsetInChecksum,bytesPerChecksum);
+        }
+        int startByteToDisk=dataOff + (int)(onDiskLen - firstByteInBlock);
+        int numBytesToDisk=(int)(offsetInBlock - onDiskLen);
+        writePacketToDisk(pktBuf,startByteToDisk,numBytesToDisk);
+        if (partialCrc != null) {
+          if (len > bytesPerChecksum) {
+            throw new IOException("Got wrong length during writeBlock(" + block + ") from "+ inAddr+ " "+ "A packet can have only one partial chunk."+ " len = "+ len+ " bytesPerChecksum "+ bytesPerChecksum);
+          }
+          partialCrc.update(pktBuf,startByteToDisk,numBytesToDisk);
+          byte[] buf=FSOutputSummer.convertToByteStream(partialCrc,checksumSize);
+          lastChunkChecksum=Arrays.copyOfRange(buf,buf.length - checksumSize,buf.length);
+          checksumOut.write(buf);
+          if (LOG.isDebugEnabled()) {
+            LOG.debug("Writing out partial crc for data len " + len);
+          }
+          partialCrc=null;
+        }
+ else {
+          lastChunkChecksum=Arrays.copyOfRange(pktBuf,checksumOff + checksumLen - checksumSize,checksumOff + checksumLen);
+          checksumOut.write(pktBuf,checksumOff,checksumLen);
+        }
+        flush();
+        replicaInfo.setLastChecksumAndDataLen(offsetInBlock,lastChunkChecksum);
+        datanode.metrics.incrBytesWritten(len);
+      }
+    }
+ catch (    IOException iex) {
+      datanode.checkDiskError(iex);
+      throw iex;
+    }
+  }
+  if (throttler != null) {
+    throttler.throttle(len);
+  }
+  return lastPacketInBlock ? -1 : len;
+}

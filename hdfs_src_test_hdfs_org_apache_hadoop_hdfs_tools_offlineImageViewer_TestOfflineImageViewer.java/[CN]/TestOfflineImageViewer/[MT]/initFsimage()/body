@@ -1,0 +1,33 @@
+{
+  MiniDFSCluster cluster=null;
+  File orig=null;
+  try {
+    Configuration conf=new HdfsConfiguration();
+    cluster=new MiniDFSCluster.Builder(conf).numDataNodes(4).build();
+    FileSystem hdfs=cluster.getFileSystem();
+    int filesize=256;
+    for (int i=0; i < NUM_DIRS; i++) {
+      Path dir=new Path("/dir" + i);
+      hdfs.mkdirs(dir);
+      writtenFiles.put(dir.toString(),pathToFileEntry(hdfs,dir.toString()));
+      for (int j=0; j < FILES_PER_DIR; j++) {
+        Path file=new Path(dir,"file" + j);
+        FSDataOutputStream o=hdfs.create(file);
+        o.write(new byte[filesize++]);
+        o.close();
+        writtenFiles.put(file.toString(),pathToFileEntry(hdfs,file.toString()));
+      }
+    }
+    cluster.getNameNode().setSafeMode(SafeModeAction.SAFEMODE_ENTER);
+    cluster.getNameNode().saveNamespace();
+    URI[] files=cluster.getNameDirs(0).toArray(new URI[0]);
+    orig=new File(files[0].getPath(),"current/fsimage");
+    if (!orig.exists()) {
+      fail("Didn't generate or can't find fsimage.");
+    }
+  }
+  finally {
+    if (cluster != null)     cluster.shutdown();
+  }
+  return orig;
+}

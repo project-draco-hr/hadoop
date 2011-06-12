@@ -1,0 +1,21 @@
+{
+  try {
+    ClusterMetrics clusterMetrics=jobTracker.getClusterMetrics();
+    if (runningJobs.size() >= clusterMetrics.getTaskTrackerCount()) {
+      System.out.printf("%d Overloaded is %s: " + "#runningJobs >= taskTrackerCount (%d >= %d)\n",now,Boolean.TRUE.toString(),runningJobs.size(),clusterMetrics.getTaskTrackerCount());
+      return true;
+    }
+    float incompleteMapTasks=0;
+    for (    Map.Entry<JobID,JobSketchInfo> entry : runningJobs.entrySet()) {
+      org.apache.hadoop.mapreduce.JobStatus jobStatus=jobTracker.getJobStatus(entry.getKey());
+      incompleteMapTasks+=(1 - Math.min(jobStatus.getMapProgress(),1.0)) * entry.getValue().numMaps;
+    }
+    boolean overloaded=incompleteMapTasks > OVERLAOD_MAPTASK_MAPSLOT_RATIO * clusterMetrics.getMapSlotCapacity();
+    String relOp=(overloaded) ? ">" : "<=";
+    System.out.printf("%d Overloaded is %s: " + "incompleteMapTasks %s %.1f*mapSlotCapacity (%.1f %s %.1f*%d)\n",now,Boolean.toString(overloaded),relOp,OVERLAOD_MAPTASK_MAPSLOT_RATIO,incompleteMapTasks,relOp,OVERLAOD_MAPTASK_MAPSLOT_RATIO,clusterMetrics.getMapSlotCapacity());
+    return overloaded;
+  }
+ catch (  InterruptedException e) {
+    throw new IOException("InterruptedException",e);
+  }
+}

@@ -1,0 +1,17 @@
+{
+  int numDatanodes=distribution.length;
+  if (capacities.length != numDatanodes || racks.length != numDatanodes) {
+    throw new IllegalArgumentException("Array length is not the same");
+  }
+  final long totalUsedSpace=sum(distribution);
+  ExtendedBlock[] blocks=generateBlocks(conf,totalUsedSpace,(short)numDatanodes);
+  Block[][] blocksDN=distributeBlocks(blocks,(short)(numDatanodes - 1),distribution);
+  conf.set(DFSConfigKeys.DFS_NAMENODE_SAFEMODE_THRESHOLD_PCT_KEY,"0.0f");
+  cluster=new MiniDFSCluster.Builder(conf).numDataNodes(numDatanodes).format(false).racks(racks).simulatedCapacities(capacities).build();
+  cluster.waitActive();
+  client=DFSClient.createNamenode(conf);
+  for (int i=0; i < blocksDN.length; i++)   cluster.injectBlocks(i,Arrays.asList(blocksDN[i]));
+  final long totalCapacity=sum(capacities);
+  runBalancer(conf,totalUsedSpace,totalCapacity);
+  cluster.shutdown();
+}

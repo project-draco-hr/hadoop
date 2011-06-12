@@ -1,0 +1,56 @@
+{
+  Configuration conf=new HdfsConfiguration();
+  MiniDFSCluster cluster=null;
+  long reserved=10000;
+  conf.setLong(DFSConfigKeys.DFS_DATANODE_DU_RESERVED_KEY,reserved);
+  try {
+    cluster=new MiniDFSCluster.Builder(conf).build();
+    cluster.waitActive();
+    final FSNamesystem namesystem=cluster.getNamesystem();
+    ArrayList<DatanodeDescriptor> live=new ArrayList<DatanodeDescriptor>();
+    ArrayList<DatanodeDescriptor> dead=new ArrayList<DatanodeDescriptor>();
+    namesystem.DFSNodesStatus(live,dead);
+    assertTrue(live.size() == 1);
+    long used, remaining, configCapacity, nonDFSUsed, bpUsed;
+    float percentUsed, percentRemaining, percentBpUsed;
+    for (    final DatanodeDescriptor datanode : live) {
+      used=datanode.getDfsUsed();
+      remaining=datanode.getRemaining();
+      nonDFSUsed=datanode.getNonDfsUsed();
+      configCapacity=datanode.getCapacity();
+      percentUsed=datanode.getDfsUsedPercent();
+      percentRemaining=datanode.getRemainingPercent();
+      bpUsed=datanode.getBlockPoolUsed();
+      percentBpUsed=datanode.getBlockPoolUsedPercent();
+      LOG.info("Datanode configCapacity " + configCapacity + " used "+ used+ " non DFS used "+ nonDFSUsed+ " remaining "+ remaining+ " perentUsed "+ percentUsed+ " percentRemaining "+ percentRemaining);
+      assertTrue(configCapacity == (used + remaining + nonDFSUsed));
+      assertTrue(percentUsed == DFSUtil.getPercentUsed(used,configCapacity));
+      assertTrue(percentRemaining == DFSUtil.getPercentRemaining(remaining,configCapacity));
+      assertTrue(percentBpUsed == DFSUtil.getPercentUsed(bpUsed,configCapacity));
+    }
+    DF df=new DF(new File(cluster.getDataDirectory()),conf);
+    int numOfDataDirs=2;
+    long diskCapacity=numOfDataDirs * df.getCapacity();
+    reserved*=numOfDataDirs;
+    configCapacity=namesystem.getCapacityTotal();
+    used=namesystem.getCapacityUsed();
+    nonDFSUsed=namesystem.getCapacityUsedNonDFS();
+    remaining=namesystem.getCapacityRemaining();
+    percentUsed=namesystem.getCapacityUsedPercent();
+    percentRemaining=namesystem.getCapacityRemainingPercent();
+    bpUsed=namesystem.getBlockPoolUsedSpace();
+    percentBpUsed=namesystem.getPercentBlockPoolUsed();
+    LOG.info("Data node directory " + cluster.getDataDirectory());
+    LOG.info("Name node diskCapacity " + diskCapacity + " configCapacity "+ configCapacity+ " reserved "+ reserved+ " used "+ used+ " remaining "+ remaining+ " nonDFSUsed "+ nonDFSUsed+ " remaining "+ remaining+ " percentUsed "+ percentUsed+ " percentRemaining "+ percentRemaining+ " bpUsed "+ bpUsed+ " percentBpUsed "+ percentBpUsed);
+    assertTrue(configCapacity == diskCapacity - reserved);
+    assertTrue(configCapacity == (used + remaining + nonDFSUsed));
+    assertTrue(percentUsed == DFSUtil.getPercentUsed(used,configCapacity));
+    assertTrue(percentBpUsed == DFSUtil.getPercentUsed(bpUsed,configCapacity));
+    assertTrue(percentRemaining == ((float)remaining * 100.0f) / (float)configCapacity);
+  }
+  finally {
+    if (cluster != null) {
+      cluster.shutdown();
+    }
+  }
+}

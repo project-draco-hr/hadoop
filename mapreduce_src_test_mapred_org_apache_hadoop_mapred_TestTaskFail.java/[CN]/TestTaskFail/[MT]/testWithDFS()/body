@@ -1,0 +1,46 @@
+{
+  MiniDFSCluster dfs=null;
+  MiniMRCluster mr=null;
+  FileSystem fileSys=null;
+  try {
+    final int taskTrackers=4;
+    Configuration conf=new Configuration();
+    dfs=new MiniDFSCluster(conf,4,true,null);
+    fileSys=dfs.getFileSystem();
+    mr=new MiniMRCluster(taskTrackers,fileSys.getUri().toString(),1);
+    JobTracker jt=mr.getJobTrackerRunner().getJobTracker();
+    final Path inDir=new Path("./input");
+    final Path outDir=new Path("./output");
+    String input="The quick brown fox\nhas many silly\nred fox sox\n";
+    JobConf jobConf=mr.createJobConf();
+    jobConf.set(Job.COMPLETION_POLL_INTERVAL_KEY,"50");
+    jobConf.setOutputCommitter(CommitterWithLogs.class);
+    RunningJob rJob=launchJob(jobConf,inDir,outDir,input);
+    rJob.waitForCompletion();
+    validateJob(rJob,jt,true);
+    fileSys.delete(outDir,true);
+    jobConf.setOutputCommitter(CommitterWithFailTaskCleanup.class);
+    rJob=launchJob(jobConf,inDir,outDir,input);
+    rJob.waitForCompletion();
+    validateJob(rJob,jt,true);
+    fileSys.delete(outDir,true);
+    jobConf.setOutputCommitter(CommitterWithFailTaskCleanup2.class);
+    rJob=launchJob(jobConf,inDir,outDir,input);
+    rJob.waitForCompletion();
+    validateJob(rJob,jt,true);
+    fileSys.delete(outDir,true);
+    jobConf.setOutputCommitter(CommitterWithFailTaskCleanup.class);
+    jobConf.setBoolean(MRJobConfig.TASK_CLEANUP_NEEDED,false);
+    rJob=launchJob(jobConf,inDir,outDir,input);
+    rJob.waitForCompletion();
+    validateJob(rJob,jt,false);
+  }
+  finally {
+    if (dfs != null) {
+      dfs.shutdown();
+    }
+    if (mr != null) {
+      mr.shutdown();
+    }
+  }
+}

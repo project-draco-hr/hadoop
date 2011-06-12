@@ -1,0 +1,49 @@
+{
+  final JobConf jobConf=new JobConf(jobCtxt.getConfiguration());
+  final JobClient client=new JobClient(jobConf);
+  ClusterStatus stat=client.getClusterStatus(true);
+  int numTrackers=stat.getTaskTrackers();
+  final int fileCount=jobConf.getInt(GRIDMIX_DISTCACHE_FILE_COUNT,-1);
+  final long totalSize=jobConf.getLong(GRIDMIX_DISTCACHE_BYTE_COUNT,-1);
+  String distCacheFileList=jobConf.get(GRIDMIX_DISTCACHE_FILE_LIST);
+  if (fileCount < 0 || totalSize < 0 || distCacheFileList == null) {
+    throw new RuntimeException("Invalid metadata: #files (" + fileCount + "), total_size ("+ totalSize+ "), filelisturi ("+ distCacheFileList+ ")");
+  }
+  Path sequenceFile=new Path(distCacheFileList);
+  FileSystem fs=sequenceFile.getFileSystem(jobConf);
+  FileStatus srcst=fs.getFileStatus(sequenceFile);
+  int numMapSlotsPerTracker=jobConf.getInt(TTConfig.TT_MAP_SLOTS,2);
+  int numSplits=numTrackers * numMapSlotsPerTracker;
+  List<InputSplit> splits=new ArrayList<InputSplit>(numSplits);
+  LongWritable key=new LongWritable();
+  BytesWritable value=new BytesWritable();
+  final long targetSize=Math.max(totalSize / numSplits,DistributedCacheEmulator.AVG_BYTES_PER_MAP);
+  long splitStartPosition=0L;
+  long splitEndPosition=0L;
+  long acc=0L;
+  long bytesRemaining=srcst.getLen();
+  SequenceFile.Reader reader=null;
+  try {
+    reader=new SequenceFile.Reader(fs,sequenceFile,jobConf);
+    while (reader.next(key,value)) {
+      if (acc + key.get() > targetSize && acc != 0) {
+        long splitSize=splitEndPosition - splitStartPosition;
+        splits.add(new FileSplit(sequenceFile,splitStartPosition,splitSize,(String[])null));
+        bytesRemaining-=splitSize;
+        splitStartPosition=splitEndPosition;
+        acc=0L;
+      }
+      acc+=key.get();
+      splitEndPosition=reader.getPosition();
+    }
+  }
+  finally {
+    if (reader != null) {
+      reader.close();
+    }
+  }
+  if (bytesRemaining != 0) {
+    splits.add(new FileSplit(sequenceFile,splitStartPosition,bytesRemaining,(String[])null));
+  }
+  return splits;
+}

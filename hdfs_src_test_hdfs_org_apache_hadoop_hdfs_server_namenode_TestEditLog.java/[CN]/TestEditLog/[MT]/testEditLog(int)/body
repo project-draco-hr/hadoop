@@ -1,0 +1,50 @@
+{
+  Configuration conf=new HdfsConfiguration();
+  MiniDFSCluster cluster=null;
+  FileSystem fileSys=null;
+  try {
+    cluster=new MiniDFSCluster.Builder(conf).numDataNodes(NUM_DATA_NODES).build();
+    cluster.waitActive();
+    fileSys=cluster.getFileSystem();
+    final FSNamesystem namesystem=cluster.getNamesystem();
+    for (Iterator<URI> it=cluster.getNameDirs(0).iterator(); it.hasNext(); ) {
+      File dir=new File(it.next().getPath());
+      System.out.println(dir);
+    }
+    FSImage fsimage=namesystem.getFSImage();
+    FSEditLog editLog=fsimage.getEditLog();
+    editLog.setBufferCapacity(initialSize);
+    editLog.close();
+    editLog.open();
+    Thread threadId[]=new Thread[NUM_THREADS];
+    for (int i=0; i < NUM_THREADS; i++) {
+      Transactions trans=new Transactions(namesystem,NUM_TRANSACTIONS);
+      threadId[i]=new Thread(trans,"TransactionThread-" + i);
+      threadId[i].start();
+    }
+    for (int i=0; i < NUM_THREADS; i++) {
+      try {
+        threadId[i].join();
+      }
+ catch (      InterruptedException e) {
+        i--;
+      }
+    }
+    editLog.close();
+    editLog.open();
+    FSEditLogLoader loader=new FSEditLogLoader(namesystem);
+    for (Iterator<StorageDirectory> it=fsimage.getStorage().dirIterator(NameNodeDirType.EDITS); it.hasNext(); ) {
+      File editFile=NNStorage.getStorageFile(it.next(),NameNodeFile.EDITS);
+      System.out.println("Verifying file: " + editFile);
+      int numEdits=loader.loadFSEdits(new EditLogFileInputStream(editFile));
+      int numLeases=namesystem.leaseManager.countLease();
+      System.out.println("Number of outstanding leases " + numLeases);
+      assertEquals(0,numLeases);
+      assertTrue("Verification for " + editFile + " failed. "+ "Expected "+ (NUM_THREADS * 2 * NUM_TRANSACTIONS)+ " transactions. "+ "Found "+ numEdits+ " transactions.",numEdits == NUM_THREADS * 2 * NUM_TRANSACTIONS);
+    }
+  }
+  finally {
+    if (fileSys != null)     fileSys.close();
+    if (cluster != null)     cluster.shutdown();
+  }
+}

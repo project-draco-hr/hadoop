@@ -1,0 +1,124 @@
+{
+  final Configuration conf=new HdfsConfiguration();
+  conf.set(DFSConfigKeys.DFS_BLOCK_SIZE_KEY,"512");
+  conf.setBoolean("dfs.support.append",true);
+  final MiniDFSCluster cluster=new MiniDFSCluster.Builder(conf).numDataNodes(2).build();
+  final FileSystem fs=cluster.getFileSystem();
+  assertTrue("Not a HDFS: " + fs.getUri(),fs instanceof DistributedFileSystem);
+  final DistributedFileSystem dfs=(DistributedFileSystem)fs;
+  try {
+    int fileLen=1024;
+    short replication=3;
+    int fileSpace=fileLen * replication;
+    assertTrue(dfs.mkdirs(new Path("/nqdir0/qdir1/qdir20/nqdir30")));
+    final Path quotaDir1=new Path("/nqdir0/qdir1");
+    dfs.setQuota(quotaDir1,FSConstants.QUOTA_DONT_SET,4 * fileSpace);
+    ContentSummary c=dfs.getContentSummary(quotaDir1);
+    assertEquals(c.getSpaceQuota(),4 * fileSpace);
+    final Path quotaDir20=new Path("/nqdir0/qdir1/qdir20");
+    dfs.setQuota(quotaDir20,FSConstants.QUOTA_DONT_SET,6 * fileSpace);
+    c=dfs.getContentSummary(quotaDir20);
+    assertEquals(c.getSpaceQuota(),6 * fileSpace);
+    final Path quotaDir21=new Path("/nqdir0/qdir1/qdir21");
+    assertTrue(dfs.mkdirs(quotaDir21));
+    dfs.setQuota(quotaDir21,FSConstants.QUOTA_DONT_SET,2 * fileSpace);
+    c=dfs.getContentSummary(quotaDir21);
+    assertEquals(c.getSpaceQuota(),2 * fileSpace);
+    Path tempPath=new Path(quotaDir21,"nqdir32");
+    assertTrue(dfs.mkdirs(tempPath));
+    DFSTestUtil.createFile(dfs,new Path(tempPath,"fileDir/file1"),fileLen,replication,0);
+    c=dfs.getContentSummary(quotaDir21);
+    assertEquals(c.getSpaceConsumed(),fileSpace);
+    boolean hasException=false;
+    try {
+      DFSTestUtil.createFile(dfs,new Path(quotaDir21,"nqdir33/file2"),2 * fileLen,replication,0);
+    }
+ catch (    DSQuotaExceededException e) {
+      hasException=true;
+    }
+    assertTrue(hasException);
+    assertTrue(dfs.delete(new Path(quotaDir21,"nqdir33"),true));
+    c=dfs.getContentSummary(quotaDir21);
+    assertEquals(c.getSpaceConsumed(),fileSpace);
+    assertEquals(c.getSpaceQuota(),2 * fileSpace);
+    c=dfs.getContentSummary(quotaDir20);
+    assertEquals(c.getSpaceConsumed(),0);
+    Path dstPath=new Path(quotaDir20,"nqdir30");
+    Path srcPath=new Path(quotaDir21,"nqdir32");
+    assertTrue(dfs.rename(srcPath,dstPath));
+    c=dfs.getContentSummary(quotaDir20);
+    assertEquals(c.getSpaceConsumed(),fileSpace);
+    c=dfs.getContentSummary(quotaDir1);
+    assertEquals(c.getSpaceConsumed(),fileSpace);
+    c=dfs.getContentSummary(quotaDir21);
+    assertEquals(c.getSpaceConsumed(),0);
+    final Path file2=new Path(dstPath,"fileDir/file2");
+    int file2Len=2 * fileLen;
+    DFSTestUtil.createFile(dfs,file2,file2Len,replication,0);
+    c=dfs.getContentSummary(quotaDir20);
+    assertEquals(c.getSpaceConsumed(),3 * fileSpace);
+    c=dfs.getContentSummary(quotaDir21);
+    assertEquals(c.getSpaceConsumed(),0);
+    hasException=false;
+    try {
+      assertFalse(dfs.rename(dstPath,srcPath));
+    }
+ catch (    DSQuotaExceededException e) {
+      hasException=true;
+    }
+    assertTrue(hasException);
+    assertFalse(dfs.exists(srcPath));
+    assertTrue(dfs.exists(dstPath));
+    c=dfs.getContentSummary(quotaDir20);
+    assertEquals(c.getSpaceConsumed(),3 * fileSpace);
+    c=dfs.getContentSummary(quotaDir21);
+    assertEquals(c.getSpaceConsumed(),0);
+    c=dfs.getContentSummary(quotaDir1);
+    assertEquals(c.getSpaceQuota(),4 * fileSpace);
+    c=dfs.getContentSummary(dstPath);
+    assertEquals(c.getSpaceConsumed(),3 * fileSpace);
+    OutputStream out=dfs.append(file2);
+    out.write(new byte[fileLen]);
+    out.close();
+    file2Len+=fileLen;
+    c=dfs.getContentSummary(dstPath);
+    assertEquals(c.getSpaceConsumed(),4 * fileSpace);
+    dfs.setQuota(quotaDir1,FSConstants.QUOTA_DONT_SET,5 * fileSpace);
+    out=dfs.append(file2);
+    hasException=false;
+    try {
+      out.write(new byte[fileLen + 1024]);
+      out.flush();
+      out.close();
+    }
+ catch (    DSQuotaExceededException e) {
+      hasException=true;
+      IOUtils.closeStream(out);
+    }
+    assertTrue(hasException);
+    file2Len+=fileLen;
+    c=dfs.getContentSummary(dstPath);
+    assertEquals(c.getSpaceConsumed(),5 * fileSpace);
+    dfs.setReplication(file2,(short)(replication - 1));
+    c=dfs.getContentSummary(dstPath);
+    assertEquals(c.getSpaceConsumed(),5 * fileSpace - file2Len);
+    hasException=false;
+    try {
+      dfs.setReplication(file2,(short)(replication + 1));
+    }
+ catch (    DSQuotaExceededException e) {
+      hasException=true;
+    }
+    assertTrue(hasException);
+    c=dfs.getContentSummary(dstPath);
+    assertEquals(c.getSpaceConsumed(),5 * fileSpace - file2Len);
+    dfs.setQuota(quotaDir1,FSConstants.QUOTA_DONT_SET,10 * fileSpace);
+    dfs.setQuota(quotaDir20,FSConstants.QUOTA_DONT_SET,10 * fileSpace);
+    dfs.setReplication(file2,(short)(replication + 1));
+    c=dfs.getContentSummary(dstPath);
+    assertEquals(c.getSpaceConsumed(),5 * fileSpace + file2Len);
+  }
+  finally {
+    cluster.shutdown();
+  }
+}

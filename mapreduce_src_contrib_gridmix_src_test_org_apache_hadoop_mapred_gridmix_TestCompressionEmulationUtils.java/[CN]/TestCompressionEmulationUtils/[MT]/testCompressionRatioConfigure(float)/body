@@ -1,0 +1,26 @@
+{
+  long dataSize=10 * 1024 * 1024;
+  Configuration conf=new Configuration();
+  CompressionEmulationUtil.setCompressionEmulationEnabled(conf,true);
+  CompressionEmulationUtil.setInputCompressionEmulationEnabled(conf,true);
+  conf.setLong(GenerateData.GRIDMIX_GEN_BYTES,dataSize);
+  float expectedRatio=CompressionEmulationUtil.DEFAULT_COMPRESSION_RATIO;
+  if (ratio > 0) {
+    CompressionEmulationUtil.setMapInputCompressionEmulationRatio(conf,ratio);
+    expectedRatio=CompressionEmulationUtil.standardizeCompressionRatio(ratio);
+  }
+  CompressionEmulationUtil.setupDataGeneratorConfig(conf);
+  FileSystem lfs=FileSystem.getLocal(conf);
+  Path rootTempDir=new Path(System.getProperty("test.build.data","/tmp")).makeQualified(lfs.getUri(),lfs.getWorkingDirectory());
+  Path tempDir=new Path(rootTempDir,"TestCustomRandomCompressedTextDataGenr");
+  lfs.delete(tempDir,true);
+  runDataGenJob(conf,tempDir);
+  FileStatus[] files=lfs.listStatus(tempDir,new Utils.OutputFileUtils.OutputFilesFilter());
+  long size=0;
+  for (  FileStatus status : files) {
+    size+=status.getLen();
+  }
+  float compressionRatio=((float)size) / dataSize;
+  float stdRatio=CompressionEmulationUtil.standardizeCompressionRatio(compressionRatio);
+  assertEquals(expectedRatio,stdRatio,0.0D);
+}

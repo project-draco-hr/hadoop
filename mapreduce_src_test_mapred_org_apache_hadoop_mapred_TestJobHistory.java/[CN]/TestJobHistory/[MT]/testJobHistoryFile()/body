@@ -1,0 +1,54 @@
+{
+  MiniMRCluster mr=null;
+  try {
+    JobConf conf=new JobConf();
+    conf.setLong("mapred.jobtracker.retirejob.check",1000);
+    conf.setLong("mapred.jobtracker.retirejob.interval",1000);
+    String doneFolder=TEST_ROOT_DIR + "history_done";
+    conf.set(JTConfig.JT_JOBHISTORY_COMPLETED_LOCATION,doneFolder);
+    conf.setBoolean(MRConfig.MR_ACLS_ENABLED,true);
+    mr=new MiniMRCluster(2,"file:///",3,null,null,conf);
+    conf=mr.createJobConf();
+    FileSystem fs=FileSystem.get(conf);
+    fs.delete(new Path(TEST_ROOT_DIR + "/succeed"),true);
+    Path inDir=new Path(TEST_ROOT_DIR + "/succeed/input");
+    Path outDir=new Path(TEST_ROOT_DIR + "/succeed/output");
+    conf.setSpeculativeExecution(false);
+    conf.set(JobACL.VIEW_JOB.getAclName(),"user1,user2 group1,group2");
+    conf.set(JobACL.MODIFY_JOB.getAclName(),"user3,user4 group3,group4");
+    conf.setInt("mapred.jobtracker.completeuserjobs.maximum",10);
+    RunningJob job=UtilsForTests.runJobSucceed(conf,inDir,outDir);
+    JobHistory jobHistory=mr.getJobTrackerRunner().getJobTracker().getJobHistory();
+    Path doneDir=jobHistory.getCompletedJobHistoryLocation();
+    assertEquals("History DONE folder not correct",doneFolder,doneDir.toString());
+    JobID id=job.getID();
+    String logFileName=getDoneFile(jobHistory,conf,id,doneDir);
+    Path logFile=new Path(doneDir,logFileName);
+    FileSystem fileSys=logFile.getFileSystem(conf);
+    assertTrue("History file does not exist",fileSys.exists(logFile));
+    Path confFile=getPathForConf(logFile,doneDir);
+    assertTrue("Config for completed jobs doesnt exist",fileSys.exists(confFile));
+    assertTrue("Completed job config doesnt exist in the done folder",doneDir.getName().equals(confFile.getParent().getName()));
+    assertTrue("Completed jobs doesnt exist in the done folder",doneDir.getName().equals(logFile.getParent().getName()));
+    Path runningJobsHistoryFolder=logFile.getParent().getParent();
+    Path runningJobHistoryFilename=new Path(runningJobsHistoryFolder,logFile.getName());
+    Path runningJobConfFilename=new Path(runningJobsHistoryFolder,confFile.getName());
+    assertFalse("History file not deleted from the running folder",fileSys.exists(runningJobHistoryFilename));
+    assertFalse("Config for completed jobs not deleted from running folder",fileSys.exists(runningJobConfFilename));
+    validateJobHistoryFileFormat(jobHistory,job.getID(),conf,"SUCCEEDED",false);
+    validateJobHistoryFileContent(mr,job,conf);
+    JobTracker jt=mr.getJobTrackerRunner().getJobTracker();
+    String name=jt.getLocalJobFilePath(job.getID());
+    File file=new File(name);
+    while (file.exists()) {
+      LOG.info("Waiting for " + file + " to be deleted");
+      UtilsForTests.waitFor(100);
+    }
+  }
+  finally {
+    if (mr != null) {
+      cleanupLocalFiles(mr);
+      mr.shutdown();
+    }
+  }
+}

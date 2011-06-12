@@ -1,0 +1,89 @@
+{
+  DistributedFileSystem fs=null;
+  try {
+    Configuration conf=new HdfsConfiguration();
+    cluster=new MiniDFSCluster.Builder(conf).numDataNodes(numDatanodes).build();
+    cluster.waitActive();
+    fs=(DistributedFileSystem)(cluster.getFileSystem());
+    FSNamesystem namesystem=cluster.getNamesystem();
+    namesystem.getDelegationTokenSecretManager().startThreads();
+    String renewer=UserGroupInformation.getLoginUser().getUserName();
+    Token<DelegationTokenIdentifier> token1=namesystem.getDelegationToken(new Text(renewer));
+    Token<DelegationTokenIdentifier> token2=namesystem.getDelegationToken(new Text(renewer));
+    DFSAdmin admin=new DFSAdmin(conf);
+    String[] args=new String[]{"-saveNamespace"};
+    Collection<URI> editsDirs=cluster.getNameEditsDirs(0);
+    for (    URI uri : editsDirs) {
+      File ed=new File(uri.getPath());
+      Assert.assertTrue(new File(ed,"current/edits").length() > Integer.SIZE / Byte.SIZE);
+    }
+    fs.setSafeMode(SafeModeAction.SAFEMODE_ENTER);
+    try {
+      admin.run(args);
+    }
+ catch (    Exception e) {
+      throw new IOException(e.getMessage());
+    }
+    for (    URI uri : editsDirs) {
+      File ed=new File(uri.getPath());
+      Assert.assertTrue(new File(ed,"current/edits").length() == Integer.SIZE / Byte.SIZE);
+    }
+    cluster.shutdown();
+    cluster=null;
+    cluster=new MiniDFSCluster.Builder(conf).numDataNodes(numDatanodes).format(false).build();
+    cluster.waitActive();
+    try {
+      renewToken(token1);
+      renewToken(token2);
+    }
+ catch (    IOException e) {
+      Assert.fail("Could not renew or cancel the token");
+    }
+    namesystem=cluster.getNamesystem();
+    namesystem.getDelegationTokenSecretManager().startThreads();
+    Token<DelegationTokenIdentifier> token3=namesystem.getDelegationToken(new Text(renewer));
+    Token<DelegationTokenIdentifier> token4=namesystem.getDelegationToken(new Text(renewer));
+    cluster.shutdown();
+    cluster=null;
+    cluster=new MiniDFSCluster.Builder(conf).numDataNodes(numDatanodes).format(false).build();
+    cluster.waitActive();
+    namesystem=cluster.getNamesystem();
+    namesystem.getDelegationTokenSecretManager().startThreads();
+    Token<DelegationTokenIdentifier> token5=namesystem.getDelegationToken(new Text(renewer));
+    try {
+      renewToken(token1);
+      renewToken(token2);
+      renewToken(token3);
+      renewToken(token4);
+      renewToken(token5);
+    }
+ catch (    IOException e) {
+      Assert.fail("Could not renew or cancel the token");
+    }
+    cluster.shutdown();
+    cluster=null;
+    cluster=new MiniDFSCluster.Builder(conf).numDataNodes(numDatanodes).format(false).build();
+    cluster.waitActive();
+    namesystem=cluster.getNamesystem();
+    namesystem.getDelegationTokenSecretManager().startThreads();
+    try {
+      renewToken(token1);
+      cancelToken(token1);
+      renewToken(token2);
+      cancelToken(token2);
+      renewToken(token3);
+      cancelToken(token3);
+      renewToken(token4);
+      cancelToken(token4);
+      renewToken(token5);
+      cancelToken(token5);
+    }
+ catch (    IOException e) {
+      Assert.fail("Could not renew or cancel the token");
+    }
+  }
+  finally {
+    if (fs != null)     fs.close();
+    if (cluster != null)     cluster.shutdown();
+  }
+}

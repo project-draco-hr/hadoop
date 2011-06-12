@@ -1,0 +1,33 @@
+{
+  this.maxLineLength=job.getInt(org.apache.hadoop.mapreduce.lib.input.LineRecordReader.MAX_LINE_LENGTH,Integer.MAX_VALUE);
+  start=split.getStart();
+  end=start + split.getLength();
+  final Path file=split.getPath();
+  compressionCodecs=new CompressionCodecFactory(job);
+  codec=compressionCodecs.getCodec(file);
+  final FileSystem fs=file.getFileSystem(job);
+  fileIn=fs.open(file);
+  if (isCompressedInput()) {
+    decompressor=CodecPool.getDecompressor(codec);
+    if (codec instanceof SplittableCompressionCodec) {
+      final SplitCompressionInputStream cIn=((SplittableCompressionCodec)codec).createInputStream(fileIn,decompressor,start,end,SplittableCompressionCodec.READ_MODE.BYBLOCK);
+      in=new LineReader(cIn,job);
+      start=cIn.getAdjustedStart();
+      end=cIn.getAdjustedEnd();
+      filePosition=cIn;
+    }
+ else {
+      in=new LineReader(codec.createInputStream(fileIn,decompressor),job);
+      filePosition=fileIn;
+    }
+  }
+ else {
+    fileIn.seek(start);
+    in=new LineReader(fileIn,job);
+    filePosition=fileIn;
+  }
+  if (start != 0) {
+    start+=in.readLine(new Text(),0,maxBytesToConsume(start));
+  }
+  this.pos=start;
+}

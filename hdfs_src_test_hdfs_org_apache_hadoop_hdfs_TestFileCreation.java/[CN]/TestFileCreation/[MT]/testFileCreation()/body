@@ -1,0 +1,47 @@
+{
+  Configuration conf=new HdfsConfiguration();
+  if (simulatedStorage) {
+    conf.setBoolean(SimulatedFSDataset.CONFIG_PROPERTY_SIMULATED,true);
+  }
+  MiniDFSCluster cluster=new MiniDFSCluster.Builder(conf).build();
+  FileSystem fs=cluster.getFileSystem();
+  try {
+    Path path=new Path("/");
+    System.out.println("Path : \"" + path.toString() + "\"");
+    System.out.println(fs.getFileStatus(path).isDirectory());
+    assertTrue("/ should be a directory",fs.getFileStatus(path).isDirectory());
+    Path dir1=new Path("/test_dir");
+    fs.mkdirs(dir1);
+    System.out.println("createFile: Creating " + dir1.getName() + " for overwrite of existing directory.");
+    try {
+      fs.create(dir1,true);
+      fs.close();
+      assertTrue("Did not prevent directory from being overwritten.",false);
+    }
+ catch (    IOException ie) {
+      if (!ie.getMessage().contains("already exists as a directory."))       throw ie;
+    }
+    Path file1=new Path("filestatus.dat");
+    Path parent=file1.getParent();
+    fs.mkdirs(parent);
+    DistributedFileSystem dfs=(DistributedFileSystem)fs;
+    dfs.setQuota(file1.getParent(),100L,blockSize * 5);
+    FSDataOutputStream stm=createFile(fs,file1,1);
+    assertTrue(file1 + " should be a file",fs.getFileStatus(file1).isFile());
+    System.out.println("Path : \"" + file1 + "\"");
+    writeFile(stm);
+    stm.close();
+    long len=fs.getFileStatus(file1).getLen();
+    assertTrue(file1 + " should be of size " + fileSize+ " but found to be of size "+ len,len == fileSize);
+    long diskSpace=dfs.getContentSummary(file1.getParent()).getLength();
+    assertEquals(file1 + " should take " + fileSize+ " bytes disk space "+ "but found to take "+ diskSpace+ " bytes",fileSize,diskSpace);
+    if (simulatedStorage) {
+      DataNode dn=cluster.getDataNodes().get(0);
+      assertEquals(fileSize,dn.getFSDataset().getDfsUsed());
+      assertEquals(SimulatedFSDataset.DEFAULT_CAPACITY - fileSize,dn.getFSDataset().getRemaining());
+    }
+  }
+  finally {
+    cluster.shutdown();
+  }
+}

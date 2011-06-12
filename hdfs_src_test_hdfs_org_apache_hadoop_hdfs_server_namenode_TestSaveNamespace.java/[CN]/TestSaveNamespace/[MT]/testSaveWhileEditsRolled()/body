@@ -1,0 +1,30 @@
+{
+  Configuration conf=getConf();
+  NameNode.initMetrics(conf,NamenodeRole.ACTIVE);
+  DFSTestUtil.formatNameNode(conf);
+  FSNamesystem fsn=new FSNamesystem(conf);
+  final FSImage originalImage=fsn.dir.fsImage;
+  originalImage.getStorage().close();
+  FSImage spyImage=spy(originalImage);
+  spyImage.getStorage().setStorageDirectories(FSNamesystem.getNamespaceDirs(conf),FSNamesystem.getNamespaceEditsDirs(conf));
+  fsn.dir.fsImage=spyImage;
+  try {
+    doAnEdit(fsn,1);
+    CheckpointSignature sig=fsn.rollEditLog();
+    LOG.warn("Checkpoint signature: " + sig);
+    doAnEdit(fsn,2);
+    fsn.setSafeMode(SafeModeAction.SAFEMODE_ENTER);
+    fsn.saveNamespace();
+    originalImage.close();
+    fsn.close();
+    fsn=null;
+    fsn=new FSNamesystem(conf);
+    checkEditExists(fsn,1);
+    checkEditExists(fsn,2);
+  }
+  finally {
+    if (fsn != null) {
+      fsn.close();
+    }
+  }
+}

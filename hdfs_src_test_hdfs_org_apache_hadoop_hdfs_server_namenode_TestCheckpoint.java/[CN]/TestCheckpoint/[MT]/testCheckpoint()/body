@@ -1,0 +1,65 @@
+{
+  Path file1=new Path("checkpoint.dat");
+  Path file2=new Path("checkpoint2.dat");
+  Collection<URI> namedirs=null;
+  Configuration conf=new HdfsConfiguration();
+  conf.set(DFSConfigKeys.DFS_NAMENODE_SECONDARY_HTTP_ADDRESS_KEY,"0.0.0.0:0");
+  replication=(short)conf.getInt(DFSConfigKeys.DFS_REPLICATION_KEY,3);
+  MiniDFSCluster cluster=new MiniDFSCluster.Builder(conf).numDataNodes(numDatanodes).build();
+  cluster.waitActive();
+  FileSystem fileSys=cluster.getFileSystem();
+  try {
+    assertTrue(!fileSys.exists(file1));
+    assertTrue(!fileSys.exists(file2));
+    namedirs=cluster.getNameDirs(0);
+    writeFile(fileSys,file1,replication);
+    checkFile(fileSys,file1,replication);
+    SecondaryNameNode secondary=startSecondaryNameNode(conf);
+    ErrorSimulator.initializeErrorSimulationEvent(4);
+    secondary.doCheckpoint();
+    secondary.shutdown();
+  }
+  finally {
+    fileSys.close();
+    cluster.shutdown();
+  }
+  cluster=new MiniDFSCluster.Builder(conf).numDataNodes(numDatanodes).format(false).build();
+  cluster.waitActive();
+  fileSys=cluster.getFileSystem();
+  Path tmpDir=new Path("/tmp_tmp");
+  try {
+    checkFile(fileSys,file1,replication);
+    cleanupFile(fileSys,file1);
+    writeFile(fileSys,file2,replication);
+    checkFile(fileSys,file2,replication);
+    SecondaryNameNode secondary=startSecondaryNameNode(conf);
+    secondary.doCheckpoint();
+    fileSys.delete(tmpDir,true);
+    fileSys.mkdirs(tmpDir);
+    secondary.doCheckpoint();
+    secondary.shutdown();
+  }
+  finally {
+    fileSys.close();
+    cluster.shutdown();
+  }
+  cluster=new MiniDFSCluster.Builder(conf).numDataNodes(numDatanodes).format(false).build();
+  cluster.waitActive();
+  fileSys=cluster.getFileSystem();
+  assertTrue(!fileSys.exists(file1));
+  assertTrue(fileSys.exists(tmpDir));
+  try {
+    checkFile(fileSys,file2,replication);
+  }
+  finally {
+    fileSys.close();
+    cluster.shutdown();
+  }
+  testNameNodeImageSendFail(conf);
+  testSecondaryNamenodeError1(conf);
+  testSecondaryNamenodeError2(conf);
+  testSecondaryNamenodeError3(conf);
+  testNamedirError(conf,namedirs);
+  testSecondaryFailsToReturnImage(conf);
+  testStartup(conf);
+}

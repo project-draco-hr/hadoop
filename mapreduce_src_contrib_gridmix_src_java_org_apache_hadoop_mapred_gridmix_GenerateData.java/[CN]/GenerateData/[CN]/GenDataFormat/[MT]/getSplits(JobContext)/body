@@ -1,0 +1,23 @@
+{
+  final JobClient client=new JobClient(new JobConf(jobCtxt.getConfiguration()));
+  ClusterStatus stat=client.getClusterStatus(true);
+  final long toGen=jobCtxt.getConfiguration().getLong(GRIDMIX_GEN_BYTES,-1);
+  if (toGen < 0) {
+    throw new IOException("Invalid/missing generation bytes: " + toGen);
+  }
+  final int nTrackers=stat.getTaskTrackers();
+  final long bytesPerTracker=toGen / nTrackers;
+  final ArrayList<InputSplit> splits=new ArrayList<InputSplit>(nTrackers);
+  final Pattern trackerPattern=Pattern.compile("tracker_([^:]*):.*");
+  final Matcher m=trackerPattern.matcher("");
+  for (  String tracker : stat.getActiveTrackerNames()) {
+    m.reset(tracker);
+    if (!m.find()) {
+      System.err.println("Skipping node: " + tracker);
+      continue;
+    }
+    final String name=m.group(1);
+    splits.add(new GenSplit(bytesPerTracker,new String[]{name}));
+  }
+  return splits;
+}

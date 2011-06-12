@@ -1,0 +1,35 @@
+{
+  int numMaps=4;
+  int numReds=4;
+  JobConf conf=new JobConf();
+  conf.setNumMapTasks(numMaps);
+  conf.setNumReduceTasks(numReds);
+  conf.setSpeculativeExecution(false);
+  conf.setBoolean(JobContext.SETUP_CLEANUP_NEEDED,false);
+  MyFakeJobInProgress job1=new MyFakeJobInProgress(conf,jobTracker);
+  job1.initTasks();
+  TaskAttemptID[] tid=new TaskAttemptID[numMaps];
+  for (int i=0; i < numMaps; i++) {
+    tid[i]=job1.findAndRunNewTask(true,trackers[i],hosts[i],clusterSize,numUniqueHosts);
+  }
+  for (int i=0; i < numMaps; i++) {
+    job1.failTask(tid[i]);
+  }
+  MyFakeJobInProgress job2=new MyFakeJobInProgress(conf,jobTracker);
+  job2.initTasks();
+  for (int i=0; i < numMaps; i++) {
+    tid[i]=job2.findAndRunNewTask(true,trackers[i],hosts[i],clusterSize,numUniqueHosts);
+    job2.finishTask(tid[i]);
+  }
+  for (int i=0; i < numReds / 2; i++) {
+    tid[i]=job2.findAndRunNewTask(false,trackers[i],hosts[i],clusterSize,numUniqueHosts);
+  }
+  for (int i=0; i < numReds / 4; i++) {
+    job2.finishTask(tid[i]);
+  }
+  for (int i=numReds / 4; i < numReds / 2; i++) {
+    job2.failTask(tid[i]);
+  }
+  checkTaskCounts(job1,0,numMaps,0,numReds);
+  checkTaskCounts(job2,0,0,0,3 * numReds / 4);
+}

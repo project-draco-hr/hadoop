@@ -1,0 +1,55 @@
+{
+  Job job=Job.getInstance(getConf());
+  job.setJarByClass(GenericMRLoadGenerator.class);
+  job.setMapperClass(SampleMapper.class);
+  job.setReducerClass(SampleReducer.class);
+  if (!parseArgs(argv,job)) {
+    return -1;
+  }
+  Configuration conf=job.getConfiguration();
+  if (null == FileOutputFormat.getOutputPath(job)) {
+    job.setOutputFormatClass(NullOutputFormat.class);
+  }
+  if (0 == FileInputFormat.getInputPaths(job).length) {
+    System.err.println("No input path; ignoring InputFormat");
+    confRandom(job);
+  }
+ else   if (null != conf.getClass(INDIRECT_INPUT_FORMAT,null)) {
+    JobClient jClient=new JobClient(conf);
+    Path tmpDir=new Path("/tmp");
+    Random r=new Random();
+    Path indirInputFile=new Path(tmpDir,Integer.toString(r.nextInt(Integer.MAX_VALUE),36) + "_files");
+    conf.set(INDIRECT_INPUT_FILE,indirInputFile.toString());
+    SequenceFile.Writer writer=SequenceFile.createWriter(tmpDir.getFileSystem(conf),conf,indirInputFile,LongWritable.class,Text.class,SequenceFile.CompressionType.NONE);
+    try {
+      for (      Path p : FileInputFormat.getInputPaths(job)) {
+        FileSystem fs=p.getFileSystem(conf);
+        Stack<Path> pathstack=new Stack<Path>();
+        pathstack.push(p);
+        while (!pathstack.empty()) {
+          for (          FileStatus stat : fs.listStatus(pathstack.pop())) {
+            if (stat.isDirectory()) {
+              if (!stat.getPath().getName().startsWith("_")) {
+                pathstack.push(stat.getPath());
+              }
+            }
+ else {
+              writer.sync();
+              writer.append(new LongWritable(stat.getLen()),new Text(stat.getPath().toUri().toString()));
+            }
+          }
+        }
+      }
+    }
+  finally {
+      writer.close();
+    }
+  }
+  Date startTime=new Date();
+  System.out.println("Job started: " + startTime);
+  int ret=job.waitForCompletion(true) ? 0 : 1;
+  Date endTime=new Date();
+  System.out.println("Job ended: " + endTime);
+  System.out.println("The job took " + (endTime.getTime() - startTime.getTime()) / 1000 + " seconds.");
+  return ret;
+}

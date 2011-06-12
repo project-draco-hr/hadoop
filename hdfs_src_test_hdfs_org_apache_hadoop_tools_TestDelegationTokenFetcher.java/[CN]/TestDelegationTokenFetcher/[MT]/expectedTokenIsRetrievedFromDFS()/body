@@ -1,0 +1,28 @@
+{
+  final byte[] ident=new DelegationTokenIdentifier(new Text("owner"),new Text("renewer"),new Text("realuser")).getBytes();
+  final byte[] pw=new byte[]{42};
+  final Text kind=new Text("MY-KIND");
+  final Text service=new Text(uri.toString());
+  Token<DelegationTokenIdentifier> t=new Token<DelegationTokenIdentifier>(ident,pw,kind,service);
+  when(dfs.getDelegationToken((String)null)).thenReturn(t);
+  when(dfs.renewDelegationToken(eq(t))).thenReturn(1000L);
+  when(dfs.getUri()).thenReturn(uri);
+  FileSystem fileSys=FileSystem.getLocal(conf);
+  try {
+    DelegationTokenFetcher.main(new String[]{"-fs",uri.toString(),tokenFile});
+    Path p=new Path(fileSys.getWorkingDirectory(),tokenFile);
+    Credentials creds=Credentials.readTokenStorageFile(p,conf);
+    Iterator<Token<?>> itr=creds.getAllTokens().iterator();
+    assertTrue(itr.hasNext());
+    assertEquals(t,itr.next());
+    assertTrue(!itr.hasNext());
+    DelegationTokenFetcher.main(new String[]{"-fs",uri.toString(),"--print",tokenFile});
+    DelegationTokenFetcher.main(new String[]{"-fs",uri.toString(),"--renew",tokenFile});
+    DelegationTokenFetcher.main(new String[]{"-fs",uri.toString(),"--cancel",tokenFile});
+    verify(dfs).renewDelegationToken(eq(t));
+    verify(dfs).cancelDelegationToken(eq(t));
+  }
+  finally {
+    fileSys.delete(new Path(tokenFile),true);
+  }
+}

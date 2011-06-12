@@ -1,0 +1,36 @@
+{
+  if (debug) {
+    LOG.debug("max map tasks " + Integer.toString(maxMapTasks) + " "+ taskType(map));
+    LOG.debug("max reduce tasks " + Integer.toString(maxReduceTasks) + " "+ taskType(map));
+  }
+  int maxTasks=(map) ? maxMapTasks : maxReduceTasks;
+  Map<String,QueueAllocation> shares=allocator.getAllocation();
+  Map<String,QueueQuota> quotaMap=new HashMap<String,QueueQuota>();
+  for (  QueueAllocation share : shares.values()) {
+    QueueQuota quota=new QueueQuota(share.getName());
+    quota.mappers=Math.round(share.getShare() * maxMapTasks);
+    quota.reducers=Math.round(share.getShare() * maxReduceTasks);
+    quota.quota=(map) ? quota.mappers : quota.reducers;
+    if (debug) {
+      LOG.debug("queue " + quota.name + " initial quota "+ Integer.toString(quota.quota)+ " "+ taskType(map));
+    }
+    quota.map_used=0;
+    quota.reduce_used=0;
+    quota.map_pending=0;
+    quota.reduce_pending=0;
+    Collection<JobInProgress> jobs=getJobs(quota.name);
+    for (    JobInProgress job : jobs) {
+      quota.map_pending+=job.pendingMaps();
+      quota.reduce_pending+=job.pendingReduces();
+      int running=(map) ? job.runningMapTasks : job.runningReduceTasks;
+      quota.quota-=running;
+      quota.map_used+=job.runningMapTasks;
+      quota.reduce_used+=job.runningReduceTasks;
+    }
+    if (debug) {
+      LOG.debug("queue " + quota.name + " quota "+ Integer.toString(quota.quota)+ " "+ taskType(map));
+    }
+    quotaMap.put(quota.name,quota);
+  }
+  return quotaMap;
+}

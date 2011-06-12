@@ -1,0 +1,88 @@
+{
+  long start=0;
+  long end=-1;
+  boolean plainText=false;
+  TaskLog.LogName filter=null;
+  boolean isCleanup=false;
+  String attemptIdStr=request.getParameter("attemptid");
+  if (attemptIdStr == null) {
+    response.sendError(HttpServletResponse.SC_BAD_REQUEST,"Argument attemptid is required");
+    return;
+  }
+  String logFilter=request.getParameter("filter");
+  if (logFilter != null) {
+    try {
+      filter=TaskLog.LogName.valueOf(TaskLog.LogName.class,logFilter.toUpperCase());
+    }
+ catch (    IllegalArgumentException iae) {
+      response.sendError(HttpServletResponse.SC_BAD_REQUEST,"Illegal value for filter: " + logFilter);
+      return;
+    }
+  }
+  String sLogOff=request.getParameter("start");
+  if (sLogOff != null) {
+    start=Long.valueOf(sLogOff).longValue();
+  }
+  String sLogEnd=request.getParameter("end");
+  if (sLogEnd != null) {
+    end=Long.valueOf(sLogEnd).longValue();
+  }
+  String sPlainText=request.getParameter("plaintext");
+  if (sPlainText != null) {
+    plainText=Boolean.valueOf(sPlainText);
+  }
+  String sCleanup=request.getParameter("cleanup");
+  if (sCleanup != null) {
+    isCleanup=Boolean.valueOf(sCleanup);
+  }
+  TaskAttemptID attemptId=TaskAttemptID.forName(attemptIdStr);
+  if (!TaskLog.getAttemptDir(attemptId,isCleanup).exists()) {
+    response.sendError(HttpServletResponse.SC_GONE,"Task log directory for task " + attemptId + " does not exist. May be cleaned up by Task Tracker, if older logs.");
+    return;
+  }
+  String user=request.getRemoteUser();
+  if (user != null) {
+    ServletContext context=getServletContext();
+    TaskTracker taskTracker=(TaskTracker)context.getAttribute("task.tracker");
+    JobID jobId=attemptId.getJobID();
+    JobConf jobACLConf=getConfFromJobACLsFile(jobId);
+    if (jobACLConf != null) {
+      try {
+        checkAccessForTaskLogs(jobACLConf,user,jobId.toString(),taskTracker);
+      }
+ catch (      AccessControlException e) {
+        String errMsg="User " + user + " failed to view tasklogs of job "+ jobId+ "!\n\n"+ e.getMessage();
+        response.sendError(HttpServletResponse.SC_UNAUTHORIZED,errMsg);
+        return;
+      }
+    }
+  }
+  OutputStream out=response.getOutputStream();
+  if (!plainText) {
+    response.setContentType("text/html; charset=utf-8");
+    out.write(("<html>\n" + "<title>Task Logs: '" + attemptId + "'</title>\n"+ "<body>\n"+ "<h1>Task Logs: '"+ attemptId+ "'</h1><br>\n").getBytes());
+    if (filter == null) {
+      printTaskLog(response,out,attemptId,start,end,plainText,TaskLog.LogName.STDOUT,isCleanup);
+      printTaskLog(response,out,attemptId,start,end,plainText,TaskLog.LogName.STDERR,isCleanup);
+      printTaskLog(response,out,attemptId,start,end,plainText,TaskLog.LogName.SYSLOG,isCleanup);
+      if (haveTaskLog(attemptId,isCleanup,TaskLog.LogName.DEBUGOUT)) {
+        printTaskLog(response,out,attemptId,start,end,plainText,TaskLog.LogName.DEBUGOUT,isCleanup);
+      }
+      if (haveTaskLog(attemptId,isCleanup,TaskLog.LogName.PROFILE)) {
+        printTaskLog(response,out,attemptId,start,end,plainText,TaskLog.LogName.PROFILE,isCleanup);
+      }
+    }
+ else {
+      printTaskLog(response,out,attemptId,start,end,plainText,filter,isCleanup);
+    }
+    out.write("</body></html>\n".getBytes());
+    out.close();
+  }
+ else   if (filter == null) {
+    response.sendError(HttpServletResponse.SC_BAD_REQUEST,"You must supply a value for `filter' (STDOUT, STDERR, or SYSLOG) if you set plainText = true");
+  }
+ else {
+    response.setContentType("text/plain; charset=utf-8");
+    printTaskLog(response,out,attemptId,start,end,plainText,filter,isCleanup);
+  }
+}

@@ -1,0 +1,18 @@
+{
+  FileSystem fs=cluster.getFileSystem();
+  Path testPath=new Path(filePath);
+  if (!fs.exists(testPath)) {
+    DFSTestUtil.writeFile(fs,testPath,FILE_DATA);
+  }
+  InetSocketAddress nnIpcAddress=cluster.getNameNode().getNameNodeAddress();
+  InetSocketAddress nnHttpAddress=cluster.getNameNode().getHttpAddress();
+  int dnInfoPort=cluster.getDataNodes().get(0).getInfoPort();
+  String jspName=doTail ? "tail.jsp" : "browseDirectory.jsp";
+  String fileParamName=doTail ? "filename" : "dir";
+  URL url=new URL("http://localhost:" + dnInfoPort + "/"+ jspName+ JspHelper.getUrlParam(fileParamName,URLEncoder.encode(testPath.toString(),"UTF-8"),true)+ JspHelper.getUrlParam("namenodeInfoPort",Integer.toString(nnHttpAddress.getPort()))+ JspHelper.getUrlParam("nnaddr","localhost:" + nnIpcAddress.getPort()));
+  String viewFilePage=DFSTestUtil.urlGet(url);
+  assertTrue("page should show preview of file contents",viewFilePage.contains(FILE_DATA));
+  if (!doTail) {
+    assertTrue("page should show link to download file",viewFilePage.contains("/streamFile" + URIUtil.encodePath(testPath.toString()) + "?nnaddr=localhost:"+ nnIpcAddress.getPort()));
+  }
+}

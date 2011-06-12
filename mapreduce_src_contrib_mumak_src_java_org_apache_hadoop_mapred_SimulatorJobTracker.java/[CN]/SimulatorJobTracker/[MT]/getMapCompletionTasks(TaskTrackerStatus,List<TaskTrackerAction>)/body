@@ -1,0 +1,43 @@
+{
+  boolean loggingEnabled=LOG.isDebugEnabled();
+  Set<TaskAttemptID> killedTasks=new HashSet<TaskAttemptID>();
+  if (tasksToKill != null) {
+    for (    TaskTrackerAction taskToKill : tasksToKill) {
+      killedTasks.add(((KillTaskAction)taskToKill).getTaskID());
+    }
+  }
+  String trackerName=status.getTrackerName();
+  List<TaskTrackerAction> actions=new ArrayList<TaskTrackerAction>();
+  for (  TaskStatus report : status.getTaskReports()) {
+    TaskAttemptID taskAttemptId=report.getTaskID();
+    SimulatorJobInProgress job=getSimulatorJob(taskAttemptId.getJobID());
+    if (job == null) {
+      Set<JobID> jobsToCleanup=trackerToJobsToCleanup.get(trackerName);
+      if (jobsToCleanup == null) {
+        jobsToCleanup=new HashSet<JobID>();
+        trackerToJobsToCleanup.put(trackerName,jobsToCleanup);
+      }
+      jobsToCleanup.add(taskAttemptId.getJobID());
+      continue;
+    }
+    JobStatus jobStatus=job.getStatus();
+    TaskInProgress tip=taskidToTIPMap.get(taskAttemptId);
+    if (jobStatus.getRunState() == JobStatus.RUNNING && tip.isRunningTask(taskAttemptId) && !killedTasks.contains(taskAttemptId) && !report.getIsMap() && report.getPhase() == TaskStatus.Phase.SHUFFLE) {
+      if (loggingEnabled) {
+        LOG.debug("Need map-completion information for REDUCEattempt " + taskAttemptId + " in tracker "+ trackerName);
+        LOG.debug("getMapCompletion: job=" + job.getJobID() + " pendingMaps="+ job.pendingMaps());
+      }
+      boolean canSendMapCompletion=false;
+      canSendMapCompletion=(job.finishedMaps() == job.desiredMaps());
+      if (canSendMapCompletion) {
+        if (loggingEnabled) {
+          LOG.debug("Adding MapCompletion for taskAttempt " + taskAttemptId + " in tracker "+ trackerName);
+          LOG.debug("FinishedMaps for job:" + job.getJobID() + " is = "+ job.finishedMaps()+ "/"+ job.desiredMaps());
+          LOG.debug("AllMapsCompleted for task " + taskAttemptId + " time="+ getClock().getTime());
+        }
+        actions.add(new AllMapsCompletedTaskAction(taskAttemptId));
+      }
+    }
+  }
+  return actions;
+}

@@ -1,0 +1,63 @@
+{
+synchronized (this) {
+    localAnalysis.map(key,value,tmpCollector,reporter);
+    if (tmpKey != null && tmpValue != null) {
+      DocumentAndOp doc=tmpValue;
+      IntermediateForm form=new IntermediateForm();
+      form.configure(iconf);
+      form.process(doc,analyzer);
+      form.closeWriter();
+      if (doc.getOp() == DocumentAndOp.Op.INSERT) {
+        int chosenShard=distributionPolicy.chooseShardForInsert(tmpKey);
+        if (chosenShard >= 0) {
+          output.collect(shards[chosenShard],form);
+        }
+ else {
+          throw new IOException("Chosen shard for insert must be >= 0");
+        }
+      }
+ else       if (doc.getOp() == DocumentAndOp.Op.DELETE) {
+        int chosenShard=distributionPolicy.chooseShardForDelete(tmpKey);
+        if (chosenShard >= 0) {
+          output.collect(shards[chosenShard],form);
+        }
+ else {
+          for (int i=0; i < shards.length; i++) {
+            output.collect(shards[i],form);
+          }
+        }
+      }
+ else {
+        int insertToShard=distributionPolicy.chooseShardForInsert(tmpKey);
+        int deleteFromShard=distributionPolicy.chooseShardForDelete(tmpKey);
+        if (insertToShard >= 0) {
+          if (insertToShard == deleteFromShard) {
+            output.collect(shards[insertToShard],form);
+          }
+ else {
+            IntermediateForm deletionForm=new IntermediateForm();
+            deletionForm.configure(iconf);
+            deletionForm.process(new DocumentAndOp(DocumentAndOp.Op.DELETE,doc.getTerm()),analyzer);
+            deletionForm.closeWriter();
+            if (deleteFromShard >= 0) {
+              output.collect(shards[deleteFromShard],deletionForm);
+            }
+ else {
+              for (int i=0; i < shards.length; i++) {
+                output.collect(shards[i],deletionForm);
+              }
+            }
+            IntermediateForm insertionForm=new IntermediateForm();
+            insertionForm.configure(iconf);
+            insertionForm.process(new DocumentAndOp(DocumentAndOp.Op.INSERT,doc.getDocument()),analyzer);
+            insertionForm.closeWriter();
+            output.collect(shards[insertToShard],insertionForm);
+          }
+        }
+ else {
+          throw new IOException("Chosen shard for insert must be >= 0");
+        }
+      }
+    }
+  }
+}

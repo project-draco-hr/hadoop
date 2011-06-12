@@ -1,0 +1,50 @@
+{
+  int targetNumTasks=job.getConfiguration().getInt(MRJobConfig.NUM_MAPS,1);
+  if (1 == targetNumTasks) {
+    List<InputSplit> singletonSplit=new ArrayList<InputSplit>();
+    singletonSplit.add(new DataDrivenDBInputSplit("1=1","1=1"));
+    return singletonSplit;
+  }
+  ResultSet results=null;
+  Statement statement=null;
+  Connection connection=getConnection();
+  try {
+    statement=connection.createStatement();
+    results=statement.executeQuery(getBoundingValsQuery());
+    results.next();
+    int sqlDataType=results.getMetaData().getColumnType(1);
+    DBSplitter splitter=getSplitter(sqlDataType);
+    if (null == splitter) {
+      throw new IOException("Unknown SQL data type: " + sqlDataType);
+    }
+    return splitter.split(job.getConfiguration(),results,getDBConf().getInputOrderBy());
+  }
+ catch (  SQLException e) {
+    throw new IOException(e.getMessage());
+  }
+ finally {
+    try {
+      if (null != results) {
+        results.close();
+      }
+    }
+ catch (    SQLException se) {
+      LOG.debug("SQLException closing resultset: " + se.toString());
+    }
+    try {
+      if (null != statement) {
+        statement.close();
+      }
+    }
+ catch (    SQLException se) {
+      LOG.debug("SQLException closing statement: " + se.toString());
+    }
+    try {
+      connection.commit();
+      closeConnection();
+    }
+ catch (    SQLException se) {
+      LOG.debug("SQLException committing split transaction: " + se.toString());
+    }
+  }
+}

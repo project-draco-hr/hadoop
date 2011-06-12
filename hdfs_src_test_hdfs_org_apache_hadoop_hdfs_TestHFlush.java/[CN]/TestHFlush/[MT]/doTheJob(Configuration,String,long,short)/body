@@ -1,0 +1,42 @@
+{
+  byte[] fileContent;
+  final int SECTIONS=10;
+  fileContent=AppendTestUtil.initBuffer(AppendTestUtil.FILE_SIZE);
+  MiniDFSCluster cluster=new MiniDFSCluster.Builder(conf).numDataNodes(replicas).build();
+  DistributedFileSystem fileSystem=(DistributedFileSystem)cluster.getFileSystem();
+  FSDataInputStream is;
+  try {
+    Path path=new Path(fileName);
+    FSDataOutputStream stm=fileSystem.create(path,false,4096,replicas,block_size);
+    System.out.println("Created file " + fileName);
+    int tenth=AppendTestUtil.FILE_SIZE / SECTIONS;
+    int rounding=AppendTestUtil.FILE_SIZE - tenth * SECTIONS;
+    for (int i=0; i < SECTIONS; i++) {
+      System.out.println("Writing " + (tenth * i) + " to "+ (tenth * (i + 1))+ " section to file "+ fileName);
+      stm.write(fileContent,tenth * i,tenth);
+      ((DFSOutputStream)stm.getWrappedStream()).hflush();
+      byte[] toRead=new byte[tenth];
+      byte[] expected=new byte[tenth];
+      System.arraycopy(fileContent,tenth * i,expected,0,tenth);
+      is=fileSystem.open(path);
+      is.seek(tenth * i);
+      int readBytes=is.read(toRead,0,tenth);
+      System.out.println("Has read " + readBytes);
+      assertTrue("Should've get more bytes",(readBytes > 0) && (readBytes <= tenth));
+      is.close();
+      checkData(toRead,0,readBytes,expected,"Partial verification");
+    }
+    System.out.println("Writing " + (tenth * SECTIONS) + " to "+ (tenth * SECTIONS + rounding)+ " section to file "+ fileName);
+    stm.write(fileContent,tenth * SECTIONS,rounding);
+    stm.close();
+    assertEquals("File size doesn't match ",AppendTestUtil.FILE_SIZE,fileSystem.getFileStatus(path).getLen());
+    AppendTestUtil.checkFullFile(fileSystem,path,fileContent.length,fileContent,"hflush()");
+  }
+ catch (  Exception e) {
+    e.printStackTrace();
+  }
+ finally {
+    fileSystem.close();
+    cluster.shutdown();
+  }
+}

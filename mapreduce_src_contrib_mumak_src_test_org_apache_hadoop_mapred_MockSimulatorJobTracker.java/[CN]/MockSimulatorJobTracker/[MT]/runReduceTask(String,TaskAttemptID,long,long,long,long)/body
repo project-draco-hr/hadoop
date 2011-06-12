@@ -1,0 +1,34 @@
+{
+  long mapDone=nextHeartbeat(reduceStart + mapDoneDelay);
+  long reduceDone=mapDone + reduceRuntime;
+  long reduceEndHeartbeat=nextHeartbeat(reduceDone);
+  final boolean isKilled=(killHeartbeat >= 0);
+  if (isKilled) {
+    reduceEndHeartbeat=nextHeartbeat(killHeartbeat + 1);
+  }
+  LOG.debug("reduceStart=" + reduceStart + ", mapDone="+ mapDone+ ", reduceDone="+ reduceDone+ ", reduceEndHeartbeat="+ reduceEndHeartbeat+ ", killHeartbeat="+ killHeartbeat);
+  final int numSlotsRequired=1;
+  org.apache.hadoop.mapred.TaskAttemptID taskIdOldApi=org.apache.hadoop.mapred.TaskAttemptID.downgrade(taskId);
+  Task task=new ReduceTask("dummyjobfile",taskIdOldApi,0,0,numSlotsRequired);
+  TaskInfo taskInfo=new TaskInfo(0,0,0,0,0);
+  ReduceTaskAttemptInfo taskAttemptInfo=new ReduceTaskAttemptInfo(State.SUCCEEDED,taskInfo,0,0,reduceRuntime);
+  TaskTrackerAction action=new SimulatorLaunchTaskAction(task,taskAttemptInfo);
+  heartbeats.get(reduceStart).get(taskTrackerName).addTaskTrackerAction(action);
+  if (!isKilled || mapDone < killHeartbeat) {
+    action=new AllMapsCompletedTaskAction(task.getTaskID());
+    heartbeats.get(mapDone).get(taskTrackerName).addTaskTrackerAction(action);
+  }
+  if (isKilled) {
+    action=new KillTaskAction(taskIdOldApi);
+    heartbeats.get(killHeartbeat).get(taskTrackerName).addTaskTrackerAction(action);
+  }
+  for (long simulationTime=reduceStart + heartbeatInterval; simulationTime <= reduceEndHeartbeat; simulationTime+=heartbeatInterval) {
+    State state=simulationTime < reduceEndHeartbeat ? State.RUNNING : State.SUCCEEDED;
+    if (simulationTime == reduceEndHeartbeat && isKilled) {
+      state=State.KILLED;
+    }
+    Phase phase=simulationTime <= mapDone ? Phase.SHUFFLE : Phase.REDUCE;
+    ReduceTaskStatus reduceStatus=new ReduceTaskStatus(task.getTaskID(),0.0f,0,state,"","",null,phase,null);
+    heartbeats.get(simulationTime).get(taskTrackerName).addTaskReport(reduceStatus);
+  }
+}

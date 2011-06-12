@@ -1,0 +1,52 @@
+{
+  long minVal;
+  long maxVal;
+  int sqlDataType=results.getMetaData().getColumnType(1);
+  minVal=resultSetColToLong(results,1,sqlDataType);
+  maxVal=resultSetColToLong(results,2,sqlDataType);
+  String lowClausePrefix=colName + " >= ";
+  String highClausePrefix=colName + " < ";
+  int numSplits=conf.getInt(MRJobConfig.NUM_MAPS,1);
+  if (numSplits < 1) {
+    numSplits=1;
+  }
+  if (minVal == Long.MIN_VALUE && maxVal == Long.MIN_VALUE) {
+    List<InputSplit> splits=new ArrayList<InputSplit>();
+    splits.add(new DataDrivenDBInputFormat.DataDrivenDBInputSplit(colName + " IS NULL",colName + " IS NULL"));
+    return splits;
+  }
+  List<Long> splitPoints=split(numSplits,minVal,maxVal);
+  List<InputSplit> splits=new ArrayList<InputSplit>();
+  long start=splitPoints.get(0);
+  Date startDate=longToDate(start,sqlDataType);
+  if (sqlDataType == Types.TIMESTAMP) {
+    try {
+      ((java.sql.Timestamp)startDate).setNanos(results.getTimestamp(1).getNanos());
+    }
+ catch (    NullPointerException npe) {
+    }
+  }
+  for (int i=1; i < splitPoints.size(); i++) {
+    long end=splitPoints.get(i);
+    Date endDate=longToDate(end,sqlDataType);
+    if (i == splitPoints.size() - 1) {
+      if (sqlDataType == Types.TIMESTAMP) {
+        try {
+          ((java.sql.Timestamp)endDate).setNanos(results.getTimestamp(2).getNanos());
+        }
+ catch (        NullPointerException npe) {
+        }
+      }
+      splits.add(new DataDrivenDBInputFormat.DataDrivenDBInputSplit(lowClausePrefix + dateToString(startDate),colName + " <= " + dateToString(endDate)));
+    }
+ else {
+      splits.add(new DataDrivenDBInputFormat.DataDrivenDBInputSplit(lowClausePrefix + dateToString(startDate),highClausePrefix + dateToString(endDate)));
+    }
+    start=end;
+    startDate=endDate;
+  }
+  if (minVal == Long.MIN_VALUE || maxVal == Long.MIN_VALUE) {
+    splits.add(new DataDrivenDBInputFormat.DataDrivenDBInputSplit(colName + " IS NULL",colName + " IS NULL"));
+  }
+  return splits;
+}

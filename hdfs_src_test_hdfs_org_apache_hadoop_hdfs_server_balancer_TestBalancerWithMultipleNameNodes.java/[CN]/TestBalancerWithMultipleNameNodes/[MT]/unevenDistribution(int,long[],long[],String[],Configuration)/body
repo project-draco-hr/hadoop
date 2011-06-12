@@ -1,0 +1,49 @@
+{
+  LOG.info("UNEVEN 0");
+  final int nDataNodes=distributionPerNN.length;
+  if (capacities.length != nDataNodes || racks.length != nDataNodes) {
+    throw new IllegalArgumentException("Array length is not the same");
+  }
+  final long usedSpacePerNN=TestBalancer.sum(distributionPerNN);
+  final ExtendedBlock[][] blocks;
+{
+    LOG.info("UNEVEN 1");
+    final MiniDFSCluster cluster=new MiniDFSCluster.Builder(conf).numNameNodes(nNameNodes).numDataNodes(nDataNodes).racks(racks).simulatedCapacities(capacities).build();
+    LOG.info("UNEVEN 2");
+    try {
+      cluster.waitActive();
+      LOG.info("UNEVEN 3");
+      final Suite s=new Suite(cluster,nNameNodes,nDataNodes,conf);
+      blocks=generateBlocks(s,usedSpacePerNN);
+      LOG.info("UNEVEN 4");
+    }
+  finally {
+      cluster.shutdown();
+    }
+  }
+  conf.set(DFSConfigKeys.DFS_NAMENODE_SAFEMODE_THRESHOLD_PCT_KEY,"0.0f");
+{
+    LOG.info("UNEVEN 10");
+    final MiniDFSCluster cluster=new MiniDFSCluster.Builder(conf).numNameNodes(nNameNodes).numDataNodes(nDataNodes).racks(racks).simulatedCapacities(capacities).format(false).build();
+    LOG.info("UNEVEN 11");
+    try {
+      cluster.waitActive();
+      LOG.info("UNEVEN 12");
+      final Suite s=new Suite(cluster,nNameNodes,nDataNodes,conf);
+      for (int n=0; n < nNameNodes; n++) {
+        final Block[][] blocksDN=TestBalancer.distributeBlocks(blocks[n],s.replication,distributionPerNN);
+        for (int d=0; d < blocksDN.length; d++)         cluster.injectBlocks(n,d,Arrays.asList(blocksDN[d]));
+        LOG.info("UNEVEN 13: n=" + n);
+      }
+      final long totalCapacity=TestBalancer.sum(capacities);
+      final long totalUsed=nNameNodes * usedSpacePerNN;
+      LOG.info("UNEVEN 14");
+      runBalancer(s,totalUsed,totalCapacity);
+      LOG.info("UNEVEN 15");
+    }
+  finally {
+      cluster.shutdown();
+    }
+    LOG.info("UNEVEN 16");
+  }
+}

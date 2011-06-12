@@ -1,0 +1,34 @@
+{
+  final String DUMMY_CONFIG_STRING="mapreduce.newdummy.conf";
+  final String DUMMY_CONFIG_STRING_VALUE="HerriotTestRules";
+  Configuration origconf=new Configuration(cluster.getConf());
+  origconf.set(DUMMY_CONFIG_STRING,DUMMY_CONFIG_STRING_VALUE);
+  String localDir=HadoopDaemonRemoteCluster.getDeployedHadoopConfDir() + File.separator + localConfDir;
+  File lFile=new File(localDir);
+  if (!lFile.exists()) {
+    lFile.mkdir();
+  }
+  String mapredConf=localDir + File.separator + "mapred-site.xml";
+  File file=new File(mapredConf);
+  origconf.writeXml(new FileOutputStream(file));
+  Configuration daemonConf=cluster.getJTClient().getProxy().getDaemonConf();
+  Assert.assertTrue("Dummy varialble is expected to be null before restart.",daemonConf.get(DUMMY_CONFIG_STRING) == null);
+  String newDir=cluster.getClusterManager().pushConfig(localDir);
+  cluster.stop();
+  AbstractDaemonClient cli=cluster.getJTClient();
+  waitForClusterStop(cli);
+  cluster.getClusterManager().start(newDir);
+  cli=cluster.getJTClient();
+  waitForClusterStart(cli);
+  Configuration newconf=cluster.getJTClient().getProxy().getDaemonConf();
+  Assert.assertTrue("Extra varialble is expected to be set",newconf.get(DUMMY_CONFIG_STRING).equals(DUMMY_CONFIG_STRING_VALUE));
+  cluster.getClusterManager().stop(newDir);
+  cli=cluster.getJTClient();
+  waitForClusterStop(cli);
+  cluster.getClusterManager().start();
+  cli=cluster.getJTClient();
+  waitForClusterStart(cli);
+  daemonConf=cluster.getJTClient().getProxy().getDaemonConf();
+  Assert.assertTrue("Dummy variable is expected to be null after restart.",daemonConf.get(DUMMY_CONFIG_STRING) == null);
+  lFile.delete();
+}

@@ -1,0 +1,52 @@
+{
+  xmitsInProgress.getAndIncrement();
+  Socket sock=null;
+  DataOutputStream out=null;
+  DataInputStream in=null;
+  BlockSender blockSender=null;
+  final boolean isClient=clientname.length() > 0;
+  try {
+    InetSocketAddress curTarget=NetUtils.createSocketAddr(targets[0].getName());
+    sock=newSocket();
+    NetUtils.connect(sock,curTarget,socketTimeout);
+    sock.setSoTimeout(targets.length * socketTimeout);
+    long writeTimeout=socketWriteTimeout + HdfsConstants.WRITE_TIMEOUT_EXTENSION * (targets.length - 1);
+    OutputStream baseStream=NetUtils.getOutputStream(sock,writeTimeout);
+    out=new DataOutputStream(new BufferedOutputStream(baseStream,SMALL_BUFFER_SIZE));
+    blockSender=new BlockSender(b,0,b.getNumBytes(),false,false,false,DataNode.this);
+    DatanodeInfo srcNode=new DatanodeInfo(bpReg);
+    Token<BlockTokenIdentifier> accessToken=BlockTokenSecretManager.DUMMY_TOKEN;
+    if (isBlockTokenEnabled) {
+      accessToken=blockPoolTokenSecretManager.generateToken(b,EnumSet.of(BlockTokenSecretManager.AccessMode.WRITE));
+    }
+    Sender.opWriteBlock(out,b,0,stage,0,0,0,clientname,srcNode,targets,accessToken);
+    blockSender.sendBlock(out,baseStream,null);
+    LOG.info(getClass().getSimpleName() + ": Transmitted " + b+ " (numBytes="+ b.getNumBytes()+ ") to "+ curTarget);
+    if (isClient) {
+      in=new DataInputStream(NetUtils.getInputStream(sock));
+      DNTransferAckProto closeAck=DNTransferAckProto.parseFrom(HdfsProtoUtil.vintPrefixed(in));
+      if (LOG.isDebugEnabled()) {
+        LOG.debug(getClass().getSimpleName() + ": close-ack=" + closeAck);
+      }
+      if (closeAck.getStatus() != Status.SUCCESS) {
+        if (closeAck.getStatus() == Status.ERROR_ACCESS_TOKEN) {
+          throw new InvalidBlockTokenException("Got access token error for connect ack, targets=" + Arrays.asList(targets));
+        }
+ else {
+          throw new IOException("Bad connect ack, targets=" + Arrays.asList(targets));
+        }
+      }
+    }
+  }
+ catch (  IOException ie) {
+    LOG.warn(bpReg + ":Failed to transfer " + b+ " to "+ targets[0].getName()+ " got "+ StringUtils.stringifyException(ie));
+    checkDiskError();
+  }
+ finally {
+    xmitsInProgress.getAndDecrement();
+    IOUtils.closeStream(blockSender);
+    IOUtils.closeStream(out);
+    IOUtils.closeStream(in);
+    IOUtils.closeSocket(sock);
+  }
+}

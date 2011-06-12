@@ -1,0 +1,33 @@
+{
+  if (!(status instanceof SimulatorTaskTrackerStatus)) {
+    throw new IllegalArgumentException("Expecting SimulatorTaskTrackerStatus, actual status type " + status.getClass());
+  }
+  SimulatorTaskTrackerStatus trackerStatus=(SimulatorTaskTrackerStatus)status;
+  long now=trackerStatus.getCurrentSimulationTime();
+  String trackerName=status.getTrackerName();
+  LOG.debug("Received heartbeat() from trackerName=" + trackerName + ", now="+ now);
+  HeartbeatResponse response=new HeartbeatResponse();
+  response.setHeartbeatInterval(heartbeatInterval);
+  response.setActions(new TaskTrackerAction[0]);
+  if (checkHeartbeats) {
+    Assert.assertFalse("No more heartbeats were expected ",heartbeats.isEmpty());
+    long nextToCheck=heartbeats.firstKey();
+    Assert.assertTrue(nextToCheck <= now);
+    if (nextToCheck < now) {
+      LOG.debug("Simulation time progressed, last checked heartbeat at=" + nextToCheck + ", now="+ now+ ". Checking if no "+ "required heartbeats were missed in the past");
+      SortedMap<String,HeartbeatHelper> previousHeartbeats=heartbeats.get(nextToCheck);
+      Assert.assertNotNull(previousHeartbeats);
+      Assert.assertTrue(previousHeartbeats.isEmpty());
+      heartbeats.remove(nextToCheck);
+      nextToCheck=heartbeats.firstKey();
+    }
+    Assert.assertEquals("Heartbeat at the wrong time",nextToCheck,now);
+    SortedMap<String,HeartbeatHelper> currentHeartbeats=heartbeats.get(now);
+    HeartbeatHelper currentHeartbeat=currentHeartbeats.get(trackerName);
+    Assert.assertNotNull("Unknown task tracker name=" + trackerName,currentHeartbeat);
+    currentHeartbeats.remove(trackerName);
+    currentHeartbeat.checkHeartbeatParameters(status,acceptNewTasks);
+    response.setActions(currentHeartbeat.getTaskTrackerActions());
+  }
+  return response;
+}

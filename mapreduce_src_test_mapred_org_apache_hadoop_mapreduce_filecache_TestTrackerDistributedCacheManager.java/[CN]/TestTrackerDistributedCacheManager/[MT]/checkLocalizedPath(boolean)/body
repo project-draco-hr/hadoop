@@ -1,0 +1,38 @@
+{
+  TrackerDistributedCacheManager manager=new TrackerDistributedCacheManager(conf,taskController);
+  Cluster cluster=new Cluster(conf);
+  String userName=getJobOwnerName();
+  File workDir=new File(TEST_ROOT_DIR,"workdir");
+  Path cacheFile=new Path(TEST_ROOT_DIR,"fourthcachefile");
+  if (visibility) {
+    createPublicTempFile(cacheFile);
+  }
+ else {
+    createPrivateTempFile(cacheFile);
+  }
+  Job job1=Job.getInstance(cluster,conf);
+  job1.setUser(userName);
+  job1.addCacheFile(cacheFile.toUri());
+  Configuration conf1=job1.getConfiguration();
+  ClientDistributedCacheManager.determineTimestamps(conf1);
+  ClientDistributedCacheManager.determineCacheVisibilities(conf1);
+  TaskDistributedCacheManager handle=manager.newTaskDistributedCacheManager(conf1);
+  handle.setup(localDirAllocator,workDir,TaskTracker.getPrivateDistributedCacheDir(userName),TaskTracker.getPublicDistributedCacheDir());
+  TaskDistributedCacheManager.CacheFile c=handle.getCacheFiles().get(0);
+  String distCacheDir;
+  if (visibility) {
+    distCacheDir=TaskTracker.getPublicDistributedCacheDir();
+  }
+ else {
+    distCacheDir=TaskTracker.getPrivateDistributedCacheDir(userName);
+  }
+  Path localizedPath=manager.getLocalCache(cacheFile.toUri(),conf1,distCacheDir,fs.getFileStatus(cacheFile),false,c.timestamp,new Path(TEST_ROOT_DIR),false,visibility);
+  assertTrue("Cache file didn't get localized in the expected directory. " + "Expected localization to happen within " + ROOT_MAPRED_LOCAL_DIR + "/"+ distCacheDir+ ", but was localized at "+ localizedPath,localizedPath.toString().contains(distCacheDir));
+  if (visibility) {
+    checkPublicFilePermissions(new Path[]{localizedPath});
+  }
+ else {
+    checkFilePermissions(new Path[]{localizedPath});
+  }
+  return localizedPath;
+}

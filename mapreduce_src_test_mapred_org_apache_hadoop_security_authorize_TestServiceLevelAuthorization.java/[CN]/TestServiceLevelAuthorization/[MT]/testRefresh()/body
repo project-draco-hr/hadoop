@@ -1,0 +1,41 @@
+{
+  MiniDFSCluster dfs=null;
+  try {
+    final int slaves=4;
+    final Configuration conf=new Configuration();
+    conf.setClass(PolicyProvider.POLICY_PROVIDER_CONFIG,HDFSPolicyProvider.class,PolicyProvider.class);
+    conf.setBoolean(ServiceAuthorizationManager.SERVICE_AUTHORIZATION_CONFIG,true);
+    dfs=new MiniDFSCluster(conf,slaves,true,null);
+    refreshPolicy(conf);
+    String confDir=System.getProperty("test.build.extraconf","build/test/extraconf");
+    String HADOOP_POLICY_FILE=System.getProperty("hadoop.policy.file");
+    File policyFile=new File(confDir,HADOOP_POLICY_FILE);
+    String policyFileCopy=HADOOP_POLICY_FILE + ".orig";
+    FileUtil.copy(policyFile,FileSystem.getLocal(conf),new Path(confDir,policyFileCopy),false,conf);
+    rewriteHadoopPolicyFile(new File(confDir,HADOOP_POLICY_FILE));
+    refreshPolicy(conf);
+    try {
+      UserGroupInformation unknownUser=UserGroupInformation.createRemoteUser("unknown");
+      unknownUser.doAs(new PrivilegedExceptionAction<Void>(){
+        public Void run() throws IOException {
+          refreshPolicy(conf);
+          return null;
+        }
+      }
+);
+      fail("Refresh of NameNode's policy file cannot be successful!");
+    }
+ catch (    Exception re) {
+      System.out.println("Good, refresh worked... refresh failed with: " + StringUtils.stringifyException(re));
+    }
+ finally {
+      FileUtil.fullyDelete(new File(confDir,HADOOP_POLICY_FILE));
+      FileUtil.replaceFile(new File(confDir,policyFileCopy),new File(confDir,HADOOP_POLICY_FILE));
+    }
+  }
+  finally {
+    if (dfs != null) {
+      dfs.shutdown();
+    }
+  }
+}

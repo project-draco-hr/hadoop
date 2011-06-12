@@ -1,0 +1,53 @@
+{
+  totalSize*=MEGA;
+  FileSystem localFS=FileSystem.getLocal(fsConfig);
+  try {
+    Runtime runTime=Runtime.getRuntime();
+synchronized (this) {
+      localFS.delete(HDFS_TEST_DIR,true);
+      if (!(localFS.mkdirs(HDFS_TEST_DIR))) {
+        throw new IOException("Failed to create " + HDFS_TEST_DIR + " on local filesystem");
+      }
+    }
+synchronized (this) {
+      if (!localFS.exists(HDFS_SHLIB)) {
+        if (!FileUtil.copy(fs,HDFS_SHLIB,localFS,HDFS_SHLIB,false,fsConfig)) {
+          throw new IOException("Failed to copy " + HDFS_SHLIB + " to local filesystem");
+        }
+        String chmodCmd=new String(CHMOD + " a+x " + HDFS_SHLIB);
+        Process process=runTime.exec(chmodCmd);
+        int exitStatus=process.waitFor();
+        if (exitStatus != 0) {
+          throw new IOException(chmodCmd + ": Failed with exitStatus: " + exitStatus);
+        }
+      }
+    }
+synchronized (this) {
+      if (!localFS.exists(HDFS_READ)) {
+        if (!FileUtil.copy(fs,HDFS_READ,localFS,HDFS_READ,false,fsConfig)) {
+          throw new IOException("Failed to copy " + HDFS_READ + " to local filesystem");
+        }
+        String chmodCmd=new String(CHMOD + " a+x " + HDFS_READ);
+        Process process=runTime.exec(chmodCmd);
+        int exitStatus=process.waitFor();
+        if (exitStatus != 0) {
+          throw new IOException(chmodCmd + ": Failed with exitStatus: " + exitStatus);
+        }
+      }
+    }
+    Path inFile=new Path(DATA_DIR,name);
+    String readCmd=new String(HDFS_READ + " " + inFile+ " "+ totalSize+ " "+ bufferSize);
+    Process process=runTime.exec(readCmd,null,new File(HDFS_TEST_DIR.toString()));
+    int exitStatus=process.waitFor();
+    if (exitStatus != 0) {
+      throw new IOException(HDFS_READ + ": Failed with exitStatus: " + exitStatus);
+    }
+  }
+ catch (  InterruptedException interruptedException) {
+    reporter.setStatus(interruptedException.toString());
+  }
+ finally {
+    localFS.close();
+  }
+  return new Long(totalSize);
+}

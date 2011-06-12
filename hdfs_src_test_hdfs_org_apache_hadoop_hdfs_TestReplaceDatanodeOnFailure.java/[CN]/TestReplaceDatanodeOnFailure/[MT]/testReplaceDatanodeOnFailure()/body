@@ -1,0 +1,48 @@
+{
+  final Configuration conf=new HdfsConfiguration();
+  ReplaceDatanodeOnFailure.ALWAYS.write(conf);
+  final String[] racks=new String[REPLICATION];
+  Arrays.fill(racks,RACK0);
+  final MiniDFSCluster cluster=new MiniDFSCluster.Builder(conf).racks(racks).numDataNodes(REPLICATION).build();
+  try {
+    final DistributedFileSystem fs=(DistributedFileSystem)cluster.getFileSystem();
+    final Path dir=new Path(DIR);
+    final SlowWriter[] slowwriters=new SlowWriter[10];
+    for (int i=1; i <= slowwriters.length; i++) {
+      slowwriters[i - 1]=new SlowWriter(fs,new Path(dir,"file" + i),i * 200L);
+    }
+    for (    SlowWriter s : slowwriters) {
+      s.start();
+    }
+    sleepSeconds(1);
+    cluster.startDataNodes(conf,2,true,null,new String[]{RACK1,RACK1});
+    cluster.stopDataNode(AppendTestUtil.nextInt(REPLICATION));
+    sleepSeconds(5);
+    for (    SlowWriter s : slowwriters) {
+      s.checkReplication();
+      s.interruptRunning();
+    }
+    for (    SlowWriter s : slowwriters) {
+      s.joinAndClose();
+    }
+    LOG.info("Verify the file");
+    for (int i=0; i < slowwriters.length; i++) {
+      LOG.info(slowwriters[i].filepath + ": length=" + fs.getFileStatus(slowwriters[i].filepath).getLen());
+      FSDataInputStream in=null;
+      try {
+        in=fs.open(slowwriters[i].filepath);
+        for (int j=0, x; (x=in.read()) != -1; j++) {
+          Assert.assertEquals(j,x);
+        }
+      }
+  finally {
+        IOUtils.closeStream(in);
+      }
+    }
+  }
+  finally {
+    if (cluster != null) {
+      cluster.shutdown();
+    }
+  }
+}

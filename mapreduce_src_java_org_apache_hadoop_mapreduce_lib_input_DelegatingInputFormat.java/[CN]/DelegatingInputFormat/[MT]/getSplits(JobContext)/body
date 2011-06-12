@@ -1,0 +1,45 @@
+{
+  Configuration conf=job.getConfiguration();
+  Job jobCopy=new Job(conf);
+  List<InputSplit> splits=new ArrayList<InputSplit>();
+  Map<Path,InputFormat> formatMap=MultipleInputs.getInputFormatMap(job);
+  Map<Path,Class<? extends Mapper>> mapperMap=MultipleInputs.getMapperTypeMap(job);
+  Map<Class<? extends InputFormat>,List<Path>> formatPaths=new HashMap<Class<? extends InputFormat>,List<Path>>();
+  for (  Entry<Path,InputFormat> entry : formatMap.entrySet()) {
+    if (!formatPaths.containsKey(entry.getValue().getClass())) {
+      formatPaths.put(entry.getValue().getClass(),new LinkedList<Path>());
+    }
+    formatPaths.get(entry.getValue().getClass()).add(entry.getKey());
+  }
+  for (  Entry<Class<? extends InputFormat>,List<Path>> formatEntry : formatPaths.entrySet()) {
+    Class<? extends InputFormat> formatClass=formatEntry.getKey();
+    InputFormat format=(InputFormat)ReflectionUtils.newInstance(formatClass,conf);
+    List<Path> paths=formatEntry.getValue();
+    Map<Class<? extends Mapper>,List<Path>> mapperPaths=new HashMap<Class<? extends Mapper>,List<Path>>();
+    for (    Path path : paths) {
+      Class<? extends Mapper> mapperClass=mapperMap.get(path);
+      if (!mapperPaths.containsKey(mapperClass)) {
+        mapperPaths.put(mapperClass,new LinkedList<Path>());
+      }
+      mapperPaths.get(mapperClass).add(path);
+    }
+    for (    Entry<Class<? extends Mapper>,List<Path>> mapEntry : mapperPaths.entrySet()) {
+      paths=mapEntry.getValue();
+      Class<? extends Mapper> mapperClass=mapEntry.getKey();
+      if (mapperClass == null) {
+        try {
+          mapperClass=job.getMapperClass();
+        }
+ catch (        ClassNotFoundException e) {
+          throw new IOException("Mapper class is not found",e);
+        }
+      }
+      FileInputFormat.setInputPaths(jobCopy,paths.toArray(new Path[paths.size()]));
+      List<InputSplit> pathSplits=format.getSplits(jobCopy);
+      for (      InputSplit pathSplit : pathSplits) {
+        splits.add(new TaggedInputSplit(pathSplit,conf,format.getClass(),mapperClass));
+      }
+    }
+  }
+  return splits;
+}

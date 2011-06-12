@@ -1,0 +1,31 @@
+{
+  if (j.getStatus().getRunState() != JobStatus.RUNNING) {
+    return;
+  }
+  TaskSchedulingContext mapTSI=qC.getMapTSC();
+  TaskSchedulingContext reduceTSI=qC.getReduceTSC();
+  int numMapsRunningForThisJob=j.runningMaps();
+  int numReducesRunningForThisJob=j.runningReduces();
+  TaskDataView mapScheduler=TaskDataView.getTaskDataView(TaskType.MAP);
+  TaskDataView reduceScheduler=TaskDataView.getTaskDataView(TaskType.REDUCE);
+  int numRunningMapSlots=numMapsRunningForThisJob * mapScheduler.getSlotsPerTask(j);
+  int numRunningReduceSlots=numReducesRunningForThisJob * reduceScheduler.getSlotsPerTask(j);
+  int numMapSlotsForThisJob=mapScheduler.getSlotsOccupied(j);
+  int numReduceSlotsForThisJob=reduceScheduler.getSlotsOccupied(j);
+  int numReservedMapSlotsForThisJob=(mapScheduler.getNumReservedTaskTrackers(j) * mapScheduler.getSlotsPerTask(j));
+  int numReservedReduceSlotsForThisJob=(reduceScheduler.getNumReservedTaskTrackers(j) * reduceScheduler.getSlotsPerTask(j));
+  j.setSchedulingInfo(getJobQueueSchedInfo(numMapsRunningForThisJob,numRunningMapSlots,numReservedMapSlotsForThisJob,numReducesRunningForThisJob,numRunningReduceSlots,numReservedReduceSlotsForThisJob));
+  mapTSI.setNumRunningTasks(mapTSI.getNumRunningTasks() + numMapsRunningForThisJob);
+  reduceTSI.setNumRunningTasks(reduceTSI.getNumRunningTasks() + numReducesRunningForThisJob);
+  mapTSI.setNumSlotsOccupied(mapTSI.getNumSlotsOccupied() + numMapSlotsForThisJob);
+  reduceTSI.setNumSlotsOccupied(reduceTSI.getNumSlotsOccupied() + numReduceSlotsForThisJob);
+  Integer i=mapTSI.getNumSlotsOccupiedByUser().get(j.getProfile().getUser());
+  mapTSI.getNumSlotsOccupiedByUser().put(j.getProfile().getUser(),i.intValue() + numMapSlotsForThisJob);
+  i=reduceTSI.getNumSlotsOccupiedByUser().get(j.getProfile().getUser());
+  reduceTSI.getNumSlotsOccupiedByUser().put(j.getProfile().getUser(),i.intValue() + numReduceSlotsForThisJob);
+  if (LOG.isDebugEnabled()) {
+synchronized (j) {
+      LOG.debug(String.format("updateQSI: job %s: run(m)=%d, " + "occupied(m)=%d, run(r)=%d, occupied(r)=%d, finished(m)=%d," + " finished(r)=%d, failed(m)=%d, failed(r)=%d, "+ "spec(m)=%d, spec(r)=%d, total(m)=%d, total(r)=%d",j.getJobID().toString(),numMapsRunningForThisJob,numMapSlotsForThisJob,numReducesRunningForThisJob,numReduceSlotsForThisJob,j.finishedMaps(),j.finishedReduces(),j.failedMapTasks,j.failedReduceTasks,j.speculativeMapTasks,j.speculativeReduceTasks,j.numMapTasks,j.numReduceTasks));
+    }
+  }
+}

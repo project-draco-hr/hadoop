@@ -1,0 +1,42 @@
+{
+  if (lastSegmentEOF) {
+    return false;
+  }
+  if (hasMore) {
+    return true;
+  }
+  Segment<K,V> seg=segmentList.get(readSegmentIndex);
+  nextKVOffset=(int)seg.getActualPosition();
+  if (seg.nextRawKey()) {
+    currentKey=seg.getKey();
+    seg.getValue(currentValue);
+    hasMore=true;
+    return true;
+  }
+ else {
+    if (!seg.inMemory()) {
+      seg.closeReader();
+    }
+  }
+  if (readSegmentIndex == segmentList.size() - 1) {
+    nextKVOffset=-1;
+    lastSegmentEOF=true;
+    return false;
+  }
+  nextKVOffset=0;
+  readSegmentIndex++;
+  Segment<K,V> nextSegment=segmentList.get(readSegmentIndex);
+  if (!nextSegment.inMemory()) {
+    currentValue.reset(currentDiskValue.getData(),currentDiskValue.getLength());
+    nextSegment.init(null);
+  }
+  if (nextSegment.nextRawKey()) {
+    currentKey=nextSegment.getKey();
+    nextSegment.getValue(currentValue);
+    hasMore=true;
+    return true;
+  }
+ else {
+    throw new IOException("New segment did not have even one K/V");
+  }
+}

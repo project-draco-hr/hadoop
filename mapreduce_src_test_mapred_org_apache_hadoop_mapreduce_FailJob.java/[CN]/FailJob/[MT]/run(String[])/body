@@ -1,0 +1,30 @@
+{
+  if (args.length < 1) {
+    System.err.println("FailJob " + " (-failMappers|-failReducers)");
+    ToolRunner.printGenericCommandUsage(System.err);
+    return 2;
+  }
+  boolean failMappers=false, failReducers=false;
+  for (int i=0; i < args.length; i++) {
+    if (args[i].equals("-failMappers")) {
+      failMappers=true;
+    }
+ else     if (args[i].equals("-failReducers")) {
+      failReducers=true;
+    }
+  }
+  if (!(failMappers ^ failReducers)) {
+    System.err.println("Exactly one of -failMappers or -failReducers must be specified.");
+    return 3;
+  }
+  final FileSystem fs=FileSystem.get(getConf());
+  Path inputDir=new Path(FailJob.class.getSimpleName() + "_in");
+  fs.mkdirs(inputDir);
+  for (int i=0; i < getConf().getInt("mapred.map.tasks",1); ++i) {
+    BufferedWriter w=new BufferedWriter(new OutputStreamWriter(fs.create(new Path(inputDir,Integer.toString(i)))));
+    w.write(Integer.toString(i) + "\n");
+    w.close();
+  }
+  Job job=createJob(failMappers,failReducers,inputDir);
+  return job.waitForCompletion(true) ? 0 : 1;
+}

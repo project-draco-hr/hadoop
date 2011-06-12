@@ -1,0 +1,32 @@
+{
+  URI underLyingURI=decodeHarURI(name,conf);
+  Path harPath=archivePath(new Path(name.getScheme(),name.getAuthority(),name.getPath()));
+  if (harPath == null) {
+    throw new IOException("Invalid path for the Har Filesystem. " + name.toString());
+  }
+  if (fs == null) {
+    fs=FileSystem.get(underLyingURI,conf);
+  }
+  uri=harPath.toUri();
+  archivePath=new Path(uri.getPath());
+  harAuth=getHarAuth(underLyingURI);
+  Path masterIndexPath=new Path(archivePath,"_masterindex");
+  Path archiveIndexPath=new Path(archivePath,"_index");
+  if (!fs.exists(masterIndexPath) || !fs.exists(archiveIndexPath)) {
+    throw new IOException("Invalid path for the Har Filesystem. " + "No index file in " + harPath);
+  }
+  metadata=harMetaCache.get(uri);
+  if (metadata != null) {
+    FileStatus mStat=fs.getFileStatus(masterIndexPath);
+    FileStatus aStat=fs.getFileStatus(archiveIndexPath);
+    if (mStat.getModificationTime() != metadata.getMasterIndexTimestamp() || aStat.getModificationTime() != metadata.getArchiveIndexTimestamp()) {
+      metadata=null;
+      harMetaCache.remove(uri);
+    }
+  }
+  if (metadata == null) {
+    metadata=new HarMetaData(fs,masterIndexPath,archiveIndexPath);
+    metadata.parseMetaData();
+    harMetaCache.put(uri,metadata);
+  }
+}

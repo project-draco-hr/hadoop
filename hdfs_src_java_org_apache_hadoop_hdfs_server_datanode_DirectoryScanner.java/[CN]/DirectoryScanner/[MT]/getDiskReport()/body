@@ -1,0 +1,31 @@
+{
+  List<FSVolume> volumes=dataset.volumes.getVolumes();
+  ArrayList<ScanInfoPerBlockPool> dirReports=new ArrayList<ScanInfoPerBlockPool>(volumes.size());
+  Map<Integer,Future<ScanInfoPerBlockPool>> compilersInProgress=new HashMap<Integer,Future<ScanInfoPerBlockPool>>();
+  for (int i=0; i < volumes.size(); i++) {
+    if (!dataset.volumes.isValid(volumes.get(i))) {
+      dirReports.add(i,null);
+    }
+ else {
+      ReportCompiler reportCompiler=new ReportCompiler(volumes.get(i));
+      Future<ScanInfoPerBlockPool> result=reportCompileThreadPool.submit(reportCompiler);
+      compilersInProgress.put(i,result);
+    }
+  }
+  for (  Entry<Integer,Future<ScanInfoPerBlockPool>> report : compilersInProgress.entrySet()) {
+    try {
+      dirReports.add(report.getKey(),report.getValue().get());
+    }
+ catch (    Exception ex) {
+      LOG.error("Error compiling report",ex);
+      throw new RuntimeException(ex);
+    }
+  }
+  ScanInfoPerBlockPool list=new ScanInfoPerBlockPool();
+  for (int i=0; i < volumes.size(); i++) {
+    if (dataset.volumes.isValid(volumes.get(i))) {
+      list.addAll(dirReports.get(i));
+    }
+  }
+  return list.toSortedArrays();
+}

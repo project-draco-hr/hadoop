@@ -1,0 +1,25 @@
+{
+  org.apache.hadoop.mapreduce.TaskAttemptContext taskContext=new org.apache.hadoop.mapreduce.task.TaskAttemptContextImpl(job,getTaskID(),reporter);
+  org.apache.hadoop.mapreduce.Mapper<INKEY,INVALUE,OUTKEY,OUTVALUE> mapper=(org.apache.hadoop.mapreduce.Mapper<INKEY,INVALUE,OUTKEY,OUTVALUE>)ReflectionUtils.newInstance(taskContext.getMapperClass(),job);
+  org.apache.hadoop.mapreduce.InputFormat<INKEY,INVALUE> inputFormat=(org.apache.hadoop.mapreduce.InputFormat<INKEY,INVALUE>)ReflectionUtils.newInstance(taskContext.getInputFormatClass(),job);
+  org.apache.hadoop.mapreduce.InputSplit split=null;
+  split=getSplitDetails(new Path(splitIndex.getSplitLocation()),splitIndex.getStartOffset());
+  org.apache.hadoop.mapreduce.RecordReader<INKEY,INVALUE> input=new NewTrackingRecordReader<INKEY,INVALUE>(inputFormat.createRecordReader(split,taskContext),reporter);
+  job.setBoolean(JobContext.SKIP_RECORDS,isSkipping());
+  org.apache.hadoop.mapreduce.RecordWriter output=null;
+  if (job.getNumReduceTasks() == 0) {
+    output=new NewDirectOutputCollector(taskContext,job,umbilical,reporter);
+  }
+ else {
+    output=new NewOutputCollector(taskContext,job,umbilical,reporter);
+  }
+  org.apache.hadoop.mapreduce.MapContext<INKEY,INVALUE,OUTKEY,OUTVALUE> mapContext=new MapContextImpl<INKEY,INVALUE,OUTKEY,OUTVALUE>(job,getTaskID(),input,output,committer,reporter,split);
+  org.apache.hadoop.mapreduce.Mapper<INKEY,INVALUE,OUTKEY,OUTVALUE>.Context mapperContext=new WrappedMapper<INKEY,INVALUE,OUTKEY,OUTVALUE>().getMapContext(mapContext);
+  input.initialize(split,mapperContext);
+  mapper.run(mapperContext);
+  mapPhase.complete();
+  setPhase(TaskStatus.Phase.SORT);
+  statusUpdate(umbilical);
+  input.close();
+  output.close(mapperContext);
+}

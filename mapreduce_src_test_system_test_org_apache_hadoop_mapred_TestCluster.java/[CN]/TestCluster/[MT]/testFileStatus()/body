@@ -1,0 +1,33 @@
+{
+  UserGroupInformation ugi=UserGroupInformation.createRemoteUser(cluster.getJTClient().getProxy().getDaemonUser());
+  ugi.doAs(new PrivilegedExceptionAction<Void>(){
+    @Override public Void run() throws Exception {
+      MRCluster myCluster=null;
+      try {
+        myCluster=MRCluster.createCluster(cluster.getConf());
+        myCluster.connect();
+        JTClient jt=myCluster.getJTClient();
+        String dir=".";
+        checkFileStatus(jt.getFileStatus(dir,true));
+        checkFileStatus(jt.listStatus(dir,false,true),dir);
+        for (        TTClient tt : myCluster.getTTClients()) {
+          String[] localDirs=tt.getMapredLocalDirs();
+          for (          String localDir : localDirs) {
+            checkFileStatus(tt.listStatus(localDir,true,false),localDir);
+            checkFileStatus(tt.listStatus(localDir,true,true),localDir);
+          }
+        }
+        String systemDir=jt.getClient().getSystemDir().toString();
+        checkFileStatus(jt.listStatus(systemDir,false,true),systemDir);
+        checkFileStatus(jt.listStatus(jt.getLogDir(),true,true),jt.getLogDir());
+      }
+  finally {
+        if (myCluster != null) {
+          myCluster.disconnect();
+        }
+      }
+      return null;
+    }
+  }
+);
+}

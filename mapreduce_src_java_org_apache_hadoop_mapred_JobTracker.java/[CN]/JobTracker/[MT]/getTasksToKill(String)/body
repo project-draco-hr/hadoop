@@ -1,0 +1,29 @@
+{
+  Set<TaskAttemptID> taskIds=trackerToTaskMap.get(taskTracker);
+  List<TaskTrackerAction> killList=new ArrayList<TaskTrackerAction>();
+  if (taskIds != null) {
+    for (    TaskAttemptID killTaskId : taskIds) {
+      TaskInProgress tip=taskidToTIPMap.get(killTaskId);
+      if (tip == null) {
+        continue;
+      }
+      if (tip.shouldClose(killTaskId)) {
+        if (!tip.getJob().isComplete()) {
+          killList.add(new KillTaskAction(killTaskId));
+          if (LOG.isDebugEnabled()) {
+            LOG.debug(taskTracker + " -> KillTaskAction: " + killTaskId);
+          }
+        }
+      }
+    }
+  }
+synchronized (trackerToTasksToCleanup) {
+    Set<TaskAttemptID> set=trackerToTasksToCleanup.remove(taskTracker);
+    if (set != null) {
+      for (      TaskAttemptID id : set) {
+        killList.add(new KillTaskAction(id));
+      }
+    }
+  }
+  return killList;
+}

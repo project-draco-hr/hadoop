@@ -1,0 +1,33 @@
+{
+  String[] baseDirs;
+  String bpid=UpgradeUtilities.getCurrentBlockPoolID(null);
+  for (int numDirs=1; numDirs <= 2; numDirs++) {
+    conf=new HdfsConfiguration();
+    conf.setInt("dfs.datanode.scan.period.hours",-1);
+    conf=UpgradeUtilities.initializeStorageStateConf(numDirs,conf);
+    for (int i=0; i < NUM_DN_TEST_CASES; i++) {
+      boolean[] testCase=testCases[i];
+      boolean shouldRecover=testCase[5];
+      boolean curAfterRecover=testCase[6];
+      boolean prevAfterRecover=testCase[7];
+      log("BLOCK_POOL recovery",numDirs,i,testCase);
+      createNameNodeStorageState(new boolean[]{true,true,false,false,false});
+      cluster=createCluster(conf);
+      baseDirs=createBlockPoolStorageState(bpid,testCase);
+      if (!testCase[0] && !testCase[1] && !testCase[2]&& !testCase[3]) {
+        cluster.startDataNodes(conf,1,false,StartupOption.REGULAR,null);
+      }
+ else {
+        if (shouldRecover) {
+          cluster.startDataNodes(conf,1,false,StartupOption.REGULAR,null);
+          checkResultBlockPool(baseDirs,curAfterRecover,prevAfterRecover);
+        }
+ else {
+          cluster.startDataNodes(conf,1,false,StartupOption.REGULAR,null);
+          assertFalse(cluster.getDataNodes().get(0).isBPServiceAlive(bpid));
+        }
+      }
+      cluster.shutdown();
+    }
+  }
+}

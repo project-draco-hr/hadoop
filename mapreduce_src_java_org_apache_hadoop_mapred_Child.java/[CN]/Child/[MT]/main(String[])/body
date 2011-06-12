@@ -1,0 +1,177 @@
+{
+  LOG.debug("Child starting");
+  final JobConf defaultConf=new JobConf();
+  defaultConf.setBoolean("ipc.client.tcpnodelay",true);
+  String host=args[0];
+  int port=Integer.parseInt(args[1]);
+  final InetSocketAddress address=new InetSocketAddress(host,port);
+  final TaskAttemptID firstTaskid=TaskAttemptID.forName(args[2]);
+  final String logLocation=args[3];
+  final int SLEEP_LONGER_COUNT=5;
+  int jvmIdInt=Integer.parseInt(args[4]);
+  JVMId jvmId=new JVMId(firstTaskid.getJobID(),firstTaskid.getTaskType() == TaskType.MAP,jvmIdInt);
+  String jobTokenFile=System.getenv().get(UserGroupInformation.HADOOP_TOKEN_FILE_LOCATION);
+  Credentials credentials=TokenCache.loadTokens(jobTokenFile,defaultConf);
+  LOG.debug("loading token. # keys =" + credentials.numberOfSecretKeys() + "; from file="+ jobTokenFile);
+  Token<JobTokenIdentifier> jt=TokenCache.getJobToken(credentials);
+  jt.setService(new Text(address.getAddress().getHostAddress() + ":" + address.getPort()));
+  UserGroupInformation current=UserGroupInformation.getCurrentUser();
+  current.addToken(jt);
+  UserGroupInformation taskOwner=UserGroupInformation.createRemoteUser(firstTaskid.getJobID().toString());
+  taskOwner.addToken(jt);
+  defaultConf.setCredentials(credentials);
+  final TaskUmbilicalProtocol umbilical=taskOwner.doAs(new PrivilegedExceptionAction<TaskUmbilicalProtocol>(){
+    @Override public TaskUmbilicalProtocol run() throws Exception {
+      return (TaskUmbilicalProtocol)RPC.getProxy(TaskUmbilicalProtocol.class,TaskUmbilicalProtocol.versionID,address,defaultConf);
+    }
+  }
+);
+  int numTasksToExecute=-1;
+  int numTasksExecuted=0;
+  Runtime.getRuntime().addShutdownHook(new Thread(){
+    public void run(){
+      try {
+        if (taskid != null) {
+          TaskLog.syncLogs(logLocation,taskid,isCleanup);
+        }
+      }
+ catch (      Throwable throwable) {
+      }
+    }
+  }
+);
+  Thread t=new Thread(){
+    public void run(){
+      while (true) {
+        try {
+          Thread.sleep(5000);
+          if (taskid != null) {
+            TaskLog.syncLogs(logLocation,taskid,isCleanup);
+          }
+        }
+ catch (        InterruptedException ie) {
+        }
+catch (        IOException iee) {
+          LOG.error("Error in syncLogs: " + iee);
+          System.exit(-1);
+        }
+      }
+    }
+  }
+;
+  t.setName("Thread for syncLogs");
+  t.setDaemon(true);
+  t.start();
+  String pid="";
+  if (!Shell.WINDOWS) {
+    pid=System.getenv().get("JVM_PID");
+  }
+  JvmContext context=new JvmContext(jvmId,pid);
+  int idleLoopCount=0;
+  Task task=null;
+  UserGroupInformation childUGI=null;
+  try {
+    while (true) {
+      taskid=null;
+      JvmTask myTask=umbilical.getTask(context);
+      if (myTask.shouldDie()) {
+        break;
+      }
+ else {
+        if (myTask.getTask() == null) {
+          taskid=null;
+          if (++idleLoopCount >= SLEEP_LONGER_COUNT) {
+            Thread.sleep(1500);
+          }
+ else {
+            Thread.sleep(500);
+          }
+          continue;
+        }
+      }
+      idleLoopCount=0;
+      task=myTask.getTask();
+      taskid=task.getTaskID();
+      isCleanup=task.isTaskCleanupTask();
+      FileSystem.clearStatistics();
+      TaskLog.syncLogs(logLocation,taskid,isCleanup);
+      final JobConf job=new JobConf(task.getJobFile());
+      job.setCredentials(defaultConf.getCredentials());
+      task.setJobTokenSecret(JobTokenSecretManager.createSecretKey(jt.getPassword()));
+      TaskRunner.setupChildMapredLocalDirs(task,job);
+      TaskRunner.setupWorkDir(job,new File(".").getAbsoluteFile());
+      numTasksToExecute=job.getNumTasksToExecutePerJvm();
+      assert(numTasksToExecute != 0);
+      task.setConf(job);
+      JvmMetrics.init(task.getPhase().toString(),job.getSessionId());
+      LOG.debug("Creating remote user to execute task: " + job.get("user.name"));
+      childUGI=UserGroupInformation.createRemoteUser(job.get("user.name"));
+      for (      Token<?> token : UserGroupInformation.getCurrentUser().getTokens()) {
+        childUGI.addToken(token);
+      }
+      final Task taskFinal=task;
+      childUGI.doAs(new PrivilegedExceptionAction<Object>(){
+        @Override public Object run() throws Exception {
+          try {
+            FileSystem.get(job).setWorkingDirectory(job.getWorkingDirectory());
+            taskFinal.run(job,umbilical);
+          }
+  finally {
+            TaskLog.syncLogs(logLocation,taskid,isCleanup);
+          }
+          return null;
+        }
+      }
+);
+      if (numTasksToExecute > 0 && ++numTasksExecuted == numTasksToExecute) {
+        break;
+      }
+    }
+  }
+ catch (  FSError e) {
+    LOG.fatal("FSError from child",e);
+    umbilical.fsError(taskid,e.getMessage());
+  }
+catch (  Exception exception) {
+    LOG.warn("Exception running child : " + StringUtils.stringifyException(exception));
+    try {
+      if (task != null) {
+        if (childUGI == null) {
+          task.taskCleanup(umbilical);
+        }
+ else {
+          final Task taskFinal=task;
+          childUGI.doAs(new PrivilegedExceptionAction<Object>(){
+            @Override public Object run() throws Exception {
+              taskFinal.taskCleanup(umbilical);
+              return null;
+            }
+          }
+);
+        }
+      }
+    }
+ catch (    Exception e) {
+      LOG.info("Exception cleaning up : " + StringUtils.stringifyException(e));
+    }
+    ByteArrayOutputStream baos=new ByteArrayOutputStream();
+    exception.printStackTrace(new PrintStream(baos));
+    if (taskid != null) {
+      umbilical.reportDiagnosticInfo(taskid,baos.toString());
+    }
+  }
+catch (  Throwable throwable) {
+    LOG.fatal("Error running child : " + StringUtils.stringifyException(throwable));
+    if (taskid != null) {
+      Throwable tCause=throwable.getCause();
+      String cause=tCause == null ? throwable.getMessage() : StringUtils.stringifyException(tCause);
+      umbilical.fatalError(taskid,cause);
+    }
+  }
+ finally {
+    RPC.stopProxy(umbilical);
+    MetricsContext metricsContext=MetricsUtil.getContext("mapred");
+    metricsContext.close();
+    LogManager.shutdown();
+  }
+}

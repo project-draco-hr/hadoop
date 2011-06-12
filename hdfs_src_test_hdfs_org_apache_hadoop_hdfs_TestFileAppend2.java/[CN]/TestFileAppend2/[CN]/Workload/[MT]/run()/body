@@ -1,0 +1,55 @@
+{
+  System.out.println("Workload " + id + " starting... ");
+  for (int i=0; i < numAppendsPerThread; i++) {
+    Path testfile;
+synchronized (testFiles) {
+      if (testFiles.size() == 0) {
+        System.out.println("Completed write to almost all files.");
+        return;
+      }
+      int index=AppendTestUtil.nextInt(testFiles.size());
+      testfile=testFiles.remove(index);
+    }
+    long len=0;
+    int sizeToAppend=0;
+    try {
+      FileSystem fs=cluster.getFileSystem();
+      len=fs.getFileStatus(testfile).getLen();
+      if (len >= AppendTestUtil.FILE_SIZE) {
+        System.out.println("File " + testfile + " is full.");
+        continue;
+      }
+      int left=(int)(AppendTestUtil.FILE_SIZE - len) / 3;
+      if (left <= 0) {
+        left=1;
+      }
+      sizeToAppend=AppendTestUtil.nextInt(left);
+      System.out.println("Workload thread " + id + " appending "+ sizeToAppend+ " bytes "+ " to file "+ testfile+ " of size "+ len);
+      FSDataOutputStream stm=fs.append(testfile);
+      stm.write(fileContents,(int)len,sizeToAppend);
+      stm.close();
+      while (fs.getFileStatus(testfile).getLen() != (len + sizeToAppend)) {
+        try {
+          System.out.println("Workload thread " + id + " file "+ testfile+ " size "+ fs.getFileStatus(testfile).getLen()+ " expected size "+ (len + sizeToAppend)+ " waiting for namenode metadata update.");
+          Thread.sleep(5000);
+        }
+ catch (        InterruptedException e) {
+          ;
+        }
+      }
+      assertTrue("File " + testfile + " size is "+ fs.getFileStatus(testfile).getLen()+ " but expected "+ (len + sizeToAppend),fs.getFileStatus(testfile).getLen() == (len + sizeToAppend));
+      AppendTestUtil.checkFullFile(fs,testfile,(int)(len + sizeToAppend),fileContents,"Read 2");
+    }
+ catch (    Throwable e) {
+      globalStatus=false;
+      if (e != null && e.toString() != null) {
+        System.out.println("Workload exception " + id + " testfile "+ testfile+ " "+ e);
+        e.printStackTrace();
+      }
+      assertTrue("Workload exception " + id + " testfile "+ testfile+ " expected size "+ (len + sizeToAppend),false);
+    }
+synchronized (testFiles) {
+      testFiles.add(testfile);
+    }
+  }
+}

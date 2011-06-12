@@ -1,0 +1,35 @@
+{
+  long fileSum=0L;
+  final ArrayList<FileStatus> curFiles=new ArrayList<FileStatus>();
+  final ArrayList<FileStatus> curDirs=new ArrayList<FileStatus>();
+  for (  FileStatus stat : fs.listStatus(thisDir.getPath())) {
+    if (stat.isDirectory()) {
+      curDirs.add(stat);
+    }
+ else     if (filter.accept(stat)) {
+      curFiles.add(stat);
+      fileSum+=stat.getLen();
+    }
+  }
+  ArrayList<Node> subdirList=new ArrayList<Node>();
+  if (!curFiles.isEmpty()) {
+    subdirList.add(new LeafDesc(curFiles,fileSum));
+  }
+  for (Iterator<FileStatus> i=curDirs.iterator(); !filter.done() && i.hasNext(); ) {
+    final Node d=new InnerDesc(fs,i.next(),filter);
+    final long dSize=d.getSize();
+    if (dSize > 0) {
+      fileSum+=dSize;
+      subdirList.add(d);
+    }
+  }
+  size=fileSum;
+  LOG.debug(size + " bytes in " + thisDir.getPath());
+  subdir=subdirList.toArray(new Node[subdirList.size()]);
+  Arrays.sort(subdir,nodeComparator);
+  dist=new double[subdir.length];
+  for (int i=dist.length - 1; i > 0; --i) {
+    fileSum-=subdir[i].getSize();
+    dist[i]=fileSum / (1.0 * size);
+  }
+}

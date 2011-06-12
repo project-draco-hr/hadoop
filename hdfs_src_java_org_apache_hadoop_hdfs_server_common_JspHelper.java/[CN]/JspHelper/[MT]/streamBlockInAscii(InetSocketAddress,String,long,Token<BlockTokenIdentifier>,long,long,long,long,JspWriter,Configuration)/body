@@ -1,0 +1,28 @@
+{
+  if (chunkSizeToView == 0)   return;
+  Socket s=new Socket();
+  s.connect(addr,HdfsConstants.READ_TIMEOUT);
+  s.setSoTimeout(HdfsConstants.READ_TIMEOUT);
+  long amtToRead=Math.min(chunkSizeToView,blockSize - offsetIntoBlock);
+  String file=BlockReader.getFileName(addr,poolId,blockId);
+  BlockReader blockReader=BlockReader.newBlockReader(s,file,new ExtendedBlock(poolId,blockId,0,genStamp),blockToken,offsetIntoBlock,amtToRead,conf.getInt("io.file.buffer.size",4096));
+  byte[] buf=new byte[(int)amtToRead];
+  int readOffset=0;
+  int retries=2;
+  while (amtToRead > 0) {
+    int numRead;
+    try {
+      numRead=blockReader.readAll(buf,readOffset,(int)amtToRead);
+    }
+ catch (    IOException e) {
+      retries--;
+      if (retries == 0)       throw new IOException("Could not read data from datanode");
+      continue;
+    }
+    amtToRead-=numRead;
+    readOffset+=numRead;
+  }
+  blockReader=null;
+  s.close();
+  out.print(HtmlQuoting.quoteHtmlChars(new String(buf)));
+}

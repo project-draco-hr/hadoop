@@ -1,0 +1,87 @@
+{
+  final Configuration conf=new HdfsConfiguration();
+  Options fetcherOptions=new Options();
+  fetcherOptions.addOption(WEBSERVICE,true,"HTTPS url to reach the NameNode at");
+  fetcherOptions.addOption(RENEWER,true,"Name of the delegation token renewer");
+  fetcherOptions.addOption(CANCEL,false,"cancel the token");
+  fetcherOptions.addOption(RENEW,false,"renew the token");
+  fetcherOptions.addOption(PRINT,false,"print the token");
+  GenericOptionsParser parser=new GenericOptionsParser(conf,fetcherOptions,args);
+  CommandLine cmd=parser.getCommandLine();
+  final String webUrl=cmd.hasOption(WEBSERVICE) ? cmd.getOptionValue(WEBSERVICE) : null;
+  final String renewer=cmd.hasOption(RENEWER) ? cmd.getOptionValue(RENEWER) : null;
+  final boolean cancel=cmd.hasOption(CANCEL);
+  final boolean renew=cmd.hasOption(RENEW);
+  final boolean print=cmd.hasOption(PRINT);
+  String[] remaining=parser.getRemainingArgs();
+  if (cancel && renew || cancel && print || renew && print || cancel && renew && print) {
+    System.err.println("ERROR: Only specify cancel, renew or print.");
+    printUsage(System.err);
+  }
+  if (remaining.length != 1 || remaining[0].charAt(0) == '-') {
+    System.err.println("ERROR: Must specify exacltly one token file");
+    printUsage(System.err);
+  }
+  FileSystem local=FileSystem.getLocal(conf);
+  final Path tokenFile=new Path(local.getWorkingDirectory(),remaining[0]);
+  UserGroupInformation.getCurrentUser().doAs(new PrivilegedExceptionAction<Object>(){
+    @SuppressWarnings("unchecked") @Override public Object run() throws Exception {
+      if (print) {
+        DelegationTokenIdentifier id=new DelegationTokenSecretManager(0,0,0,0,null).createIdentifier();
+        for (        Token<?> token : readTokens(tokenFile,conf)) {
+          DataInputStream in=new DataInputStream(new ByteArrayInputStream(token.getIdentifier()));
+          id.readFields(in);
+          System.out.println("Token (" + id + ") for "+ token.getService());
+        }
+        return null;
+      }
+      if (webUrl != null) {
+        if (renew) {
+          long result;
+          for (          Token<?> token : readTokens(tokenFile,conf)) {
+            result=renewDelegationToken(webUrl,(Token<DelegationTokenIdentifier>)token);
+            System.out.println("Renewed token via " + webUrl + " for "+ token.getService()+ " until: "+ new Date(result));
+          }
+        }
+ else         if (cancel) {
+          for (          Token<?> token : readTokens(tokenFile,conf)) {
+            cancelDelegationToken(webUrl,(Token<DelegationTokenIdentifier>)token);
+            System.out.println("Cancelled token via " + webUrl + " for "+ token.getService());
+          }
+        }
+ else {
+          Credentials creds=getDTfromRemote(webUrl,renewer);
+          creds.writeTokenStorageFile(tokenFile,conf);
+          for (          Token<?> token : creds.getAllTokens()) {
+            System.out.println("Fetched token via " + webUrl + " for "+ token.getService()+ " into "+ tokenFile);
+          }
+        }
+      }
+ else {
+        FileSystem fs=FileSystem.get(conf);
+        if (cancel) {
+          for (          Token<?> token : readTokens(tokenFile,conf)) {
+            ((DistributedFileSystem)fs).cancelDelegationToken((Token<DelegationTokenIdentifier>)token);
+            System.out.println("Cancelled token for " + token.getService());
+          }
+        }
+ else         if (renew) {
+          long result;
+          for (          Token<?> token : readTokens(tokenFile,conf)) {
+            result=((DistributedFileSystem)fs).renewDelegationToken((Token<DelegationTokenIdentifier>)token);
+            System.out.println("Renewed token for " + token.getService() + " until: "+ new Date(result));
+          }
+        }
+ else {
+          Token<?> token=fs.getDelegationToken(renewer);
+          Credentials cred=new Credentials();
+          cred.addToken(token.getService(),token);
+          cred.writeTokenStorageFile(tokenFile,conf);
+          System.out.println("Fetched token for " + token.getService() + " into "+ tokenFile);
+        }
+      }
+      return null;
+    }
+  }
+);
+}

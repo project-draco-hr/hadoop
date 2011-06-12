@@ -1,0 +1,35 @@
+{
+  String driverClassName=DRIVER_CLASS;
+  String url=DB_URL;
+  if (args.length > 1) {
+    driverClassName=args[0];
+    url=args[1];
+  }
+  initialize(driverClassName,url);
+  Configuration conf=getConf();
+  DBConfiguration.configureDB(conf,driverClassName,url);
+  Job job=new Job(conf);
+  job.setJobName("Count Pageviews of URLs");
+  job.setJarByClass(DBCountPageView.class);
+  job.setMapperClass(PageviewMapper.class);
+  job.setCombinerClass(LongSumReducer.class);
+  job.setReducerClass(PageviewReducer.class);
+  DBInputFormat.setInput(job,AccessRecord.class,"Access",null,"url",AccessFieldNames);
+  DBOutputFormat.setOutput(job,"Pageview",PageviewFieldNames);
+  job.setMapOutputKeyClass(Text.class);
+  job.setMapOutputValueClass(LongWritable.class);
+  job.setOutputKeyClass(PageviewRecord.class);
+  job.setOutputValueClass(NullWritable.class);
+  int ret;
+  try {
+    ret=job.waitForCompletion(true) ? 0 : 1;
+    boolean correct=verify();
+    if (!correct) {
+      throw new RuntimeException("Evaluation was not correct!");
+    }
+  }
+  finally {
+    shutdown();
+  }
+  return ret;
+}

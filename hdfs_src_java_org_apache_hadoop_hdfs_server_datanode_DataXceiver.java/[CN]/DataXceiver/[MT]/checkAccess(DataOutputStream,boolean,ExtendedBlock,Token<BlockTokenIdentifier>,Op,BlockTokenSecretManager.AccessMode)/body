@@ -1,0 +1,28 @@
+{
+  if (datanode.isBlockTokenEnabled) {
+    try {
+      datanode.blockPoolTokenSecretManager.checkAccess(t,null,blk,mode);
+    }
+ catch (    InvalidToken e) {
+      try {
+        if (reply) {
+          if (out == null) {
+            out=new DataOutputStream(NetUtils.getOutputStream(s,datanode.socketWriteTimeout));
+          }
+          BlockOpResponseProto.Builder resp=BlockOpResponseProto.newBuilder().setStatus(ERROR_ACCESS_TOKEN);
+          if (mode == BlockTokenSecretManager.AccessMode.WRITE) {
+            DatanodeRegistration dnR=datanode.getDNRegistrationForBP(blk.getBlockPoolId());
+            resp.setFirstBadLink(dnR.getName());
+          }
+          resp.build().writeDelimitedTo(out);
+          out.flush();
+        }
+        LOG.warn("Block token verification failed: op=" + op + ", remoteAddress="+ remoteAddress+ ", message="+ e.getLocalizedMessage());
+        throw e;
+      }
+  finally {
+        IOUtils.closeStream(out);
+      }
+    }
+  }
+}

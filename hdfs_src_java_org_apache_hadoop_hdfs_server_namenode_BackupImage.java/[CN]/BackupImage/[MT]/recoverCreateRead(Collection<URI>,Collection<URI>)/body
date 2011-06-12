@@ -1,0 +1,31 @@
+{
+  storage.setStorageDirectories(imageDirs,editsDirs);
+  storage.setCheckpointTime(0L);
+  for (Iterator<StorageDirectory> it=storage.dirIterator(); it.hasNext(); ) {
+    StorageDirectory sd=it.next();
+    StorageState curState;
+    try {
+      curState=sd.analyzeStorage(HdfsConstants.StartupOption.REGULAR);
+switch (curState) {
+case NON_EXISTENT:
+        throw new InconsistentFSStateException(sd.getRoot(),"checkpoint directory does not exist or is not accessible.");
+case NOT_FORMATTED:
+      LOG.info("Storage directory " + sd.getRoot() + " is not formatted.");
+    LOG.info("Formatting ...");
+  sd.clearDirectory();
+break;
+case NORMAL:
+break;
+default :
+sd.doRecover(curState);
+}
+if (curState != StorageState.NOT_FORMATTED) {
+sd.read();
+}
+}
+ catch (IOException ioe) {
+sd.unlock();
+throw ioe;
+}
+}
+}

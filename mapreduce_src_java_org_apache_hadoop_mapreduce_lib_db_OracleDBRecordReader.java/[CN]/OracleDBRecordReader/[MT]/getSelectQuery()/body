@@ -1,0 +1,40 @@
+{
+  StringBuilder query=new StringBuilder();
+  DBConfiguration dbConf=getDBConf();
+  String conditions=getConditions();
+  String tableName=getTableName();
+  String[] fieldNames=getFieldNames();
+  if (dbConf.getInputQuery() == null) {
+    query.append("SELECT ");
+    for (int i=0; i < fieldNames.length; i++) {
+      query.append(fieldNames[i]);
+      if (i != fieldNames.length - 1) {
+        query.append(", ");
+      }
+    }
+    query.append(" FROM ").append(tableName);
+    if (conditions != null && conditions.length() > 0)     query.append(" WHERE ").append(conditions);
+    String orderBy=dbConf.getInputOrderBy();
+    if (orderBy != null && orderBy.length() > 0) {
+      query.append(" ORDER BY ").append(orderBy);
+    }
+  }
+ else {
+    query.append(dbConf.getInputQuery());
+  }
+  try {
+    DBInputFormat.DBInputSplit split=getSplit();
+    if (split.getLength() > 0 && split.getStart() > 0) {
+      String querystring=query.toString();
+      query=new StringBuilder();
+      query.append("SELECT * FROM (SELECT a.*,ROWNUM dbif_rno FROM ( ");
+      query.append(querystring);
+      query.append(" ) a WHERE rownum <= ").append(split.getStart());
+      query.append(" + ").append(split.getLength());
+      query.append(" ) WHERE dbif_rno >= ").append(split.getStart());
+    }
+  }
+ catch (  IOException ex) {
+  }
+  return query.toString();
+}

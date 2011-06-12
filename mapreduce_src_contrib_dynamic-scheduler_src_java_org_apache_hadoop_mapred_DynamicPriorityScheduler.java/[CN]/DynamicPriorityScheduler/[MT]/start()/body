@@ -1,0 +1,23 @@
+{
+  Configuration conf=getConf();
+  QueueManager queueManager=taskTrackerManager.getQueueManager();
+  allocations=new Allocations(conf,queueManager);
+  scheduler=ReflectionUtils.newInstance(conf.getClass(PrioritySchedulerOptions.DYNAMIC_SCHEDULER_SCHEDULER,PriorityScheduler.class,QueueTaskScheduler.class),conf);
+  scheduler.setAllocator(allocations);
+  scheduler.setConf(conf);
+  scheduler.setTaskTrackerManager(taskTrackerManager);
+  scheduler.start();
+  long interval=conf.getLong(PrioritySchedulerOptions.DYNAMIC_SCHEDULER_ALLOC_INTERVAL,20) * 1000;
+  timer.scheduleAtFixedRate(allocations,interval,interval);
+  for (  String queue : queueManager.getLeafQueueNames()) {
+    Object info=queueManager.getSchedulerInfo(queue);
+    QueueInfo queueInfo=new QueueInfo(queue,info,allocations);
+    queueManager.setSchedulerInfo(queue,queueInfo);
+  }
+  if (taskTrackerManager instanceof JobTracker) {
+    JobTracker jobTracker=(JobTracker)taskTrackerManager;
+    HttpServer infoServer=jobTracker.infoServer;
+    infoServer.setAttribute("scheduler",this);
+    infoServer.addServlet("scheduler","/scheduler",DynamicPriorityServlet.class);
+  }
+}

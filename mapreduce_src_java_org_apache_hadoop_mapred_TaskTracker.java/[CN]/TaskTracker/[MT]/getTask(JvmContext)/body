@@ -1,0 +1,28 @@
+{
+  ensureAuthorizedJVM(context.jvmId.getJobId());
+  JVMId jvmId=context.jvmId;
+  jvmManager.setPidToJvm(jvmId,context.pid);
+  LOG.debug("JVM with ID : " + jvmId + " asked for a task");
+  if (!jvmManager.isJvmKnown(jvmId)) {
+    LOG.info("Killing unknown JVM " + jvmId);
+    return new JvmTask(null,true);
+  }
+  RunningJob rjob=runningJobs.get(jvmId.getJobId());
+  if (rjob == null) {
+    LOG.info("Killing JVM " + jvmId + " since job "+ jvmId.getJobId()+ " is dead");
+    jvmManager.killJvm(jvmId);
+    return new JvmTask(null,true);
+  }
+  TaskInProgress tip=jvmManager.getTaskForJvm(jvmId);
+  if (tip == null) {
+    return new JvmTask(null,false);
+  }
+  if (tasks.get(tip.getTask().getTaskID()) != null) {
+    LOG.info("JVM with ID: " + jvmId + " given task: "+ tip.getTask().getTaskID());
+    return new JvmTask(tip.getTask(),false);
+  }
+ else {
+    LOG.info("Killing JVM with ID: " + jvmId + " since scheduled task: "+ tip.getTask().getTaskID()+ " is "+ tip.taskStatus.getRunState());
+    return new JvmTask(null,true);
+  }
+}

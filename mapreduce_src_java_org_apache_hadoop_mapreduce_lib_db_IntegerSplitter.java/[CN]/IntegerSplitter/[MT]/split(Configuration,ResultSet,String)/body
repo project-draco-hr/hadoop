@@ -1,0 +1,32 @@
+{
+  long minVal=results.getLong(1);
+  long maxVal=results.getLong(2);
+  String lowClausePrefix=colName + " >= ";
+  String highClausePrefix=colName + " < ";
+  int numSplits=conf.getInt(MRJobConfig.NUM_MAPS,1);
+  if (numSplits < 1) {
+    numSplits=1;
+  }
+  if (results.getString(1) == null && results.getString(2) == null) {
+    List<InputSplit> splits=new ArrayList<InputSplit>();
+    splits.add(new DataDrivenDBInputFormat.DataDrivenDBInputSplit(colName + " IS NULL",colName + " IS NULL"));
+    return splits;
+  }
+  List<Long> splitPoints=split(numSplits,minVal,maxVal);
+  List<InputSplit> splits=new ArrayList<InputSplit>();
+  long start=splitPoints.get(0);
+  for (int i=1; i < splitPoints.size(); i++) {
+    long end=splitPoints.get(i);
+    if (i == splitPoints.size() - 1) {
+      splits.add(new DataDrivenDBInputFormat.DataDrivenDBInputSplit(lowClausePrefix + Long.toString(start),colName + " <= " + Long.toString(end)));
+    }
+ else {
+      splits.add(new DataDrivenDBInputFormat.DataDrivenDBInputSplit(lowClausePrefix + Long.toString(start),highClausePrefix + Long.toString(end)));
+    }
+    start=end;
+  }
+  if (results.getString(1) == null || results.getString(2) == null) {
+    splits.add(new DataDrivenDBInputFormat.DataDrivenDBInputSplit(colName + " IS NULL",colName + " IS NULL"));
+  }
+  return splits;
+}

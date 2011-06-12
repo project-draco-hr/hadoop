@@ -1,0 +1,46 @@
+{
+  Vector<String> vargs=new Vector<String>(8);
+  File jvm=new File(new File(System.getProperty("java.home"),"bin"),"java");
+  vargs.add(jvm.toString());
+  String[] javaOptsSplit=parseChildJavaOpts(getChildJavaOpts(conf,JobConf.DEFAULT_MAPRED_TASK_JAVA_OPTS),taskid);
+  String libraryPath=System.getProperty("java.library.path");
+  if (libraryPath == null) {
+    libraryPath=workDir.getAbsolutePath();
+  }
+ else {
+    libraryPath+=SYSTEM_PATH_SEPARATOR + workDir;
+  }
+  boolean hasUserLDPath=false;
+  for (int i=0; i < javaOptsSplit.length; i++) {
+    if (javaOptsSplit[i].startsWith("-Djava.library.path=")) {
+      javaOptsSplit[i]+=SYSTEM_PATH_SEPARATOR + libraryPath;
+      hasUserLDPath=true;
+      break;
+    }
+  }
+  if (!hasUserLDPath) {
+    vargs.add("-Djava.library.path=" + libraryPath);
+  }
+  for (int i=0; i < javaOptsSplit.length; i++) {
+    vargs.add(javaOptsSplit[i]);
+  }
+  Path childTmpDir=createChildTmpDir(workDir,conf);
+  vargs.add("-Djava.io.tmpdir=" + childTmpDir);
+  vargs.add("-classpath");
+  String classPath=StringUtils.join(SYSTEM_PATH_SEPARATOR,classPaths);
+  vargs.add(classPath);
+  setupLog4jProperties(vargs,taskid,logSize);
+  if (conf.getProfileEnabled()) {
+    if (conf.getProfileTaskRange(t.isMapTask()).isIncluded(t.getPartition())) {
+      File prof=TaskLog.getTaskLogFile(taskid,t.isTaskCleanupTask(),TaskLog.LogName.PROFILE);
+      vargs.add(String.format(conf.getProfileParams(),prof.toString()));
+    }
+  }
+  vargs.add(Child.class.getName());
+  InetSocketAddress address=tracker.getTaskTrackerReportAddress();
+  vargs.add(address.getAddress().getHostAddress());
+  vargs.add(Integer.toString(address.getPort()));
+  vargs.add(taskid.toString());
+  vargs.add(TaskLog.getAttemptDir(taskid,t.isTaskCleanupTask()).toString());
+  return vargs;
+}

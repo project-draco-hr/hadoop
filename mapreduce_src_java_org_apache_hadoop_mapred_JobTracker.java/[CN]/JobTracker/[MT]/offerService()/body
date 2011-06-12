@@ -1,0 +1,29 @@
+{
+  while (true) {
+    try {
+      recoveryManager.updateRestartCount();
+      break;
+    }
+ catch (    IOException ioe) {
+      LOG.warn("Failed to initialize recovery manager. ",ioe);
+      Thread.sleep(FS_ACCESS_RETRY_PERIOD);
+      LOG.warn("Retrying...");
+    }
+  }
+  taskScheduler.start();
+  recoveryManager.recover();
+  refreshHosts();
+  startExpireTrackersThread();
+  expireLaunchingTaskThread.start();
+  if (completedJobStatusStore.isActive()) {
+    completedJobsStoreThread=new Thread(completedJobStatusStore,"completedjobsStore-housekeeper");
+    completedJobsStoreThread.start();
+  }
+  this.interTrackerServer.start();
+synchronized (this) {
+    state=State.RUNNING;
+  }
+  LOG.info("Starting RUNNING");
+  this.interTrackerServer.join();
+  LOG.info("Stopped interTrackerServer");
+}

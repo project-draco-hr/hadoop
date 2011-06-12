@@ -1,0 +1,21 @@
+{
+  int workFound=0;
+  int blocksToProcess=0;
+  int nodesToProcess=0;
+  if (isInSafeMode())   return workFound;
+synchronized (heartbeats) {
+    blocksToProcess=(int)(heartbeats.size() * ReplicationMonitor.REPLICATION_WORK_MULTIPLIER_PER_ITERATION);
+    nodesToProcess=(int)Math.ceil((double)heartbeats.size() * ReplicationMonitor.INVALIDATE_WORK_PCT_PER_ITERATION / 100);
+  }
+  workFound=blockManager.computeReplicationWork(blocksToProcess);
+  writeLock();
+  try {
+    blockManager.updateState();
+    blockManager.scheduledReplicationBlocksCount=workFound;
+  }
+  finally {
+    writeUnlock();
+  }
+  workFound+=blockManager.computeInvalidateWork(nodesToProcess);
+  return workFound;
+}

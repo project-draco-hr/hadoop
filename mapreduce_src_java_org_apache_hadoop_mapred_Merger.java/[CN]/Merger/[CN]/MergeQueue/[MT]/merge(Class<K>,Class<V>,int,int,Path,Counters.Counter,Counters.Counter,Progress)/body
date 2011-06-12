@@ -1,0 +1,95 @@
+{
+  LOG.info("Merging " + segments.size() + " sorted segments");
+  int numSegments=segments.size();
+  int origFactor=factor;
+  int passNo=1;
+  if (mergePhase != null) {
+    mergeProgress=mergePhase;
+  }
+  long totalBytes=computeBytesInMerges(factor,inMem);
+  if (totalBytes != 0) {
+    progPerByte=1.0f / (float)totalBytes;
+  }
+  do {
+    factor=getPassFactor(factor,passNo,numSegments - inMem);
+    if (1 == passNo) {
+      factor+=inMem;
+    }
+    List<Segment<K,V>> segmentsToMerge=new ArrayList<Segment<K,V>>();
+    int segmentsConsidered=0;
+    int numSegmentsToConsider=factor;
+    long startBytes=0;
+    while (true) {
+      List<Segment<K,V>> mStream=getSegmentDescriptors(numSegmentsToConsider);
+      for (      Segment<K,V> segment : mStream) {
+        segment.init(readsCounter);
+        long startPos=segment.getPosition();
+        boolean hasNext=segment.nextRawKey();
+        long endPos=segment.getPosition();
+        if (hasNext) {
+          startBytes+=endPos - startPos;
+          segmentsToMerge.add(segment);
+          segmentsConsidered++;
+        }
+ else {
+          segment.close();
+          numSegments--;
+        }
+      }
+      if (segmentsConsidered == factor || segments.size() == 0) {
+        break;
+      }
+      numSegmentsToConsider=factor - segmentsConsidered;
+    }
+    initialize(segmentsToMerge.size());
+    clear();
+    for (    Segment<K,V> segment : segmentsToMerge) {
+      put(segment);
+    }
+    if (numSegments <= factor) {
+      if (!includeFinalMerge) {
+        totalBytesProcessed=0;
+        totalBytes=0;
+        for (int i=0; i < segmentsToMerge.size(); i++) {
+          totalBytes+=segmentsToMerge.get(i).getLength();
+        }
+      }
+      if (totalBytes != 0)       progPerByte=1.0f / (float)totalBytes;
+      totalBytesProcessed+=startBytes;
+      if (totalBytes != 0)       mergeProgress.set(totalBytesProcessed * progPerByte);
+ else       mergeProgress.set(1.0f);
+      LOG.info("Down to the last merge-pass, with " + numSegments + " segments left of total size: "+ (totalBytes - totalBytesProcessed)+ " bytes");
+      return this;
+    }
+ else {
+      LOG.info("Merging " + segmentsToMerge.size() + " intermediate segments out of a total of "+ (segments.size() + segmentsToMerge.size()));
+      long bytesProcessedInPrevMerges=totalBytesProcessed;
+      totalBytesProcessed+=startBytes;
+      long approxOutputSize=0;
+      for (      Segment<K,V> s : segmentsToMerge) {
+        approxOutputSize+=s.getLength() + ChecksumFileSystem.getApproxChkSumLength(s.getLength());
+      }
+      Path tmpFilename=new Path(tmpDir,"intermediate").suffix("." + passNo);
+      Path outputFile=lDirAlloc.getLocalPathForWrite(tmpFilename.toString(),approxOutputSize,conf);
+      Writer<K,V> writer=new Writer<K,V>(conf,fs,outputFile,keyClass,valueClass,codec,writesCounter);
+      writeFile(this,writer,reporter,conf);
+      writer.close();
+      this.close();
+      Segment<K,V> tempSegment=new Segment<K,V>(conf,fs,outputFile,codec,false);
+      int pos=Collections.binarySearch(segments,tempSegment,segmentComparator);
+      if (pos < 0) {
+        pos=-pos - 1;
+      }
+      segments.add(pos,tempSegment);
+      numSegments=segments.size();
+      long inputBytesOfThisMerge=totalBytesProcessed - bytesProcessedInPrevMerges;
+      totalBytes-=inputBytesOfThisMerge - tempSegment.getLength();
+      if (totalBytes != 0) {
+        progPerByte=1.0f / (float)totalBytes;
+      }
+      passNo++;
+    }
+    factor=origFactor;
+  }
+ while (true);
+}

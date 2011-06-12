@@ -1,0 +1,30 @@
+{
+  MiniDFSCluster dfs=null;
+  MiniMRCluster mr=null;
+  FileSystem fileSys=null;
+  try {
+    final int taskTrackers=4;
+    Configuration conf=new Configuration();
+    dfs=new MiniDFSCluster(conf,4,true,null);
+    fileSys=dfs.getFileSystem();
+    JobConf jtConf=new JobConf();
+    jtConf.setInt(TTConfig.TT_MAP_SLOTS,1);
+    jtConf.setInt(TTConfig.TT_REDUCE_SLOTS,1);
+    jtConf.setLong(JTConfig.JT_TRACKER_EXPIRY_INTERVAL,10 * 1000);
+    mr=new MiniMRCluster(taskTrackers,fileSys.getUri().toString(),1,null,null,jtConf);
+    testFailCommitter(CommitterWithFailSetup.class,mr.createJobConf());
+    testFailCommitter(CommitterWithFailCommit.class,mr.createJobConf());
+    testSetupAndCleanupKill(mr,dfs,true);
+    fileSys.delete(setupSignalFile,true);
+    fileSys.delete(cleanupSignalFile,true);
+    testSetupAndCleanupKill(mr,dfs,false);
+  }
+  finally {
+    if (dfs != null) {
+      dfs.shutdown();
+    }
+    if (mr != null) {
+      mr.shutdown();
+    }
+  }
+}

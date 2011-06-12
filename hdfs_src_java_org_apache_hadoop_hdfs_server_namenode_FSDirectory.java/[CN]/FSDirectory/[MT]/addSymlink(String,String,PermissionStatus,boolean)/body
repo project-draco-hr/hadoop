@@ -1,0 +1,28 @@
+{
+  waitForReady();
+  final long modTime=now();
+  if (createParent) {
+    final String parent=new Path(path).getParent().toString();
+    if (!mkdirs(parent,dirPerms,true,modTime)) {
+      return null;
+    }
+  }
+  final String userName=dirPerms.getUserName();
+  INodeSymlink newNode=null;
+  writeLock();
+  try {
+    newNode=unprotectedSymlink(path,target,modTime,modTime,new PermissionStatus(userName,null,FsPermission.getDefault()));
+  }
+  finally {
+    writeUnlock();
+  }
+  if (newNode == null) {
+    NameNode.stateChangeLog.info("DIR* FSDirectory.addSymlink: " + "failed to add " + path + " to the file system");
+    return null;
+  }
+  fsImage.getEditLog().logSymlink(path,target,modTime,modTime,newNode);
+  if (NameNode.stateChangeLog.isDebugEnabled()) {
+    NameNode.stateChangeLog.debug("DIR* FSDirectory.addSymlink: " + path + " is added to the file system");
+  }
+  return newNode;
+}

@@ -1,0 +1,45 @@
+{
+  FSDataOutputStream out=null;
+  FileSystem fs=cluster.getFileSystem();
+  final Path src=new Path("/test.txt");
+  try {
+    final int fileLen=515;
+    byte[] writeBuf=new byte[fileLen];
+    new Random().nextBytes(writeBuf);
+    out=fs.create(src);
+    out.write(writeBuf);
+    out.hflush();
+    DataNode dn=cluster.getDataNodes().get(0);
+    for (    FSVolume volume : ((FSDataset)dn.data).volumes.getVolumes()) {
+      File currentDir=volume.getDir().getParentFile();
+      File rbwDir=new File(currentDir,"rbw");
+      for (      File file : rbwDir.listFiles()) {
+        if (isCorrupt && Block.isBlockFilename(file)) {
+          new RandomAccessFile(file,"rw").setLength(fileLen - 1);
+        }
+      }
+    }
+    cluster.restartDataNodes();
+    cluster.waitActive();
+    dn=cluster.getDataNodes().get(0);
+    String bpid=cluster.getNamesystem().getBlockPoolId();
+    ReplicasMap replicas=((FSDataset)(dn.data)).volumeMap;
+    Assert.assertEquals(1,replicas.size(bpid));
+    ReplicaInfo replica=replicas.replicas(bpid).iterator().next();
+    Assert.assertEquals(ReplicaState.RWR,replica.getState());
+    if (isCorrupt) {
+      Assert.assertEquals((fileLen - 1) / 512 * 512,replica.getNumBytes());
+    }
+ else {
+      Assert.assertEquals(fileLen,replica.getNumBytes());
+    }
+    dn.data.invalidate(bpid,new Block[]{replica});
+  }
+  finally {
+    IOUtils.closeStream(out);
+    if (fs.exists(src)) {
+      fs.delete(src,false);
+    }
+    fs.close();
+  }
+}

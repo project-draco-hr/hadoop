@@ -1,0 +1,27 @@
+{
+  OutputStream output=mapOutput.getDisk();
+  long bytesLeft=compressedLength;
+  try {
+    final int BYTES_TO_READ=64 * 1024;
+    byte[] buf=new byte[BYTES_TO_READ];
+    while (bytesLeft > 0) {
+      int n=input.read(buf,0,(int)Math.min(bytesLeft,BYTES_TO_READ));
+      if (n < 0) {
+        throw new IOException("read past end of stream reading " + mapOutput.getMapId());
+      }
+      output.write(buf,0,n);
+      bytesLeft-=n;
+      metrics.inputBytes(n);
+      reporter.progress();
+    }
+    LOG.info("Read " + (compressedLength - bytesLeft) + " bytes from map-output for "+ mapOutput.getMapId());
+    output.close();
+  }
+ catch (  IOException ioe) {
+    IOUtils.cleanup(LOG,input,output);
+    throw ioe;
+  }
+  if (bytesLeft != 0) {
+    throw new IOException("Incomplete map output received for " + mapOutput.getMapId() + " from "+ host.getHostName()+ " ("+ bytesLeft+ " bytes missing of "+ compressedLength+ ")");
+  }
+}

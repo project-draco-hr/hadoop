@@ -1,0 +1,33 @@
+{
+  boolean areAllReducesRunning=(redTaskCtr == numReduceTasks);
+  if (areAllReducesRunning) {
+    if (!getJobConf().getReduceSpeculativeExecution() || speculativeReduceTasks > 0) {
+      return null;
+    }
+  }
+  TaskAttemptID attemptId=getTaskAttemptID(false,areAllReducesRunning);
+  Task task=new ReduceTask("",attemptId,0,10,super.numSlotsPerReduce){
+    @Override public String toString(){
+      return String.format("%s on %s",getTaskID(),tts.getTrackerName());
+    }
+  }
+;
+  taskTrackerManager.startTask(tts.getTrackerName(),task);
+  runningReduceTasks++;
+  FakeTaskInProgress reduceTip=new FakeTaskInProgress(getJobID(),getJobConf(),task,false,this,null);
+  reduceTip.taskStatus.setRunState(TaskStatus.State.RUNNING);
+  if (areAllReducesRunning) {
+    speculativeReduceTasks++;
+    for (    TaskInProgress t : reduceTips) {
+      if (t instanceof FakeTaskInProgress) {
+        FakeTaskInProgress rt=(FakeTaskInProgress)t;
+        rt.hasSpeculativeReduce=false;
+      }
+    }
+  }
+ else {
+    reduceTips.add(reduceTip);
+    reduces=reduceTips.toArray(new TaskInProgress[reduceTips.size()]);
+  }
+  return task;
+}

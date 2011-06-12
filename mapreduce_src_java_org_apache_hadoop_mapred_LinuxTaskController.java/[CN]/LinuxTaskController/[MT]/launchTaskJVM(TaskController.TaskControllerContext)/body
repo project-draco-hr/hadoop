@@ -1,0 +1,34 @@
+{
+  JvmEnv env=context.env;
+  String cmdLine=TaskLog.buildCommandLine(env.setup,env.vargs,env.stdout,env.stderr,env.logSize,true);
+  StringBuffer sb=new StringBuffer();
+  for (  Entry<String,String> entry : env.env.entrySet()) {
+    sb.append("export ");
+    sb.append(entry.getKey());
+    sb.append("=");
+    sb.append(entry.getValue());
+    sb.append("\n");
+  }
+  sb.append(cmdLine);
+  writeCommand(sb.toString(),getTaskCacheDirectory(context,context.env.workDir));
+  List<String> launchTaskJVMArgs=buildLaunchTaskArgs(context,context.env.workDir);
+  ShellCommandExecutor shExec=buildTaskControllerExecutor(TaskControllerCommands.LAUNCH_TASK_JVM,env.conf.getUser(),launchTaskJVMArgs,env.workDir,env.env);
+  context.shExec=shExec;
+  try {
+    shExec.execute();
+  }
+ catch (  Exception e) {
+    int exitCode=shExec.getExitCode();
+    LOG.warn("Exit code from task is : " + exitCode);
+    if (exitCode != 143 && exitCode != 137) {
+      LOG.warn("Exception thrown while launching task JVM : " + StringUtils.stringifyException(e));
+      LOG.info("Output from LinuxTaskController's launchTaskJVM follows:");
+      logOutput(shExec.getOutput());
+    }
+    throw new IOException(e);
+  }
+  if (LOG.isDebugEnabled()) {
+    LOG.info("Output from LinuxTaskController's launchTaskJVM follows:");
+    logOutput(shExec.getOutput());
+  }
+}

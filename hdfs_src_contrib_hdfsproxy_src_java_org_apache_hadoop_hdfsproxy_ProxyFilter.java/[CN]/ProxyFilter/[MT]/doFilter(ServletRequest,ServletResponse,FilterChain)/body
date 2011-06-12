@@ -1,0 +1,125 @@
+{
+  HttpServletRequest rqst=(HttpServletRequest)request;
+  HttpServletResponse rsp=(HttpServletResponse)response;
+  if (LOG.isDebugEnabled()) {
+    StringBuilder b=new StringBuilder("Request from ").append(rqst.getRemoteHost()).append("/").append(rqst.getRemoteAddr()).append(":").append(rqst.getRemotePort());
+    @SuppressWarnings("unchecked") Enumeration<String> e=rqst.getAttributeNames();
+    for (; e.hasMoreElements(); ) {
+      String attribute=e.nextElement();
+      b.append("\n  " + attribute + " => "+ rqst.getAttribute(attribute));
+    }
+    X509Certificate[] userCerts=(X509Certificate[])rqst.getAttribute("javax.servlet.request.X509Certificate");
+    if (userCerts != null)     for (    X509Certificate cert : userCerts)     b.append("\n Client certificate Subject Name is " + cert.getSubjectX500Principal().getName());
+    b.append("\n The Scheme is " + rqst.getScheme());
+    b.append("\n The Auth Type is " + rqst.getAuthType());
+    b.append("\n The Path Info is " + rqst.getPathInfo());
+    b.append("\n The Translated Path Info is " + rqst.getPathTranslated());
+    b.append("\n The Context Path is " + rqst.getContextPath());
+    b.append("\n The Query String is " + rqst.getQueryString());
+    b.append("\n The Remote User is " + rqst.getRemoteUser());
+    b.append("\n The User Principal is " + rqst.getUserPrincipal());
+    b.append("\n The Request URI is " + rqst.getRequestURI());
+    b.append("\n The Request URL is " + rqst.getRequestURL());
+    b.append("\n The Servlet Path is " + rqst.getServletPath());
+    LOG.debug(b.toString());
+  }
+  boolean unitTest=false;
+  if (rqst.getScheme().equalsIgnoreCase("http") && rqst.getParameter("UnitTest") != null)   unitTest=true;
+  if (rqst.getScheme().equalsIgnoreCase("https") || unitTest) {
+    boolean isAuthorized=false;
+    X509Certificate[] certs=(X509Certificate[])rqst.getAttribute("javax.servlet.request.X509Certificate");
+    if (unitTest) {
+      try {
+        if (LOG.isDebugEnabled()) {
+          LOG.debug("==> Entering https unit test");
+        }
+        String SslPath=rqst.getParameter("SslPath");
+        InputStream inStream=new FileInputStream(SslPath);
+        CertificateFactory cf=CertificateFactory.getInstance("X.509");
+        X509Certificate cert=(X509Certificate)cf.generateCertificate(inStream);
+        inStream.close();
+        certs=new X509Certificate[]{cert};
+      }
+ catch (      Exception e) {
+      }
+    }
+    if (certs == null || certs.length == 0) {
+      rsp.sendError(HttpServletResponse.SC_BAD_REQUEST,"No client SSL certificate received");
+      LOG.info("No Client SSL certificate received");
+      return;
+    }
+    for (    X509Certificate cert : certs) {
+      try {
+        cert.checkValidity();
+      }
+ catch (      CertificateExpiredException e) {
+        LOG.info("Received cert for " + cert.getSubjectX500Principal().getName() + " expired");
+        rsp.sendError(HttpServletResponse.SC_FORBIDDEN,"Certificate expired");
+        return;
+      }
+catch (      CertificateNotYetValidException e) {
+        LOG.info("Received cert for " + cert.getSubjectX500Principal().getName() + " is not yet valid");
+        rsp.sendError(HttpServletResponse.SC_FORBIDDEN,"Certificate is not yet valid");
+        return;
+      }
+    }
+    String[] tokens=certs[0].getSubjectX500Principal().getName().split("\\s*,\\s*");
+    String userID=null;
+    for (    String s : tokens) {
+      if (s.startsWith("CN=")) {
+        userID=s;
+        break;
+      }
+    }
+    if (userID == null || userID.length() < 4) {
+      LOG.info("Can't retrieve user ID from SSL certificate");
+      rsp.sendError(HttpServletResponse.SC_FORBIDDEN,"Can't retrieve user ID from SSL certificate");
+      return;
+    }
+    userID=userID.substring(3);
+    String servletPath=rqst.getServletPath();
+    if (unitTest) {
+      servletPath=rqst.getParameter("TestSevletPathInfo");
+      LOG.info("this is for unit test purpose only");
+    }
+    if (HFTP_PATTERN.matcher(servletPath).matches()) {
+      if (FILEPATH_PATTERN.matcher(servletPath).matches()) {
+        isAuthorized=checkPath(userID,certs[0],rqst.getPathInfo() != null ? rqst.getPathInfo() : "/");
+      }
+ else {
+        isAuthorized=checkPath(userID,certs[0],rqst.getParameter("filename"));
+      }
+    }
+ else     if (RELOAD_PATTERN.matcher(servletPath).matches() && checkUser("Admin",certs[0])) {
+      Configuration conf=new HdfsConfiguration(false);
+      conf.addResource("hdfsproxy-default.xml");
+      Map<String,Set<Path>> permsMap=getPermMap(conf);
+      Map<String,Set<BigInteger>> certsMap=getCertsMap(conf);
+      if (permsMap == null || certsMap == null) {
+        LOG.warn("Permission files reloading failed");
+        rsp.sendError(HttpServletResponse.SC_INTERNAL_SERVER_ERROR,"Permission files reloading failed");
+        return;
+      }
+      ProxyFilter.permsMap=permsMap;
+      ProxyFilter.certsMap=certsMap;
+      LOG.info("User permissions and user certs files reloaded");
+      rsp.setStatus(HttpServletResponse.SC_OK);
+      return;
+    }
+    if (!isAuthorized) {
+      rsp.sendError(HttpServletResponse.SC_FORBIDDEN,"Unauthorized access");
+      return;
+    }
+    UserGroupInformation ugi=UserGroupInformation.createRemoteUser(userID);
+    rqst.setAttribute("authorized.ugi",ugi);
+    rqst.setAttribute("org.apache.hadoop.hdfsproxy.authorized.userID",userID);
+  }
+ else   if (rqst.getScheme().equalsIgnoreCase("http")) {
+    String ugi=rqst.getParameter("ugi");
+    if (ugi != null) {
+      rqst.setAttribute("authorized.ugi",UserGroupInformation.createRemoteUser(ugi));
+      rqst.setAttribute("org.apache.hadoop.hdfsproxy.authorized.userID",ugi.split(",")[0]);
+    }
+  }
+  chain.doFilter(request,response);
+}

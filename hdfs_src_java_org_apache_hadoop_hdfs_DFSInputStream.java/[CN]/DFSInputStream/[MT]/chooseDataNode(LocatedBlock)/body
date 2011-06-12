@@ -1,0 +1,32 @@
+{
+  while (true) {
+    DatanodeInfo[] nodes=block.getLocations();
+    try {
+      DatanodeInfo chosenNode=bestNode(nodes,deadNodes);
+      InetSocketAddress targetAddr=NetUtils.createSocketAddr(chosenNode.getName());
+      return new DNAddrPair(chosenNode,targetAddr);
+    }
+ catch (    IOException ie) {
+      String blockInfo=block.getBlock() + " file=" + src;
+      if (failures >= dfsClient.getMaxBlockAcquireFailures()) {
+        throw new BlockMissingException(src,"Could not obtain block: " + blockInfo,block.getStartOffset());
+      }
+      if (nodes == null || nodes.length == 0) {
+        DFSClient.LOG.info("No node available for block: " + blockInfo);
+      }
+      DFSClient.LOG.info("Could not obtain block " + block.getBlock() + " from any node: "+ ie+ ". Will get new block locations from namenode and retry...");
+      try {
+        double waitTime=timeWindow * failures + timeWindow * (failures + 1) * dfsClient.r.nextDouble();
+        DFSClient.LOG.warn("DFS chooseDataNode: got # " + (failures + 1) + " IOException, will wait for "+ waitTime+ " msec.");
+        Thread.sleep((long)waitTime);
+      }
+ catch (      InterruptedException iex) {
+      }
+      deadNodes.clear();
+      openInfo();
+      block=getBlockAt(block.getStartOffset(),false);
+      failures++;
+      continue;
+    }
+  }
+}
