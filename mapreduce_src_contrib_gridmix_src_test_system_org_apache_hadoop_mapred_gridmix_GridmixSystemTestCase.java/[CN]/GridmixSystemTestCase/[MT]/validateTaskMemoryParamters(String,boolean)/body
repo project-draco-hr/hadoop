@@ -1,0 +1,23 @@
+{
+  if (isTraceHasHighRamJobs) {
+    GridmixJobStory gjs=new GridmixJobStory(new Path(tracePath),rtClient.getDaemonConf());
+    Set<JobID> jobids=gjs.getZombieJobs().keySet();
+    boolean isHighRamFlag=false;
+    for (    JobID jobid : jobids) {
+      ZombieJob zombieJob=gjs.getZombieJobs().get(jobid);
+      JobConf origJobConf=zombieJob.getJobConf();
+      int origMapFactor=GridmixJobVerification.getMapFactor(origJobConf);
+      int origReduceFactor=GridmixJobVerification.getReduceFactor(origJobConf);
+      if (origMapFactor >= 2 || origReduceFactor >= 2) {
+        isHighRamFlag=true;
+        long TaskMapMemInMB=GridmixJobVerification.getScaledTaskMemInMB(GridMixConfig.JOB_MAP_MEMORY_MB,GridMixConfig.CLUSTER_MAP_MEMORY,origJobConf,rtClient.getDaemonConf());
+        long TaskReduceMemInMB=GridmixJobVerification.getScaledTaskMemInMB(GridMixConfig.JOB_REDUCE_MEMORY_MB,GridMixConfig.CLUSTER_REDUCE_MEMORY,origJobConf,rtClient.getDaemonConf());
+        long taskMapLimitInMB=conf.getLong(GridMixConfig.CLUSTER_MAX_MAP_MEMORY,JobConf.DISABLED_MEMORY_LIMIT);
+        long taskReduceLimitInMB=conf.getLong(GridMixConfig.CLUSTER_MAX_REDUCE_MEMORY,JobConf.DISABLED_MEMORY_LIMIT);
+        GridmixJobVerification.verifyMemoryLimits(TaskMapMemInMB,taskMapLimitInMB);
+        GridmixJobVerification.verifyMemoryLimits(TaskReduceMemInMB,taskReduceLimitInMB);
+      }
+    }
+    Assert.assertTrue("Trace doesn't have atleast one high ram job.",isHighRamFlag);
+  }
+}
