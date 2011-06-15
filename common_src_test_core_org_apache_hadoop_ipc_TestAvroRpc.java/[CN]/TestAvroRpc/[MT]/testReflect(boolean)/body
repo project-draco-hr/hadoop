@@ -1,12 +1,21 @@
 {
   Configuration conf=new Configuration();
+  TestTokenSecretManager sm=null;
+  if (secure) {
+    makeSecure(conf);
+    sm=new TestTokenSecretManager();
+  }
+  UserGroupInformation.setConfiguration(conf);
   RPC.setProtocolEngine(conf,AvroTestProtocol.class,AvroRpcEngine.class);
-  Server server=RPC.getServer(AvroTestProtocol.class,new TestImpl(),ADDRESS,0,conf);
-  AvroTestProtocol proxy=null;
+  Server server=RPC.getServer(AvroTestProtocol.class,new TestImpl(),ADDRESS,0,5,true,conf,sm);
   try {
     server.start();
     InetSocketAddress addr=NetUtils.getConnectAddress(server);
-    proxy=(AvroTestProtocol)RPC.getProxy(AvroTestProtocol.class,0,addr,conf);
+    if (secure) {
+      addToken(sm,addr);
+      Assert.assertEquals("auth",SaslRpcServer.SASL_PROPS.get(Sasl.QOP));
+    }
+    AvroTestProtocol proxy=(AvroTestProtocol)RPC.getProxy(AvroTestProtocol.class,0,addr,conf);
     proxy.ping();
     String echo=proxy.echo("hello world");
     assertEquals("hello world",echo);
@@ -25,6 +34,7 @@
     assertTrue(caught);
   }
   finally {
+    resetSecurity();
     server.stop();
   }
 }
