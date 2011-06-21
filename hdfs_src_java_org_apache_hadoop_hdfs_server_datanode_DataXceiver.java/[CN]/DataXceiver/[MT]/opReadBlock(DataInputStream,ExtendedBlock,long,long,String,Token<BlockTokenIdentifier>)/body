@@ -4,13 +4,14 @@
   checkAccess(out,true,block,blockToken,Op.READ_BLOCK,BlockTokenSecretManager.AccessMode.READ);
   BlockSender blockSender=null;
   DatanodeRegistration dnR=datanode.getDNRegistrationForBP(block.getBlockPoolId());
-  final String clientTraceFmt=clientName.length() > 0 && ClientTraceLog.isInfoEnabled() ? String.format(DN_CLIENTTRACE_FORMAT,localAddress,remoteAddress,"%d","HDFS_READ",clientName,"%d",dnR.getStorageID(),block,"%d") : dnR + " Served block " + block+ " to "+ s.getInetAddress();
+  final String clientTraceFmt=clientName.length() > 0 && ClientTraceLog.isInfoEnabled() ? String.format(DN_CLIENTTRACE_FORMAT,localAddress,remoteAddress,"%d","HDFS_READ",clientName,"%d",dnR.getStorageID(),block,"%d") : dnR + " Served block " + block+ " to "+ remoteAddress;
   updateCurrentThreadName("Sending block " + block);
   try {
     try {
       blockSender=new BlockSender(block,startOffset,length,true,true,false,datanode,clientTraceFmt);
     }
  catch (    IOException e) {
+      LOG.info("opReadBlock " + block + " received exception "+ e);
       sendResponse(s,ERROR,datanode.socketWriteTimeout);
       throw e;
     }
@@ -36,11 +37,14 @@
     datanode.metrics.incrBlocksRead();
   }
  catch (  SocketException ignored) {
+    if (LOG.isTraceEnabled()) {
+      LOG.trace(dnR + ":Ignoring exception while serving " + block+ " to "+ remoteAddress,ignored);
+    }
     datanode.metrics.incrBlocksRead();
     IOUtils.closeStream(out);
   }
 catch (  IOException ioe) {
-    LOG.warn(dnR + ":Got exception while serving " + block+ " to "+ s.getInetAddress()+ ":\n"+ StringUtils.stringifyException(ioe));
+    LOG.warn(dnR + ":Got exception while serving " + block+ " to "+ remoteAddress+ ":\n"+ StringUtils.stringifyException(ioe));
     throw ioe;
   }
  finally {
