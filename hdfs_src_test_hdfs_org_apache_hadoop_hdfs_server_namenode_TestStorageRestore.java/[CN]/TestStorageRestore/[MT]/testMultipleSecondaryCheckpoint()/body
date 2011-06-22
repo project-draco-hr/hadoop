@@ -1,0 +1,31 @@
+{
+  SecondaryNameNode secondary=null;
+  try {
+    cluster=new MiniDFSCluster.Builder(config).numDataNodes(1).manageNameDfsDirs(false).build();
+    cluster.waitActive();
+    secondary=new SecondaryNameNode(config);
+    FSImage fsImage=cluster.getNameNode().getFSImage();
+    printStorages(fsImage);
+    FileSystem fs=cluster.getFileSystem();
+    Path testPath=new Path("/","test");
+    writeFile(fs,testPath,2);
+    printStorages(fsImage);
+    invalidateStorage(fsImage,ImmutableSet.of(path1));
+    cluster.getNameNode().rollEditLog();
+    printStorages(fsImage);
+    secondary.doCheckpoint();
+    printStorages(fsImage);
+    assertTrue("path exists before restart",fs.exists(testPath));
+    secondary.shutdown();
+    cluster.restartNameNode();
+    assertTrue("path should still exist after restart",fs.exists(testPath));
+  }
+  finally {
+    if (cluster != null) {
+      cluster.shutdown();
+    }
+    if (secondary != null) {
+      secondary.shutdown();
+    }
+  }
+}
