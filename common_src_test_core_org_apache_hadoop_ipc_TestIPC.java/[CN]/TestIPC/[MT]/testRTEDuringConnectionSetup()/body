@@ -1,0 +1,30 @@
+{
+  SocketFactory spyFactory=spy(NetUtils.getDefaultSocketFactory(conf));
+  Mockito.doAnswer(new Answer<Socket>(){
+    @Override public Socket answer(    InvocationOnMock invocation) throws Throwable {
+      Socket s=spy((Socket)invocation.callRealMethod());
+      doThrow(new RuntimeException("Injected fault")).when(s).setSoTimeout(anyInt());
+      return s;
+    }
+  }
+).when(spyFactory).createSocket();
+  Server server=new TestServer(1,true);
+  server.start();
+  try {
+    InetSocketAddress address=NetUtils.getConnectAddress(server);
+    Client client=new Client(LongWritable.class,conf,spyFactory);
+    try {
+      client.call(new LongWritable(RANDOM.nextLong()),address,null,null,0,conf);
+      fail("Expected an exception to have been thrown");
+    }
+ catch (    Exception e) {
+      LOG.info("caught expected exception",e);
+      assertTrue(StringUtils.stringifyException(e).contains("Injected fault"));
+    }
+    Mockito.reset(spyFactory);
+    client.call(new LongWritable(RANDOM.nextLong()),address,null,null,0,conf);
+  }
+  finally {
+    server.stop();
+  }
+}
