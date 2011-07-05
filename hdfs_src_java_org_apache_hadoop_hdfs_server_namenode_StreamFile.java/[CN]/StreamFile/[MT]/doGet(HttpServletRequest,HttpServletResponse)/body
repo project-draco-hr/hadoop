@@ -19,28 +19,38 @@
     response.sendError(400,e.getMessage());
     return;
   }
-  final DFSInputStream in=dfs.open(filename);
-  final long fileLen=in.getFileLength();
-  OutputStream os=response.getOutputStream();
+  DFSInputStream in=null;
+  OutputStream out=null;
   try {
+    in=dfs.open(filename);
+    out=response.getOutputStream();
+    final long fileLen=in.getFileLength();
     if (reqRanges != null) {
       List<InclusiveByteRange> ranges=InclusiveByteRange.satisfiableRanges(reqRanges,fileLen);
-      StreamFile.sendPartialData(in,os,response,fileLen,ranges,true);
+      StreamFile.sendPartialData(in,out,response,fileLen,ranges);
     }
  else {
       response.setHeader("Content-Disposition","attachment; filename=\"" + filename + "\"");
       response.setContentType("application/octet-stream");
       response.setHeader(CONTENT_LENGTH,"" + fileLen);
-      StreamFile.copyFromOffset(in,os,0L,fileLen,true);
+      StreamFile.copyFromOffset(in,out,0L,fileLen);
     }
+    in.close();
+    in=null;
+    out.close();
+    out=null;
+    dfs.close();
+    dfs=null;
   }
- catch (  IOException e) {
+ catch (  IOException ioe) {
     if (LOG.isDebugEnabled()) {
-      LOG.debug("response.isCommitted()=" + response.isCommitted(),e);
+      LOG.debug("response.isCommitted()=" + response.isCommitted(),ioe);
     }
-    throw e;
+    throw ioe;
   }
  finally {
-    dfs.close();
+    IOUtils.cleanup(LOG,in);
+    IOUtils.cleanup(LOG,out);
+    IOUtils.cleanup(LOG,dfs);
   }
 }
