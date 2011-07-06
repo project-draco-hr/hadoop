@@ -1,0 +1,32 @@
+{
+  MetricsContext ctx=MetricsUtil.getContext("fairscheduler");
+  Collection<OutputRecord> records=ctx.getAllRecords().get("pools");
+  try {
+    assertEquals(scheduler.getPoolSchedulables(TaskType.MAP).size() * 2,records.size());
+  }
+ catch (  Error e) {
+    for (    OutputRecord rec : records) {
+      System.err.println("record:");
+      System.err.println(" name: " + rec.getTag("name"));
+      System.err.println(" type: " + rec.getTag("type"));
+    }
+    throw e;
+  }
+  Map<String,OutputRecord> byPoolAndType=new HashMap<String,OutputRecord>();
+  for (  OutputRecord rec : records) {
+    String pool=(String)rec.getTag("name");
+    String type=(String)rec.getTag("taskType");
+    assertNotNull(pool);
+    assertNotNull(type);
+    byPoolAndType.put(pool + "_" + type,rec);
+  }
+  List<PoolSchedulable> poolScheds=new ArrayList<PoolSchedulable>();
+  poolScheds.addAll(scheduler.getPoolSchedulables(TaskType.MAP));
+  poolScheds.addAll(scheduler.getPoolSchedulables(TaskType.REDUCE));
+  for (  PoolSchedulable pool : poolScheds) {
+    String poolName=pool.getName();
+    OutputRecord metrics=byPoolAndType.get(poolName + "_" + pool.getTaskType().toString());
+    assertNotNull("Need metrics for " + pool,metrics);
+    verifySchedulableMetrics(pool,metrics);
+  }
+}
