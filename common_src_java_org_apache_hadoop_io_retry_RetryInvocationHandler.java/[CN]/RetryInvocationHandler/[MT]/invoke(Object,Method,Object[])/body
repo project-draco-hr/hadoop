@@ -3,21 +3,30 @@
   if (policy == null) {
     policy=defaultPolicy;
   }
+  int failovers=0;
   int retries=0;
   while (true) {
     try {
       return invokeMethod(method,args);
     }
  catch (    Exception e) {
-      if (!policy.shouldRetry(e,retries++)) {
-        LOG.info("Exception while invoking " + method.getName() + " of "+ implementation.getClass()+ ". Not retrying.",e);
+      boolean isMethodIdempotent=proxyProvider.getInterface().getMethod(method.getName(),method.getParameterTypes()).isAnnotationPresent(Idempotent.class);
+      RetryAction action=policy.shouldRetry(e,retries++,failovers,isMethodIdempotent);
+      if (action == RetryAction.FAIL) {
+        LOG.warn("Exception while invoking " + method.getName() + " of "+ currentProxy.getClass()+ ". Not retrying.",e);
         if (!method.getReturnType().equals(Void.TYPE)) {
           throw e;
         }
         return null;
       }
+ else       if (action == RetryAction.FAILOVER_AND_RETRY) {
+        LOG.warn("Exception while invoking " + method.getName() + " of "+ currentProxy.getClass()+ ". Trying to fail over.",e);
+        failovers++;
+        proxyProvider.performFailover(currentProxy);
+        currentProxy=proxyProvider.getProxy();
+      }
       if (LOG.isDebugEnabled()) {
-        LOG.debug("Exception while invoking " + method.getName() + " of "+ implementation.getClass()+ ". Retrying.",e);
+        LOG.debug("Exception while invoking " + method.getName() + " of "+ currentProxy.getClass()+ ". Retrying.",e);
       }
     }
   }
