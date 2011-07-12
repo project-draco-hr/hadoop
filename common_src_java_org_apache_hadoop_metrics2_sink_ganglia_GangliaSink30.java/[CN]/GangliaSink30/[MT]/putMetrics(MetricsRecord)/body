@@ -1,0 +1,54 @@
+{
+  try {
+    String recordName=record.name();
+    String contextName=record.context();
+    StringBuilder sb=new StringBuilder();
+    sb.append(contextName);
+    sb.append('.');
+    sb.append(recordName);
+    String groupName=sb.toString();
+    sb.append('.');
+    int sbBaseLen=sb.length();
+    String type=null;
+    GangliaSlope slopeFromMetric=null;
+    GangliaSlope calculatedSlope=null;
+    Record cachedMetrics=null;
+    resetBuffer();
+    if (!isSupportSparseMetrics()) {
+      cachedMetrics=metricsCache.update(record);
+      if (cachedMetrics != null && cachedMetrics.metricsEntrySet() != null) {
+        for (        Map.Entry<String,AbstractMetric> entry : cachedMetrics.metricsEntrySet()) {
+          AbstractMetric metric=entry.getValue();
+          sb.append(metric.name());
+          String name=sb.toString();
+          metric.visit(gangliaMetricVisitor);
+          type=gangliaMetricVisitor.getType();
+          slopeFromMetric=gangliaMetricVisitor.getSlope();
+          GangliaConf gConf=getGangliaConfForMetric(name);
+          calculatedSlope=calculateSlope(gConf,slopeFromMetric);
+          emitMetric(groupName,name,type,metric.value().toString(),gConf,calculatedSlope);
+          sb.setLength(sbBaseLen);
+        }
+      }
+    }
+ else {
+      Collection<AbstractMetric> metrics=(Collection<AbstractMetric>)record.metrics();
+      if (metrics.size() > 0) {
+        for (        AbstractMetric metric : record.metrics()) {
+          sb.append(metric.name());
+          String name=sb.toString();
+          metric.visit(gangliaMetricVisitor);
+          type=gangliaMetricVisitor.getType();
+          slopeFromMetric=gangliaMetricVisitor.getSlope();
+          GangliaConf gConf=getGangliaConfForMetric(name);
+          calculatedSlope=calculateSlope(gConf,slopeFromMetric);
+          emitMetric(groupName,name,type,metric.value().toString(),gConf,calculatedSlope);
+          sb.setLength(sbBaseLen);
+        }
+      }
+    }
+  }
+ catch (  IOException io) {
+    throw new MetricsException("Failed to putMetrics",io);
+  }
+}

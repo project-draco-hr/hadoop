@@ -1,0 +1,29 @@
+{
+  ConfigBuilder cb=new ConfigBuilder().add("default.period",10).add("test.sink.gsink30.context","test").add("test.sink.gsink31.context","test").save(TestMetricsConfig.getTestFilename("hadoop-metrics2-test"));
+  MetricsSystemImpl ms=new MetricsSystemImpl("Test");
+  ms.start();
+  TestSource s1=ms.register("s1","s1 desc",new TestSource("s1rec"));
+  s1.c1.incr();
+  s1.xxx.incr();
+  s1.g1.set(2);
+  s1.yyy.incr(2);
+  s1.s1.add(0);
+  final int expectedCountFromGanglia30=expectedMetrics.length;
+  final int expectedCountFromGanglia31=2 * expectedMetrics.length;
+  CountDownLatch latch=new CountDownLatch(expectedCountFromGanglia30 + expectedCountFromGanglia31);
+  AbstractGangliaSink gsink30=new GangliaSink30();
+  gsink30.init(cb.subset("test"));
+  MockDatagramSocket mockds30=new MockDatagramSocket(latch);
+  GangliaMetricsTestHelper.setDatagramSocket(gsink30,mockds30);
+  AbstractGangliaSink gsink31=new GangliaSink31();
+  gsink31.init(cb.subset("test"));
+  MockDatagramSocket mockds31=new MockDatagramSocket(latch);
+  GangliaMetricsTestHelper.setDatagramSocket(gsink31,mockds31);
+  ms.register("gsink30","gsink30 desc",gsink30);
+  ms.register("gsink31","gsink31 desc",gsink31);
+  ms.onTimerEvent();
+  latch.await(200,TimeUnit.MILLISECONDS);
+  ms.stop();
+  checkMetrics(mockds30.getCapturedSend(),expectedCountFromGanglia30);
+  checkMetrics(mockds31.getCapturedSend(),expectedCountFromGanglia31);
+}
