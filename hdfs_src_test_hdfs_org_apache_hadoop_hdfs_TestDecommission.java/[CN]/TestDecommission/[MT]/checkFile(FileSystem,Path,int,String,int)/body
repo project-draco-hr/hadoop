@@ -1,25 +1,32 @@
 {
+  boolean isNodeDown=(downnode != null);
   assertTrue("Not HDFS:" + fileSys.getUri(),fileSys instanceof DistributedFileSystem);
   DFSClient.DFSDataInputStream dis=(DFSClient.DFSDataInputStream)((DistributedFileSystem)fileSys).open(name);
   Collection<LocatedBlock> dinfo=dis.getAllBlocks();
   for (  LocatedBlock blk : dinfo) {
     int hasdown=0;
-    int firstDecomNodeIndex=-1;
     DatanodeInfo[] nodes=blk.getLocations();
     for (int j=0; j < nodes.length; j++) {
-      if (nodes[j].getName().equals(downnode)) {
+      if (isNodeDown && nodes[j].getName().equals(downnode)) {
         hasdown++;
-        LOG.info("Block " + blk.getBlock() + " replica "+ nodes[j].getName()+ " is decommissioned.");
-      }
-      if (nodes[j].isDecommissioned()) {
-        if (firstDecomNodeIndex == -1) {
-          firstDecomNodeIndex=j;
+        if (!nodes[j].isDecommissioned()) {
+          return "For block " + blk.getBlock() + " replica on "+ nodes[j].getName()+ " is given as downnode, "+ "but is not decommissioned";
         }
-        continue;
+        if (j != nodes.length - 1) {
+          return "For block " + blk.getBlock() + " decommissioned node "+ nodes[j].getName()+ " was not last node in list: "+ (j + 1)+ " of "+ nodes.length;
+        }
+        LOG.info("Block " + blk.getBlock() + " replica on "+ nodes[j].getName()+ " is decommissioned.");
       }
-      assertEquals("Decom node is not at the end",firstDecomNodeIndex,-1);
+ else {
+        if (nodes[j].isDecommissioned()) {
+          return "For block " + blk.getBlock() + " replica on "+ nodes[j].getName()+ " is unexpectedly decommissioned";
+        }
+      }
     }
     LOG.info("Block " + blk.getBlock() + " has "+ hasdown+ " decommissioned replica.");
-    assertEquals("Number of replicas for block " + blk.getBlock(),Math.min(numDatanodes,repl + hasdown),nodes.length);
+    if (Math.min(numDatanodes,repl + hasdown) != nodes.length) {
+      return "Wrong number of replicas for block " + blk.getBlock() + ": "+ nodes.length+ ", expected "+ Math.min(numDatanodes,repl + hasdown);
+    }
   }
+  return null;
 }
