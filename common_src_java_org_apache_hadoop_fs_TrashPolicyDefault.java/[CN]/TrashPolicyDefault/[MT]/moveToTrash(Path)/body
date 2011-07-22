@@ -1,0 +1,39 @@
+{
+  if (!isEnabled())   return false;
+  if (!path.isAbsolute())   path=new Path(fs.getWorkingDirectory(),path);
+  if (!fs.exists(path))   throw new FileNotFoundException(path.toString());
+  String qpath=fs.makeQualified(path).toString();
+  if (qpath.startsWith(trash.toString())) {
+    return false;
+  }
+  if (trash.getParent().toString().startsWith(qpath)) {
+    throw new IOException("Cannot move \"" + path + "\" to the trash, as it contains the trash");
+  }
+  Path trashPath=makeTrashRelativePath(current,path);
+  Path baseTrashPath=makeTrashRelativePath(current,path.getParent());
+  IOException cause=null;
+  for (int i=0; i < 2; i++) {
+    try {
+      if (!fs.mkdirs(baseTrashPath,PERMISSION)) {
+        LOG.warn("Can't create(mkdir) trash directory: " + baseTrashPath);
+        return false;
+      }
+    }
+ catch (    IOException e) {
+      LOG.warn("Can't create trash directory: " + baseTrashPath);
+      cause=e;
+      break;
+    }
+    try {
+      String orig=trashPath.toString();
+      while (fs.exists(trashPath)) {
+        trashPath=new Path(orig + System.currentTimeMillis());
+      }
+      if (fs.rename(path,trashPath))       return true;
+    }
+ catch (    IOException e) {
+      cause=e;
+    }
+  }
+  throw (IOException)new IOException("Failed to move to trash: " + path).initCause(cause);
+}
