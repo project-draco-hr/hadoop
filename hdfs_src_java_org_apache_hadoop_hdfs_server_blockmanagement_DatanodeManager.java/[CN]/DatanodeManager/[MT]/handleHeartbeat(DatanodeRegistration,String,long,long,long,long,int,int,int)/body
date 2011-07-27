@@ -1,0 +1,45 @@
+{
+synchronized (namesystem.heartbeats) {
+synchronized (datanodeMap) {
+      DatanodeDescriptor nodeinfo=null;
+      try {
+        nodeinfo=getDatanode(nodeReg);
+      }
+ catch (      UnregisteredNodeException e) {
+        return new DatanodeCommand[]{DatanodeCommand.REGISTER};
+      }
+      if (nodeinfo != null && nodeinfo.isDisallowed()) {
+        setDatanodeDead(nodeinfo);
+        throw new DisallowedDatanodeException(nodeinfo);
+      }
+      if (nodeinfo == null || !nodeinfo.isAlive) {
+        return new DatanodeCommand[]{DatanodeCommand.REGISTER};
+      }
+      namesystem.updateStats(nodeinfo,false);
+      nodeinfo.updateHeartbeat(capacity,dfsUsed,remaining,blockPoolUsed,xceiverCount,failedVolumes);
+      namesystem.updateStats(nodeinfo,true);
+      BlockInfoUnderConstruction[] blocks=nodeinfo.getLeaseRecoveryCommand(Integer.MAX_VALUE);
+      if (blocks != null) {
+        BlockRecoveryCommand brCommand=new BlockRecoveryCommand(blocks.length);
+        for (        BlockInfoUnderConstruction b : blocks) {
+          brCommand.add(new RecoveringBlock(new ExtendedBlock(blockPoolId,b),b.getExpectedLocations(),b.getBlockRecoveryId()));
+        }
+        return new DatanodeCommand[]{brCommand};
+      }
+      final List<DatanodeCommand> cmds=new ArrayList<DatanodeCommand>(3);
+      List<BlockTargetPair> pendingList=nodeinfo.getReplicationCommand(maxTransfers);
+      if (pendingList != null) {
+        cmds.add(new BlockCommand(DatanodeProtocol.DNA_TRANSFER,blockPoolId,pendingList));
+      }
+      Block[] blks=nodeinfo.getInvalidateBlocks(blockInvalidateLimit);
+      if (blks != null) {
+        cmds.add(new BlockCommand(DatanodeProtocol.DNA_INVALIDATE,blockPoolId,blks));
+      }
+      namesystem.addKeyUpdateCommand(cmds,nodeinfo);
+      if (!cmds.isEmpty()) {
+        return cmds.toArray(new DatanodeCommand[cmds.size()]);
+      }
+    }
+  }
+  return null;
+}
