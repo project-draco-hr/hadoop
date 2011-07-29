@@ -5,21 +5,31 @@
   FSNamesystem fsn=new FSNamesystem(conf);
   FSImage originalImage=fsn.dir.fsImage;
   NNStorage storage=originalImage.getStorage();
-  storage.close();
   NNStorage spyStorage=spy(storage);
   originalImage.storage=spyStorage;
   FSImage spyImage=spy(originalImage);
   fsn.dir.fsImage=spyImage;
-  spyImage.getStorage().setStorageDirectories(FSNamesystem.getNamespaceDirs(conf),FSNamesystem.getNamespaceEditsDirs(conf));
+  boolean shouldFail=false;
 switch (fault) {
-case SAVE_FSIMAGE:
-    doAnswer(new FaultySaveImage()).when(spyImage).saveFSImage((File)anyObject());
-  break;
-case MOVE_CURRENT:
-doThrow(new RuntimeException("Injected fault: moveCurrent")).when(spyStorage).moveCurrent((StorageDirectory)anyObject());
+case SAVE_SECOND_FSIMAGE_RTE:
+    doAnswer(new FaultySaveImage(true)).when(spyImage).saveFSImage((StorageDirectory)anyObject(),anyLong());
+  shouldFail=false;
 break;
-case MOVE_LAST_CHECKPOINT:
-doThrow(new RuntimeException("Injected fault: moveLastCheckpoint")).when(spyStorage).moveLastCheckpoint((StorageDirectory)anyObject());
+case SAVE_SECOND_FSIMAGE_IOE:
+doAnswer(new FaultySaveImage(false)).when(spyImage).saveFSImage((StorageDirectory)anyObject(),anyLong());
+shouldFail=false;
+break;
+case SAVE_ALL_FSIMAGES:
+doThrow(new RuntimeException("Injected")).when(spyImage).saveFSImage((StorageDirectory)anyObject(),anyLong());
+shouldFail=true;
+break;
+case WRITE_STORAGE_ALL:
+doThrow(new RuntimeException("Injected")).when(spyStorage).writeAll();
+shouldFail=true;
+break;
+case WRITE_STORAGE_ONE:
+doAnswer(new FaultySaveImage(true)).when(spyStorage).writeProperties((StorageDirectory)anyObject());
+shouldFail=true;
 break;
 }
 try {
@@ -27,15 +37,26 @@ doAnEdit(fsn,1);
 fsn.setSafeMode(SafeModeAction.SAFEMODE_ENTER);
 try {
 fsn.saveNamespace();
+if (shouldFail) {
+fail("Did not fail!");
+}
 }
  catch (Exception e) {
+if (!shouldFail) {
+throw e;
+}
+ else {
 LOG.info("Test caught expected exception",e);
 }
+}
+fsn.setSafeMode(SafeModeAction.SAFEMODE_LEAVE);
+doAnEdit(fsn,2);
 originalImage.close();
 fsn.close();
 fsn=null;
 fsn=new FSNamesystem(conf);
 checkEditExists(fsn,1);
+checkEditExists(fsn,2);
 }
   finally {
 if (fsn != null) {

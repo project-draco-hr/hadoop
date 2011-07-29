@@ -1,0 +1,31 @@
+{
+  boolean isFormatted=false;
+  for (Iterator<StorageDirectory> it=storage.dirIterator(); it.hasNext(); ) {
+    StorageDirectory sd=it.next();
+    StorageState curState;
+    try {
+      curState=sd.analyzeStorage(startOpt,storage);
+switch (curState) {
+case NON_EXISTENT:
+        throw new InconsistentFSStateException(sd.getRoot(),"storage directory does not exist or is not accessible.");
+case NOT_FORMATTED:
+      break;
+case NORMAL:
+    break;
+default :
+  sd.doRecover(curState);
+}
+if (curState != StorageState.NOT_FORMATTED && startOpt != StartupOption.ROLLBACK) {
+storage.readProperties(sd);
+isFormatted=true;
+}
+if (startOpt == StartupOption.IMPORT && isFormatted) throw new IOException("Cannot import image from a checkpoint. " + " NameNode already contains an image in " + sd.getRoot());
+}
+ catch (IOException ioe) {
+sd.unlock();
+throw ioe;
+}
+dataDirStates.put(sd,curState);
+}
+return isFormatted;
+}

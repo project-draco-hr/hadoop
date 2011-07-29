@@ -10,9 +10,6 @@
     final FSNamesystem namesystem=cluster.getNamesystem();
     FSImage fsimage=namesystem.getFSImage();
     FSEditLog editLog=fsimage.getEditLog();
-    editLog.setBufferCapacity(2048);
-    editLog.close();
-    editLog.open();
     startTransactionWorkers(namesystem,caughtErr);
     for (int i=0; i < NUM_SAVE_IMAGE && caughtErr.get() == null; i++) {
       try {
@@ -22,11 +19,14 @@
       }
       LOG.info("Save " + i + ": entering safe mode");
       namesystem.enterSafeMode(false);
-      verifyEditLogs(namesystem,fsimage);
+      long logStartTxId=fsimage.getStorage().getMostRecentCheckpointTxId() + 1;
+      verifyEditLogs(namesystem,fsimage,NNStorage.getInProgressEditsFileName(logStartTxId),logStartTxId);
       LOG.info("Save " + i + ": saving namespace");
       namesystem.saveNamespace();
       LOG.info("Save " + i + ": leaving safemode");
-      verifyEditLogs(namesystem,fsimage);
+      long savedImageTxId=fsimage.getStorage().getMostRecentCheckpointTxId();
+      verifyEditLogs(namesystem,fsimage,NNStorage.getFinalizedEditsFileName(logStartTxId,savedImageTxId),logStartTxId);
+      assertEquals(fsimage.getStorage().getMostRecentCheckpointTxId(),editLog.getLastWrittenTxId() - 1);
       namesystem.leaveSafeMode(false);
       LOG.info("Save " + i + ": complete");
     }

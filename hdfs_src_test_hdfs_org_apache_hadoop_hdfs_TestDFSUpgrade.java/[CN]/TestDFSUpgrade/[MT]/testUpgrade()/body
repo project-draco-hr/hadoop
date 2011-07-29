@@ -3,14 +3,13 @@
   StorageInfo storageInfo=null;
   for (int numDirs=1; numDirs <= 2; numDirs++) {
     conf=new HdfsConfiguration();
-    conf.setInt(DFSConfigKeys.DFS_DATANODE_SCAN_PERIOD_HOURS_KEY,-1);
     conf=UpgradeUtilities.initializeStorageStateConf(numDirs,conf);
     String[] nameNodeDirs=conf.getStrings(DFSConfigKeys.DFS_NAMENODE_NAME_DIR_KEY);
     String[] dataNodeDirs=conf.getStrings(DFSConfigKeys.DFS_DATANODE_DATA_DIR_KEY);
     log("Normal NameNode upgrade",numDirs);
     UpgradeUtilities.createNameNodeStorageDirs(nameNodeDirs,"current");
     cluster=createCluster();
-    checkNameNode(nameNodeDirs);
+    checkNameNode(nameNodeDirs,EXPECTED_TXID);
     if (numDirs > 1)     TestParallelImageWrite.checkImages(cluster.getNamesystem(),numDirs);
     cluster.shutdown();
     UpgradeUtilities.createEmptyDirs(nameNodeDirs);
@@ -59,17 +58,13 @@
     UpgradeUtilities.createEmptyDirs(nameNodeDirs);
     UpgradeUtilities.createEmptyDirs(dataNodeDirs);
     log("NameNode upgrade with no edits file",numDirs);
-    baseDirs=UpgradeUtilities.createNameNodeStorageDirs(nameNodeDirs,"current");
-    for (    File f : baseDirs) {
-      FileUtil.fullyDelete(new File(f,"edits"));
-    }
+    UpgradeUtilities.createNameNodeStorageDirs(nameNodeDirs,"current");
+    deleteStorageFilesWithPrefix(nameNodeDirs,"edits_");
     startNameNodeShouldFail(StartupOption.UPGRADE);
     UpgradeUtilities.createEmptyDirs(nameNodeDirs);
     log("NameNode upgrade with no image file",numDirs);
-    baseDirs=UpgradeUtilities.createNameNodeStorageDirs(nameNodeDirs,"current");
-    for (    File f : baseDirs) {
-      FileUtil.fullyDelete(new File(f,"fsimage"));
-    }
+    UpgradeUtilities.createNameNodeStorageDirs(nameNodeDirs,"current");
+    deleteStorageFilesWithPrefix(nameNodeDirs,"fsimage_");
     startNameNodeShouldFail(StartupOption.UPGRADE);
     UpgradeUtilities.createEmptyDirs(nameNodeDirs);
     log("NameNode upgrade with corrupt version file",numDirs);
@@ -101,7 +96,7 @@
     log("Normal NameNode upgrade",numDirs);
     UpgradeUtilities.createNameNodeStorageDirs(nameNodeDirs,"current");
     cluster=createCluster();
-    checkNameNode(nameNodeDirs);
+    checkNameNode(nameNodeDirs,EXPECTED_TXID);
     TestParallelImageWrite.checkImages(cluster.getNamesystem(),numDirs);
     cluster.shutdown();
     UpgradeUtilities.createEmptyDirs(nameNodeDirs);

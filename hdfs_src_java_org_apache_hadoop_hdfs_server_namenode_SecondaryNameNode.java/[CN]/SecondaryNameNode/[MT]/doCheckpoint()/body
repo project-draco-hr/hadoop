@@ -1,17 +1,27 @@
 {
-  startCheckpoint();
+  checkpointImage.ensureCurrentDirExists();
+  NNStorage dstStorage=checkpointImage.getStorage();
   CheckpointSignature sig=namenode.rollEditLog();
+  if (checkpointImage.getNamespaceID() != 0) {
+    sig.validateStorageInfo(checkpointImage);
+  }
+ else {
+    dstStorage.setStorageInfo(sig);
+    dstStorage.setClusterID(sig.getClusterID());
+    dstStorage.setBlockPoolID(sig.getBlockpoolID());
+  }
   if (ErrorSimulator.getErrorSimulation(0)) {
     throw new IOException("Simulating error0 " + "after creating edits.new");
   }
-  boolean loadImage=downloadCheckpointFiles(sig);
-  doMerge(sig,loadImage);
-  putFSImage(sig);
+  RemoteEditLogManifest manifest=namenode.getEditLogManifest(sig.mostRecentCheckpointTxId + 1);
+  boolean loadImage=downloadCheckpointFiles(fsName,checkpointImage,sig,manifest);
+  doMerge(sig,manifest,loadImage,checkpointImage);
+  long txid=checkpointImage.getLastAppliedTxId();
+  TransferFsImage.uploadImageFromStorage(fsName,getImageListenAddress(),dstStorage,txid);
   if (ErrorSimulator.getErrorSimulation(1)) {
     throw new IOException("Simulating error1 " + "after uploading new image to NameNode");
   }
-  namenode.rollFsImage(sig);
-  checkpointImage.endCheckpoint();
-  LOG.warn("Checkpoint done. New Image Size: " + checkpointImage.getStorage().getFsImageName().length());
+  LOG.warn("Checkpoint done. New Image Size: " + dstStorage.getFsImageName(txid).length());
+  checkpointImage.purgeOldStorage();
   return loadImage;
 }

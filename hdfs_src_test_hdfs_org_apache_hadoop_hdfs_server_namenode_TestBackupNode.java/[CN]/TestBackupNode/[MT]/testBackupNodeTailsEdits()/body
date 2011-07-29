@@ -1,0 +1,39 @@
+{
+  Configuration conf=new HdfsConfiguration();
+  MiniDFSCluster cluster=null;
+  FileSystem fileSys=null;
+  BackupNode backup=null;
+  try {
+    cluster=new MiniDFSCluster.Builder(conf).numDataNodes(0).build();
+    fileSys=cluster.getFileSystem();
+    backup=startBackupNode(conf,StartupOption.BACKUP,1);
+    BackupImage bnImage=backup.getBNImage();
+    testBNInSync(cluster,backup,1);
+    NameNode nn=cluster.getNameNode();
+    nn.rollEditLog();
+    assertEquals(bnImage.getEditLog().getCurSegmentTxId(),nn.getFSImage().getEditLog().getCurSegmentTxId());
+    testBNInSync(cluster,backup,2);
+    long nnImageBefore=nn.getFSImage().getStorage().getMostRecentCheckpointTxId();
+    backup.doCheckpoint();
+    long nnImageAfter=nn.getFSImage().getStorage().getMostRecentCheckpointTxId();
+    assertTrue("nn should have received new checkpoint. before: " + nnImageBefore + " after: "+ nnImageAfter,nnImageAfter > nnImageBefore);
+    testBNInSync(cluster,backup,3);
+    StorageDirectory sd=bnImage.getStorage().getStorageDir(0);
+    backup.stop();
+    backup=null;
+    FoundEditLog editsLog=FSImageTestUtil.findLatestEditsLog(sd);
+    assertEquals(editsLog.getStartTxId(),nn.getFSImage().getEditLog().getCurSegmentTxId());
+    assertTrue("Should not have finalized " + editsLog,editsLog.isInProgress());
+    assertTrue(fileSys.mkdirs(new Path("/edit-while-bn-down")));
+    backup=startBackupNode(conf,StartupOption.BACKUP,1);
+    testBNInSync(cluster,backup,4);
+    assertNotNull(backup.getNamesystem().getFileInfo("/edit-while-bn-down",false));
+  }
+  finally {
+    LOG.info("Shutting down...");
+    if (backup != null)     backup.stop();
+    if (fileSys != null)     fileSys.close();
+    if (cluster != null)     cluster.shutdown();
+  }
+  assertStorageDirsMatch(cluster.getNameNode(),backup);
+}

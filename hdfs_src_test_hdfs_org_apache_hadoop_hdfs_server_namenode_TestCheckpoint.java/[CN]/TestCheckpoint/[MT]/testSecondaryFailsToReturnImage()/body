@@ -1,0 +1,35 @@
+{
+  LOG.info("Starting testSecondaryFailsToReturnImage");
+  Configuration conf=new HdfsConfiguration();
+  Path file1=new Path("checkpointRI.dat");
+  MiniDFSCluster cluster=new MiniDFSCluster.Builder(conf).numDataNodes(numDatanodes).build();
+  cluster.waitActive();
+  FileSystem fileSys=cluster.getFileSystem();
+  FSImage image=cluster.getNameNode().getFSImage();
+  try {
+    assertTrue(!fileSys.exists(file1));
+    StorageDirectory sd=image.getStorage().getStorageDir(0);
+    File latestImageBeforeCheckpoint=FSImageTestUtil.findLatestImageFile(sd);
+    long fsimageLength=latestImageBeforeCheckpoint.length();
+    SecondaryNameNode secondary=startSecondaryNameNode(conf);
+    ErrorSimulator.setErrorSimulation(2);
+    try {
+      secondary.doCheckpoint();
+      fail("Checkpoint succeeded even though we injected an error!");
+    }
+ catch (    IOException e) {
+      GenericTestUtils.assertExceptionContains("If this exception is not caught",e);
+    }
+    ErrorSimulator.clearErrorSimulation(2);
+    for (    StorageDirectory sd2 : image.getStorage().dirIterable(NameNodeDirType.IMAGE)) {
+      File thisNewestImage=FSImageTestUtil.findLatestImageFile(sd2);
+      long len=thisNewestImage.length();
+      assertEquals(fsimageLength,len);
+    }
+    secondary.shutdown();
+  }
+  finally {
+    fileSys.close();
+    cluster.shutdown();
+  }
+}

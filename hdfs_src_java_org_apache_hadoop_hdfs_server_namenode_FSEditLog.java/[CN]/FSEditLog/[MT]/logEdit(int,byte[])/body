@@ -1,17 +1,12 @@
 {
-  if (getNumEditStreams() == 0)   throw new java.lang.IllegalStateException(NO_JOURNAL_STREAMS_WARNING);
-  ArrayList<EditLogOutputStream> errorStreams=null;
-  long start=now();
-  for (  EditLogOutputStream eStream : editStreams) {
-    try {
-      eStream.writeRaw(data,0,length);
-    }
- catch (    IOException ie) {
-      LOG.warn("Error in editStream " + eStream.getName(),ie);
-      if (errorStreams == null)       errorStreams=new ArrayList<EditLogOutputStream>(1);
-      errorStreams.add(eStream);
+  long start=beginTransaction();
+  mapJournalsAndReportErrors(new JournalClosure(){
+    @Override public void apply(    JournalAndStream jas) throws IOException {
+      if (jas.isActive()) {
+        jas.getCurrentStream().writeRaw(data,0,length);
+      }
     }
   }
-  disableAndReportErrorOnStreams(errorStreams);
-  recordTransaction(start);
+,"Logging edit");
+  endTransaction(start);
 }

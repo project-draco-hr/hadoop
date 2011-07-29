@@ -1,0 +1,25 @@
+{
+  LOG.info("NameNode started a new log segment at txid " + txid);
+  if (editLog.isOpen()) {
+    if (editLog.getLastWrittenTxId() == txid - 1) {
+      editLog.endCurrentLogSegment(false);
+    }
+ else {
+      LOG.warn("NN started new log segment at txid " + txid + ", but BN had only written up to txid "+ editLog.getLastWrittenTxId()+ "in the log segment starting at "+ editLog.getCurSegmentTxId()+ ". Aborting this "+ "log segment.");
+      editLog.abortCurrentLogSegment();
+    }
+  }
+  editLog.setNextTxId(txid);
+  editLog.startLogSegment(txid,false);
+  if (bnState == BNState.DROP_UNTIL_NEXT_ROLL) {
+    setState(BNState.JOURNAL_ONLY);
+  }
+  if (stopApplyingEditsOnNextRoll) {
+    if (bnState == BNState.IN_SYNC) {
+      LOG.info("Stopped applying edits to prepare for checkpoint.");
+      setState(BNState.JOURNAL_ONLY);
+    }
+    stopApplyingEditsOnNextRoll=false;
+    notifyAll();
+  }
+}

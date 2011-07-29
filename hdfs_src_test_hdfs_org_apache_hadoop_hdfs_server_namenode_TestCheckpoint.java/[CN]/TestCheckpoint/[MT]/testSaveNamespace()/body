@@ -4,7 +4,7 @@
   FileContext fc;
   try {
     Configuration conf=new HdfsConfiguration();
-    cluster=new MiniDFSCluster.Builder(conf).numDataNodes(numDatanodes).format(false).build();
+    cluster=new MiniDFSCluster.Builder(conf).numDataNodes(numDatanodes).format(true).build();
     cluster.waitActive();
     fs=(DistributedFileSystem)(cluster.getFileSystem());
     fc=FileContext.getFileContext(cluster.getURI(0));
@@ -28,7 +28,7 @@ catch (    Exception e) {
     Collection<URI> editsDirs=cluster.getNameEditsDirs(0);
     for (    URI uri : editsDirs) {
       File ed=new File(uri.getPath());
-      assertTrue(new File(ed,"current/edits").length() > Integer.SIZE / Byte.SIZE);
+      assertTrue(new File(ed,"current/" + NNStorage.getInProgressEditsFileName(1)).length() > Integer.SIZE / Byte.SIZE);
     }
     fs.setSafeMode(SafeModeAction.SAFEMODE_ENTER);
     try {
@@ -39,7 +39,20 @@ catch (    Exception e) {
     }
     for (    URI uri : editsDirs) {
       File ed=new File(uri.getPath());
-      assertTrue(new File(ed,"current/edits").length() == Integer.SIZE / Byte.SIZE);
+      File curDir=new File(ed,"current");
+      LOG.info("Files in " + curDir + ":\n  "+ Joiner.on("\n  ").join(curDir.list()));
+      File originalEdits=new File(curDir,NNStorage.getInProgressEditsFileName(1));
+      assertFalse(originalEdits.exists());
+      File finalizedEdits=new File(curDir,NNStorage.getFinalizedEditsFileName(1,8));
+      assertTrue(finalizedEdits.exists());
+      assertTrue(finalizedEdits.length() > Integer.SIZE / Byte.SIZE);
+      assertTrue(new File(ed,"current/" + NNStorage.getInProgressEditsFileName(9)).exists());
+    }
+    Collection<URI> imageDirs=cluster.getNameDirs(0);
+    for (    URI uri : imageDirs) {
+      File imageDir=new File(uri.getPath());
+      File savedImage=new File(imageDir,"current/" + NNStorage.getImageFileName(8));
+      assertTrue("Should have saved image at " + savedImage,savedImage.exists());
     }
     cluster.shutdown();
     cluster=null;
@@ -51,7 +64,12 @@ catch (    Exception e) {
     assertTrue(fc.getFileLinkStatus(symlink).isSymlink());
   }
   finally {
-    if (fs != null)     fs.close();
-    if (cluster != null)     cluster.shutdown();
+    try {
+      if (fs != null)       fs.close();
+      if (cluster != null)       cluster.shutdown();
+    }
+ catch (    Throwable t) {
+      LOG.error("Failed to shutdown",t);
+    }
   }
 }

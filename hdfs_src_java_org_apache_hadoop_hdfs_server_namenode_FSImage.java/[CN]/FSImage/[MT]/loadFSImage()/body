@@ -1,55 +1,33 @@
 {
-  long latestNameCheckpointTime=Long.MIN_VALUE;
-  long latestEditsCheckpointTime=Long.MIN_VALUE;
-  boolean needToSave=false;
-  isUpgradeFinalized=true;
-  StorageDirectory latestNameSD=null;
-  StorageDirectory latestEditsSD=null;
-  Collection<String> imageDirs=new ArrayList<String>();
-  Collection<String> editsDirs=new ArrayList<String>();
-  Set<Long> checkpointTimes=new HashSet<Long>();
-  for (Iterator<StorageDirectory> it=storage.dirIterator(); it.hasNext(); ) {
-    StorageDirectory sd=it.next();
-    if (!sd.getVersionFile().exists()) {
-      needToSave|=true;
-      continue;
+  FSImageStorageInspector inspector=storage.readAndInspectDirs();
+  isUpgradeFinalized=inspector.isUpgradeFinalized();
+  boolean needToSave=inspector.needToSave();
+  LoadPlan loadPlan=inspector.createLoadPlan();
+  LOG.debug("Planning to load image using following plan:\n" + loadPlan);
+  needToSave|=loadPlan.doRecovery();
+  StorageDirectory sdForProperties=loadPlan.getStorageDirectoryForProperties();
+  storage.readProperties(sdForProperties);
+  File imageFile=loadPlan.getImageFile();
+  try {
+    if (LayoutVersion.supports(Feature.TXID_BASED_LAYOUT,getLayoutVersion())) {
+      loadFSImage(imageFile);
     }
-    boolean imageExists=false;
-    boolean editsExists=false;
-    if (sd.getStorageDirType().isOfType(NameNodeDirType.IMAGE)) {
-      imageExists=NNStorage.getStorageFile(sd,NameNodeFile.IMAGE).exists();
-      imageDirs.add(sd.getRoot().getCanonicalPath());
+ else     if (LayoutVersion.supports(Feature.FSIMAGE_CHECKSUM,getLayoutVersion())) {
+      String md5=storage.getDeprecatedProperty(NNStorage.DEPRECATED_MESSAGE_DIGEST_PROPERTY);
+      if (md5 == null) {
+        throw new InconsistentFSStateException(sdForProperties.getRoot(),"Message digest property " + NNStorage.DEPRECATED_MESSAGE_DIGEST_PROPERTY + " not set for storage directory "+ sdForProperties.getRoot());
+      }
+      loadFSImage(imageFile,new MD5Hash(md5));
     }
-    if (sd.getStorageDirType().isOfType(NameNodeDirType.EDITS)) {
-      editsExists=NNStorage.getStorageFile(sd,NameNodeFile.EDITS).exists();
-      editsDirs.add(sd.getRoot().getCanonicalPath());
+ else {
+      loadFSImage(imageFile,null);
     }
-    long checkpointTime=storage.readCheckpointTime(sd);
-    checkpointTimes.add(checkpointTime);
-    if (sd.getStorageDirType().isOfType(NameNodeDirType.IMAGE) && (latestNameCheckpointTime < checkpointTime) && imageExists) {
-      latestNameCheckpointTime=checkpointTime;
-      latestNameSD=sd;
-    }
-    if (sd.getStorageDirType().isOfType(NameNodeDirType.EDITS) && (latestEditsCheckpointTime < checkpointTime) && editsExists) {
-      latestEditsCheckpointTime=checkpointTime;
-      latestEditsSD=sd;
-    }
-    if (checkpointTime <= 0L)     needToSave|=true;
-    isUpgradeFinalized=isUpgradeFinalized && !sd.getPreviousDir().exists();
   }
-  if (latestNameSD == null)   throw new IOException("Image file is not found in " + imageDirs);
-  if (latestEditsSD == null)   throw new IOException("Edits file is not found in " + editsDirs);
-  if (latestNameCheckpointTime > latestEditsCheckpointTime && latestNameSD != latestEditsSD && latestNameSD.getStorageDirType() == NameNodeDirType.IMAGE && latestEditsSD.getStorageDirType() == NameNodeDirType.EDITS) {
-    LOG.error("This is a rare failure scenario!!!");
-    LOG.error("Image checkpoint time " + latestNameCheckpointTime + " > edits checkpoint time "+ latestEditsCheckpointTime);
-    LOG.error("Name-node will treat the image as the latest state of " + "the namespace. Old edits will be discarded.");
+ catch (  IOException ioe) {
+    throw new IOException("Failed to load image from " + loadPlan.getImageFile(),ioe);
   }
- else   if (latestNameCheckpointTime != latestEditsCheckpointTime)   throw new IOException("Inconsistent storage detected, " + "image and edits checkpoint times do not match. " + "image checkpoint time = " + latestNameCheckpointTime + "edits checkpoint time = "+ latestEditsCheckpointTime);
-  needToSave|=checkpointTimes.size() != 1;
-  needToSave|=recoverInterruptedCheckpoint(latestNameSD,latestEditsSD);
-  storage.readProperties(latestNameSD);
-  needToSave|=loadFSImage(NNStorage.getStorageFile(latestNameSD,NameNodeFile.IMAGE));
-  if (latestNameCheckpointTime > latestEditsCheckpointTime)   needToSave|=true;
- else   needToSave|=(loadFSEdits(latestEditsSD) > 0);
+  long numLoaded=loadEdits(loadPlan.getEditsFiles());
+  needToSave|=needsResaveBasedOnStaleCheckpoint(imageFile,numLoaded);
+  editLog.setNextTxId(storage.getMostRecentCheckpointTxId() + numLoaded + 1);
   return needToSave;
 }

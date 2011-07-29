@@ -1,0 +1,22 @@
+{
+  if (storage.getNumStorageDirs(NameNodeDirType.IMAGE) == 0) {
+    throw new IOException("No image directories available!");
+  }
+  List<StorageDirectory> errorSDs=Collections.synchronizedList(new ArrayList<StorageDirectory>());
+  List<Thread> saveThreads=new ArrayList<Thread>();
+  for (Iterator<StorageDirectory> it=storage.dirIterator(NameNodeDirType.IMAGE); it.hasNext(); ) {
+    StorageDirectory sd=it.next();
+    FSImageSaver saver=new FSImageSaver(sd,errorSDs,txid);
+    Thread saveThread=new Thread(saver,saver.toString());
+    saveThreads.add(saveThread);
+    saveThread.start();
+  }
+  waitForThreads(saveThreads);
+  saveThreads.clear();
+  storage.reportErrorsOnDirectories(errorSDs);
+  if (storage.getNumStorageDirs(NameNodeDirType.IMAGE) == 0) {
+    throw new IOException("Failed to save in any storage directories while saving namespace.");
+  }
+  renameCheckpoint(txid);
+  purgeOldStorage();
+}

@@ -6,9 +6,9 @@
   try {
     FSImage fsimage=namesystem.getFSImage();
     FSEditLog editLog=fsimage.getEditLog();
-    ArrayList<EditLogOutputStream> streams=editLog.getEditStreams();
-    EditLogOutputStream spyElos=spy(streams.get(0));
-    streams.set(0,spyElos);
+    FSEditLog.JournalAndStream jas=editLog.getJournals().get(0);
+    EditLogFileOutputStream spyElos=spy((EditLogFileOutputStream)jas.getCurrentStream());
+    jas.setCurrentStreamForTests(spyElos);
     final AtomicReference<Throwable> deferredException=new AtomicReference<Throwable>();
     final CountDownLatch waitToEnterFlush=new CountDownLatch(1);
     final Thread doAnEditThread=new Thread(){
@@ -58,7 +58,8 @@
     LOG.info("Joining on edit thread...");
     doAnEditThread.join();
     assertNull(deferredException.get());
-    verifyEditLogs(namesystem,fsimage);
+    assertEquals(3,verifyEditLogs(namesystem,fsimage,NNStorage.getFinalizedEditsFileName(1,3),1));
+    assertEquals(1,verifyEditLogs(namesystem,fsimage,NNStorage.getInProgressEditsFileName(4),4));
   }
   finally {
     LOG.info("Closing namesystem");

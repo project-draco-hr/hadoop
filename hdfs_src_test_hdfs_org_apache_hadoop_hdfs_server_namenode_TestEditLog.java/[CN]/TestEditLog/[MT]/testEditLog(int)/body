@@ -13,9 +13,8 @@
     }
     FSImage fsimage=namesystem.getFSImage();
     FSEditLog editLog=fsimage.getEditLog();
-    editLog.setBufferCapacity(initialSize);
-    editLog.close();
-    editLog.open();
+    editLog.setOutputBufferCapacity(initialSize);
+    fsimage.rollEditLog();
     Thread threadId[]=new Thread[NUM_THREADS];
     for (int i=0; i < NUM_THREADS; i++) {
       Transactions trans=new Transactions(namesystem,NUM_TRANSACTIONS);
@@ -30,21 +29,27 @@
         i--;
       }
     }
-    editLog.close();
-    editLog.open();
-    FSEditLogLoader loader=new FSEditLogLoader(namesystem);
+    fsimage.rollEditLog();
+    long expectedTxns=(NUM_THREADS * 2 * NUM_TRANSACTIONS) + 2;
     for (Iterator<StorageDirectory> it=fsimage.getStorage().dirIterator(NameNodeDirType.EDITS); it.hasNext(); ) {
-      File editFile=NNStorage.getStorageFile(it.next(),NameNodeFile.EDITS);
+      FSEditLogLoader loader=new FSEditLogLoader(namesystem);
+      File editFile=NNStorage.getFinalizedEditsFile(it.next(),3,3 + expectedTxns - 1);
+      assertTrue("Expect " + editFile + " exists",editFile.exists());
       System.out.println("Verifying file: " + editFile);
-      int numEdits=loader.loadFSEdits(new EditLogFileInputStream(editFile));
+      int numEdits=loader.loadFSEdits(new EditLogFileInputStream(editFile),3);
       int numLeases=namesystem.leaseManager.countLease();
       System.out.println("Number of outstanding leases " + numLeases);
       assertEquals(0,numLeases);
-      assertTrue("Verification for " + editFile + " failed. "+ "Expected "+ (NUM_THREADS * 2 * NUM_TRANSACTIONS)+ " transactions. "+ "Found "+ numEdits+ " transactions.",numEdits == NUM_THREADS * 2 * NUM_TRANSACTIONS);
+      assertTrue("Verification for " + editFile + " failed. "+ "Expected "+ expectedTxns+ " transactions. "+ "Found "+ numEdits+ " transactions.",numEdits == expectedTxns);
     }
   }
   finally {
-    if (fileSys != null)     fileSys.close();
-    if (cluster != null)     cluster.shutdown();
+    try {
+      if (fileSys != null)       fileSys.close();
+      if (cluster != null)       cluster.shutdown();
+    }
+ catch (    Throwable t) {
+      LOG.error("Couldn't shut down cleanly",t);
+    }
   }
 }

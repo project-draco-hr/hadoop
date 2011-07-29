@@ -2,22 +2,21 @@
   Path file1=new Path("checkpoint.dat");
   Path file2=new Path("checkpoint2.dat");
   Configuration conf=new HdfsConfiguration();
-  short replication=(short)conf.getInt(DFSConfigKeys.DFS_REPLICATION_KEY,3);
   conf.set(DFSConfigKeys.DFS_BLOCKREPORT_INITIAL_DELAY_KEY,"0");
   conf.setInt(DFSConfigKeys.DFS_DATANODE_SCAN_PERIOD_HOURS_KEY,-1);
-  int numDatanodes=Math.max(3,replication);
+  conf.setInt(DFSConfigKeys.DFS_NAMENODE_CHECKPOINT_TXNS_KEY,1);
   MiniDFSCluster cluster=null;
   FileSystem fileSys=null;
   BackupNode backup=null;
   try {
-    cluster=new MiniDFSCluster.Builder(conf).numDataNodes(numDatanodes).build();
+    cluster=new MiniDFSCluster.Builder(conf).numDataNodes(0).build();
     fileSys=cluster.getFileSystem();
     assertTrue(!fileSys.exists(file1));
     assertTrue(!fileSys.exists(file2));
-    writeFile(fileSys,file1,replication);
-    checkFile(fileSys,file1,replication);
+    assertTrue(fileSys.mkdirs(file1));
+    long txid=cluster.getNameNode().getTransactionID();
     backup=startBackupNode(conf,op,1);
-    waitCheckpointDone(backup);
+    waitCheckpointDone(cluster,backup,txid);
   }
  catch (  IOException e) {
     LOG.error("Error in TestBackupNode:",e);
@@ -28,20 +27,27 @@
     if (fileSys != null)     fileSys.close();
     if (cluster != null)     cluster.shutdown();
   }
-  File imageFileNN=new File(BASE_DIR,"name1/current/fsimage");
-  File imageFileBN=new File(getBackupNodeDir(op,1),"/current/fsimage");
-  LOG.info("NameNode fsimage length = " + imageFileNN.length());
-  LOG.info("Backup Node fsimage length = " + imageFileBN.length());
-  assertTrue(imageFileNN.length() == imageFileBN.length());
+  File nnCurDir=new File(BASE_DIR,"name1/current/");
+  File bnCurDir=new File(getBackupNodeDir(op,1),"/current/");
+  FSImageTestUtil.assertParallelFilesAreIdentical(ImmutableList.of(bnCurDir,nnCurDir),ImmutableSet.<String>of("VERSION"));
   try {
-    cluster=new MiniDFSCluster.Builder(conf).numDataNodes(numDatanodes).format(false).build();
+    cluster=new MiniDFSCluster.Builder(conf).numDataNodes(0).format(false).build();
     fileSys=cluster.getFileSystem();
-    checkFile(fileSys,file1,replication);
-    cleanupFile(fileSys,file1);
-    writeFile(fileSys,file2,replication);
-    checkFile(fileSys,file2,replication);
+    assertTrue(fileSys.exists(file1));
+    fileSys.delete(file1,true);
+    fileSys.mkdirs(file2);
     backup=startBackupNode(conf,op,1);
-    waitCheckpointDone(backup);
+    long txid=cluster.getNameNode().getTransactionID();
+    waitCheckpointDone(cluster,backup,txid);
+    for (int i=0; i < 10; i++) {
+      fileSys.mkdirs(new Path("file_" + i));
+    }
+    txid=cluster.getNameNode().getTransactionID();
+    backup.doCheckpoint();
+    waitCheckpointDone(cluster,backup,txid);
+    txid=cluster.getNameNode().getTransactionID();
+    backup.doCheckpoint();
+    waitCheckpointDone(cluster,backup,txid);
   }
  catch (  IOException e) {
     LOG.error("Error in TestBackupNode:",e);
@@ -52,14 +58,12 @@
     if (fileSys != null)     fileSys.close();
     if (cluster != null)     cluster.shutdown();
   }
-  LOG.info("NameNode fsimage length = " + imageFileNN.length());
-  LOG.info("Backup Node fsimage length = " + imageFileBN.length());
-  assertTrue(imageFileNN.length() == imageFileBN.length());
+  FSImageTestUtil.assertParallelFilesAreIdentical(ImmutableList.of(bnCurDir,nnCurDir),ImmutableSet.<String>of("VERSION"));
   try {
-    cluster=new MiniDFSCluster.Builder(conf).numDataNodes(numDatanodes).format(false).build();
+    cluster=new MiniDFSCluster.Builder(conf).numDataNodes(0).format(false).build();
     fileSys=cluster.getFileSystem();
     assertTrue(!fileSys.exists(file1));
-    checkFile(fileSys,file2,replication);
+    assertTrue(fileSys.exists(file2));
   }
  catch (  IOException e) {
     LOG.error("Error in TestBackupNode:",e);

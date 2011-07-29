@@ -1,0 +1,20 @@
+{
+  Configuration conf=new HdfsConfiguration();
+  File editsDir=new File(MiniDFSCluster.getBaseDirectory() + "/testSeparateEditsDirLocking");
+  conf.set(DFSConfigKeys.DFS_NAMENODE_EDITS_DIR_KEY,editsDir.getAbsolutePath());
+  MiniDFSCluster cluster=new MiniDFSCluster.Builder(conf).manageNameDfsDirs(false).numDataNodes(0).build();
+  StorageDirectory savedSd=null;
+  try {
+    NNStorage storage=cluster.getNameNode().getFSImage().getStorage();
+    for (    StorageDirectory sd : storage.dirIterable(NameNodeDirType.EDITS)) {
+      assertEquals(editsDir.getAbsoluteFile(),sd.getRoot());
+      assertLockFails(sd);
+      savedSd=sd;
+    }
+  }
+  finally {
+    cluster.shutdown();
+  }
+  assertNotNull(savedSd);
+  assertClusterStartFailsWhenDirLocked(conf,savedSd);
+}

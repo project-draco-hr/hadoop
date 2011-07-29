@@ -1,2 +1,56 @@
 {
+  BackupImage bnImage=getFSImage();
+  NNStorage bnStorage=bnImage.getStorage();
+  long startTime=now();
+  bnImage.freezeNamespaceAtNextRoll();
+  NamenodeCommand cmd=getNamenode().startCheckpoint(backupNode.getRegistration());
+  CheckpointCommand cpCmd=null;
+switch (cmd.getAction()) {
+case NamenodeProtocol.ACT_SHUTDOWN:
+    shutdown();
+  throw new IOException("Name-node " + backupNode.nnRpcAddress + " requested shutdown.");
+case NamenodeProtocol.ACT_CHECKPOINT:
+cpCmd=(CheckpointCommand)cmd;
+break;
+default :
+throw new IOException("Unsupported NamenodeCommand: " + cmd.getAction());
+}
+bnImage.waitUntilNamespaceFrozen();
+CheckpointSignature sig=cpCmd.getSignature();
+sig.validateStorageInfo(bnImage);
+long lastApplied=bnImage.getLastAppliedTxId();
+LOG.debug("Doing checkpoint. Last applied: " + lastApplied);
+RemoteEditLogManifest manifest=getNamenode().getEditLogManifest(bnImage.getLastAppliedTxId());
+if (!manifest.getLogs().isEmpty()) {
+RemoteEditLog firstRemoteLog=manifest.getLogs().get(0);
+if (firstRemoteLog.getStartTxId() > lastApplied + 1) {
+LOG.info("Unable to roll forward using only logs. Downloading " + "image with txid " + sig.mostRecentCheckpointTxId);
+MD5Hash downloadedHash=TransferFsImage.downloadImageToStorage(backupNode.nnHttpAddress,sig.mostRecentCheckpointTxId,bnStorage,true);
+bnImage.saveDigestAndRenameCheckpointImage(sig.mostRecentCheckpointTxId,downloadedHash);
+LOG.info("Loading image with txid " + sig.mostRecentCheckpointTxId);
+File file=bnStorage.findImageFile(sig.mostRecentCheckpointTxId);
+bnImage.reloadFromImageFile(file);
+}
+lastApplied=bnImage.getLastAppliedTxId();
+if (firstRemoteLog.getStartTxId() > lastApplied + 1) {
+throw new IOException("No logs to roll forward from " + lastApplied);
+}
+for (RemoteEditLog log : manifest.getLogs()) {
+TransferFsImage.downloadEditsToStorage(backupNode.nnHttpAddress,log,bnStorage);
+}
+rollForwardByApplyingLogs(manifest,bnImage);
+}
+long txid=bnImage.getLastAppliedTxId();
+bnImage.saveFSImageInAllDirs(txid);
+bnStorage.writeAll();
+if (cpCmd.needToReturnImage()) {
+TransferFsImage.uploadImageFromStorage(backupNode.nnHttpAddress,getImageListenAddress(),bnStorage,txid);
+}
+getNamenode().endCheckpoint(backupNode.getRegistration(),sig);
+if (backupNode.getRole() == NamenodeRole.BACKUP) {
+bnImage.convergeJournalSpool();
+}
+backupNode.setRegistration();
+long imageSize=bnImage.getStorage().getFsImageName(txid).length();
+LOG.info("Checkpoint completed in " + (now() - startTime) / 1000 + " seconds." + " New Image Size: " + imageSize);
 }

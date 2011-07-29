@@ -1,0 +1,51 @@
+{
+  if (!sd.getVersionFile().exists()) {
+    LOG.info("No version file in " + sd.getRoot());
+    needToSave|=true;
+    return;
+  }
+  File currentDir=sd.getCurrentDir();
+  File filesInStorage[];
+  try {
+    filesInStorage=FileUtil.listFiles(currentDir);
+  }
+ catch (  IOException ioe) {
+    LOG.warn("Unable to inspect storage directory " + currentDir,ioe);
+    return;
+  }
+  for (  File f : filesInStorage) {
+    LOG.debug("Checking file " + f);
+    String name=f.getName();
+    Matcher imageMatch=IMAGE_REGEX.matcher(name);
+    if (imageMatch.matches()) {
+      if (sd.getStorageDirType().isOfType(NameNodeDirType.IMAGE)) {
+        try {
+          long txid=Long.valueOf(imageMatch.group(1));
+          foundImages.add(new FoundFSImage(sd,f,txid));
+        }
+ catch (        NumberFormatException nfe) {
+          LOG.error("Image file " + f + " has improperly formatted "+ "transaction ID");
+        }
+      }
+ else {
+        LOG.warn("Found image file at " + f + " but storage directory is "+ "not configured to contain images.");
+      }
+    }
+  }
+  try {
+    maxSeenTxId=Math.max(maxSeenTxId,NNStorage.readTransactionIdFile(sd));
+  }
+ catch (  IOException ioe) {
+    LOG.warn("Unable to determine the max transaction ID seen by " + sd,ioe);
+  }
+  List<FoundEditLog> editLogs=matchEditLogs(filesInStorage);
+  if (sd.getStorageDirType().isOfType(NameNodeDirType.EDITS)) {
+    for (    FoundEditLog log : editLogs) {
+      addEditLog(log);
+    }
+  }
+ else   if (!editLogs.isEmpty()) {
+    LOG.warn("Found the following edit log file(s) in " + sd + " even though it was not configured to store edits:\n"+ "  "+ Joiner.on("\n  ").join(editLogs));
+  }
+  isUpgradeFinalized=isUpgradeFinalized && !sd.getPreviousDir().exists();
+}

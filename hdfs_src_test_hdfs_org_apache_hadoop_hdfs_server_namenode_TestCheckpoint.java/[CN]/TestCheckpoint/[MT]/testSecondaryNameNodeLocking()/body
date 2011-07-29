@@ -1,0 +1,36 @@
+{
+  Configuration conf=new HdfsConfiguration();
+  MiniDFSCluster cluster=new MiniDFSCluster.Builder(conf).numDataNodes(0).build();
+  SecondaryNameNode secondary=null;
+  try {
+    StorageDirectory savedSd=null;
+    secondary=startSecondaryNameNode(conf);
+    NNStorage storage=secondary.getFSImage().getStorage();
+    for (    StorageDirectory sd : storage.dirIterable(null)) {
+      assertLockFails(sd);
+      savedSd=sd;
+    }
+    LOG.info("===> Shutting down first 2NN");
+    secondary.shutdown();
+    secondary=null;
+    LOG.info("===> Locking a dir, starting second 2NN");
+    LOG.info("Trying to lock" + savedSd);
+    savedSd.lock();
+    try {
+      secondary=startSecondaryNameNode(conf);
+      assertFalse("Should fail to start 2NN when " + savedSd + " is locked",savedSd.isLockSupported());
+    }
+ catch (    IOException ioe) {
+      GenericTestUtils.assertExceptionContains("already locked",ioe);
+    }
+ finally {
+      savedSd.unlock();
+    }
+  }
+  finally {
+    if (secondary != null) {
+      secondary.shutdown();
+    }
+    cluster.shutdown();
+  }
+}

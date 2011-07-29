@@ -1,0 +1,20 @@
+{
+  FSImageTransactionalStorageInspector inspector=new FSImageTransactionalStorageInspector();
+  inspector.inspectDirectory(mockDirectoryWithEditLogs("/foo1/current/" + getFinalizedEditsFileName(123,456)));
+  inspector.inspectDirectory(mockDirectoryWithEditLogs("/foo2/current/" + getFinalizedEditsFileName(123,456)));
+  inspector.inspectDirectory(mockDirectoryWithEditLogs("/foo3/current/" + getInProgressEditsFileName(123)));
+  inspector.inspectDirectory(mockDirectory(NameNodeDirType.IMAGE,false,"/foo4/current/" + getImageFileName(122)));
+  LogGroup lg=inspector.logGroups.get(123L);
+  assertEquals(3,lg.logs.size());
+  FoundEditLog inProgressLog=lg.logs.get(2);
+  assertTrue(inProgressLog.isInProgress());
+  LoadPlan plan=inspector.createLoadPlan();
+  assertFalse(lg.logs.get(0).isCorrupt());
+  assertFalse(lg.logs.get(1).isCorrupt());
+  assertTrue(lg.logs.get(2).isCorrupt());
+  inProgressLog=spy(inProgressLog);
+  Mockito.doNothing().when(inProgressLog).moveAsideCorruptFile();
+  lg.logs.set(2,inProgressLog);
+  plan.doRecovery();
+  Mockito.verify(inProgressLog).moveAsideCorruptFile();
+}

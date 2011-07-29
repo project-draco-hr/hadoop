@@ -12,10 +12,11 @@
     Token<DelegationTokenIdentifier> token2=namesystem.getDelegationToken(new Text(renewer));
     DFSAdmin admin=new DFSAdmin(conf);
     String[] args=new String[]{"-saveNamespace"};
-    Collection<URI> editsDirs=cluster.getNameEditsDirs(0);
-    for (    URI uri : editsDirs) {
-      File ed=new File(uri.getPath());
-      Assert.assertTrue(new File(ed,"current/edits").length() > Integer.SIZE / Byte.SIZE);
+    NameNode nn=cluster.getNameNode();
+    for (    StorageDirectory sd : nn.getFSImage().getStorage().dirIterable(null)) {
+      FoundEditLog log=FSImageTestUtil.findLatestEditsLog(sd);
+      assertTrue(log.isInProgress());
+      assertEquals("In-progress log " + log + " should have 5 transactions",5,log.validateLog().numTransactions);
     }
     fs.setSafeMode(SafeModeAction.SAFEMODE_ENTER);
     try {
@@ -24,9 +25,10 @@
  catch (    Exception e) {
       throw new IOException(e.getMessage());
     }
-    for (    URI uri : editsDirs) {
-      File ed=new File(uri.getPath());
-      Assert.assertTrue(new File(ed,"current/edits").length() == Integer.SIZE / Byte.SIZE);
+    for (    StorageDirectory sd : nn.getFSImage().getStorage().dirIterable(null)) {
+      FoundEditLog log=FSImageTestUtil.findLatestEditsLog(sd);
+      assertTrue(log.isInProgress());
+      assertEquals("In-progress log " + log + " should only have START txn",1,log.validateLog().numTransactions);
     }
     cluster.shutdown();
     cluster=null;

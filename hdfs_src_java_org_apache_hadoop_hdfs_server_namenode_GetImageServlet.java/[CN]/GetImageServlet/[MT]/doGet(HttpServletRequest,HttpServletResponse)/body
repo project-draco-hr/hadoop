@@ -1,38 +1,60 @@
 {
-  Map<String,String[]> pmap=request.getParameterMap();
   try {
     ServletContext context=getServletContext();
     final FSImage nnImage=NameNodeHttpServer.getFsImageFromContext(context);
-    final TransferFsImage ff=new TransferFsImage(pmap,request,response);
+    final GetImageParams parsedParams=new GetImageParams(request,response);
     final Configuration conf=(Configuration)getServletContext().getAttribute(JspHelper.CURRENT_CONF);
     if (UserGroupInformation.isSecurityEnabled() && !isValidRequestor(request.getRemoteUser(),conf)) {
       response.sendError(HttpServletResponse.SC_FORBIDDEN,"Only Namenode and Secondary Namenode may access this servlet");
       LOG.warn("Received non-NN/SNN request for image or edits from " + request.getRemoteHost());
       return;
     }
+    String myStorageInfoString=nnImage.getStorage().toColonSeparatedString();
+    String theirStorageInfoString=parsedParams.getStorageInfoString();
+    if (theirStorageInfoString != null && !myStorageInfoString.equals(theirStorageInfoString)) {
+      response.sendError(HttpServletResponse.SC_FORBIDDEN,"This namenode has storage info " + myStorageInfoString + " but the secondary expected "+ theirStorageInfoString);
+      LOG.warn("Received an invalid request file transfer request " + "from a secondary with storage info " + theirStorageInfoString);
+      return;
+    }
     UserGroupInformation.getCurrentUser().doAs(new PrivilegedExceptionAction<Void>(){
       @Override public Void run() throws Exception {
-        if (ff.getImage()) {
-          response.setHeader(TransferFsImage.CONTENT_LENGTH,String.valueOf(nnImage.getStorage().getFsImageName().length()));
-          TransferFsImage.getFileServer(response.getOutputStream(),nnImage.getStorage().getFsImageName(),getThrottler(conf));
+        if (parsedParams.isGetImage()) {
+          long txid=parsedParams.getTxId();
+          File imageFile=nnImage.getStorage().getFsImageName(txid);
+          if (imageFile == null) {
+            throw new IOException("Could not find image with txid " + txid);
+          }
+          setVerificationHeaders(response,imageFile);
+          TransferFsImage.getFileServer(response.getOutputStream(),imageFile,getThrottler(conf));
         }
- else         if (ff.getEdit()) {
-          response.setHeader(TransferFsImage.CONTENT_LENGTH,String.valueOf(nnImage.getStorage().getFsEditName().length()));
-          TransferFsImage.getFileServer(response.getOutputStream(),nnImage.getStorage().getFsEditName(),getThrottler(conf));
+ else         if (parsedParams.isGetEdit()) {
+          long startTxId=parsedParams.getStartTxId();
+          long endTxId=parsedParams.getEndTxId();
+          File editFile=nnImage.getStorage().findFinalizedEditsFile(startTxId,endTxId);
+          setVerificationHeaders(response,editFile);
+          TransferFsImage.getFileServer(response.getOutputStream(),editFile,getThrottler(conf));
         }
- else         if (ff.putImage()) {
-          nnImage.validateCheckpointUpload(ff.getToken());
-          nnImage.newImageDigest=ff.getNewChecksum();
-          MD5Hash downloadImageDigest=reloginIfNecessary().doAs(new PrivilegedExceptionAction<MD5Hash>(){
-            @Override public MD5Hash run() throws Exception {
-              return TransferFsImage.getFileClient(ff.getInfoServer(),"getimage=1",nnImage.getStorage().getFsImageNameCheckpoint(),true);
+ else         if (parsedParams.isPutImage()) {
+          final long txid=parsedParams.getTxId();
+          if (!currentlyDownloadingCheckpoints.add(txid)) {
+            throw new IOException("Another checkpointer is already in the process of uploading a" + " checkpoint made at transaction ID " + txid);
+          }
+          try {
+            if (nnImage.getStorage().findImageFile(txid) != null) {
+              throw new IOException("Another checkpointer already uploaded an checkpoint " + "for txid " + txid);
             }
-          }
+            MD5Hash downloadImageDigest=reloginIfNecessary().doAs(new PrivilegedExceptionAction<MD5Hash>(){
+              @Override public MD5Hash run() throws Exception {
+                return TransferFsImage.downloadImageToStorage(parsedParams.getInfoServer(),txid,nnImage.getStorage(),true);
+              }
+            }
 );
-          if (!nnImage.newImageDigest.equals(downloadImageDigest)) {
-            throw new IOException("The downloaded image is corrupt," + " expecting a checksum " + nnImage.newImageDigest + " but received a checksum "+ downloadImageDigest);
+            nnImage.saveDigestAndRenameCheckpointImage(txid,downloadImageDigest);
+            nnImage.purgeOldStorage();
           }
-          nnImage.checkpointUploadDone();
+  finally {
+            currentlyDownloadingCheckpoints.remove(txid);
+          }
         }
         return null;
       }

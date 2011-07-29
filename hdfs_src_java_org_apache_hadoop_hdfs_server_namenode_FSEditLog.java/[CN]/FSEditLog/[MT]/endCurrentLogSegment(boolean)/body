@@ -1,0 +1,19 @@
+{
+  LOG.info("Ending log segment " + curSegmentTxId);
+  Preconditions.checkState(state == State.IN_SEGMENT,"Bad state: %s",state);
+  if (writeEndTxn) {
+    logEdit(LogSegmentOp.getInstance(FSEditLogOpCodes.OP_END_LOG_SEGMENT));
+    logSync();
+  }
+  printStatistics(true);
+  final long lastTxId=getLastWrittenTxId();
+  mapJournalsAndReportErrors(new JournalClosure(){
+    @Override public void apply(    JournalAndStream jas) throws IOException {
+      if (jas.isActive()) {
+        jas.close(lastTxId);
+      }
+    }
+  }
+,"ending log segment");
+  state=State.BETWEEN_LOG_SEGMENTS;
+}

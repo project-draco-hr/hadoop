@@ -1,0 +1,37 @@
+{
+  MiniDFSCluster cluster=null;
+  SecondaryNameNode secondary=null;
+  Configuration conf=new HdfsConfiguration();
+  conf.setInt(CommonConfigurationKeysPublic.IPC_CLIENT_CONNECTION_MAXIDLETIME_KEY,1);
+  try {
+    cluster=new MiniDFSCluster.Builder(conf).numDataNodes(0).format(true).build();
+    int origPort=cluster.getNameNodePort();
+    int origHttpPort=cluster.getNameNode().getHttpAddress().getPort();
+    secondary=startSecondaryNameNode(conf);
+    secondary.doCheckpoint();
+    cluster.shutdown();
+    cluster=null;
+    try {
+      Thread.sleep(100);
+    }
+ catch (    InterruptedException ie) {
+    }
+    cluster=new MiniDFSCluster.Builder(conf).numDataNodes(0).nameNodePort(origPort).nameNodeHttpPort(origHttpPort).format(true).build();
+    try {
+      secondary.doCheckpoint();
+      fail("Should have failed checkpoint against a different namespace");
+    }
+ catch (    IOException ioe) {
+      LOG.info("Got expected failure",ioe);
+      assertTrue(ioe.toString().contains("Inconsistent checkpoint"));
+    }
+  }
+  finally {
+    if (secondary != null) {
+      secondary.shutdown();
+    }
+    if (cluster != null) {
+      cluster.shutdown();
+    }
+  }
+}

@@ -1,0 +1,34 @@
+{
+  FileInputStream fis=new FileInputStream(f);
+  try {
+    PositionTrackingInputStream tracker=new PositionTrackingInputStream(new BufferedInputStream(fis));
+    DataInputStream dis=new DataInputStream(tracker);
+    LogHeader header;
+    try {
+      header=LogHeader.read(dis);
+    }
+ catch (    Throwable t) {
+      FSImage.LOG.debug("Unable to read header from " + f + " -> no valid transactions in this file.");
+      return new EditLogValidation(0,0);
+    }
+    Reader reader=new FSEditLogOp.Reader(dis,header.logVersion,header.checksum);
+    long numValid=0;
+    long lastPos=0;
+    try {
+      while (true) {
+        lastPos=tracker.getPos();
+        if (reader.readOp() == null) {
+          break;
+        }
+        numValid++;
+      }
+    }
+ catch (    Throwable t) {
+      FSImage.LOG.debug("Caught exception after reading " + numValid + " ops from "+ f+ " while determining its valid length.",t);
+    }
+    return new EditLogValidation(lastPos,numValid);
+  }
+  finally {
+    fis.close();
+  }
+}

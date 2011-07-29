@@ -1,0 +1,33 @@
+{
+  checkNotSaved();
+  FSDirectory fsDir=sourceNamesystem.dir;
+  long startTime=now();
+  MessageDigest digester=MD5Hash.getDigester();
+  FileOutputStream fout=new FileOutputStream(newFile);
+  DigestOutputStream fos=new DigestOutputStream(fout,digester);
+  DataOutputStream out=new DataOutputStream(fos);
+  try {
+    out.writeInt(FSConstants.LAYOUT_VERSION);
+    out.writeInt(sourceNamesystem.getFSImage().getStorage().getNamespaceID());
+    out.writeLong(fsDir.rootDir.numItemsInTree());
+    out.writeLong(sourceNamesystem.getGenerationStamp());
+    out.writeLong(txid);
+    out=compression.writeHeaderAndWrapStream(fos);
+    LOG.info("Saving image file " + newFile + " using "+ compression);
+    byte[] byteStore=new byte[4 * FSConstants.MAX_PATH_LENGTH];
+    ByteBuffer strbuf=ByteBuffer.wrap(byteStore);
+    FSImageSerialization.saveINode2Image(fsDir.rootDir,out);
+    saveImage(strbuf,fsDir.rootDir,out);
+    sourceNamesystem.saveFilesUnderConstruction(out);
+    sourceNamesystem.saveSecretManagerState(out);
+    strbuf=null;
+    out.flush();
+    fout.getChannel().force(true);
+  }
+  finally {
+    out.close();
+  }
+  saved=true;
+  savedDigest=new MD5Hash(digester.digest());
+  LOG.info("Image file of size " + newFile.length() + " saved in "+ (now() - startTime) / 1000 + " seconds.");
+}

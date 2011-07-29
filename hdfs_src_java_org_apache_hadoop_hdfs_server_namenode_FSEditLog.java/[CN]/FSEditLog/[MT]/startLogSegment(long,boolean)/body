@@ -1,0 +1,24 @@
+{
+  LOG.info("Starting log segment at " + segmentTxId);
+  Preconditions.checkArgument(segmentTxId > 0,"Bad txid: %s",segmentTxId);
+  Preconditions.checkState(state == State.BETWEEN_LOG_SEGMENTS,"Bad state: %s",state);
+  Preconditions.checkState(segmentTxId > curSegmentTxId,"Cannot start writing to log segment " + segmentTxId + " when previous log segment started at "+ curSegmentTxId);
+  Preconditions.checkArgument(segmentTxId == txid + 1,"Cannot start log segment at txid %s when next expected " + "txid is %s",segmentTxId,txid + 1);
+  numTransactions=totalTimeTransactions=numTransactionsBatchedInSync=0;
+  storage.attemptRestoreRemovedStorage();
+  mapJournalsAndReportErrors(new JournalClosure(){
+    @Override public void apply(    JournalAndStream jas) throws IOException {
+      jas.startLogSegment(segmentTxId);
+    }
+  }
+,"starting log segment " + segmentTxId);
+  if (countActiveJournals() == 0) {
+    throw new IOException("Unable to start log segment " + segmentTxId + ": no journals successfully started.");
+  }
+  curSegmentTxId=segmentTxId;
+  state=State.IN_SEGMENT;
+  if (writeHeaderTxn) {
+    logEdit(LogSegmentOp.getInstance(FSEditLogOpCodes.OP_START_LOG_SEGMENT));
+    logSync();
+  }
+}

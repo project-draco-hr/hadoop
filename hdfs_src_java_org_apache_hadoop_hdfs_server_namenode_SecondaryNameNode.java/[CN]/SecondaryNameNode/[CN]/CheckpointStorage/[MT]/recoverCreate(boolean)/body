@@ -1,0 +1,39 @@
+{
+  storage.attemptRestoreRemovedStorage();
+  storage.unlockAll();
+  for (Iterator<StorageDirectory> it=storage.dirIterator(); it.hasNext(); ) {
+    StorageDirectory sd=it.next();
+    boolean isAccessible=true;
+    try {
+      if (!sd.getRoot().mkdirs()) {
+      }
+    }
+ catch (    SecurityException se) {
+      isAccessible=false;
+    }
+    if (!isAccessible)     throw new InconsistentFSStateException(sd.getRoot(),"cannot access checkpoint directory.");
+    if (format) {
+      LOG.info("Formatting storage directory " + sd);
+      sd.clearDirectory();
+    }
+    StorageState curState;
+    try {
+      curState=sd.analyzeStorage(HdfsConstants.StartupOption.REGULAR,storage);
+switch (curState) {
+case NON_EXISTENT:
+        throw new InconsistentFSStateException(sd.getRoot(),"checkpoint directory does not exist or is not accessible.");
+case NOT_FORMATTED:
+      break;
+case NORMAL:
+    storage.readProperties(sd);
+  break;
+default :
+sd.doRecover(curState);
+}
+}
+ catch (IOException ioe) {
+sd.unlock();
+throw ioe;
+}
+}
+}

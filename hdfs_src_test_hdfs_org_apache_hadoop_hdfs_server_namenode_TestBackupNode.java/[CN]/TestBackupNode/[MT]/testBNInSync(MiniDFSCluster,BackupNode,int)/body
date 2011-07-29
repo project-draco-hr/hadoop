@@ -1,0 +1,25 @@
+{
+  final NameNode nn=cluster.getNameNode();
+  final FileSystem fs=cluster.getFileSystem();
+  for (int i=0; i < 10; i++) {
+    final String src="/test_" + testIdx + "_"+ i;
+    LOG.info("Creating " + src + " on NN");
+    Path p=new Path(src);
+    assertTrue(fs.mkdirs(p));
+    GenericTestUtils.waitFor(new Supplier<Boolean>(){
+      @Override public Boolean get(){
+        LOG.info("Checking for " + src + " on BN");
+        try {
+          boolean hasFile=backup.getNamesystem().getFileInfo(src,false) != null;
+          boolean txnIdMatch=backup.getTransactionID() == nn.getTransactionID();
+          return hasFile && txnIdMatch;
+        }
+ catch (        Exception e) {
+          throw new RuntimeException(e);
+        }
+      }
+    }
+,30,10000);
+  }
+  assertStorageDirsMatch(nn,backup);
+}

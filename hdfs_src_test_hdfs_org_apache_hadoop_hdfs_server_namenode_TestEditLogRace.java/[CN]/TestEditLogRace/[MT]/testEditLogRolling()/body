@@ -10,10 +10,9 @@
     final FSNamesystem namesystem=cluster.getNamesystem();
     FSImage fsimage=namesystem.getFSImage();
     FSEditLog editLog=fsimage.getEditLog();
-    editLog.setBufferCapacity(2048);
-    editLog.close();
-    editLog.open();
+    StorageDirectory sd=fsimage.getStorage().getStorageDir(0);
     startTransactionWorkers(namesystem,caughtErr);
+    long previousLogTxId=1;
     for (int i=0; i < NUM_ROLLS && caughtErr.get() == null; i++) {
       try {
         Thread.sleep(20);
@@ -21,12 +20,13 @@
  catch (      InterruptedException e) {
       }
       LOG.info("Starting roll " + i + ".");
-      editLog.rollEditLog();
-      LOG.info("Roll complete " + i + ".");
-      verifyEditLogs(namesystem,fsimage);
-      LOG.info("Starting purge " + i + ".");
-      editLog.purgeEditLog();
-      LOG.info("Complete purge " + i + ".");
+      CheckpointSignature sig=namesystem.rollEditLog();
+      long nextLog=sig.curSegmentTxId;
+      String logFileName=NNStorage.getFinalizedEditsFileName(previousLogTxId,nextLog - 1);
+      previousLogTxId+=verifyEditLogs(namesystem,fsimage,logFileName,previousLogTxId);
+      assertEquals(previousLogTxId,nextLog);
+      File expectedLog=NNStorage.getInProgressEditsFile(sd,previousLogTxId);
+      assertTrue("Expect " + expectedLog + " to exist",expectedLog.exists());
     }
   }
   finally {

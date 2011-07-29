@@ -1,0 +1,46 @@
+{
+  MiniDFSCluster cluster=null;
+  SecondaryNameNode secondary=null;
+  File currentDir=null;
+  Configuration conf=new HdfsConfiguration();
+  File base_dir=new File(MiniDFSCluster.getBaseDirectory());
+  conf.setBoolean(DFSConfigKeys.DFS_NAMENODE_NAME_DIR_RESTORE_KEY,true);
+  conf.set(DFSConfigKeys.DFS_NAMENODE_NAME_DIR_KEY,MiniDFSCluster.getBaseDirectory() + "/name-only");
+  conf.set(DFSConfigKeys.DFS_NAMENODE_EDITS_DIR_KEY,MiniDFSCluster.getBaseDirectory() + "/edits-only");
+  conf.set(DFSConfigKeys.DFS_NAMENODE_CHECKPOINT_DIR_KEY,fileAsURI(new File(base_dir,"namesecondary1")).toString());
+  try {
+    cluster=new MiniDFSCluster.Builder(conf).numDataNodes(0).format(true).manageNameDfsDirs(false).build();
+    secondary=startSecondaryNameNode(conf);
+    secondary.doCheckpoint();
+    NameNode nn=cluster.getNameNode();
+    NNStorage storage=nn.getFSImage().getStorage();
+    StorageDirectory sd0=storage.getStorageDir(0);
+    assertEquals(NameNodeDirType.IMAGE,sd0.getStorageDirType());
+    currentDir=sd0.getCurrentDir();
+    currentDir.setExecutable(false);
+    try {
+      secondary.doCheckpoint();
+      fail("Did not fail to checkpoint when there are no valid storage dirs");
+    }
+ catch (    IOException ioe) {
+      GenericTestUtils.assertExceptionContains("No targets in destination storage",ioe);
+    }
+    currentDir.setExecutable(true);
+    nn.restoreFailedStorage("true");
+    nn.rollEditLog();
+    secondary.doCheckpoint();
+    assertNNHasCheckpoints(cluster,ImmutableList.of(8));
+    assertParallelFilesInvariant(cluster,ImmutableList.of(secondary));
+  }
+  finally {
+    if (currentDir != null) {
+      currentDir.setExecutable(true);
+    }
+    if (secondary != null) {
+      secondary.shutdown();
+    }
+    if (cluster != null) {
+      cluster.shutdown();
+    }
+  }
+}

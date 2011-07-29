@@ -1,0 +1,30 @@
+{
+  Configuration conf=new HdfsConfiguration();
+  Path file1=new Path("checkpoint-doSendFailTest-" + errorType + ".dat");
+  MiniDFSCluster cluster=new MiniDFSCluster.Builder(conf).numDataNodes(numDatanodes).build();
+  cluster.waitActive();
+  FileSystem fileSys=cluster.getFileSystem();
+  try {
+    assertTrue(!fileSys.exists(file1));
+    SecondaryNameNode secondary=startSecondaryNameNode(conf);
+    ErrorSimulator.setErrorSimulation(errorType);
+    try {
+      secondary.doCheckpoint();
+      fail("Did not get expected exception");
+    }
+ catch (    IOException e) {
+      GenericTestUtils.assertExceptionContains(exceptionSubstring,e);
+    }
+    ErrorSimulator.clearErrorSimulation(errorType);
+    secondary.shutdown();
+    secondary=startSecondaryNameNode(conf);
+    secondary.doCheckpoint();
+    secondary.shutdown();
+    writeFile(fileSys,file1,replication);
+    checkFile(fileSys,file1,replication);
+  }
+  finally {
+    fileSys.close();
+    cluster.shutdown();
+  }
+}

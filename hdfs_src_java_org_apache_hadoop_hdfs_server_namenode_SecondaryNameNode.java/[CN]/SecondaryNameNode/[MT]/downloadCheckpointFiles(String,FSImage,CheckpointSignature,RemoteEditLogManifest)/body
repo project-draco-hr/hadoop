@@ -1,0 +1,34 @@
+{
+  if (manifest.getLogs().isEmpty()) {
+    throw new IOException("Found no edit logs to download on NN since txid " + sig.mostRecentCheckpointTxId);
+  }
+  long expectedTxId=sig.mostRecentCheckpointTxId + 1;
+  if (manifest.getLogs().get(0).getStartTxId() != expectedTxId) {
+    throw new IOException("Bad edit log manifest (expected txid = " + expectedTxId + ": "+ manifest);
+  }
+  try {
+    Boolean b=UserGroupInformation.getCurrentUser().doAs(new PrivilegedExceptionAction<Boolean>(){
+      @Override public Boolean run() throws Exception {
+        dstImage.getStorage().cTime=sig.cTime;
+        boolean downloadImage=true;
+        if (sig.mostRecentCheckpointTxId == dstImage.getStorage().getMostRecentCheckpointTxId()) {
+          downloadImage=false;
+          LOG.info("Image has not changed. Will not download image.");
+        }
+ else {
+          MD5Hash downloadedHash=TransferFsImage.downloadImageToStorage(nnHostPort,sig.mostRecentCheckpointTxId,dstImage.getStorage(),true);
+          dstImage.saveDigestAndRenameCheckpointImage(sig.mostRecentCheckpointTxId,downloadedHash);
+        }
+        for (        RemoteEditLog log : manifest.getLogs()) {
+          TransferFsImage.downloadEditsToStorage(nnHostPort,log,dstImage.getStorage());
+        }
+        return Boolean.valueOf(downloadImage);
+      }
+    }
+);
+    return b.booleanValue();
+  }
+ catch (  InterruptedException e) {
+    throw new RuntimeException(e);
+  }
+}

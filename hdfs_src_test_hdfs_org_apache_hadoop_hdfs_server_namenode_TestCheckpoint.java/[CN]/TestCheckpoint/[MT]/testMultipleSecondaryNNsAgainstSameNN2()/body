@@ -1,0 +1,52 @@
+{
+  Configuration conf=new HdfsConfiguration();
+  MiniDFSCluster cluster=new MiniDFSCluster.Builder(conf).numDataNodes(0).format(true).build();
+  SecondaryNameNode secondary1=null, secondary2=null;
+  try {
+    secondary1=startSecondaryNameNode(conf,1);
+    secondary2=startSecondaryNameNode(conf,2);
+    final NamenodeProtocol origNN=secondary1.getNameNode();
+    final Answer<Object> delegator=new GenericTestUtils.DelegateAnswer(origNN);
+    NamenodeProtocol spyNN=Mockito.mock(NamenodeProtocol.class,delegator);
+    DelayAnswer delayer=new DelayAnswer(LOG){
+      protected Object passThrough(      InvocationOnMock invocation) throws Throwable {
+        return delegator.answer(invocation);
+      }
+    }
+;
+    secondary1.setNameNode(spyNN);
+    Mockito.doAnswer(delayer).when(spyNN).getEditLogManifest(Mockito.anyLong());
+    DoCheckpointThread checkpointThread=new DoCheckpointThread(secondary1);
+    checkpointThread.start();
+    delayer.waitForCall();
+    secondary2.doCheckpoint();
+    NNStorage storage=cluster.getNameNode().getFSImage().getStorage();
+    assertEquals(4,storage.getMostRecentCheckpointTxId());
+    delayer.proceed();
+    checkpointThread.join();
+    try {
+      checkpointThread.propagateExceptions();
+      fail("Didn't throw!");
+    }
+ catch (    Exception ioe) {
+      assertTrue("Unexpected exception: " + StringUtils.stringifyException(ioe),ioe.toString().contains("Another checkpointer already uploaded"));
+      LOG.info("Caught expected exception",ioe);
+    }
+    assertEquals(4,storage.getMostRecentCheckpointTxId());
+    secondary2.doCheckpoint();
+    assertEquals(6,storage.getMostRecentCheckpointTxId());
+    assertNNHasCheckpoints(cluster,ImmutableList.of(4,6));
+    secondary1.setNameNode(origNN);
+    secondary1.doCheckpoint();
+    assertEquals(8,storage.getMostRecentCheckpointTxId());
+  }
+  finally {
+    cleanup(secondary1);
+    cleanup(secondary2);
+    if (cluster != null) {
+      cluster.shutdown();
+    }
+  }
+  assertParallelFilesInvariant(cluster,ImmutableList.of(secondary1,secondary2));
+  assertNNHasCheckpoints(cluster,ImmutableList.of(6,8));
+}
