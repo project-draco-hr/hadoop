@@ -1,0 +1,54 @@
+{
+  JobConf ttConf=new JobConf();
+  ttConf.setInt("mapred.tasktracker.map.tasks.maximum",4);
+  TaskTracker tt=new MyTaskTracker();
+  tt.runningJobs=new TreeMap<JobID,TaskTracker.RunningJob>();
+  tt.runningTasks=new LinkedHashMap<TaskAttemptID,TaskInProgress>();
+  tt.setIndexCache(new IndexCache(ttConf));
+  tt.setTaskMemoryManagerEnabledFlag();
+  TaskLauncher mapLauncher=tt.new TaskLauncher(TaskType.MAP,4);
+  mapLauncher.start();
+  String jtId="test";
+  TaskAttemptID attemptID=new TaskAttemptID(jtId,1,true,0,0);
+  Task task=new MapTask(null,attemptID,0,null,2);
+  mapLauncher.addToTaskQueue(new LaunchTaskAction(task));
+  TaskInProgress runningTip=tt.runningTasks.get(attemptID);
+  assertNotNull(runningTip);
+  for (int i=0; i < 300; i++) {
+    if (firstJobStarted == true) {
+      break;
+    }
+    UtilsForTests.waitFor(100);
+  }
+  String secondjtId="test2";
+  TaskAttemptID secondAttemptID=new TaskAttemptID(secondjtId,1,true,0,0);
+  Task secondTask=new MapTask(null,secondAttemptID,0,null,2);
+  mapLauncher.addToTaskQueue(new LaunchTaskAction(secondTask));
+  TaskInProgress secondRunningTip=tt.runningTasks.get(secondAttemptID);
+  assertNotNull(secondRunningTip);
+  for (int i=0; i < 300; i++) {
+    if (jobLaunchCount > 0) {
+      break;
+    }
+    UtilsForTests.waitFor(100);
+  }
+  assertEquals("Second task didn't run or both ran",1,jobLocalizedCount);
+  assertEquals("second task didn't try to launch",1,jobLaunchCount);
+  assertFalse("Second task didn't finish first task initializing",firstJobFinished);
+  quitWaiting=true;
+  for (int i=0; i < 300; i++) {
+    if (firstJobFinished == true) {
+      break;
+    }
+    UtilsForTests.waitFor(100);
+  }
+  assertTrue("First task didn't finish initializing",firstJobFinished);
+  for (int i=0; i < 300; i++) {
+    if (jobLaunchCount > 1) {
+      break;
+    }
+    UtilsForTests.waitFor(100);
+  }
+  assertEquals("Both tasks didn't run",2,jobLocalizedCount);
+  assertEquals("First task didn't try to launch",2,jobLaunchCount);
+}
