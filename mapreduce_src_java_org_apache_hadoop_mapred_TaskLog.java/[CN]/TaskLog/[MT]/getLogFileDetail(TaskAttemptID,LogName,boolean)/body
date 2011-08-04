@@ -2,28 +2,35 @@
   File indexFile=getIndexFile(taskid,isCleanup);
   BufferedReader fis=new BufferedReader(new InputStreamReader(SecureIOUtils.openForRead(indexFile,obtainLogDirOwner(taskid),null)));
   LogFileDetail l=new LogFileDetail();
-  String str=fis.readLine();
-  if (str == null) {
-    throw new IOException("Index file for the log of " + taskid + " doesn't exist.");
-  }
-  l.location=str.substring(str.indexOf(LogFileDetail.LOCATION) + LogFileDetail.LOCATION.length());
-  if (filter.equals(LogName.DEBUGOUT) || filter.equals(LogName.PROFILE)) {
-    l.length=new File(l.location,filter.toString()).length();
-    l.start=0;
-    fis.close();
-    return l;
-  }
-  str=fis.readLine();
-  while (str != null) {
-    if (str.contains(filter.toString())) {
-      str=str.substring(filter.toString().length() + 1);
-      String[] startAndLen=str.split(" ");
-      l.start=Long.parseLong(startAndLen[0]);
-      l.length=Long.parseLong(startAndLen[1]);
-      break;
+  String str=null;
+  try {
+    str=fis.readLine();
+    if (str == null) {
+      throw new IOException("Index file for the log of " + taskid + " doesn't exist.");
+    }
+    l.location=str.substring(str.indexOf(LogFileDetail.LOCATION) + LogFileDetail.LOCATION.length());
+    if (filter.equals(LogName.DEBUGOUT) || filter.equals(LogName.PROFILE)) {
+      l.length=new File(l.location,filter.toString()).length();
+      l.start=0;
+      fis.close();
+      return l;
     }
     str=fis.readLine();
+    while (str != null) {
+      if (str.contains(filter.toString())) {
+        str=str.substring(filter.toString().length() + 1);
+        String[] startAndLen=str.split(" ");
+        l.start=Long.parseLong(startAndLen[0]);
+        l.length=Long.parseLong(startAndLen[1]);
+        break;
+      }
+      str=fis.readLine();
+    }
+    fis.close();
+    fis=null;
   }
-  fis.close();
+  finally {
+    IOUtils.cleanup(LOG,fis);
+  }
   return l;
 }
