@@ -1,0 +1,28 @@
+{
+  if (!taskStatus.getIncludeCounters()) {
+    return;
+  }
+  double newProgress=taskStatus.getProgress();
+  Counters counters=taskStatus.getCounters();
+  TaskAttemptID statusAttemptID=taskStatus.getTaskID();
+  ProgressSplitsBlock splitsBlock=getSplits(statusAttemptID);
+  if (splitsBlock != null) {
+    long now=JobTracker.getClock().getTime();
+    Long start=getDispatchTime(statusAttemptID);
+    if (start != null && now - start <= Integer.MAX_VALUE) {
+      splitsBlock.progressWallclockTime.extend(newProgress,(int)(now - start));
+    }
+    Counters.Counter cpuCounter=counters.findCounter(CPU_COUNTER_KEY);
+    if (cpuCounter != null && cpuCounter.getCounter() <= Integer.MAX_VALUE) {
+      splitsBlock.progressCPUTime.extend(newProgress,(int)(cpuCounter.getCounter()));
+    }
+    Counters.Counter virtualBytes=counters.findCounter(VM_BYTES_KEY);
+    if (virtualBytes != null) {
+      splitsBlock.progressVirtualMemoryKbytes.extend(newProgress,(int)(virtualBytes.getCounter() / (MEMORY_SPLITS_RESOLUTION)));
+    }
+    Counters.Counter physicalBytes=counters.findCounter(PHYSICAL_BYTES_KEY);
+    if (physicalBytes != null) {
+      splitsBlock.progressPhysicalMemoryKbytes.extend(newProgress,(int)(physicalBytes.getCounter() / (MEMORY_SPLITS_RESOLUTION)));
+    }
+  }
+}
