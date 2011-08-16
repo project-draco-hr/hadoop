@@ -1,6 +1,7 @@
 {
   namesystem=fsn;
-  datanodeManager=new DatanodeManager(fsn,conf);
+  datanodeManager=new DatanodeManager(this,fsn,conf);
+  heartbeatManager=datanodeManager.getHeartbeatManager();
   blocksMap=new BlocksMap(DEFAULT_MAP_LOAD_FACTOR);
   blockplacement=BlockPlacementPolicy.getInstance(conf,namesystem,datanodeManager.getNetworkTopology());
   pendingReplications=new PendingReplicationBlocks(conf.getInt(DFSConfigKeys.DFS_NAMENODE_REPLICATION_PENDING_TIMEOUT_SEC_KEY,DFSConfigKeys.DFS_NAMENODE_REPLICATION_PENDING_TIMEOUT_SEC_DEFAULT) * 1000L);
@@ -15,11 +16,13 @@
   LOG.info("isBlockTokenEnabled=" + isBlockTokenEnabled + " blockKeyUpdateInterval="+ blockKeyUpdateInterval / (60 * 1000) + " min(s), blockTokenLifetime=" + blockTokenLifetime / (60 * 1000) + " min(s)");
   this.maxCorruptFilesReturned=conf.getInt(DFSConfigKeys.DFS_DEFAULT_MAX_CORRUPT_FILES_RETURNED_KEY,DFSConfigKeys.DFS_DEFAULT_MAX_CORRUPT_FILES_RETURNED);
   this.defaultReplication=conf.getInt(DFSConfigKeys.DFS_REPLICATION_KEY,DFSConfigKeys.DFS_REPLICATION_DEFAULT);
-  this.maxReplication=conf.getInt(DFSConfigKeys.DFS_REPLICATION_MAX_KEY,DFSConfigKeys.DFS_REPLICATION_MAX_DEFAULT);
-  this.minReplication=conf.getInt(DFSConfigKeys.DFS_NAMENODE_REPLICATION_MIN_KEY,DFSConfigKeys.DFS_NAMENODE_REPLICATION_MIN_DEFAULT);
-  if (minReplication <= 0)   throw new IOException("Unexpected configuration parameters: dfs.namenode.replication.min = " + minReplication + " must be greater than 0");
-  if (maxReplication >= (int)Short.MAX_VALUE)   throw new IOException("Unexpected configuration parameters: dfs.replication.max = " + maxReplication + " must be less than "+ (Short.MAX_VALUE));
-  if (maxReplication < minReplication)   throw new IOException("Unexpected configuration parameters: dfs.namenode.replication.min = " + minReplication + " must be less than dfs.replication.max = "+ maxReplication);
+  final int maxR=conf.getInt(DFSConfigKeys.DFS_REPLICATION_MAX_KEY,DFSConfigKeys.DFS_REPLICATION_MAX_DEFAULT);
+  final int minR=conf.getInt(DFSConfigKeys.DFS_NAMENODE_REPLICATION_MIN_KEY,DFSConfigKeys.DFS_NAMENODE_REPLICATION_MIN_DEFAULT);
+  if (minR <= 0)   throw new IOException("Unexpected configuration parameters: " + DFSConfigKeys.DFS_NAMENODE_REPLICATION_MIN_KEY + " = "+ minR+ " <= 0");
+  if (maxR > Short.MAX_VALUE)   throw new IOException("Unexpected configuration parameters: " + DFSConfigKeys.DFS_REPLICATION_MAX_KEY + " = "+ maxR+ " > "+ Short.MAX_VALUE);
+  if (minR > maxR)   throw new IOException("Unexpected configuration parameters: " + DFSConfigKeys.DFS_NAMENODE_REPLICATION_MIN_KEY + " = "+ minR+ " > "+ DFSConfigKeys.DFS_REPLICATION_MAX_KEY+ " = "+ maxR);
+  this.minReplication=(short)minR;
+  this.maxReplication=(short)maxR;
   this.maxReplicationStreams=conf.getInt(DFSConfigKeys.DFS_NAMENODE_REPLICATION_MAX_STREAMS_KEY,DFSConfigKeys.DFS_NAMENODE_REPLICATION_MAX_STREAMS_DEFAULT);
   this.shouldCheckForEnoughRacks=conf.get(DFSConfigKeys.NET_TOPOLOGY_SCRIPT_FILE_NAME_KEY) == null ? false : true;
   this.replicationRecheckInterval=conf.getInt(DFSConfigKeys.DFS_NAMENODE_REPLICATION_INTERVAL_KEY,DFSConfigKeys.DFS_NAMENODE_REPLICATION_INTERVAL_DEFAULT) * 1000L;

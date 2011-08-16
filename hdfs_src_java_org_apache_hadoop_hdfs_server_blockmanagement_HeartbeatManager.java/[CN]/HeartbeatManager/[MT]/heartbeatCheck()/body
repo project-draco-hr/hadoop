@@ -1,0 +1,34 @@
+{
+  final DatanodeManager dm=namesystem.getBlockManager().getDatanodeManager();
+  if (namesystem.isInSafeMode()) {
+    return;
+  }
+  boolean allAlive=false;
+  while (!allAlive) {
+    DatanodeID dead=null;
+synchronized (this) {
+      for (      DatanodeDescriptor d : datanodes) {
+        if (dm.isDatanodeDead(d)) {
+          namesystem.incrExpiredHeartbeats();
+          dead=d;
+          break;
+        }
+      }
+    }
+    allAlive=dead == null;
+    if (!allAlive) {
+      namesystem.writeLock();
+      if (namesystem.isInSafeMode()) {
+        return;
+      }
+      try {
+synchronized (this) {
+          dm.removeDeadDatanode(dead);
+        }
+      }
+  finally {
+        namesystem.writeUnlock();
+      }
+    }
+  }
+}

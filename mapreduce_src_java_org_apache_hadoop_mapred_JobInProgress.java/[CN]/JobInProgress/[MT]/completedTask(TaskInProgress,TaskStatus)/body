@@ -18,12 +18,13 @@
   TaskType taskType=getTaskType(tip);
   TaskAttemptStartedEvent tse=new TaskAttemptStartedEvent(status.getTaskID(),taskType,status.getStartTime(),status.getTaskTracker(),ttStatus.getHttpPort());
   jobHistory.logEvent(tse,status.getTaskID().getJobID());
+  TaskAttemptID statusAttemptID=status.getTaskID();
   if (status.getIsMap()) {
-    MapAttemptFinishedEvent mfe=new MapAttemptFinishedEvent(status.getTaskID(),taskType,TaskStatus.State.SUCCEEDED.toString(),status.getMapFinishTime(),status.getFinishTime(),trackerHostname,status.getStateString(),new org.apache.hadoop.mapreduce.Counters(status.getCounters()));
+    MapAttemptFinishedEvent mfe=new MapAttemptFinishedEvent(statusAttemptID,taskType,TaskStatus.State.SUCCEEDED.toString(),status.getMapFinishTime(),status.getFinishTime(),trackerHostname,status.getStateString(),new org.apache.hadoop.mapreduce.Counters(status.getCounters()),tip.getSplits(statusAttemptID).burst());
     jobHistory.logEvent(mfe,status.getTaskID().getJobID());
   }
  else {
-    ReduceAttemptFinishedEvent rfe=new ReduceAttemptFinishedEvent(status.getTaskID(),taskType,TaskStatus.State.SUCCEEDED.toString(),status.getShuffleFinishTime(),status.getSortFinishTime(),status.getFinishTime(),trackerHostname,status.getStateString(),new org.apache.hadoop.mapreduce.Counters(status.getCounters()));
+    ReduceAttemptFinishedEvent rfe=new ReduceAttemptFinishedEvent(statusAttemptID,taskType,TaskStatus.State.SUCCEEDED.toString(),status.getShuffleFinishTime(),status.getSortFinishTime(),status.getFinishTime(),trackerHostname,status.getStateString(),new org.apache.hadoop.mapreduce.Counters(status.getCounters()),tip.getSplits(statusAttemptID).burst());
     jobHistory.logEvent(rfe,status.getTaskID().getJobID());
   }
   TaskFinishedEvent tfe=new TaskFinishedEvent(tip.getTIPId(),tip.getExecFinishTime(),taskType,TaskStatus.State.SUCCEEDED.toString(),new org.apache.hadoop.mapreduce.Counters(status.getCounters()));
@@ -60,6 +61,9 @@
     retireMap(tip);
     if ((finishedMapTasks + failedMapTIPs) == (numMapTasks)) {
       this.status.setMapProgress(1.0f);
+      if (canLaunchJobCleanupTask()) {
+        checkCountersLimitsOrFail();
+      }
     }
   }
  else {
@@ -72,6 +76,9 @@
     retireReduce(tip);
     if ((finishedReduceTasks + failedReduceTIPs) == (numReduceTasks)) {
       this.status.setReduceProgress(1.0f);
+      if (canLaunchJobCleanupTask()) {
+        checkCountersLimitsOrFail();
+      }
     }
   }
   decrementSpeculativeCount(wasSpeculating,tip);

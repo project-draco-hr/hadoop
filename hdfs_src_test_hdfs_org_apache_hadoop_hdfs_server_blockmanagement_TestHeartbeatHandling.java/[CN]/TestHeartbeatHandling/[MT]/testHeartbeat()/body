@@ -4,6 +4,7 @@
   try {
     cluster.waitActive();
     final FSNamesystem namesystem=cluster.getNamesystem();
+    final HeartbeatManager hm=namesystem.getBlockManager().getDatanodeManager().getHeartbeatManager();
     final String poolId=namesystem.getBlockPoolId();
     final DatanodeRegistration nodeReg=DataNodeTestUtils.getDNRegistrationForBP(cluster.getDataNodes().get(0),poolId);
     final DatanodeDescriptor dd=NameNodeAdapter.getDatanode(namesystem,nodeReg);
@@ -15,11 +16,11 @@
     final DatanodeDescriptor[] ONE_TARGET=new DatanodeDescriptor[1];
     try {
       namesystem.writeLock();
-synchronized (namesystem.heartbeats) {
+synchronized (hm) {
         for (int i=0; i < MAX_REPLICATE_BLOCKS; i++) {
           dd.addBlockToBeReplicated(new Block(i,0,GenerationStamp.FIRST_VALID_STAMP),ONE_TARGET);
         }
-        DatanodeCommand[] cmds=sendHeartBeat(nodeReg,dd,namesystem);
+        DatanodeCommand[] cmds=NameNodeAdapter.sendHeartBeat(nodeReg,dd,namesystem);
         assertEquals(1,cmds.length);
         assertEquals(DatanodeProtocol.DNA_TRANSFER,cmds[0].getAction());
         assertEquals(MAX_REPLICATE_LIMIT,((BlockCommand)cmds[0]).getBlocks().length);
@@ -28,23 +29,23 @@ synchronized (namesystem.heartbeats) {
           blockList.add(new Block(i,0,GenerationStamp.FIRST_VALID_STAMP));
         }
         dd.addBlocksToBeInvalidated(blockList);
-        cmds=sendHeartBeat(nodeReg,dd,namesystem);
+        cmds=NameNodeAdapter.sendHeartBeat(nodeReg,dd,namesystem);
         assertEquals(2,cmds.length);
         assertEquals(DatanodeProtocol.DNA_TRANSFER,cmds[0].getAction());
         assertEquals(MAX_REPLICATE_LIMIT,((BlockCommand)cmds[0]).getBlocks().length);
         assertEquals(DatanodeProtocol.DNA_INVALIDATE,cmds[1].getAction());
         assertEquals(MAX_INVALIDATE_LIMIT,((BlockCommand)cmds[1]).getBlocks().length);
-        cmds=sendHeartBeat(nodeReg,dd,namesystem);
+        cmds=NameNodeAdapter.sendHeartBeat(nodeReg,dd,namesystem);
         assertEquals(2,cmds.length);
         assertEquals(DatanodeProtocol.DNA_TRANSFER,cmds[0].getAction());
         assertEquals(REMAINING_BLOCKS,((BlockCommand)cmds[0]).getBlocks().length);
         assertEquals(DatanodeProtocol.DNA_INVALIDATE,cmds[1].getAction());
         assertEquals(MAX_INVALIDATE_LIMIT,((BlockCommand)cmds[1]).getBlocks().length);
-        cmds=sendHeartBeat(nodeReg,dd,namesystem);
+        cmds=NameNodeAdapter.sendHeartBeat(nodeReg,dd,namesystem);
         assertEquals(1,cmds.length);
         assertEquals(DatanodeProtocol.DNA_INVALIDATE,cmds[0].getAction());
         assertEquals(REMAINING_BLOCKS,((BlockCommand)cmds[0]).getBlocks().length);
-        cmds=sendHeartBeat(nodeReg,dd,namesystem);
+        cmds=NameNodeAdapter.sendHeartBeat(nodeReg,dd,namesystem);
         assertEquals(null,cmds);
       }
     }

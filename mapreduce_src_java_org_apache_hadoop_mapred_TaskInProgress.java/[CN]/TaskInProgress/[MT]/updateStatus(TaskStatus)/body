@@ -1,45 +1,50 @@
 {
-  TaskAttemptID taskid=status.getTaskID();
-  String tracker=status.getTaskTracker();
-  String diagInfo=status.getDiagnosticInfo();
-  TaskStatus oldStatus=taskStatuses.get(taskid);
-  boolean changed=true;
-  if (diagInfo != null && diagInfo.length() > 0) {
-    LOG.info("Error from " + taskid + " on "+ tracker+ ": "+ diagInfo);
-    addDiagnosticInfo(taskid,diagInfo);
-  }
-  if (skipping) {
-    failedRanges.updateState(status);
-  }
-  if (oldStatus != null) {
-    TaskStatus.State oldState=oldStatus.getRunState();
-    TaskStatus.State newState=status.getRunState();
-    if ((newState != TaskStatus.State.RUNNING && newState != TaskStatus.State.COMMIT_PENDING && newState != TaskStatus.State.FAILED_UNCLEAN && newState != TaskStatus.State.KILLED_UNCLEAN && newState != TaskStatus.State.UNASSIGNED) && (oldState == newState)) {
-      LOG.warn("Recieved duplicate status update of '" + newState + "' for '"+ taskid+ "' of TIP '"+ getTIPId()+ "'"+ "oldTT="+ oldStatus.getTaskTracker()+ " while newTT="+ status.getTaskTracker());
-      return false;
+  try {
+    TaskAttemptID taskid=status.getTaskID();
+    String tracker=status.getTaskTracker();
+    String diagInfo=status.getDiagnosticInfo();
+    TaskStatus oldStatus=taskStatuses.get(taskid);
+    boolean changed=true;
+    if (diagInfo != null && diagInfo.length() > 0) {
+      LOG.info("Error from " + taskid + " on "+ tracker+ ": "+ diagInfo);
+      addDiagnosticInfo(taskid,diagInfo);
     }
-    if ((newState == TaskStatus.State.RUNNING || newState == TaskStatus.State.UNASSIGNED) && (oldState == TaskStatus.State.FAILED || oldState == TaskStatus.State.KILLED || oldState == TaskStatus.State.FAILED_UNCLEAN || oldState == TaskStatus.State.KILLED_UNCLEAN || oldState == TaskStatus.State.SUCCEEDED || oldState == TaskStatus.State.COMMIT_PENDING)) {
-      return false;
+    if (skipping) {
+      failedRanges.updateState(status);
     }
-    if (oldState == TaskStatus.State.FAILED || oldState == TaskStatus.State.KILLED) {
-      tasksToKill.put(taskid,true);
-      return false;
+    if (oldStatus != null) {
+      TaskStatus.State oldState=oldStatus.getRunState();
+      TaskStatus.State newState=status.getRunState();
+      if ((newState != TaskStatus.State.RUNNING && newState != TaskStatus.State.COMMIT_PENDING && newState != TaskStatus.State.FAILED_UNCLEAN && newState != TaskStatus.State.KILLED_UNCLEAN && newState != TaskStatus.State.UNASSIGNED) && (oldState == newState)) {
+        LOG.warn("Recieved duplicate status update of '" + newState + "' for '"+ taskid+ "' of TIP '"+ getTIPId()+ "'"+ "oldTT="+ oldStatus.getTaskTracker()+ " while newTT="+ status.getTaskTracker());
+        return false;
+      }
+      if ((newState == TaskStatus.State.RUNNING || newState == TaskStatus.State.UNASSIGNED) && (oldState == TaskStatus.State.FAILED || oldState == TaskStatus.State.KILLED || oldState == TaskStatus.State.FAILED_UNCLEAN || oldState == TaskStatus.State.KILLED_UNCLEAN || oldState == TaskStatus.State.SUCCEEDED || oldState == TaskStatus.State.COMMIT_PENDING)) {
+        return false;
+      }
+      if (oldState == TaskStatus.State.FAILED || oldState == TaskStatus.State.KILLED) {
+        tasksToKill.put(taskid,true);
+        return false;
+      }
+      changed=oldState != newState;
     }
-    changed=oldState != newState;
-  }
-  if (!isCleanupAttempt(taskid)) {
-    taskStatuses.put(taskid,status);
-    if (!isJobSetupTask() && ((isMapTask() && job.hasSpeculativeMaps()) || (!isMapTask() && job.hasSpeculativeReduces()))) {
-      long now=JobTracker.getClock().getTime();
-      double oldProgRate=getOldProgressRate();
-      double currProgRate=getCurrentProgressRate(now);
-      job.updateStatistics(oldProgRate,currProgRate,isMapTask());
-      setProgressRate(currProgRate);
+    if (!isCleanupAttempt(taskid)) {
+      taskStatuses.put(taskid,status);
+      if (!isJobSetupTask() && ((isMapTask() && job.hasSpeculativeMaps()) || (!isMapTask() && job.hasSpeculativeReduces()))) {
+        long now=JobTracker.getClock().getTime();
+        double oldProgRate=getOldProgressRate();
+        double currProgRate=getCurrentProgressRate(now);
+        job.updateStatistics(oldProgRate,currProgRate,isMapTask());
+        setProgressRate(currProgRate);
+      }
     }
-  }
  else {
-    taskStatuses.get(taskid).statusUpdate(status.getRunState(),status.getProgress(),status.getStateString(),status.getPhase(),status.getFinishTime());
+      taskStatuses.get(taskid).statusUpdate(status.getRunState(),status.getProgress(),status.getStateString(),status.getPhase(),status.getFinishTime());
+    }
+    recomputeProgress();
+    return changed;
   }
-  recomputeProgress();
-  return changed;
+  finally {
+    updateProgressSplits(status);
+  }
 }
