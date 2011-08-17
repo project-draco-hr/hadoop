@@ -6,7 +6,10 @@
     cluster=new MiniDFSCluster.Builder(conf).numDataNodes(numDataNodes).build();
     cluster.waitActive();
     assertEquals(numDataNodes,cluster.getDataNodes().size());
-    SecurityTestUtil.setBlockTokenLifetime(cluster.getNameNode().getNamesystem().getBlockManager().getBlockTokenSecretManager(),1000L);
+    final NameNode nn=cluster.getNameNode();
+    final BlockManager bm=nn.getNamesystem().getBlockManager();
+    final BlockTokenSecretManager sm=bm.getBlockTokenSecretManager();
+    SecurityTestUtil.setBlockTokenLifetime(sm,1000L);
     Path fileToRead=new Path(FILE_TO_READ);
     FileSystem fs=cluster.getFileSystem();
     createFile(fs,fileToRead);
@@ -17,7 +20,7 @@
     FSDataInputStream in3=fs.open(fileToRead);
     assertTrue(checkFile2(in3));
     new DFSClient(new InetSocketAddress("localhost",cluster.getNameNodePort()),conf);
-    List<LocatedBlock> locatedBlocks=cluster.getNameNode().getBlockLocations(FILE_TO_READ,0,FILE_SIZE).getLocatedBlocks();
+    List<LocatedBlock> locatedBlocks=nn.getBlockLocations(FILE_TO_READ,0,FILE_SIZE).getLocatedBlocks();
     LocatedBlock lblock=locatedBlocks.get(0);
     Token<BlockTokenIdentifier> myToken=lblock.getBlockToken();
     assertFalse(SecurityTestUtil.isBlockTokenExpired(myToken));
@@ -31,14 +34,14 @@
     }
     assertTrue(SecurityTestUtil.isBlockTokenExpired(myToken));
     tryRead(conf,lblock,false);
-    lblock.setBlockToken(cluster.getNameNode().getNamesystem().getBlockManager().getBlockTokenSecretManager().generateToken(lblock.getBlock(),EnumSet.of(BlockTokenSecretManager.AccessMode.READ)));
+    lblock.setBlockToken(sm.generateToken(lblock.getBlock(),EnumSet.of(BlockTokenSecretManager.AccessMode.READ)));
     tryRead(conf,lblock,true);
     ExtendedBlock wrongBlock=new ExtendedBlock(lblock.getBlock().getBlockPoolId(),lblock.getBlock().getBlockId() + 1);
-    lblock.setBlockToken(cluster.getNameNode().getNamesystem().getBlockManager().getBlockTokenSecretManager().generateToken(wrongBlock,EnumSet.of(BlockTokenSecretManager.AccessMode.READ)));
+    lblock.setBlockToken(sm.generateToken(wrongBlock,EnumSet.of(BlockTokenSecretManager.AccessMode.READ)));
     tryRead(conf,lblock,false);
-    lblock.setBlockToken(cluster.getNameNode().getNamesystem().getBlockManager().getBlockTokenSecretManager().generateToken(lblock.getBlock(),EnumSet.of(BlockTokenSecretManager.AccessMode.WRITE,BlockTokenSecretManager.AccessMode.COPY,BlockTokenSecretManager.AccessMode.REPLACE)));
+    lblock.setBlockToken(sm.generateToken(lblock.getBlock(),EnumSet.of(BlockTokenSecretManager.AccessMode.WRITE,BlockTokenSecretManager.AccessMode.COPY,BlockTokenSecretManager.AccessMode.REPLACE)));
     tryRead(conf,lblock,false);
-    SecurityTestUtil.setBlockTokenLifetime(cluster.getNameNode().getNamesystem().getBlockManager().getBlockTokenSecretManager(),600 * 1000L);
+    SecurityTestUtil.setBlockTokenLifetime(sm,600 * 1000L);
     List<LocatedBlock> lblocks=DFSTestUtil.getAllBlocks(in1);
     for (    LocatedBlock blk : lblocks) {
       assertTrue(SecurityTestUtil.isBlockTokenExpired(blk.getBlockToken()));
