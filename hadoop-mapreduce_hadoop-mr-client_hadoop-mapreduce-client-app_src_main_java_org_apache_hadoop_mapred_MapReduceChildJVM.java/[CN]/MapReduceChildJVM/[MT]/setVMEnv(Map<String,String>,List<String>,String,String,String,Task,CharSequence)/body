@@ -1,0 +1,57 @@
+{
+  JobConf conf=task.conf;
+  CharSequence cp=env.get("CLASSPATH");
+  String classpath=StringUtils.join(SYSTEM_PATH_SEPARATOR,classPaths);
+  if (null == cp) {
+    env.put("CLASSPATH",classpath);
+  }
+ else {
+    env.put("CLASSPATH",classpath + SYSTEM_PATH_SEPARATOR + cp);
+  }
+  StringBuilder ldLibraryPath=new StringBuilder();
+  ldLibraryPath.append(nmLdLibraryPath);
+  ldLibraryPath.append(SYSTEM_PATH_SEPARATOR);
+  ldLibraryPath.append(pwd);
+  env.put("LD_LIBRARY_PATH",ldLibraryPath.toString());
+  env.put("HADOOP_ROOT_LOGGER","DEBUG,CLA");
+  String hadoopClientOpts=System.getenv("HADOOP_CLIENT_OPTS");
+  if (hadoopClientOpts == null) {
+    hadoopClientOpts="";
+  }
+ else {
+    hadoopClientOpts=hadoopClientOpts + " ";
+  }
+  long logSize=TaskLog.getTaskLogLength(conf);
+  Vector<String> logProps=new Vector<String>(4);
+  setupLog4jProperties(logProps,logSize,containerLogDir);
+  Iterator<String> it=logProps.iterator();
+  StringBuffer buffer=new StringBuffer();
+  while (it.hasNext()) {
+    buffer.append(" " + it.next());
+  }
+  hadoopClientOpts=hadoopClientOpts + buffer.toString();
+  env.put("HADOOP_CLIENT_OPTS",hadoopClientOpts);
+  String mapredChildEnv=getChildEnv(conf,task.isMapTask());
+  if (mapredChildEnv != null && mapredChildEnv.length() > 0) {
+    String childEnvs[]=mapredChildEnv.split(",");
+    for (    String cEnv : childEnvs) {
+      String[] parts=cEnv.split("=");
+      String value=(String)env.get(parts[0]);
+      if (value != null) {
+        value=parts[1].replace("$" + parts[0],value);
+      }
+ else {
+        value=System.getenv(parts[0]);
+        if (value != null) {
+          value=parts[1].replace("$" + parts[0],value);
+        }
+ else {
+          value=parts[1].replace("$" + parts[0],"");
+        }
+      }
+      env.put(parts[0],value);
+    }
+  }
+  env.put(Constants.STDOUT_LOGFILE_ENV,getTaskLogFile(containerLogDir,TaskLog.LogName.STDOUT).toString());
+  env.put(Constants.STDERR_LOGFILE_ENV,getTaskLogFile(containerLogDir,TaskLog.LogName.STDERR).toString());
+}

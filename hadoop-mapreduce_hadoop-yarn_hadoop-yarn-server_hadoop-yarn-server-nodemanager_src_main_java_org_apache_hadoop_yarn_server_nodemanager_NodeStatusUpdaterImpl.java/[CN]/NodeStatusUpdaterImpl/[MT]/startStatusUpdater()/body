@@ -1,0 +1,33 @@
+{
+  new Thread(){
+    @Override public void run(){
+      int lastHeartBeatID=0;
+      while (!isStopped) {
+        try {
+synchronized (heartbeatMonitor) {
+            heartbeatMonitor.wait(heartBeatInterval);
+          }
+          NodeStatus nodeStatus=getNodeStatus();
+          nodeStatus.setResponseId(lastHeartBeatID);
+          NodeHeartbeatRequest request=recordFactory.newRecordInstance(NodeHeartbeatRequest.class);
+          request.setNodeStatus(nodeStatus);
+          HeartbeatResponse response=resourceTracker.nodeHeartbeat(request).getHeartbeatResponse();
+          lastHeartBeatID=response.getResponseId();
+          List<ContainerId> containersToCleanup=response.getContainersToCleanupList();
+          if (containersToCleanup.size() != 0) {
+            dispatcher.getEventHandler().handle(new CMgrCompletedContainersEvent(containersToCleanup));
+          }
+          List<ApplicationId> appsToCleanup=response.getApplicationsToCleanupList();
+          if (appsToCleanup.size() != 0) {
+            dispatcher.getEventHandler().handle(new CMgrCompletedAppsEvent(appsToCleanup));
+          }
+        }
+ catch (        Throwable e) {
+          LOG.error("Caught exception in status-updater",e);
+          break;
+        }
+      }
+    }
+  }
+.start();
+}

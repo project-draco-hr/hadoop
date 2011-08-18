@@ -1,0 +1,18 @@
+{
+  task.handleTaskAttemptCompletion(((TaskTAttemptEvent)event).getTaskAttemptID(),TaskAttemptCompletionEventStatus.SUCCEEDED);
+  --task.numberUncompletedAttempts;
+  task.successfulAttempt=((TaskTAttemptEvent)event).getTaskAttemptID();
+  task.eventHandler.handle(new JobTaskEvent(task.taskId,TaskState.SUCCEEDED));
+  LOG.info("Task succeeded with attempt " + task.successfulAttempt);
+  if (task.historyTaskStartGenerated) {
+    TaskFinishedEvent tfe=createTaskFinishedEvent(task,TaskState.SUCCEEDED);
+    task.eventHandler.handle(new JobHistoryEvent(task.taskId.getJobId(),tfe));
+  }
+  for (  TaskAttempt attempt : task.attempts.values()) {
+    if (attempt.getID() != task.successfulAttempt && !attempt.isFinished()) {
+      LOG.info("Issuing kill to other attempt " + attempt.getID());
+      task.eventHandler.handle(new TaskAttemptEvent(attempt.getID(),TaskAttemptEventType.TA_KILL));
+    }
+  }
+  task.finished(TaskState.SUCCEEDED);
+}

@@ -1,0 +1,23 @@
+{
+  for (Iterator<Container> i=containers.iterator(); i.hasNext(); ) {
+    Container container=i.next();
+    String host=container.getNodeId().toString();
+    if (Resources.equals(requestSpec.get(priority),container.getResource())) {
+      for (Iterator<Task> t=tasks.get(priority).iterator(); t.hasNext(); ) {
+        Task task=t.next();
+        if (task.getState() == State.PENDING && task.canSchedule(type,host)) {
+          NodeManager nodeManager=getNodeManager(host);
+          task.start(nodeManager,container.getId());
+          i.remove();
+          Resources.addTo(used,container.getResource());
+          LOG.info("Assigned container (" + container + ") of type "+ type+ " to task "+ task.getTaskId()+ " at priority "+ priority+ " on node "+ nodeManager.getHostName()+ ", currently using "+ used+ " resources");
+          updateResourceRequests(requests.get(priority),type,task);
+          StartContainerRequest startRequest=recordFactory.newRecordInstance(StartContainerRequest.class);
+          startRequest.setContainerLaunchContext(createCLC(container));
+          nodeManager.startContainer(startRequest);
+          break;
+        }
+      }
+    }
+  }
+}

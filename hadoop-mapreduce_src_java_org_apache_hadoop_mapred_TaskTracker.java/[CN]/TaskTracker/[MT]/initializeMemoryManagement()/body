@@ -1,0 +1,61 @@
+{
+  if (fConf.get(MAPRED_TASKTRACKER_VMEM_RESERVED_PROPERTY) != null) {
+    LOG.warn(JobConf.deprecatedString(MAPRED_TASKTRACKER_VMEM_RESERVED_PROPERTY));
+  }
+  if (fConf.get(MAPRED_TASKTRACKER_PMEM_RESERVED_PROPERTY) != null) {
+    LOG.warn(JobConf.deprecatedString(MAPRED_TASKTRACKER_PMEM_RESERVED_PROPERTY));
+  }
+  if (fConf.get(JobConf.MAPRED_TASK_DEFAULT_MAXVMEM_PROPERTY) != null) {
+    LOG.warn(JobConf.deprecatedString(JobConf.MAPRED_TASK_DEFAULT_MAXVMEM_PROPERTY));
+  }
+  if (fConf.get(JobConf.UPPER_LIMIT_ON_TASK_VMEM_PROPERTY) != null) {
+    LOG.warn(JobConf.deprecatedString(JobConf.UPPER_LIMIT_ON_TASK_VMEM_PROPERTY));
+  }
+  Class<? extends MemoryCalculatorPlugin> clazz=fConf.getClass(TT_MEMORY_CALCULATOR_PLUGIN,null,MemoryCalculatorPlugin.class);
+  MemoryCalculatorPlugin memoryCalculatorPlugin=(clazz == null ? null : MemoryCalculatorPlugin.getMemoryCalculatorPlugin(clazz,fConf));
+  if (memoryCalculatorPlugin != null || resourceCalculatorPlugin != null) {
+    totalVirtualMemoryOnTT=(memoryCalculatorPlugin == null ? resourceCalculatorPlugin.getVirtualMemorySize() : memoryCalculatorPlugin.getVirtualMemorySize());
+    if (totalVirtualMemoryOnTT <= 0) {
+      LOG.warn("TaskTracker's totalVmem could not be calculated. " + "Setting it to " + JobConf.DISABLED_MEMORY_LIMIT);
+      totalVirtualMemoryOnTT=JobConf.DISABLED_MEMORY_LIMIT;
+    }
+    totalPhysicalMemoryOnTT=(memoryCalculatorPlugin == null ? resourceCalculatorPlugin.getPhysicalMemorySize() : memoryCalculatorPlugin.getPhysicalMemorySize());
+    if (totalPhysicalMemoryOnTT <= 0) {
+      LOG.warn("TaskTracker's totalPmem could not be calculated. " + "Setting it to " + JobConf.DISABLED_MEMORY_LIMIT);
+      totalPhysicalMemoryOnTT=JobConf.DISABLED_MEMORY_LIMIT;
+    }
+  }
+  mapSlotMemorySizeOnTT=fConf.getLong(MAPMEMORY_MB,JobConf.DISABLED_MEMORY_LIMIT);
+  reduceSlotSizeMemoryOnTT=fConf.getLong(REDUCEMEMORY_MB,JobConf.DISABLED_MEMORY_LIMIT);
+  totalMemoryAllottedForTasks=maxMapSlots * mapSlotMemorySizeOnTT + maxReduceSlots * reduceSlotSizeMemoryOnTT;
+  if (totalMemoryAllottedForTasks < 0) {
+    long memoryAllotedForSlot=fConf.normalizeMemoryConfigValue(fConf.getLong(JobConf.MAPRED_TASK_DEFAULT_MAXVMEM_PROPERTY,JobConf.DISABLED_MEMORY_LIMIT));
+    long limitVmPerTask=fConf.normalizeMemoryConfigValue(fConf.getLong(JobConf.UPPER_LIMIT_ON_TASK_VMEM_PROPERTY,JobConf.DISABLED_MEMORY_LIMIT));
+    if (memoryAllotedForSlot == JobConf.DISABLED_MEMORY_LIMIT) {
+      totalMemoryAllottedForTasks=JobConf.DISABLED_MEMORY_LIMIT;
+    }
+ else {
+      if (memoryAllotedForSlot > limitVmPerTask) {
+        LOG.info("DefaultMaxVmPerTask is mis-configured. " + "It shouldn't be greater than task limits");
+        totalMemoryAllottedForTasks=JobConf.DISABLED_MEMORY_LIMIT;
+      }
+ else {
+        totalMemoryAllottedForTasks=(maxMapSlots + maxReduceSlots) * (memoryAllotedForSlot / (1024 * 1024));
+      }
+    }
+  }
+  if (totalMemoryAllottedForTasks > totalPhysicalMemoryOnTT) {
+    LOG.info("totalMemoryAllottedForTasks > totalPhysicalMemoryOnTT." + " Thrashing might happen.");
+  }
+ else   if (totalMemoryAllottedForTasks > totalVirtualMemoryOnTT) {
+    LOG.info("totalMemoryAllottedForTasks > totalVirtualMemoryOnTT." + " Thrashing might happen.");
+  }
+  reservedPhysicalMemoryOnTT=fConf.getLong(TTConfig.TT_RESERVED_PHYSCIALMEMORY_MB,JobConf.DISABLED_MEMORY_LIMIT);
+  reservedPhysicalMemoryOnTT=reservedPhysicalMemoryOnTT == JobConf.DISABLED_MEMORY_LIMIT ? JobConf.DISABLED_MEMORY_LIMIT : reservedPhysicalMemoryOnTT * 1024 * 1024;
+  setTaskMemoryManagerEnabledFlag();
+  if (isTaskMemoryManagerEnabled()) {
+    taskMemoryManager=new TaskMemoryManagerThread(this);
+    taskMemoryManager.setDaemon(true);
+    taskMemoryManager.start();
+  }
+}

@@ -1,0 +1,22 @@
+{
+  UserGroupInformation user=UserGroupInformation.getCurrentUser();
+  if (UserGroupInformation.isSecurityEnabled()) {
+    if (!ugiMap.containsKey(containerManagerBindAddr)) {
+      Token<ContainerTokenIdentifier> token=new Token<ContainerTokenIdentifier>(containerToken.getIdentifier().array(),containerToken.getPassword().array(),new Text(containerToken.getKind()),new Text(containerToken.getService()));
+      user=UserGroupInformation.createRemoteUser(containerManagerBindAddr);
+      user.addToken(token);
+      ugiMap.put(containerManagerBindAddr,user);
+    }
+ else {
+      user=ugiMap.get(containerManagerBindAddr);
+    }
+  }
+  ContainerManager proxy=user.doAs(new PrivilegedAction<ContainerManager>(){
+    @Override public ContainerManager run(){
+      YarnRPC rpc=YarnRPC.create(getConfig());
+      return (ContainerManager)rpc.getProxy(ContainerManager.class,NetUtils.createSocketAddr(containerManagerBindAddr),getConfig());
+    }
+  }
+);
+  return proxy;
+}

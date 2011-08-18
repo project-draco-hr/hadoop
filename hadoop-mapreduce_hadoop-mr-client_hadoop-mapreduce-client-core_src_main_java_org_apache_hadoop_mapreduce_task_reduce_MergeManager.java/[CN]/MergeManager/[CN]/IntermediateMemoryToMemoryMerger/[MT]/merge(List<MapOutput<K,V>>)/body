@@ -1,0 +1,17 @@
+{
+  if (inputs == null || inputs.size() == 0) {
+    return;
+  }
+  TaskAttemptID dummyMapId=inputs.get(0).getMapId();
+  List<Segment<K,V>> inMemorySegments=new ArrayList<Segment<K,V>>();
+  long mergeOutputSize=createInMemorySegments(inputs,inMemorySegments,0);
+  int noInMemorySegments=inMemorySegments.size();
+  MapOutput<K,V> mergedMapOutputs=unconditionalReserve(dummyMapId,mergeOutputSize,false);
+  Writer<K,V> writer=new InMemoryWriter<K,V>(mergedMapOutputs.getArrayStream());
+  LOG.info("Initiating Memory-to-Memory merge with " + noInMemorySegments + " segments of total-size: "+ mergeOutputSize);
+  RawKeyValueIterator rIter=Merger.merge(jobConf,rfs,(Class<K>)jobConf.getMapOutputKeyClass(),(Class<V>)jobConf.getMapOutputValueClass(),inMemorySegments,inMemorySegments.size(),new Path(reduceId.toString()),(RawComparator<K>)jobConf.getOutputKeyComparator(),reporter,null,null,null);
+  Merger.writeFile(rIter,writer,reporter,jobConf);
+  writer.close();
+  LOG.info(reduceId + " Memory-to-Memory merge of the " + noInMemorySegments+ " files in-memory complete.");
+  closeInMemoryMergedFile(mergedMapOutputs);
+}

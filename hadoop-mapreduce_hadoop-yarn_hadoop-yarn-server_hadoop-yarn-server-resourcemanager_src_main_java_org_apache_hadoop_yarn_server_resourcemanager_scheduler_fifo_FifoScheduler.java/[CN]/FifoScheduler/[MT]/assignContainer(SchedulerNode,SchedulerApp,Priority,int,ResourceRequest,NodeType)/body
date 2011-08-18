@@ -1,0 +1,24 @@
+{
+  LOG.debug("assignContainers:" + " node=" + node.getRMNode().getNodeAddress() + " application="+ application.getApplicationId().getId()+ " priority="+ priority.getPriority()+ " assignableContainers="+ assignableContainers+ " request="+ request+ " type="+ type);
+  Resource capability=request.getCapability();
+  int availableContainers=node.getAvailableResource().getMemory() / capability.getMemory();
+  int assignedContainers=Math.min(assignableContainers,availableContainers);
+  if (assignedContainers > 0) {
+    for (int i=0; i < assignedContainers; ++i) {
+      Container container=BuilderUtils.newContainer(recordFactory,application.getApplicationAttemptId(),application.getNewContainerId(),node.getRMNode().getNodeID(),node.getRMNode().getHttpAddress(),capability);
+      if (UserGroupInformation.isSecurityEnabled()) {
+        ContainerToken containerToken=recordFactory.newRecordInstance(ContainerToken.class);
+        ContainerTokenIdentifier tokenidentifier=new ContainerTokenIdentifier(container.getId(),container.getNodeId().toString(),container.getResource());
+        containerToken.setIdentifier(ByteBuffer.wrap(tokenidentifier.getBytes()));
+        containerToken.setKind(ContainerTokenIdentifier.KIND.toString());
+        containerToken.setPassword(ByteBuffer.wrap(containerTokenSecretManager.createPassword(tokenidentifier)));
+        containerToken.setService(container.getNodeId().toString());
+        container.setContainerToken(containerToken);
+      }
+      RMContainer rmContainer=application.allocate(type,node,priority,request,container);
+      node.allocateContainer(application.getApplicationId(),rmContainer);
+    }
+    Resources.addTo(usedResource,Resources.multiply(capability,assignedContainers));
+  }
+  return assignedContainers;
+}

@@ -1,0 +1,25 @@
+{
+  this.delSrvc=new DeletionService(createContainerExecutor());
+  this.delSrvc.init(conf);
+  this.conf.set(NMConfig.NM_LOG_DIR,localLogDir.getAbsolutePath());
+  this.conf.set(NMConfig.REMOTE_USER_LOG_DIR,this.remoteRootLogDir.getAbsolutePath());
+  LogAggregationService logAggregationService=new LogAggregationService(this.delSrvc);
+  logAggregationService.init(this.conf);
+  logAggregationService.start();
+  ApplicationId application1=BuilderUtils.newApplicationId(1234,1);
+  File app1LogDir=new File(localLogDir,ConverterUtils.toString(application1));
+  app1LogDir.mkdir();
+  logAggregationService.handle(new LogAggregatorAppStartedEvent(application1,this.user,null,ContainerLogsRetentionPolicy.ALL_CONTAINERS));
+  ContainerId container11=BuilderUtils.newContainerId(recordFactory,application1,1);
+  writeContainerLogs(app1LogDir,container11);
+  logAggregationService.handle(new LogAggregatorContainerFinishedEvent(container11,"0"));
+  logAggregationService.handle(new LogAggregatorAppFinishedEvent(application1));
+  logAggregationService.stop();
+  String containerIdStr=ConverterUtils.toString(container11);
+  File containerLogDir=new File(app1LogDir,containerIdStr);
+  for (  String fileType : new String[]{"stdout","stderr","syslog"}) {
+    Assert.assertFalse(new File(containerLogDir,fileType).exists());
+  }
+  Assert.assertFalse(app1LogDir.exists());
+  Assert.assertTrue(new File(logAggregationService.getRemoteNodeLogFileForApp(application1).toUri().getPath()).exists());
+}

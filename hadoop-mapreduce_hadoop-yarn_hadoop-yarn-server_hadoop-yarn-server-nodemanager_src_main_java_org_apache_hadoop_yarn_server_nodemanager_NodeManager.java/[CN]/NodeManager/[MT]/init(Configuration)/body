@@ -1,0 +1,30 @@
+{
+  Context context=new NMContext();
+  ContainerExecutor exec=ReflectionUtils.newInstance(conf.getClass(NM_CONTAINER_EXECUTOR_CLASS,DefaultContainerExecutor.class,ContainerExecutor.class),conf);
+  DeletionService del=new DeletionService(exec);
+  addService(del);
+  AsyncDispatcher dispatcher=new AsyncDispatcher();
+  NodeHealthCheckerService healthChecker=null;
+  if (NodeHealthCheckerService.shouldRun(conf)) {
+    healthChecker=new NodeHealthCheckerService();
+    addService(healthChecker);
+  }
+  NodeStatusUpdater nodeStatusUpdater=createNodeStatusUpdater(context,dispatcher,healthChecker);
+  addService(nodeStatusUpdater);
+  NodeResourceMonitor nodeResourceMonitor=createNodeResourceMonitor();
+  addService(nodeResourceMonitor);
+  ContainerManagerImpl containerManager=createContainerManager(context,exec,del,nodeStatusUpdater);
+  addService(containerManager);
+  Service webServer=createWebServer(context,containerManager.getContainersMonitor());
+  addService(webServer);
+  dispatcher.register(ContainerManagerEventType.class,containerManager);
+  addService(dispatcher);
+  Runtime.getRuntime().addShutdownHook(new Thread(){
+    @Override public void run(){
+      NodeManager.this.stop();
+    }
+  }
+);
+  DefaultMetricsSystem.initialize("NodeManager");
+  super.init(conf);
+}

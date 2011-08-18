@@ -1,0 +1,103 @@
+{
+  LOG.debug("Child starting");
+  final JobConf defaultConf=new JobConf();
+  defaultConf.addResource(MRConstants.JOB_CONF_FILE);
+  UserGroupInformation.setConfiguration(defaultConf);
+  String host=args[0];
+  int port=Integer.parseInt(args[1]);
+  final InetSocketAddress address=new InetSocketAddress(host,port);
+  final TaskAttemptID firstTaskid=TaskAttemptID.forName(args[2]);
+  int jvmIdInt=Integer.parseInt(args[3]);
+  JVMId jvmId=new JVMId(firstTaskid.getJobID(),firstTaskid.getTaskType() == TaskType.MAP,jvmIdInt);
+  DefaultMetricsSystem.initialize(StringUtils.camelize(firstTaskid.getTaskType().name()) + "Task");
+  Token<JobTokenIdentifier> jt=loadCredentials(defaultConf,address);
+  UserGroupInformation taskOwner=UserGroupInformation.createRemoteUser(firstTaskid.getJobID().toString());
+  taskOwner.addToken(jt);
+  final TaskUmbilicalProtocol umbilical=taskOwner.doAs(new PrivilegedExceptionAction<TaskUmbilicalProtocol>(){
+    @Override public TaskUmbilicalProtocol run() throws Exception {
+      return (TaskUmbilicalProtocol)RPC.getProxy(TaskUmbilicalProtocol.class,TaskUmbilicalProtocol.versionID,address,defaultConf);
+    }
+  }
+);
+  JvmContext context=new JvmContext(jvmId,"-1000");
+  LOG.debug("PID: " + System.getenv().get("JVM_PID"));
+  Task task=null;
+  UserGroupInformation childUGI=null;
+  try {
+    int idleLoopCount=0;
+    JvmTask myTask=null;
+    ;
+    for (int idle=0; null == myTask; ++idle) {
+      long sleepTimeMilliSecs=Math.min(idle * 500,1500);
+      LOG.info("Sleeping for " + sleepTimeMilliSecs + "ms before retrying again. Got null now.");
+      MILLISECONDS.sleep(sleepTimeMilliSecs);
+      myTask=umbilical.getTask(context);
+    }
+    if (myTask.shouldDie()) {
+      return;
+    }
+    task=myTask.getTask();
+    YarnChild.taskid=task.getTaskID();
+    final JobConf job=configureTask(task,defaultConf.getCredentials(),jt);
+    JvmMetrics.initSingleton(jvmId.toString(),job.getSessionId());
+    LOG.debug("Remote user: " + job.get("user.name"));
+    childUGI=UserGroupInformation.createRemoteUser(job.get("user.name"));
+    for (    Token<?> token : UserGroupInformation.getCurrentUser().getTokens()) {
+      childUGI.addToken(token);
+    }
+    final Task taskFinal=task;
+    childUGI.doAs(new PrivilegedExceptionAction<Object>(){
+      @Override public Object run() throws Exception {
+        FileSystem.get(job).setWorkingDirectory(job.getWorkingDirectory());
+        taskFinal.run(job,umbilical);
+        return null;
+      }
+    }
+);
+  }
+ catch (  FSError e) {
+    LOG.fatal("FSError from child",e);
+    umbilical.fsError(taskid,e.getMessage());
+  }
+catch (  Exception exception) {
+    LOG.warn("Exception running child : " + StringUtils.stringifyException(exception));
+    try {
+      if (task != null) {
+        if (childUGI == null) {
+          task.taskCleanup(umbilical);
+        }
+ else {
+          final Task taskFinal=task;
+          childUGI.doAs(new PrivilegedExceptionAction<Object>(){
+            @Override public Object run() throws Exception {
+              taskFinal.taskCleanup(umbilical);
+              return null;
+            }
+          }
+);
+        }
+      }
+    }
+ catch (    Exception e) {
+      LOG.info("Exception cleaning up: " + StringUtils.stringifyException(e));
+    }
+    ByteArrayOutputStream baos=new ByteArrayOutputStream();
+    exception.printStackTrace(new PrintStream(baos));
+    if (taskid != null) {
+      umbilical.reportDiagnosticInfo(taskid,baos.toString());
+    }
+  }
+catch (  Throwable throwable) {
+    LOG.fatal("Error running child : " + StringUtils.stringifyException(throwable));
+    if (taskid != null) {
+      Throwable tCause=throwable.getCause();
+      String cause=tCause == null ? throwable.getMessage() : StringUtils.stringifyException(tCause);
+      umbilical.fatalError(taskid,cause);
+    }
+  }
+ finally {
+    RPC.stopProxy(umbilical);
+    DefaultMetricsSystem.shutdown();
+    LogManager.shutdown();
+  }
+}

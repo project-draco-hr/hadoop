@@ -1,0 +1,38 @@
+{
+  ContainerRequest request=null;
+  if (event.getEarlierAttemptFailed()) {
+    earlierFailedMaps.add(event.getAttemptID());
+    request=new ContainerRequest(event,PRIORITY_FAST_FAIL_MAP);
+  }
+ else {
+    for (    String host : event.getHosts()) {
+      InetAddress addr=null;
+      try {
+        addr=InetAddress.getByName(host);
+      }
+ catch (      UnknownHostException e) {
+        LOG.warn("Unable to resolve host to IP for host [: " + host + "]");
+      }
+      if (addr != null)       host=addr.getHostAddress();
+      LinkedList<TaskAttemptId> list=mapsHostMapping.get(host);
+      if (list == null) {
+        list=new LinkedList<TaskAttemptId>();
+        mapsHostMapping.put(host,list);
+      }
+      list.add(event.getAttemptID());
+      LOG.info("Added attempt req to host " + host);
+    }
+    for (    String rack : event.getRacks()) {
+      LinkedList<TaskAttemptId> list=mapsRackMapping.get(rack);
+      if (list == null) {
+        list=new LinkedList<TaskAttemptId>();
+        mapsRackMapping.put(rack,list);
+      }
+      list.add(event.getAttemptID());
+      LOG.info("Added attempt req to rack " + rack);
+    }
+    request=new ContainerRequest(event,PRIORITY_MAP);
+  }
+  maps.put(event.getAttemptID(),request);
+  addContainerReq(request);
+}

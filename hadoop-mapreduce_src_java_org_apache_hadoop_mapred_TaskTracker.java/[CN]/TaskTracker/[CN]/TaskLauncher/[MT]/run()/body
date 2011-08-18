@@ -1,0 +1,49 @@
+{
+  while (!Thread.interrupted()) {
+    try {
+      TaskInProgress tip;
+      Task task;
+synchronized (tasksToLaunch) {
+        while (tasksToLaunch.isEmpty()) {
+          tasksToLaunch.wait();
+        }
+        tip=tasksToLaunch.remove(0);
+        task=tip.getTask();
+        LOG.info("Trying to launch : " + tip.getTask().getTaskID() + " which needs "+ task.getNumSlotsRequired()+ " slots");
+      }
+synchronized (numFreeSlots) {
+        boolean canLaunch=true;
+        while (numFreeSlots.get() < task.getNumSlotsRequired()) {
+          if (!tip.canBeLaunched()) {
+            LOG.info("Not blocking slots for " + task.getTaskID() + " as it got killed externally. Task's state is "+ tip.getRunState());
+            canLaunch=false;
+            break;
+          }
+          LOG.info("TaskLauncher : Waiting for " + task.getNumSlotsRequired() + " to launch "+ task.getTaskID()+ ", currently we have "+ numFreeSlots.get()+ " free slots");
+          numFreeSlots.wait();
+        }
+        if (!canLaunch) {
+          continue;
+        }
+        LOG.info("In TaskLauncher, current free slots : " + numFreeSlots.get() + " and trying to launch "+ tip.getTask().getTaskID()+ " which needs "+ task.getNumSlotsRequired()+ " slots");
+        numFreeSlots.set(numFreeSlots.get() - task.getNumSlotsRequired());
+        assert(numFreeSlots.get() >= 0);
+      }
+synchronized (tip) {
+        if (!tip.canBeLaunched()) {
+          LOG.info("Not launching task " + task.getTaskID() + " as it got"+ " killed externally. Task's state is "+ tip.getRunState());
+          addFreeSlots(task.getNumSlotsRequired());
+          continue;
+        }
+        tip.slotTaken=true;
+      }
+      startNewTask(tip);
+    }
+ catch (    InterruptedException e) {
+      return;
+    }
+catch (    Throwable th) {
+      LOG.error("TaskLauncher error " + StringUtils.stringifyException(th));
+    }
+  }
+}

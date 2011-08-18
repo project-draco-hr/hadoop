@@ -1,0 +1,29 @@
+{
+  Path remoteRootLogDir=new Path(getConf().get(NMConfig.REMOTE_USER_LOG_DIR,NMConfig.DEFAULT_REMOTE_APP_LOG_DIR));
+  Path remoteAppLogDir=LogAggregationService.getRemoteAppLogDir(remoteRootLogDir,appId);
+  RemoteIterator<FileStatus> nodeFiles=FileContext.getFileContext().listStatus(remoteAppLogDir);
+  while (nodeFiles.hasNext()) {
+    FileStatus thisNodeFile=nodeFiles.next();
+    AggregatedLogFormat.LogReader reader=new AggregatedLogFormat.LogReader(getConf(),LogAggregationService.getRemoteNodeLogFileForApp(remoteRootLogDir,appId,thisNodeFile.getPath().getName()));
+    try {
+      DataInputStream valueStream;
+      LogKey key=new LogKey();
+      valueStream=reader.next(key);
+      while (valueStream != null) {
+        while (true) {
+          try {
+            LogReader.readAContainerLogsForALogType(valueStream,out);
+          }
+ catch (          EOFException eof) {
+            break;
+          }
+        }
+        key=new LogKey();
+        valueStream=reader.next(key);
+      }
+    }
+  finally {
+      reader.close();
+    }
+  }
+}

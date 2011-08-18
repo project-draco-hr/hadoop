@@ -1,0 +1,32 @@
+{
+  ContainerId containerId;
+  while (!this.appFinishing.get()) {
+    try {
+      containerId=this.pendingContainers.poll();
+      if (containerId == null) {
+        Thread.sleep(THREAD_SLEEP_TIME);
+      }
+ else {
+        uploadLogsForContainer(containerId);
+      }
+    }
+ catch (    InterruptedException e) {
+      LOG.warn("PendingContainers queue is interrupted");
+    }
+  }
+  while ((containerId=this.pendingContainers.poll()) != null) {
+    uploadLogsForContainer(containerId);
+  }
+  Path[] localAppLogDirs=new Path[this.rootLogDirs.length];
+  int index=0;
+  for (  String rootLogDir : this.rootLogDirs) {
+    localAppLogDirs[index]=new Path(rootLogDir,this.applicationId);
+    index++;
+  }
+  this.delService.delete(this.userUgi.getShortUserName(),null,localAppLogDirs);
+  if (this.writer != null) {
+    this.writer.closeWriter();
+    LOG.info("Finished aggregate log-file for app " + this.applicationId);
+  }
+  this.appAggregationFinished.set(true);
+}

@@ -1,0 +1,86 @@
+{
+  LOG.info("finalMerge called with " + inMemoryMapOutputs.size() + " in-memory map-outputs and "+ onDiskMapOutputs.size()+ " on-disk map-outputs");
+  final float maxRedPer=job.getFloat(MRJobConfig.REDUCE_INPUT_BUFFER_PERCENT,0f);
+  if (maxRedPer > 1.0 || maxRedPer < 0.0) {
+    throw new IOException(MRJobConfig.REDUCE_INPUT_BUFFER_PERCENT + maxRedPer);
+  }
+  int maxInMemReduce=(int)Math.min(Runtime.getRuntime().maxMemory() * maxRedPer,Integer.MAX_VALUE);
+  Class<K> keyClass=(Class<K>)job.getMapOutputKeyClass();
+  Class<V> valueClass=(Class<V>)job.getMapOutputValueClass();
+  boolean keepInputs=job.getKeepFailedTaskFiles();
+  final Path tmpDir=new Path(reduceId.toString());
+  final RawComparator<K> comparator=(RawComparator<K>)job.getOutputKeyComparator();
+  List<Segment<K,V>> memDiskSegments=new ArrayList<Segment<K,V>>();
+  long inMemToDiskBytes=0;
+  boolean mergePhaseFinished=false;
+  if (inMemoryMapOutputs.size() > 0) {
+    TaskID mapId=inMemoryMapOutputs.get(0).getMapId().getTaskID();
+    inMemToDiskBytes=createInMemorySegments(inMemoryMapOutputs,memDiskSegments,maxInMemReduce);
+    final int numMemDiskSegments=memDiskSegments.size();
+    if (numMemDiskSegments > 0 && ioSortFactor > onDiskMapOutputs.size()) {
+      mergePhaseFinished=true;
+      final Path outputPath=mapOutputFile.getInputFileForWrite(mapId,inMemToDiskBytes).suffix(Task.MERGED_OUTPUT_PREFIX);
+      final RawKeyValueIterator rIter=Merger.merge(job,fs,keyClass,valueClass,memDiskSegments,numMemDiskSegments,tmpDir,comparator,reporter,spilledRecordsCounter,null,mergePhase);
+      final Writer<K,V> writer=new Writer<K,V>(job,fs,outputPath,keyClass,valueClass,codec,null);
+      try {
+        Merger.writeFile(rIter,writer,reporter,job);
+        onDiskMapOutputs.add(outputPath);
+      }
+ catch (      IOException e) {
+        if (null != outputPath) {
+          try {
+            fs.delete(outputPath,true);
+          }
+ catch (          IOException ie) {
+          }
+        }
+        throw e;
+      }
+ finally {
+        if (null != writer) {
+          writer.close();
+        }
+      }
+      LOG.info("Merged " + numMemDiskSegments + " segments, "+ inMemToDiskBytes+ " bytes to disk to satisfy "+ "reduce memory limit");
+      inMemToDiskBytes=0;
+      memDiskSegments.clear();
+    }
+ else     if (inMemToDiskBytes != 0) {
+      LOG.info("Keeping " + numMemDiskSegments + " segments, "+ inMemToDiskBytes+ " bytes in memory for "+ "intermediate, on-disk merge");
+    }
+  }
+  List<Segment<K,V>> diskSegments=new ArrayList<Segment<K,V>>();
+  long onDiskBytes=inMemToDiskBytes;
+  Path[] onDisk=onDiskMapOutputs.toArray(new Path[onDiskMapOutputs.size()]);
+  for (  Path file : onDisk) {
+    onDiskBytes+=fs.getFileStatus(file).getLen();
+    LOG.debug("Disk file: " + file + " Length is "+ fs.getFileStatus(file).getLen());
+    diskSegments.add(new Segment<K,V>(job,fs,file,codec,keepInputs,(file.toString().endsWith(Task.MERGED_OUTPUT_PREFIX) ? null : mergedMapOutputsCounter)));
+  }
+  LOG.info("Merging " + onDisk.length + " files, "+ onDiskBytes+ " bytes from disk");
+  Collections.sort(diskSegments,new Comparator<Segment<K,V>>(){
+    public int compare(    Segment<K,V> o1,    Segment<K,V> o2){
+      if (o1.getLength() == o2.getLength()) {
+        return 0;
+      }
+      return o1.getLength() < o2.getLength() ? -1 : 1;
+    }
+  }
+);
+  List<Segment<K,V>> finalSegments=new ArrayList<Segment<K,V>>();
+  long inMemBytes=createInMemorySegments(inMemoryMapOutputs,finalSegments,0);
+  LOG.info("Merging " + finalSegments.size() + " segments, "+ inMemBytes+ " bytes from memory into reduce");
+  if (0 != onDiskBytes) {
+    final int numInMemSegments=memDiskSegments.size();
+    diskSegments.addAll(0,memDiskSegments);
+    memDiskSegments.clear();
+    Progress thisPhase=(mergePhaseFinished) ? null : mergePhase;
+    RawKeyValueIterator diskMerge=Merger.merge(job,fs,keyClass,valueClass,diskSegments,ioSortFactor,numInMemSegments,tmpDir,comparator,reporter,false,spilledRecordsCounter,null,thisPhase);
+    diskSegments.clear();
+    if (0 == finalSegments.size()) {
+      return diskMerge;
+    }
+    finalSegments.add(new Segment<K,V>(new RawKVIteratorReader(diskMerge,onDiskBytes),true));
+  }
+  return Merger.merge(job,fs,keyClass,valueClass,finalSegments,finalSegments.size(),tmpDir,comparator,reporter,spilledRecordsCounter,null,null);
+}

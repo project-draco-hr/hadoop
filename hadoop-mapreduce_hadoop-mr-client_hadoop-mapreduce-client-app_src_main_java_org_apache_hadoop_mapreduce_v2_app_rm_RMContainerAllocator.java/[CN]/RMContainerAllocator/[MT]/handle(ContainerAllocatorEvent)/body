@@ -1,0 +1,65 @@
+{
+  LOG.info("Processing the event " + event.toString());
+  recalculateReduceSchedule=true;
+  if (event.getType() == ContainerAllocator.EventType.CONTAINER_REQ) {
+    ContainerRequestEvent reqEvent=(ContainerRequestEvent)event;
+    if (reqEvent.getAttemptID().getTaskId().getTaskType().equals(TaskType.MAP)) {
+      if (mapResourceReqt == 0) {
+        mapResourceReqt=reqEvent.getCapability().getMemory();
+        int minSlotMemSize=getMinContainerCapability().getMemory();
+        mapResourceReqt=(int)Math.ceil((float)mapResourceReqt / minSlotMemSize) * minSlotMemSize;
+        LOG.info("mapResourceReqt:" + mapResourceReqt);
+        if (mapResourceReqt > getMaxContainerCapability().getMemory()) {
+          String diagMsg="MAP capability required is more than the supported " + "max container capability in the cluster. Killing the Job. mapResourceReqt: " + mapResourceReqt + " maxContainerCapability:"+ getMaxContainerCapability().getMemory();
+          LOG.info(diagMsg);
+          eventHandler.handle(new JobDiagnosticsUpdateEvent(getJob().getID(),diagMsg));
+          eventHandler.handle(new JobEvent(getJob().getID(),JobEventType.JOB_KILL));
+        }
+      }
+      reqEvent.getCapability().setMemory(mapResourceReqt);
+      scheduledRequests.addMap(reqEvent);
+    }
+ else {
+      if (reduceResourceReqt == 0) {
+        reduceResourceReqt=reqEvent.getCapability().getMemory();
+        int minSlotMemSize=getMinContainerCapability().getMemory();
+        reduceResourceReqt=(int)Math.ceil((float)reduceResourceReqt / minSlotMemSize) * minSlotMemSize;
+        LOG.info("reduceResourceReqt:" + reduceResourceReqt);
+        if (reduceResourceReqt > getMaxContainerCapability().getMemory()) {
+          String diagMsg="REDUCE capability required is more than the supported " + "max container capability in the cluster. Killing the Job. reduceResourceReqt: " + reduceResourceReqt + " maxContainerCapability:"+ getMaxContainerCapability().getMemory();
+          LOG.info(diagMsg);
+          eventHandler.handle(new JobDiagnosticsUpdateEvent(getJob().getID(),diagMsg));
+          eventHandler.handle(new JobEvent(getJob().getID(),JobEventType.JOB_KILL));
+        }
+      }
+      reqEvent.getCapability().setMemory(reduceResourceReqt);
+      if (reqEvent.getEarlierAttemptFailed()) {
+        pendingReduces.addFirst(new ContainerRequest(reqEvent,PRIORITY_REDUCE));
+      }
+ else {
+        pendingReduces.add(new ContainerRequest(reqEvent,PRIORITY_REDUCE));
+      }
+    }
+  }
+ else   if (event.getType() == ContainerAllocator.EventType.CONTAINER_DEALLOCATE) {
+    TaskAttemptId aId=event.getAttemptID();
+    boolean removed=scheduledRequests.remove(aId);
+    if (!removed) {
+      ContainerId containerId=assignedRequests.get(aId);
+      if (containerId != null) {
+        removed=true;
+        assignedRequests.remove(aId);
+        containersReleased++;
+        release(containerId);
+      }
+    }
+    if (!removed) {
+      LOG.error("Could not deallocate container for task attemptId " + aId);
+    }
+  }
+ else   if (event.getType() == ContainerAllocator.EventType.CONTAINER_FAILED) {
+    ContainerFailedEvent fEv=(ContainerFailedEvent)event;
+    String host=getHost(fEv.getContMgrAddress());
+    containerFailedOnHost(host);
+  }
+}

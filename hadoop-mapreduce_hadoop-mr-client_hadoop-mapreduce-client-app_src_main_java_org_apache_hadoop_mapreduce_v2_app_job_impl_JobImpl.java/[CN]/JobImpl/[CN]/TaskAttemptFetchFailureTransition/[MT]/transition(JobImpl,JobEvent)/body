@@ -1,0 +1,21 @@
+{
+  JobTaskAttemptFetchFailureEvent fetchfailureEvent=(JobTaskAttemptFetchFailureEvent)event;
+  for (  org.apache.hadoop.mapreduce.v2.api.records.TaskAttemptId mapId : fetchfailureEvent.getMaps()) {
+    Integer fetchFailures=job.fetchFailuresMapping.get(mapId);
+    fetchFailures=(fetchFailures == null) ? 1 : (fetchFailures + 1);
+    job.fetchFailuresMapping.put(mapId,fetchFailures);
+    int runningReduceTasks=0;
+    for (    TaskId taskId : job.reduceTasks) {
+      if (TaskState.RUNNING.equals(job.tasks.get(taskId).getState())) {
+        runningReduceTasks++;
+      }
+    }
+    float failureRate=(float)fetchFailures / runningReduceTasks;
+    boolean isMapFaulty=(failureRate >= MAX_ALLOWED_FETCH_FAILURES_FRACTION);
+    if (fetchFailures >= MAX_FETCH_FAILURES_NOTIFICATIONS && isMapFaulty) {
+      LOG.info("Too many fetch-failures for output of task attempt: " + mapId + " ... raising fetch failure to map");
+      job.eventHandler.handle(new TaskAttemptEvent(mapId,TaskAttemptEventType.TA_TOO_MANY_FETCH_FAILURE));
+      job.fetchFailuresMapping.remove(mapId);
+    }
+  }
+}

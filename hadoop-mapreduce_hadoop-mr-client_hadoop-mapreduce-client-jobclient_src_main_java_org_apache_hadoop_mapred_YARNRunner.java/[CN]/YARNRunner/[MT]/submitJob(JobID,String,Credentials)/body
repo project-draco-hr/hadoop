@@ -1,0 +1,23 @@
+{
+  Path applicationTokensFile=new Path(jobSubmitDir,MRConstants.APPLICATION_TOKENS_FILE);
+  try {
+    ts.writeTokenStorageFile(applicationTokensFile,conf);
+  }
+ catch (  IOException e) {
+    throw new YarnException(e);
+  }
+  Path submitJobDir=new Path(jobSubmitDir);
+  FileContext defaultFS=FileContext.getFileContext(conf);
+  Path submitJobFile=defaultFS.makeQualified(JobSubmissionFiles.getJobConfPath(submitJobDir));
+  FSDataInputStream in=defaultFS.open(submitJobFile);
+  conf.addResource(in);
+  ApplicationSubmissionContext appContext=createApplicationSubmissionContext(conf,jobSubmitDir,ts);
+  setupDistributedCache(conf,appContext);
+  in.close();
+  ApplicationId applicationId=resMgrDelegate.submitApplication(appContext);
+  ApplicationReport appMaster=resMgrDelegate.getApplicationReport(applicationId);
+  if (appMaster.getState() == ApplicationState.FAILED || appMaster.getState() == ApplicationState.KILLED) {
+    throw RPCUtil.getRemoteException("failed to run job");
+  }
+  return clientServiceDelegate.getJobStatus(jobId);
+}

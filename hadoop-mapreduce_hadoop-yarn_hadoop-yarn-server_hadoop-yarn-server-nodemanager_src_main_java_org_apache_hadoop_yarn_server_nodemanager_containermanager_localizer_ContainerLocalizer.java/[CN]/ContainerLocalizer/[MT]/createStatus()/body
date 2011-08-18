@@ -1,0 +1,34 @@
+{
+  final List<LocalResourceStatus> currentResources=new ArrayList<LocalResourceStatus>();
+  for (Iterator<LocalResource> i=pendingResources.keySet().iterator(); i.hasNext(); ) {
+    LocalResource rsrc=i.next();
+    LocalResourceStatus stat=recordFactory.newRecordInstance(LocalResourceStatus.class);
+    stat.setResource(rsrc);
+    Future<Path> fPath=pendingResources.get(rsrc);
+    if (fPath.isDone()) {
+      try {
+        Path localPath=fPath.get();
+        stat.setLocalPath(ConverterUtils.getYarnUrlFromPath(localPath));
+        stat.setLocalSize(FileUtil.getDU(new File(localPath.getParent().toString())));
+        stat.setStatus(ResourceStatusType.FETCH_SUCCESS);
+      }
+ catch (      ExecutionException e) {
+        stat.setStatus(ResourceStatusType.FETCH_FAILURE);
+        stat.setException(RPCUtil.getRemoteException(e.getCause()));
+      }
+catch (      CancellationException e) {
+        stat.setStatus(ResourceStatusType.FETCH_FAILURE);
+        stat.setException(RPCUtil.getRemoteException(e));
+      }
+      i.remove();
+    }
+ else {
+      stat.setStatus(ResourceStatusType.FETCH_PENDING);
+    }
+    currentResources.add(stat);
+  }
+  LocalizerStatus status=recordFactory.newRecordInstance(LocalizerStatus.class);
+  status.setLocalizerId(localizerId);
+  status.addAllResources(currentResources);
+  return status;
+}

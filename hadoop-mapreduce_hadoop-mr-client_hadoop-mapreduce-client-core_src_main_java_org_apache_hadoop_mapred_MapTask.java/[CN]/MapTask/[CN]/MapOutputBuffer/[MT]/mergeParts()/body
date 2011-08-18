@@ -1,0 +1,89 @@
+{
+  long finalOutFileSize=0;
+  long finalIndexFileSize=0;
+  final Path[] filename=new Path[numSpills];
+  final TaskAttemptID mapId=getTaskID();
+  for (int i=0; i < numSpills; i++) {
+    filename[i]=mapOutputFile.getSpillFile(i);
+    finalOutFileSize+=rfs.getFileStatus(filename[i]).getLen();
+  }
+  if (numSpills == 1) {
+    rfs.rename(filename[0],mapOutputFile.getOutputFileForWriteInVolume(filename[0]));
+    if (indexCacheList.size() == 0) {
+      rfs.rename(mapOutputFile.getSpillIndexFile(0),mapOutputFile.getOutputIndexFileForWriteInVolume(filename[0]));
+    }
+ else {
+      indexCacheList.get(0).writeToFile(mapOutputFile.getOutputIndexFileForWriteInVolume(filename[0]),job);
+    }
+    return;
+  }
+  for (int i=indexCacheList.size(); i < numSpills; ++i) {
+    Path indexFileName=mapOutputFile.getSpillIndexFile(i);
+    indexCacheList.add(new SpillRecord(indexFileName,job));
+  }
+  finalOutFileSize+=partitions * APPROX_HEADER_LENGTH;
+  finalIndexFileSize=partitions * MAP_OUTPUT_INDEX_RECORD_LENGTH;
+  Path finalOutputFile=mapOutputFile.getOutputFileForWrite(finalOutFileSize);
+  Path finalIndexFile=mapOutputFile.getOutputIndexFileForWrite(finalIndexFileSize);
+  FSDataOutputStream finalOut=rfs.create(finalOutputFile,true,4096);
+  if (numSpills == 0) {
+    IndexRecord rec=new IndexRecord();
+    SpillRecord sr=new SpillRecord(partitions);
+    try {
+      for (int i=0; i < partitions; i++) {
+        long segmentStart=finalOut.getPos();
+        Writer<K,V> writer=new Writer<K,V>(job,finalOut,keyClass,valClass,codec,null);
+        writer.close();
+        rec.startOffset=segmentStart;
+        rec.rawLength=writer.getRawLength();
+        rec.partLength=writer.getCompressedLength();
+        sr.putIndex(rec,i);
+      }
+      sr.writeToFile(finalIndexFile,job);
+    }
+  finally {
+      finalOut.close();
+    }
+    return;
+  }
+{
+    sortPhase.addPhases(partitions);
+    Merger.considerFinalMergeForProgress();
+    IndexRecord rec=new IndexRecord();
+    final SpillRecord spillRec=new SpillRecord(partitions);
+    for (int parts=0; parts < partitions; parts++) {
+      List<Segment<K,V>> segmentList=new ArrayList<Segment<K,V>>(numSpills);
+      for (int i=0; i < numSpills; i++) {
+        IndexRecord indexRecord=indexCacheList.get(i).getIndex(parts);
+        Segment<K,V> s=new Segment<K,V>(job,rfs,filename[i],indexRecord.startOffset,indexRecord.partLength,codec,true);
+        segmentList.add(i,s);
+        if (LOG.isDebugEnabled()) {
+          LOG.debug("MapId=" + mapId + " Reducer="+ parts+ "Spill ="+ i+ "("+ indexRecord.startOffset+ ","+ indexRecord.rawLength+ ", "+ indexRecord.partLength+ ")");
+        }
+      }
+      int mergeFactor=job.getInt(JobContext.IO_SORT_FACTOR,100);
+      boolean sortSegments=segmentList.size() > mergeFactor;
+      @SuppressWarnings("unchecked") RawKeyValueIterator kvIter=Merger.merge(job,rfs,keyClass,valClass,codec,segmentList,mergeFactor,new Path(mapId.toString()),job.getOutputKeyComparator(),reporter,sortSegments,null,spilledRecordsCounter,sortPhase.phase());
+      long segmentStart=finalOut.getPos();
+      Writer<K,V> writer=new Writer<K,V>(job,finalOut,keyClass,valClass,codec,spilledRecordsCounter);
+      if (combinerRunner == null || numSpills < minSpillsForCombine) {
+        Merger.writeFile(kvIter,writer,reporter,job);
+      }
+ else {
+        combineCollector.setWriter(writer);
+        combinerRunner.combine(kvIter,combineCollector);
+      }
+      writer.close();
+      sortPhase.startNextPhase();
+      rec.startOffset=segmentStart;
+      rec.rawLength=writer.getRawLength();
+      rec.partLength=writer.getCompressedLength();
+      spillRec.putIndex(rec,parts);
+    }
+    spillRec.writeToFile(finalIndexFile,job);
+    finalOut.close();
+    for (int i=0; i < numSpills; i++) {
+      rfs.delete(filename[i],true);
+    }
+  }
+}

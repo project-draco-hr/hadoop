@@ -1,0 +1,71 @@
+{
+  final ContainerLaunchContext launchContext=container.getLaunchContext();
+  final Map<Path,String> localResources=container.getLocalizedResources();
+  String containerIdStr=ConverterUtils.toString(container.getContainerID());
+  final String user=launchContext.getUser();
+  final Map<String,String> env=launchContext.getAllEnv();
+  final List<String> command=launchContext.getCommandList();
+  int ret=-1;
+  try {
+    List<String> newCmds=new ArrayList<String>(command.size());
+    String appIdStr=app.toString();
+    Path containerLogDir=this.logDirsSelector.getLocalPathForWrite(appIdStr + Path.SEPARATOR + containerIdStr,LocalDirAllocator.SIZE_UNKNOWN,this.conf);
+    for (    String str : command) {
+      newCmds.add(str.replace(ApplicationConstants.LOG_DIR_EXPANSION_VAR,containerLogDir.toUri().getPath()));
+    }
+    launchContext.clearCommands();
+    launchContext.addAllCommands(newCmds);
+    Map<String,String> envs=launchContext.getAllEnv();
+    Map<String,String> newEnvs=new HashMap<String,String>(envs.size());
+    for (    Entry<String,String> entry : envs.entrySet()) {
+      newEnvs.put(entry.getKey(),entry.getValue().replace(ApplicationConstants.LOG_DIR_EXPANSION_VAR,containerLogDir.toUri().getPath()));
+    }
+    launchContext.clearEnv();
+    launchContext.addAllEnv(newEnvs);
+    FileContext lfs=FileContext.getLocalFSFileContext();
+    LocalDirAllocator lDirAllocator=new LocalDirAllocator(NMConfig.NM_LOCAL_DIR);
+    Path nmPrivateContainerScriptPath=lDirAllocator.getLocalPathForWrite(ResourceLocalizationService.NM_PRIVATE_DIR + Path.SEPARATOR + appIdStr+ Path.SEPARATOR+ containerIdStr+ Path.SEPARATOR+ CONTAINER_SCRIPT,this.conf);
+    Path nmPrivateTokensPath=lDirAllocator.getLocalPathForWrite(ResourceLocalizationService.NM_PRIVATE_DIR + Path.SEPARATOR + containerIdStr+ Path.SEPARATOR+ String.format(ContainerLocalizer.TOKEN_FILE_NAME_FMT,containerIdStr),this.conf);
+    DataOutputStream containerScriptOutStream=null;
+    DataOutputStream tokensOutStream=null;
+    Path containerWorkDir=lDirAllocator.getLocalPathForWrite(ContainerLocalizer.USERCACHE + Path.SEPARATOR + user+ Path.SEPARATOR+ ContainerLocalizer.APPCACHE+ Path.SEPARATOR+ appIdStr+ Path.SEPARATOR+ containerIdStr,LocalDirAllocator.SIZE_UNKNOWN,this.conf);
+    try {
+      String[] localDirs=this.conf.getStrings(NMConfig.NM_LOCAL_DIR,NMConfig.DEFAULT_NM_LOCAL_DIR);
+      List<Path> appDirs=new ArrayList<Path>(localDirs.length);
+      for (      String localDir : localDirs) {
+        Path usersdir=new Path(localDir,ContainerLocalizer.USERCACHE);
+        Path userdir=new Path(usersdir,user);
+        Path appsdir=new Path(userdir,ContainerLocalizer.APPCACHE);
+        appDirs.add(new Path(appsdir,appIdStr));
+      }
+      containerScriptOutStream=lfs.create(nmPrivateContainerScriptPath,EnumSet.of(CREATE,OVERWRITE));
+      env.put(ApplicationConstants.CONTAINER_TOKEN_FILE_ENV_NAME,new Path(containerWorkDir,FINAL_CONTAINER_TOKENS_FILE).toUri().getPath());
+      writeLaunchEnv(containerScriptOutStream,env,localResources,launchContext.getCommandList(),appDirs);
+      tokensOutStream=lfs.create(nmPrivateTokensPath,EnumSet.of(CREATE,OVERWRITE));
+      Credentials creds=container.getCredentials();
+      creds.writeTokenStorageToStream(tokensOutStream);
+    }
+  finally {
+      IOUtils.cleanup(LOG,containerScriptOutStream,tokensOutStream);
+    }
+    dispatcher.getEventHandler().handle(new ContainerEvent(container.getContainerID(),ContainerEventType.CONTAINER_LAUNCHED));
+    ret=exec.launchContainer(container,nmPrivateContainerScriptPath,nmPrivateTokensPath,user,appIdStr,containerWorkDir);
+  }
+ catch (  Throwable e) {
+    LOG.warn("Failed to launch container",e);
+    dispatcher.getEventHandler().handle(new ContainerExitEvent(launchContext.getContainerId(),ContainerEventType.CONTAINER_EXITED_WITH_FAILURE,ret));
+    return ret;
+  }
+  if (ret == ExitCode.KILLED.getExitCode()) {
+    dispatcher.getEventHandler().handle(new ContainerExitEvent(launchContext.getContainerId(),ContainerEventType.CONTAINER_KILLED_ON_REQUEST,ret));
+    return ret;
+  }
+  if (ret != 0) {
+    LOG.warn("Container exited with a non-zero exit code " + ret);
+    this.dispatcher.getEventHandler().handle(new ContainerExitEvent(launchContext.getContainerId(),ContainerEventType.CONTAINER_EXITED_WITH_FAILURE,ret));
+    return ret;
+  }
+  LOG.info("Container " + containerIdStr + " succeeded ");
+  dispatcher.getEventHandler().handle(new ContainerEvent(launchContext.getContainerId(),ContainerEventType.CONTAINER_EXITED_WITH_SUCCESS));
+  return 0;
+}

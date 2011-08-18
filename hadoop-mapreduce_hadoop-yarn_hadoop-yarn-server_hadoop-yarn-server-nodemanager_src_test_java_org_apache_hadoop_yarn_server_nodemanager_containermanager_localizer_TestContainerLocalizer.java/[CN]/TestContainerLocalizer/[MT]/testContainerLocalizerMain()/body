@@ -1,0 +1,71 @@
+{
+  Configuration conf=new Configuration();
+  AbstractFileSystem spylfs=spy(FileContext.getLocalFSFileContext().getDefaultFileSystem());
+  doNothing().when(spylfs).mkdir(isA(Path.class),isA(FsPermission.class),anyBoolean());
+  FileContext lfs=FileContext.getFileContext(spylfs,conf);
+  final String user="yak";
+  final String appId="app_RM_0";
+  final String cId="container_0";
+  final InetSocketAddress nmAddr=new InetSocketAddress("foobar",4344);
+  final List<Path> localDirs=new ArrayList<Path>();
+  for (int i=0; i < 4; ++i) {
+    localDirs.add(lfs.makeQualified(new Path(basedir,i + "")));
+  }
+  RecordFactory mockRF=getMockLocalizerRecordFactory();
+  ContainerLocalizer concreteLoc=new ContainerLocalizer(lfs,user,appId,cId,localDirs,mockRF);
+  ContainerLocalizer localizer=spy(concreteLoc);
+  final Random r=new Random();
+  long seed=r.nextLong();
+  r.setSeed(seed);
+  System.out.println("SEED: " + seed);
+  DataInputBuffer appTokens=createFakeCredentials(r,10);
+  Path tokenPath=lfs.makeQualified(new Path(String.format(ContainerLocalizer.TOKEN_FILE_NAME_FMT,cId)));
+  doReturn(new FSDataInputStream(new FakeFSDataInputStream(appTokens))).when(spylfs).open(tokenPath);
+  LocalizationProtocol nmProxy=mock(LocalizationProtocol.class);
+  LocalResource rsrcA=getMockRsrc(r,LocalResourceVisibility.PRIVATE);
+  LocalResource rsrcB=getMockRsrc(r,LocalResourceVisibility.PRIVATE);
+  LocalResource rsrcC=getMockRsrc(r,LocalResourceVisibility.APPLICATION);
+  LocalResource rsrcD=getMockRsrc(r,LocalResourceVisibility.PRIVATE);
+  when(nmProxy.heartbeat(isA(LocalizerStatus.class))).thenReturn(new MockLocalizerHeartbeatResponse(LocalizerAction.LIVE,Collections.singletonList(rsrcA))).thenReturn(new MockLocalizerHeartbeatResponse(LocalizerAction.LIVE,Collections.singletonList(rsrcB))).thenReturn(new MockLocalizerHeartbeatResponse(LocalizerAction.LIVE,Collections.singletonList(rsrcC))).thenReturn(new MockLocalizerHeartbeatResponse(LocalizerAction.LIVE,Collections.singletonList(rsrcD))).thenReturn(new MockLocalizerHeartbeatResponse(LocalizerAction.LIVE,Collections.<LocalResource>emptyList())).thenReturn(new MockLocalizerHeartbeatResponse(LocalizerAction.DIE,null));
+  doReturn(new FakeDownload(rsrcA.getResource().getFile(),true)).when(localizer).download(isA(LocalDirAllocator.class),eq(rsrcA),isA(UserGroupInformation.class));
+  doReturn(new FakeDownload(rsrcB.getResource().getFile(),true)).when(localizer).download(isA(LocalDirAllocator.class),eq(rsrcB),isA(UserGroupInformation.class));
+  doReturn(new FakeDownload(rsrcC.getResource().getFile(),true)).when(localizer).download(isA(LocalDirAllocator.class),eq(rsrcC),isA(UserGroupInformation.class));
+  doReturn(new FakeDownload(rsrcD.getResource().getFile(),true)).when(localizer).download(isA(LocalDirAllocator.class),eq(rsrcD),isA(UserGroupInformation.class));
+  doReturn(nmProxy).when(localizer).getProxy(nmAddr);
+  doNothing().when(localizer).sleep(anyInt());
+  ExecutorService syncExec=mock(ExecutorService.class);
+  when(syncExec.submit(isA(Callable.class))).thenAnswer(new Answer<Future<Path>>(){
+    @Override public Future<Path> answer(    InvocationOnMock invoc) throws Throwable {
+      Future<Path> done=mock(Future.class);
+      when(done.isDone()).thenReturn(true);
+      FakeDownload d=(FakeDownload)invoc.getArguments()[0];
+      when(done.get()).thenReturn(d.call());
+      return done;
+    }
+  }
+);
+  doReturn(syncExec).when(localizer).createDownloadThreadPool();
+  assertEquals(0,localizer.runLocalization(nmAddr));
+  for (  Path p : localDirs) {
+    Path base=new Path(new Path(p,ContainerLocalizer.USERCACHE),user);
+    Path privcache=new Path(base,ContainerLocalizer.FILECACHE);
+    verify(spylfs).mkdir(eq(privcache),isA(FsPermission.class),eq(false));
+    Path appDir=new Path(base,new Path(ContainerLocalizer.APPCACHE,appId));
+    Path appcache=new Path(appDir,ContainerLocalizer.FILECACHE);
+    verify(spylfs).mkdir(eq(appcache),isA(FsPermission.class),eq(false));
+    Path appOutput=new Path(appDir,ContainerLocalizer.OUTPUTDIR);
+    verify(spylfs).mkdir(eq(appOutput),isA(FsPermission.class),eq(false));
+  }
+  verify(spylfs).open(tokenPath);
+  verify(nmProxy).heartbeat(argThat(new HBMatches(rsrcA)));
+  verify(nmProxy).heartbeat(argThat(new HBMatches(rsrcB)));
+  verify(nmProxy).heartbeat(argThat(new HBMatches(rsrcC)));
+  verify(nmProxy).heartbeat(argThat(new HBMatches(rsrcD)));
+  verify(nmProxy,never()).heartbeat(argThat(new ArgumentMatcher<LocalizerStatus>(){
+    @Override public boolean matches(    Object o){
+      LocalizerStatus status=(LocalizerStatus)o;
+      return !cId.equals(status.getLocalizerId());
+    }
+  }
+));
+}

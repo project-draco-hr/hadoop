@@ -1,0 +1,44 @@
+{
+  String taskStdout="";
+  String taskStderr="";
+  String taskSyslog="";
+  String jobConf=task.getJobFile();
+  try {
+    taskStdout=FileUtil.makeShellPath(TaskLog.getRealTaskLogFileLocation(task.getTaskID(),task.isTaskCleanupTask(),TaskLog.LogName.STDOUT));
+    taskStderr=FileUtil.makeShellPath(TaskLog.getRealTaskLogFileLocation(task.getTaskID(),task.isTaskCleanupTask(),TaskLog.LogName.STDERR));
+    taskSyslog=FileUtil.makeShellPath(TaskLog.getRealTaskLogFileLocation(task.getTaskID(),task.isTaskCleanupTask(),TaskLog.LogName.SYSLOG));
+  }
+ catch (  Exception e) {
+    LOG.warn("Exception finding task's stdout/err/syslog files",e);
+  }
+  File workDir=new File(lDirAlloc.getLocalPathToRead(TaskTracker.getLocalTaskDir(task.getUser(),task.getJobID().toString(),task.getTaskID().toString(),task.isTaskCleanupTask()) + Path.SEPARATOR + MRConstants.WORKDIR,localJobConf).toString());
+  File stdout=TaskLog.getTaskLogFile(task.getTaskID(),task.isTaskCleanupTask(),TaskLog.LogName.DEBUGOUT);
+  String program="";
+  String executable=Submitter.getExecutable(localJobConf);
+  if (executable != null) {
+    try {
+      program=new URI(executable).getFragment();
+    }
+ catch (    URISyntaxException ur) {
+      LOG.warn("Problem in the URI fragment for pipes executable");
+    }
+  }
+  String[] debug=debugCommand.split(" ");
+  List<String> vargs=new ArrayList<String>();
+  for (  String component : debug) {
+    vargs.add(component);
+  }
+  vargs.add(taskStdout);
+  vargs.add(taskStderr);
+  vargs.add(taskSyslog);
+  vargs.add(jobConf);
+  vargs.add(program);
+  DebugScriptContext context=new TaskController.DebugScriptContext();
+  context.args=vargs;
+  context.stdout=stdout;
+  context.workDir=workDir;
+  context.task=task;
+  getTaskController().runDebugScript(context);
+  int num=localJobConf.getInt(MRJobConfig.TASK_DEBUGOUT_LINES,-1);
+  addDiagnostics(FileUtil.makeShellPath(stdout),num,"DEBUG OUT");
+}

@@ -1,0 +1,33 @@
+{
+  NodeStatus nodeStatus=recordFactory.newRecordInstance(NodeStatus.class);
+  nodeStatus.setNodeId(this.nodeId);
+  int numActiveContainers=0;
+  for (Iterator<Entry<ContainerId,Container>> i=this.context.getContainers().entrySet().iterator(); i.hasNext(); ) {
+    Entry<ContainerId,Container> e=i.next();
+    ContainerId containerId=e.getKey();
+    Container container=e.getValue();
+    List<org.apache.hadoop.yarn.api.records.Container> applicationContainers=nodeStatus.getContainers(container.getContainerID().getAppId());
+    if (applicationContainers == null) {
+      applicationContainers=new ArrayList<org.apache.hadoop.yarn.api.records.Container>();
+      nodeStatus.setContainers(container.getContainerID().getAppId(),applicationContainers);
+    }
+    org.apache.hadoop.yarn.api.records.Container c=container.cloneAndGetContainer();
+    c.setNodeId(this.nodeId);
+    c.setNodeHttpAddress(this.nodeHttpAddress);
+    applicationContainers.add(c);
+    ++numActiveContainers;
+    LOG.info("Sending out status for container: " + c);
+    if (c.getState() == ContainerState.COMPLETE) {
+      i.remove();
+      LOG.info("Removed completed container " + containerId);
+    }
+  }
+  LOG.debug(this.containerManagerBindAddress + " sending out status for " + numActiveContainers+ " containers");
+  NodeHealthStatus nodeHealthStatus=this.context.getNodeHealthStatus();
+  if (this.healthChecker != null) {
+    this.healthChecker.setHealthStatus(nodeHealthStatus);
+  }
+  LOG.debug("Node's health-status : " + nodeHealthStatus.getIsNodeHealthy() + ", "+ nodeHealthStatus.getHealthReport());
+  nodeStatus.setNodeHealthStatus(nodeHealthStatus);
+  return nodeStatus;
+}

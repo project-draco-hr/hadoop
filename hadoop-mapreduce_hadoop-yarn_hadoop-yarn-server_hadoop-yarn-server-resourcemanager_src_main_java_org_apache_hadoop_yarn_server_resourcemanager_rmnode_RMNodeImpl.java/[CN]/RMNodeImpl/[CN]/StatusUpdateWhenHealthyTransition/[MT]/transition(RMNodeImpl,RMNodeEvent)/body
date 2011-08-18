@@ -1,0 +1,33 @@
+{
+  RMNodeStatusEvent statusEvent=(RMNodeStatusEvent)event;
+  rmNode.latestHeartBeatResponse=statusEvent.getLatestResponse();
+  if (!statusEvent.getNodeHealthStatus().getIsNodeHealthy()) {
+    rmNode.context.getDispatcher().getEventHandler().handle(new NodeRemovedSchedulerEvent(rmNode));
+    return RMNodeState.UNHEALTHY;
+  }
+  Map<ApplicationId,List<Container>> remoteAppContainersMap=statusEvent.getContainersCollection();
+  Map<ApplicationId,List<Container>> containersMapForScheduler=new HashMap<ApplicationId,List<Container>>(remoteAppContainersMap.size());
+  for (  Entry<ApplicationId,List<Container>> entrySet : remoteAppContainersMap.entrySet()) {
+    ApplicationId appId=entrySet.getKey();
+    List<Container> remoteContainerList=entrySet.getValue();
+    if (!containersMapForScheduler.containsKey(appId)) {
+      containersMapForScheduler.put(appId,new ArrayList<Container>(remoteContainerList.size()));
+    }
+    List<Container> entryForThisApp=containersMapForScheduler.get(appId);
+    for (    Container remoteContainer : remoteContainerList) {
+      ContainerId containerId=remoteContainer.getId();
+      if (remoteContainer.getState() == ContainerState.RUNNING) {
+        if (!rmNode.justLaunchedContainers.containsKey(containerId)) {
+          rmNode.justLaunchedContainers.put(containerId,remoteContainer);
+          entryForThisApp.add(remoteContainer);
+        }
+      }
+ else {
+        rmNode.justLaunchedContainers.remove(containerId);
+        entryForThisApp.add(remoteContainer);
+      }
+    }
+  }
+  rmNode.context.getDispatcher().getEventHandler().handle(new NodeUpdateSchedulerEvent(rmNode,containersMapForScheduler));
+  return RMNodeState.RUNNING;
+}

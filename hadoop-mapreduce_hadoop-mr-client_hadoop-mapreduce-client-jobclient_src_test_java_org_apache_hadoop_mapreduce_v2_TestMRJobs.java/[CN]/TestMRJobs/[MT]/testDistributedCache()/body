@@ -1,0 +1,24 @@
+{
+  if (!(new File(MiniMRYarnCluster.APPJAR)).exists()) {
+    LOG.info("MRAppJar " + MiniMRYarnCluster.APPJAR + " not found. Not running test.");
+    return;
+  }
+  Path first=createTempFile("distributed.first","x");
+  Path second=makeJar(new Path(TEST_ROOT_DIR,"distributed.second.jar"),2);
+  Path third=makeJar(new Path(TEST_ROOT_DIR,"distributed.third.jar"),3);
+  Path fourth=makeJar(new Path(TEST_ROOT_DIR,"distributed.fourth.jar"),4);
+  Job job=Job.getInstance(mrCluster.getConfig());
+  job.setJarByClass(DistributedCacheChecker.class);
+  job.setMapperClass(DistributedCacheChecker.class);
+  job.setOutputFormatClass(NullOutputFormat.class);
+  FileInputFormat.setInputPaths(job,first);
+  job.addCacheFile(new URI(first.toUri().toString() + "#distributed.first.symlink"));
+  job.addFileToClassPath(second);
+  job.addFileToClassPath(APP_JAR);
+  job.addArchiveToClassPath(third);
+  job.addCacheArchive(fourth.toUri());
+  job.createSymlink();
+  job.setMaxMapAttempts(1);
+  job.submit();
+  Assert.assertTrue(job.waitForCompletion(false));
+}

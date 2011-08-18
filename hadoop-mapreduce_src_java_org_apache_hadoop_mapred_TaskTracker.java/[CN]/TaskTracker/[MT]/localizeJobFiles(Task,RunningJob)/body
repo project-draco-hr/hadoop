@@ -1,0 +1,28 @@
+{
+  JobID jobId=t.getJobID();
+  String userName=t.getUser();
+  FileSystem localFs=FileSystem.getLocal(fConf);
+  getLocalizer().initializeJobDirs(userName,jobId);
+  String localJobTokenFile=localizeJobTokenFile(t.getUser(),jobId);
+  rjob.ugi=UserGroupInformation.createRemoteUser(t.getUser());
+  Credentials ts=TokenCache.loadTokens(localJobTokenFile,fConf);
+  Token<JobTokenIdentifier> jt=TokenCache.getJobToken(ts);
+  if (jt != null) {
+    getJobTokenSecretManager().addTokenForJob(jobId.toString(),jt);
+  }
+  for (  Token<? extends TokenIdentifier> token : ts.getAllTokens()) {
+    rjob.ugi.addToken(token);
+  }
+  Path localJobFile=localizeJobConfFile(new Path(t.getJobFile()),userName,jobId);
+  JobConf localJobConf=new JobConf(localJobFile);
+  localJobConf.setUser(userName);
+  localJobConf.set(TokenCache.JOB_TOKENS_FILENAME,localJobTokenFile);
+  Path workDir=lDirAlloc.getLocalPathForWrite(getJobWorkDir(userName,jobId.toString()),fConf);
+  if (!localFs.mkdirs(workDir)) {
+    throw new IOException("Mkdirs failed to create " + workDir.toString());
+  }
+  System.setProperty(JOB_LOCAL_DIR,workDir.toUri().getPath());
+  localJobConf.set(JOB_LOCAL_DIR,workDir.toUri().getPath());
+  localizeJobJarFile(userName,jobId,localFs,localJobConf);
+  return localJobConf;
+}

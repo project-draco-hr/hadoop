@@ -1,0 +1,30 @@
+{
+  QueueMetrics metrics=queue.getMetrics();
+  for (  ResourceRequest request : requests) {
+    Priority priority=request.getPriority();
+    String hostName=request.getHostName();
+    boolean updatePendingResources=false;
+    ResourceRequest lastRequest=null;
+    if (hostName.equals(RMNode.ANY)) {
+      if (LOG.isDebugEnabled()) {
+        LOG.debug("update:" + " application=" + applicationId + " request="+ request);
+      }
+      updatePendingResources=true;
+    }
+    Map<String,ResourceRequest> asks=this.requests.get(priority);
+    if (asks == null) {
+      asks=new HashMap<String,ResourceRequest>();
+      this.requests.put(priority,asks);
+      this.priorities.add(priority);
+    }
+ else     if (updatePendingResources) {
+      lastRequest=asks.get(hostName);
+    }
+    asks.put(hostName,request);
+    if (updatePendingResources) {
+      int lastRequestContainers=lastRequest != null ? lastRequest.getNumContainers() : 0;
+      Resource lastRequestCapability=lastRequest != null ? lastRequest.getCapability() : Resources.none();
+      metrics.incrPendingResources(user,request.getNumContainers() - lastRequestContainers,Resources.subtractFrom(Resources.multiply(request.getCapability(),request.getNumContainers()),Resources.multiply(lastRequestCapability,lastRequestContainers)));
+    }
+  }
+}

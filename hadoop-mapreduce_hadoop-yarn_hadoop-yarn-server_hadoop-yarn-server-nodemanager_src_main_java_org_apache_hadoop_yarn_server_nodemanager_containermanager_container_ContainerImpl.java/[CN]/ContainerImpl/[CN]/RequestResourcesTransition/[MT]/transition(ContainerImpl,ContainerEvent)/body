@@ -1,0 +1,60 @@
+{
+  final ContainerLaunchContext ctxt=container.getLaunchContext();
+  container.metrics.initingContainer();
+  Map<String,ByteBuffer> csd=ctxt.getAllServiceData();
+  if (csd != null) {
+    for (    Map.Entry<String,ByteBuffer> service : csd.entrySet()) {
+      container.dispatcher.getEventHandler().handle(new AuxServicesEvent(AuxServicesEventType.APPLICATION_INIT,ctxt.getUser(),ctxt.getContainerId().getAppId(),service.getKey().toString(),service.getValue()));
+    }
+  }
+  Map<String,LocalResource> cntrRsrc=ctxt.getAllLocalResources();
+  if (!cntrRsrc.isEmpty()) {
+    ArrayList<LocalResourceRequest> publicRsrc=new ArrayList<LocalResourceRequest>();
+    ArrayList<LocalResourceRequest> privateRsrc=new ArrayList<LocalResourceRequest>();
+    ArrayList<LocalResourceRequest> appRsrc=new ArrayList<LocalResourceRequest>();
+    try {
+      for (      Map.Entry<String,LocalResource> rsrc : cntrRsrc.entrySet()) {
+        try {
+          LocalResourceRequest req=new LocalResourceRequest(rsrc.getValue());
+          container.pendingResources.put(req,rsrc.getKey());
+switch (rsrc.getValue().getVisibility()) {
+case PUBLIC:
+            publicRsrc.add(req);
+          break;
+case PRIVATE:
+        privateRsrc.add(req);
+      break;
+case APPLICATION:
+    appRsrc.add(req);
+  break;
+}
+}
+ catch (URISyntaxException e) {
+LOG.info("Got exception parsing " + rsrc.getKey() + " and value "+ rsrc.getValue());
+throw e;
+}
+}
+}
+ catch (URISyntaxException e) {
+LOG.warn("Failed to parse resource-request",e);
+container.dispatcher.getEventHandler().handle(new ContainerLocalizationEvent(LocalizationEventType.CLEANUP_CONTAINER_RESOURCES,container));
+container.metrics.endInitingContainer();
+return ContainerState.LOCALIZATION_FAILED;
+}
+if (!publicRsrc.isEmpty()) {
+container.dispatcher.getEventHandler().handle(new ContainerLocalizationRequestEvent(container,publicRsrc,LocalResourceVisibility.PUBLIC));
+}
+if (!privateRsrc.isEmpty()) {
+container.dispatcher.getEventHandler().handle(new ContainerLocalizationRequestEvent(container,privateRsrc,LocalResourceVisibility.PRIVATE));
+}
+if (!appRsrc.isEmpty()) {
+container.dispatcher.getEventHandler().handle(new ContainerLocalizationRequestEvent(container,appRsrc,LocalResourceVisibility.APPLICATION));
+}
+return ContainerState.LOCALIZING;
+}
+ else {
+container.dispatcher.getEventHandler().handle(new ContainersLauncherEvent(container,ContainersLauncherEventType.LAUNCH_CONTAINER));
+container.metrics.endInitingContainer();
+return ContainerState.LOCALIZED;
+}
+}

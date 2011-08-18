@@ -1,0 +1,36 @@
+{
+  JobID jobID=JobID.forName(jobId);
+  ApplicationId appID=Records.newRecord(ApplicationId.class);
+  appID.setClusterTimestamp(Long.parseLong(jobID.getJtIdentifier()));
+  appID.setId(jobID.getId());
+  final String base=ContainerLocalizer.USERCACHE + "/" + user+ "/"+ ContainerLocalizer.APPCACHE+ "/"+ ConverterUtils.toString(appID)+ "/output"+ "/"+ mapId;
+  LOG.debug("DEBUG0 " + base);
+  Path indexFileName=lDirAlloc.getLocalPathToRead(base + "/file.out.index",conf);
+  Path mapOutputFileName=lDirAlloc.getLocalPathToRead(base + "/file.out",conf);
+  LOG.debug("DEBUG1 " + base + " : "+ mapOutputFileName+ " : "+ indexFileName);
+  IndexRecord info=indexCache.getIndexInformation(mapId,reduce,indexFileName,user);
+  final ShuffleHeader header=new ShuffleHeader(mapId,info.partLength,info.rawLength,reduce);
+  final DataOutputBuffer dob=new DataOutputBuffer();
+  header.write(dob);
+  ch.write(wrappedBuffer(dob.getData(),0,dob.getLength()));
+  File spillfile=new File(mapOutputFileName.toString());
+  RandomAccessFile spill;
+  try {
+    spill=new RandomAccessFile(spillfile,"r");
+  }
+ catch (  FileNotFoundException e) {
+    LOG.info(spillfile + " not found");
+    return null;
+  }
+  final FileRegion partition=new DefaultFileRegion(spill.getChannel(),info.startOffset,info.partLength);
+  ChannelFuture writeFuture=ch.write(partition);
+  writeFuture.addListener(new ChannelFutureListener(){
+    @Override public void operationComplete(    ChannelFuture future){
+      partition.releaseExternalResources();
+    }
+  }
+);
+  metrics.shuffleConnections.incr();
+  metrics.shuffleOutputBytes.incr(info.partLength);
+  return writeFuture;
+}

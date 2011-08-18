@@ -1,0 +1,48 @@
+{
+  while (true) {
+    try {
+      LocalizerStatus status=createStatus();
+      LocalizerHeartbeatResponse response=nodemanager.heartbeat(status);
+switch (response.getLocalizerAction()) {
+case LIVE:
+        List<LocalResource> newResources=response.getAllResources();
+      for (      LocalResource r : newResources) {
+        if (!pendingResources.containsKey(r)) {
+          final LocalDirAllocator lda;
+switch (r.getVisibility()) {
+default :
+            LOG.warn("Unknown visibility: " + r.getVisibility() + ", Using userDirs");
+case PUBLIC:
+case PRIVATE:
+          lda=userDirs;
+        break;
+case APPLICATION:
+      lda=appDirs;
+    break;
+}
+pendingResources.put(r,exec.submit(download(lda,r,ugi)));
+}
+}
+break;
+case DIE:
+for (Future<Path> pending : pendingResources.values()) {
+pending.cancel(true);
+}
+status=createStatus();
+try {
+nodemanager.heartbeat(status);
+}
+ catch (YarnRemoteException e) {
+}
+return;
+}
+sleep(1);
+}
+ catch (InterruptedException e) {
+return;
+}
+catch (YarnRemoteException e) {
+return;
+}
+}
+}

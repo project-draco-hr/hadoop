@@ -1,0 +1,36 @@
+{
+  ApplicationAttemptId appAttemptId=request.getApplicationAttemptId();
+  this.amLivelinessMonitor.receivedPing(appAttemptId);
+  AllocateResponse allocateResponse=recordFactory.newRecordInstance(AllocateResponse.class);
+  AMResponse lastResponse=responseMap.get(appAttemptId);
+  if (lastResponse == null) {
+    LOG.error("AppAttemptId doesnt exist in cache " + appAttemptId);
+    allocateResponse.setAMResponse(reboot);
+    return allocateResponse;
+  }
+  if ((request.getResponseId() + 1) == lastResponse.getResponseId()) {
+    allocateResponse.setAMResponse(lastResponse);
+    return allocateResponse;
+  }
+ else   if (request.getResponseId() + 1 < lastResponse.getResponseId()) {
+    LOG.error("Invalid responseid from appAttemptId " + appAttemptId);
+    allocateResponse.setAMResponse(reboot);
+    return allocateResponse;
+  }
+synchronized (lastResponse) {
+    this.rmContext.getDispatcher().getEventHandler().handle(new RMAppAttemptStatusupdateEvent(appAttemptId,request.getProgress()));
+    List<ResourceRequest> ask=request.getAskList();
+    List<ContainerId> release=request.getReleaseList();
+    Allocation allocation=this.rScheduler.allocate(appAttemptId,ask,release);
+    RMApp app=this.rmContext.getRMApps().get(appAttemptId.getApplicationId());
+    RMAppAttempt appAttempt=app.getRMAppAttempt(appAttemptId);
+    AMResponse response=recordFactory.newRecordInstance(AMResponse.class);
+    response.addAllNewContainers(allocation.getContainers());
+    response.addAllFinishedContainers(appAttempt.pullJustFinishedContainers());
+    response.setResponseId(lastResponse.getResponseId() + 1);
+    response.setAvailableResources(allocation.getResourceLimit());
+    responseMap.put(appAttemptId,response);
+    allocateResponse.setAMResponse(response);
+    return allocateResponse;
+  }
+}

@@ -1,0 +1,33 @@
+{
+  if (recoveryMode) {
+    if (event.getType() == TaskAttemptEventType.TA_CONTAINER_LAUNCHED) {
+      TaskAttemptInfo attInfo=getTaskAttemptInfo(((TaskAttemptEvent)event).getTaskAttemptID());
+      LOG.info("Attempt start time " + attInfo.getStartTime());
+      clock.setTime(attInfo.getStartTime());
+    }
+ else     if (event.getType() == TaskAttemptEventType.TA_DONE || event.getType() == TaskAttemptEventType.TA_FAILMSG || event.getType() == TaskAttemptEventType.TA_KILL) {
+      TaskAttemptInfo attInfo=getTaskAttemptInfo(((TaskAttemptEvent)event).getTaskAttemptID());
+      LOG.info("Attempt finish time " + attInfo.getFinishTime());
+      clock.setTime(attInfo.getFinishTime());
+    }
+ else     if (event.getType() == TaskEventType.T_ATTEMPT_FAILED || event.getType() == TaskEventType.T_ATTEMPT_KILLED || event.getType() == TaskEventType.T_ATTEMPT_SUCCEEDED) {
+      TaskTAttemptEvent tEvent=(TaskTAttemptEvent)event;
+      LOG.info("Recovered Task attempt " + tEvent.getTaskAttemptID());
+      TaskInfo taskInfo=completedTasks.get(tEvent.getTaskAttemptID().getTaskId());
+      taskInfo.getAllTaskAttempts().remove(TypeConverter.fromYarn(tEvent.getTaskAttemptID()));
+      if (taskInfo.getAllTaskAttempts().size() == 0) {
+        completedTasks.remove(tEvent.getTaskAttemptID().getTaskId());
+        LOG.info("CompletedTasks() " + completedTasks.size());
+        if (completedTasks.size() == 0) {
+          recoveryMode=false;
+          clock.reset();
+          LOG.info("Setting the recovery mode to false. " + "Recovery is complete!");
+          for (          TaskEvent tEv : pendingTaskScheduleEvents) {
+            actualHandler.handle(tEv);
+          }
+        }
+      }
+    }
+  }
+  super.dispatch(event);
+}

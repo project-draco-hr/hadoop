@@ -1,0 +1,30 @@
+{
+  LOG.info("\n\n\nStarting uberized testFailingMapper().");
+  if (!(new File(MiniMRYarnCluster.APPJAR)).exists()) {
+    LOG.info("MRAppJar " + MiniMRYarnCluster.APPJAR + " not found. Not running test.");
+    return;
+  }
+  Job job=runFailingMapperJob();
+  TaskID taskID=new TaskID(job.getJobID(),TaskType.MAP,0);
+  TaskAttemptID aId=new TaskAttemptID(taskID,0);
+  System.out.println("Diagnostics for " + aId + " :");
+  for (  String diag : job.getTaskDiagnostics(aId)) {
+    System.out.println(diag);
+  }
+  boolean secondTaskAttemptExists=true;
+  try {
+    aId=new TaskAttemptID(taskID,1);
+    System.out.println("Diagnostics for " + aId + " :");
+    for (    String diag : job.getTaskDiagnostics(aId)) {
+      System.out.println(diag);
+    }
+  }
+ catch (  Exception e) {
+    secondTaskAttemptExists=false;
+  }
+  Assert.assertEquals(false,secondTaskAttemptExists);
+  TaskCompletionEvent[] events=job.getTaskCompletionEvents(0,2);
+  Assert.assertEquals(1,events.length);
+  Assert.assertEquals(TaskCompletionEvent.Status.FAILED,events[0].getStatus().FAILED);
+  Assert.assertEquals(JobStatus.State.FAILED,job.getJobState());
+}

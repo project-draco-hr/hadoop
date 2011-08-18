@@ -1,0 +1,46 @@
+{
+  super.updateAttempt(status,timestamp);
+  TaskAttemptId attemptID=status.id;
+  TaskId taskID=attemptID.getTaskId();
+  JobId jobID=taskID.getJobId();
+  Job job=context.getJob(jobID);
+  if (job == null) {
+    return;
+  }
+  Task task=job.getTask(taskID);
+  if (task == null) {
+    return;
+  }
+  TaskAttempt taskAttempt=task.getAttempt(attemptID);
+  if (taskAttempt == null) {
+    return;
+  }
+  Long boxedStart=startTimes.get(attemptID);
+  long start=boxedStart == null ? Long.MIN_VALUE : boxedStart;
+  if (taskAttempt.getState() == TaskAttemptState.RUNNING) {
+    AtomicLong estimateContainer=attemptRuntimeEstimates.get(taskAttempt);
+    AtomicLong estimateVarianceContainer=attemptRuntimeEstimateVariances.get(taskAttempt);
+    if (estimateContainer == null) {
+      if (attemptRuntimeEstimates.get(taskAttempt) == null) {
+        attemptRuntimeEstimates.put(taskAttempt,new AtomicLong());
+        estimateContainer=attemptRuntimeEstimates.get(taskAttempt);
+      }
+    }
+    if (estimateVarianceContainer == null) {
+      attemptRuntimeEstimateVariances.putIfAbsent(taskAttempt,new AtomicLong());
+      estimateVarianceContainer=attemptRuntimeEstimateVariances.get(taskAttempt);
+    }
+    long estimate=-1;
+    long varianceEstimate=-1;
+    if (start > 0 && timestamp > start) {
+      estimate=(long)((timestamp - start) / Math.max(0.0001,status.progress));
+      varianceEstimate=(long)(estimate * status.progress / 10);
+    }
+    if (estimateContainer != null) {
+      estimateContainer.set(estimate);
+    }
+    if (estimateVarianceContainer != null) {
+      estimateVarianceContainer.set(varianceEstimate);
+    }
+  }
+}
