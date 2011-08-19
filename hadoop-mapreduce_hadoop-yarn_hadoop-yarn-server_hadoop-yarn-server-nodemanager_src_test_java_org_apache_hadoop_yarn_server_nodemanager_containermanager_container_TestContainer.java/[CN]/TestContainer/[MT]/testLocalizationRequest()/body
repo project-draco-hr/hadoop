@@ -1,0 +1,33 @@
+{
+  DrainDispatcher dispatcher=new DrainDispatcher();
+  dispatcher.init(null);
+  try {
+    dispatcher.start();
+    EventHandler<LocalizationEvent> localizerBus=mock(EventHandler.class);
+    dispatcher.register(LocalizationEventType.class,localizerBus);
+    ContainerLaunchContext ctxt=mock(ContainerLaunchContext.class);
+    ContainerId cId=getMockContainerId(7,314159265358979L,4344);
+    when(ctxt.getUser()).thenReturn("yak");
+    when(ctxt.getContainerId()).thenReturn(cId);
+    Random r=new Random();
+    long seed=r.nextLong();
+    r.setSeed(seed);
+    System.out.println("testLocalizationRequest seed: " + seed);
+    final Map<String,LocalResource> localResources=createLocalResources(r);
+    when(ctxt.getAllLocalResources()).thenReturn(localResources);
+    final Container c=newContainer(dispatcher,ctxt);
+    assertEquals(ContainerState.NEW,c.getContainerState());
+    c.handle(new ContainerEvent(cId,ContainerEventType.INIT_CONTAINER));
+    dispatcher.await();
+    ContainerReqMatcher matchesPublicReq=new ContainerReqMatcher(localResources,EnumSet.of(LocalResourceVisibility.PUBLIC));
+    ContainerReqMatcher matchesPrivateReq=new ContainerReqMatcher(localResources,EnumSet.of(LocalResourceVisibility.PRIVATE));
+    ContainerReqMatcher matchesAppReq=new ContainerReqMatcher(localResources,EnumSet.of(LocalResourceVisibility.APPLICATION));
+    verify(localizerBus).handle(argThat(matchesPublicReq));
+    verify(localizerBus).handle(argThat(matchesPrivateReq));
+    verify(localizerBus).handle(argThat(matchesAppReq));
+    assertEquals(ContainerState.LOCALIZING,c.getContainerState());
+  }
+  finally {
+    dispatcher.stop();
+  }
+}

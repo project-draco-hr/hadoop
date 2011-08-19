@@ -1,0 +1,46 @@
+{
+  ContainerRequest assigned=null;
+  while (assigned == null && maps.size() > 0 && allocated.getResource().getMemory() >= mapResourceReqt) {
+    String host=getHost(allocated.getNodeId().toString());
+    LinkedList<TaskAttemptId> list=mapsHostMapping.get(host);
+    while (list != null && list.size() > 0) {
+      LOG.info("Host matched to the request list " + host);
+      TaskAttemptId tId=list.removeFirst();
+      if (maps.containsKey(tId)) {
+        assigned=maps.remove(tId);
+        JobCounterUpdateEvent jce=new JobCounterUpdateEvent(assigned.attemptID.getTaskId().getJobId());
+        jce.addCounterUpdate(JobCounter.DATA_LOCAL_MAPS,1);
+        eventHandler.handle(jce);
+        hostLocalAssigned++;
+        LOG.info("Assigned based on host match " + host);
+        break;
+      }
+    }
+    if (assigned == null) {
+      String rack=RackResolver.resolve(host).getNetworkLocation();
+      list=mapsRackMapping.get(rack);
+      while (list != null && list.size() > 0) {
+        TaskAttemptId tId=list.removeFirst();
+        if (maps.containsKey(tId)) {
+          assigned=maps.remove(tId);
+          JobCounterUpdateEvent jce=new JobCounterUpdateEvent(assigned.attemptID.getTaskId().getJobId());
+          jce.addCounterUpdate(JobCounter.RACK_LOCAL_MAPS,1);
+          eventHandler.handle(jce);
+          rackLocalAssigned++;
+          LOG.info("Assigned based on rack match " + rack);
+          break;
+        }
+      }
+      if (assigned == null && maps.size() > 0) {
+        TaskAttemptId tId=maps.keySet().iterator().next();
+        assigned=maps.remove(tId);
+        JobCounterUpdateEvent jce=new JobCounterUpdateEvent(assigned.attemptID.getTaskId().getJobId());
+        jce.addCounterUpdate(JobCounter.OTHER_LOCAL_MAPS,1);
+        eventHandler.handle(jce);
+        LOG.info("Assigned based on * match");
+        break;
+      }
+    }
+  }
+  return assigned;
+}

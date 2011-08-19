@@ -1,0 +1,51 @@
+{
+synchronized (lock) {
+    if (event.getHistoryEvent().getEventType() == EventType.JOB_SUBMITTED) {
+      try {
+        JobSubmittedEvent jobSubmittedEvent=(JobSubmittedEvent)event.getHistoryEvent();
+        setupEventWriter(event.getJobID(),jobSubmittedEvent);
+      }
+ catch (      IOException ioe) {
+        LOG.error("Error JobHistoryEventHandler in handleEvent: " + event,ioe);
+        throw new YarnException(ioe);
+      }
+    }
+    MetaInfo mi=fileMap.get(event.getJobID());
+    try {
+      HistoryEvent historyEvent=event.getHistoryEvent();
+      mi.writeEvent(historyEvent);
+      processEventForJobSummary(event.getHistoryEvent(),mi.getJobSummary(),event.getJobID());
+      LOG.info("In HistoryEventHandler " + event.getHistoryEvent().getEventType());
+    }
+ catch (    IOException e) {
+      LOG.error("Error writing History Event: " + event.getHistoryEvent(),e);
+      throw new YarnException(e);
+    }
+    if (event.getHistoryEvent().getEventType() == EventType.JOB_FINISHED) {
+      try {
+        JobFinishedEvent jFinishedEvent=(JobFinishedEvent)event.getHistoryEvent();
+        mi.getJobIndexInfo().setFinishTime(jFinishedEvent.getFinishTime());
+        mi.getJobIndexInfo().setNumMaps(jFinishedEvent.getFinishedMaps());
+        mi.getJobIndexInfo().setNumReduces(jFinishedEvent.getFinishedReduces());
+        mi.getJobIndexInfo().setJobStatus(JobState.SUCCEEDED.toString());
+        closeEventWriter(event.getJobID());
+      }
+ catch (      IOException e) {
+        throw new YarnException(e);
+      }
+    }
+    if (event.getHistoryEvent().getEventType() == EventType.JOB_FAILED || event.getHistoryEvent().getEventType() == EventType.JOB_KILLED) {
+      try {
+        JobUnsuccessfulCompletionEvent jucEvent=(JobUnsuccessfulCompletionEvent)event.getHistoryEvent();
+        mi.getJobIndexInfo().setFinishTime(jucEvent.getFinishTime());
+        mi.getJobIndexInfo().setNumMaps(jucEvent.getFinishedMaps());
+        mi.getJobIndexInfo().setNumReduces(jucEvent.getFinishedReduces());
+        mi.getJobIndexInfo().setJobStatus(jucEvent.getStatus());
+        closeEventWriter(event.getJobID());
+      }
+ catch (      IOException e) {
+        throw new YarnException(e);
+      }
+    }
+  }
+}

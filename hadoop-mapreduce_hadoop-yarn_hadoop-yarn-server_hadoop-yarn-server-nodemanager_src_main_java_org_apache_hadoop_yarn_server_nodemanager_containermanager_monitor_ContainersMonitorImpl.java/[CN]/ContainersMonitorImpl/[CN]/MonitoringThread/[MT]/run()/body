@@ -1,0 +1,94 @@
+{
+  while (true) {
+    if (LOG.isDebugEnabled()) {
+      StringBuilder tmp=new StringBuilder("[ ");
+      for (      ProcessTreeInfo p : trackingContainers.values()) {
+        tmp.append(p.getPID());
+        tmp.append(" ");
+      }
+      LOG.debug("Current ProcessTree list : " + tmp.substring(0,tmp.length()) + "]");
+    }
+synchronized (containersToBeAdded) {
+      for (      Entry<ContainerId,ProcessTreeInfo> entry : containersToBeAdded.entrySet()) {
+        ContainerId containerId=entry.getKey();
+        ProcessTreeInfo processTreeInfo=entry.getValue();
+        LOG.info("Starting resource-monitoring for " + containerId);
+        trackingContainers.put(containerId,processTreeInfo);
+      }
+      containersToBeAdded.clear();
+    }
+synchronized (containersToBeRemoved) {
+      for (      ContainerId containerId : containersToBeRemoved) {
+        trackingContainers.remove(containerId);
+        LOG.info("Stopping resource-monitoring for " + containerId);
+      }
+      containersToBeRemoved.clear();
+    }
+    long vmemStillInUsage=0;
+    long pmemStillInUsage=0;
+    for (Iterator<Map.Entry<ContainerId,ProcessTreeInfo>> it=trackingContainers.entrySet().iterator(); it.hasNext(); ) {
+      Map.Entry<ContainerId,ProcessTreeInfo> entry=it.next();
+      ContainerId containerId=entry.getKey();
+      ProcessTreeInfo ptInfo=entry.getValue();
+      try {
+        String pId=ptInfo.getPID();
+        if (pId == null) {
+          pId=containerExecutor.getProcessId(ptInfo.getContainerId());
+          if (pId != null) {
+            LOG.debug("Tracking ProcessTree " + pId + " for the first time");
+            ProcfsBasedProcessTree pt=new ProcfsBasedProcessTree(pId,ContainerExecutor.isSetsidAvailable);
+            ptInfo.setPid(pId);
+            ptInfo.setProcessTree(pt);
+          }
+        }
+        if (pId == null) {
+          continue;
+        }
+        LOG.debug("Constructing ProcessTree for : PID = " + pId + " ContainerId = "+ containerId);
+        ProcfsBasedProcessTree pTree=ptInfo.getProcessTree();
+        pTree=pTree.getProcessTree();
+        ptInfo.setProcessTree(pTree);
+        long currentVmemUsage=pTree.getCumulativeVmem();
+        long currentPmemUsage=pTree.getCumulativeRssmem();
+        long curMemUsageOfAgedProcesses=pTree.getCumulativeVmem(1);
+        long curRssMemUsageOfAgedProcesses=pTree.getCumulativeRssmem(1);
+        long vmemLimit=ptInfo.getVmemLimit();
+        long pmemLimit=ptInfo.getPmemLimit();
+        LOG.info(String.format(MEMORY_USAGE_STRING,pId,containerId.toString(),currentVmemUsage,vmemLimit,currentPmemUsage,pmemLimit));
+        boolean isMemoryOverLimit=false;
+        String msg="";
+        if (isVirtualMemoryCheckEnabled() && isProcessTreeOverLimit(containerId.toString(),currentVmemUsage,curMemUsageOfAgedProcesses,vmemLimit)) {
+          msg="Container [pid=" + pId + ",containerID="+ containerId+ "] is running beyond memory-limits. Current usage : "+ currentVmemUsage+ "bytes. Limit : "+ vmemLimit+ "bytes. Killing container. "+ "\nDump of the process-tree for "+ containerId+ " : \n"+ pTree.getProcessTreeDump();
+          isMemoryOverLimit=true;
+        }
+ else         if (isPhysicalMemoryCheckEnabled() && isProcessTreeOverLimit(containerId.toString(),currentPmemUsage,curRssMemUsageOfAgedProcesses,pmemLimit)) {
+          msg="Container [pid=" + pId + ",tipID="+ containerId+ "] is running beyond physical memory-limits."+ " Current usage : "+ currentPmemUsage+ "bytes. Limit : "+ pmemLimit+ "bytes. Killing container. \nDump of the process-tree for "+ containerId+ " : \n"+ pTree.getProcessTreeDump();
+          isMemoryOverLimit=true;
+        }
+        if (isMemoryOverLimit) {
+          LOG.warn(msg);
+          if (!pTree.checkPidPgrpidForMatch()) {
+            LOG.error("Killed container process with PID " + pId + " but it is not a process group leader.");
+          }
+          eventDispatcher.getEventHandler().handle(new ContainerKillEvent(containerId,msg));
+          it.remove();
+          LOG.info("Removed ProcessTree with root " + pId);
+        }
+ else {
+          vmemStillInUsage+=currentVmemUsage;
+          pmemStillInUsage+=currentPmemUsage;
+        }
+      }
+ catch (      Exception e) {
+        LOG.warn("Uncaught exception in ContainerMemoryManager " + "while managing memory of " + containerId,e);
+      }
+    }
+    try {
+      Thread.sleep(monitoringInterval);
+    }
+ catch (    InterruptedException e) {
+      LOG.warn(ContainersMonitorImpl.class.getName() + " is interrupted. Exiting.");
+      break;
+    }
+  }
+}

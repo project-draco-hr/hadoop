@@ -1,0 +1,29 @@
+{
+  String aid=$(APP_ID);
+  if (aid.isEmpty()) {
+    setStatus(response().SC_BAD_REQUEST);
+    setTitle("Bad request: requires application ID");
+    return;
+  }
+  ApplicationId appID=Apps.toAppID(aid);
+  RMContext context=getInstance(RMContext.class);
+  RMApp app=context.getRMApps().get(appID);
+  if (app == null) {
+    setStatus(response().SC_NOT_FOUND);
+    setTitle("Application not found: " + aid);
+    return;
+  }
+  setTitle(join("Application ",aid));
+  String trackingUrl=app.getTrackingUrl();
+  String ui=trackingUrl == null ? "UNASSIGNED" : (app.getFinishTime() == 0 ? "ApplicationMaster" : "JobHistory");
+  ResponseInfo info=info("Application Overview")._("User:",app.getUser())._("Name:",app.getName())._("State:",app.getState())._("Started:",Times.format(app.getStartTime()))._("Elapsed:",StringUtils.formatTime(Times.elapsed(app.getStartTime(),app.getFinishTime())))._("Tracking URL:",trackingUrl == null ? "#" : join("http://",trackingUrl),ui)._("Diagnostics:",app.getDiagnostics());
+  Container masterContainer=app.getCurrentAppAttempt().getMasterContainer();
+  if (masterContainer != null) {
+    String url=join("http://",masterContainer.getNodeHttpAddress(),"/yarn","/containerlogs/",ConverterUtils.toString(masterContainer.getId()));
+    info._("AM container logs:",url,url);
+  }
+ else {
+    info._("AM container logs:","AM not yet registered with RM");
+  }
+  render(InfoPage.class);
+}

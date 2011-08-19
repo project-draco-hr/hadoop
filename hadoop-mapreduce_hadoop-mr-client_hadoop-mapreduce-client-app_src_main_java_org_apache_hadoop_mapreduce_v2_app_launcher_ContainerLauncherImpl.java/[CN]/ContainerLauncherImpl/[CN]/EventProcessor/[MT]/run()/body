@@ -1,0 +1,45 @@
+{
+  LOG.info("Processing the event " + event.toString());
+  final String containerManagerBindAddr=event.getContainerMgrAddress();
+  ContainerId containerID=event.getContainerID();
+  ContainerToken containerToken=event.getContainerToken();
+switch (event.getType()) {
+case CONTAINER_REMOTE_LAUNCH:
+    ContainerRemoteLaunchEvent launchEv=(ContainerRemoteLaunchEvent)event;
+  TaskAttemptId taskAttemptID=launchEv.getTaskAttemptID();
+try {
+  ContainerManager proxy=getCMProxy(containerID,containerManagerBindAddr,containerToken);
+  ContainerLaunchContext containerLaunchContext=launchEv.getContainer();
+  StartContainerRequest startRequest=recordFactory.newRecordInstance(StartContainerRequest.class);
+  startRequest.setContainerLaunchContext(containerLaunchContext);
+  proxy.startContainer(startRequest);
+  LOG.info("Returning from container-launch for " + taskAttemptID);
+  context.getEventHandler().handle(new TaskAttemptEvent(taskAttemptID,TaskAttemptEventType.TA_CONTAINER_LAUNCHED));
+}
+ catch (Throwable t) {
+  String message="Container launch failed for " + containerID + " : "+ StringUtils.stringifyException(t);
+  LOG.error(message);
+  context.getEventHandler().handle(new TaskAttemptDiagnosticsUpdateEvent(taskAttemptID,message));
+  context.getEventHandler().handle(new TaskAttemptEvent(taskAttemptID,TaskAttemptEventType.TA_CONTAINER_LAUNCH_FAILED));
+}
+break;
+case CONTAINER_REMOTE_CLEANUP:
+if (eventQueue.contains(event)) {
+eventQueue.remove(event);
+context.getEventHandler().handle(new ContainerAllocatorEvent(event.getTaskAttemptID(),ContainerAllocator.EventType.CONTAINER_DEALLOCATE));
+}
+ else {
+try {
+ContainerManager proxy=getCMProxy(containerID,containerManagerBindAddr,containerToken);
+StopContainerRequest stopRequest=recordFactory.newRecordInstance(StopContainerRequest.class);
+stopRequest.setContainerId(event.getContainerID());
+proxy.stopContainer(stopRequest);
+}
+ catch (Throwable t) {
+LOG.warn("cleanup failed for container " + event.getContainerID(),t);
+}
+context.getEventHandler().handle(new TaskAttemptEvent(event.getTaskAttemptID(),TaskAttemptEventType.TA_CONTAINER_CLEANED));
+}
+break;
+}
+}

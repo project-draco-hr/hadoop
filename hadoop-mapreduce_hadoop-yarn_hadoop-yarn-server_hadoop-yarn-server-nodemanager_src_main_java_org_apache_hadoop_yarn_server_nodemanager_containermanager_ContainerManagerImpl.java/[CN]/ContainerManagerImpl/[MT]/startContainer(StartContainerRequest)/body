@@ -1,0 +1,37 @@
+{
+  ContainerLaunchContext launchContext=request.getContainerLaunchContext();
+  LOG.info(" container is " + request);
+  ByteBuffer tokens=launchContext.getContainerTokens();
+  Credentials credentials=new Credentials();
+  if (tokens != null) {
+    DataInputByteBuffer buf=new DataInputByteBuffer();
+    tokens.rewind();
+    buf.reset(tokens);
+    try {
+      credentials.readTokenStorageStream(buf);
+      if (LOG.isDebugEnabled()) {
+        for (        Token<? extends TokenIdentifier> tk : credentials.getAllTokens()) {
+          LOG.debug(tk.getService() + " = " + tk.toString());
+        }
+      }
+    }
+ catch (    IOException e) {
+      throw RPCUtil.getRemoteException(e);
+    }
+  }
+  Container container=new ContainerImpl(this.dispatcher,launchContext,credentials,metrics);
+  ContainerId containerID=launchContext.getContainerId();
+  ApplicationId applicationID=containerID.getAppId();
+  if (context.getContainers().putIfAbsent(containerID,container) != null) {
+    throw RPCUtil.getRemoteException("Container " + containerID + " already is running on this node!!");
+  }
+  Application application=new ApplicationImpl(dispatcher,launchContext.getUser(),applicationID,credentials);
+  if (null == context.getApplications().putIfAbsent(applicationID,application)) {
+    LOG.info("Creating a new application reference for app " + applicationID);
+  }
+  dispatcher.getEventHandler().handle(new ApplicationInitEvent(container));
+  StartContainerResponse response=recordFactory.newRecordInstance(StartContainerResponse.class);
+  metrics.launchedContainer();
+  metrics.allocateContainer(launchContext.getResource());
+  return response;
+}

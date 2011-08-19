@@ -1,0 +1,66 @@
+{
+  if (webapp == null) {
+    webapp=new WebApp(){
+      @Override public void setup(){
+      }
+    }
+;
+  }
+  webapp.setName(name);
+  if (conf == null) {
+    conf=new Configuration();
+  }
+  try {
+    if (application != null) {
+      webapp.setHostClass(application.getClass());
+    }
+ else {
+      String cls=inferHostClass();
+      LOG.debug("setting webapp host class to {}",cls);
+      webapp.setHostClass(Class.forName(cls));
+    }
+    if (devMode) {
+      if (port > 0) {
+        try {
+          new URL("http://localhost:" + port + "/__stop").getContent();
+          LOG.info("stopping existing webapp instance");
+          Thread.sleep(100);
+        }
+ catch (        ConnectException e) {
+          LOG.info("no existing webapp instance found: {}",e.toString());
+        }
+catch (        Exception e) {
+          LOG.warn("error stopping existing instance: {}",e.toString());
+        }
+      }
+ else {
+        LOG.error("dev mode does NOT work with ephemeral port!");
+        System.exit(1);
+      }
+    }
+    HttpServer server=new HttpServer(name,bindAddress,port,findPort,conf);
+    server.addGlobalFilter("guice",GuiceFilter.class.getName(),null);
+    webapp.setConf(conf);
+    webapp.setHttpServer(server);
+    server.start();
+    LOG.info("Web app /" + name + " started at "+ server.getPort());
+  }
+ catch (  Exception e) {
+    throw new WebAppException("Error starting http server",e);
+  }
+  Injector injector=Guice.createInjector(webapp,new AbstractModule(){
+    @Override protected void configure(){
+      if (api != null) {
+        bind(api).toInstance(application);
+      }
+    }
+  }
+);
+  LOG.info("Registered webapp guice modules");
+  webapp.setGuiceFilter(injector.getInstance(GuiceFilter.class));
+  if (devMode) {
+    injector.getInstance(Dispatcher.class).setDevMode(devMode);
+    LOG.info("in dev mode!");
+  }
+  return webapp;
+}

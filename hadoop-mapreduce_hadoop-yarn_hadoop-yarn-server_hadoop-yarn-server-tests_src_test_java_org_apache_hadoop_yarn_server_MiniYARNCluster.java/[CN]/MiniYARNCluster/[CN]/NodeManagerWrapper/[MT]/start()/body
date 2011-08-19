@@ -1,0 +1,74 @@
+{
+  try {
+    File localDir=new File(testWorkDir,MiniYARNCluster.this.getName() + "-localDir");
+    localDir.mkdir();
+    LOG.info("Created localDir in " + localDir.getAbsolutePath());
+    getConfig().set(NMConfig.NM_LOCAL_DIR,localDir.getAbsolutePath());
+    File logDir=new File(testWorkDir,MiniYARNCluster.this.getName() + "-logDir");
+    File remoteLogDir=new File(testWorkDir,MiniYARNCluster.this.getName() + "-remoteLogDir");
+    logDir.mkdir();
+    remoteLogDir.mkdir();
+    LOG.info("Created logDir in " + logDir.getAbsolutePath());
+    getConfig().set(NMConfig.NM_LOG_DIR,logDir.getAbsolutePath());
+    getConfig().set(NMConfig.REMOTE_USER_LOG_DIR,remoteLogDir.getAbsolutePath());
+    getConfig().setInt(NMConfig.NM_VMEM_GB,4);
+    nodeManager=new NodeManager(){
+      @Override protected void doSecureLogin() throws IOException {
+      }
+      @Override protected NodeStatusUpdater createNodeStatusUpdater(      Context context,      Dispatcher dispatcher,      NodeHealthCheckerService healthChecker){
+        return new NodeStatusUpdaterImpl(context,dispatcher,healthChecker,metrics){
+          @Override protected ResourceTracker getRMClient(){
+            final ResourceTrackerService rt=resourceManager.getResourceTrackerService();
+            final RecordFactory recordFactory=RecordFactoryProvider.getRecordFactory(null);
+            return new ResourceTracker(){
+              @Override public NodeHeartbeatResponse nodeHeartbeat(              NodeHeartbeatRequest request) throws YarnRemoteException {
+                NodeHeartbeatResponse response=recordFactory.newRecordInstance(NodeHeartbeatResponse.class);
+                try {
+                  response.setHeartbeatResponse(rt.nodeHeartbeat(request).getHeartbeatResponse());
+                }
+ catch (                IOException ioe) {
+                  LOG.info("Exception in heartbeat from node " + request.getNodeStatus().getNodeId(),ioe);
+                  throw RPCUtil.getRemoteException(ioe);
+                }
+                return response;
+              }
+              @Override public RegisterNodeManagerResponse registerNodeManager(              RegisterNodeManagerRequest request) throws YarnRemoteException {
+                RegisterNodeManagerResponse response=recordFactory.newRecordInstance(RegisterNodeManagerResponse.class);
+                try {
+                  response.setRegistrationResponse(rt.registerNodeManager(request).getRegistrationResponse());
+                }
+ catch (                IOException ioe) {
+                  LOG.info("Exception in node registration from " + request.getNodeId().toString(),ioe);
+                  throw RPCUtil.getRemoteException(ioe);
+                }
+                return response;
+              }
+            }
+;
+          }
+        }
+;
+      }
+    }
+;
+    nodeManager.init(getConfig());
+    new Thread(){
+      public void run(){
+        nodeManager.start();
+      }
+    }
+.start();
+    int waitCount=0;
+    while (nodeManager.getServiceState() == STATE.INITED && waitCount++ < 60) {
+      LOG.info("Waiting for NM to start...");
+      Thread.sleep(1000);
+    }
+    if (nodeManager.getServiceState() != STATE.STARTED) {
+      throw new IOException("NodeManager failed to start");
+    }
+    super.start();
+  }
+ catch (  Throwable t) {
+    throw new YarnException(t);
+  }
+}

@@ -1,0 +1,21 @@
+{
+  long now=System.currentTimeMillis();
+  for (  TaskInProgress tip : runningTasks.values()) {
+    if (tip.getRunState() == TaskStatus.State.RUNNING || tip.getRunState() == TaskStatus.State.COMMIT_PENDING || tip.isCleaningup()) {
+      long jobTaskTimeout=tip.getTaskTimeout();
+      if (jobTaskTimeout == 0) {
+        continue;
+      }
+      long timeSinceLastReport=now - tip.getLastProgressReport();
+      if (timeSinceLastReport > jobTaskTimeout && !tip.wasKilled) {
+        String msg="Task " + tip.getTask().getTaskID() + " failed to report status for "+ (timeSinceLastReport / 1000)+ " seconds. Killing!";
+        LOG.info(tip.getTask().getTaskID() + ": " + msg);
+        ReflectionUtils.logThreadInfo(LOG,"lost task",30);
+        tip.reportDiagnosticInfo(msg);
+        myInstrumentation.timedoutTask(tip.getTask().getTaskID());
+        dumpTaskStack(tip);
+        purgeTask(tip,true);
+      }
+    }
+  }
+}

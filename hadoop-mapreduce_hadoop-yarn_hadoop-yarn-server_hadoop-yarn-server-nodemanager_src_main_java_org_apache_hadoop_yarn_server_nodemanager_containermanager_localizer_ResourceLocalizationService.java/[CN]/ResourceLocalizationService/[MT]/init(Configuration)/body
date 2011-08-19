@@ -1,0 +1,40 @@
+{
+  this.recordFactory=RecordFactoryProvider.getRecordFactory(conf);
+  try {
+    FileContext lfs=getLocalFileContext(conf);
+    String[] sLocalDirs=conf.getStrings(NM_LOCAL_DIR,DEFAULT_NM_LOCAL_DIR);
+    localDirs=new ArrayList<Path>(sLocalDirs.length);
+    logDirs=new ArrayList<Path>(sLocalDirs.length);
+    sysDirs=new ArrayList<Path>(sLocalDirs.length);
+    for (    String sLocaldir : sLocalDirs) {
+      Path localdir=new Path(sLocaldir);
+      localDirs.add(localdir);
+      Path userdir=new Path(localdir,ContainerLocalizer.USERCACHE);
+      lfs.mkdir(userdir,null,true);
+      Path filedir=new Path(localdir,ContainerLocalizer.FILECACHE);
+      lfs.mkdir(filedir,null,true);
+      Path sysdir=new Path(localdir,NM_PRIVATE_DIR);
+      lfs.mkdir(sysdir,NM_PRIVATE_PERM,true);
+      sysDirs.add(sysdir);
+    }
+    String[] sLogdirs=conf.getStrings(NM_LOG_DIR,DEFAULT_NM_LOG_DIR);
+    for (    String sLogdir : sLogdirs) {
+      Path logdir=new Path(sLogdir);
+      logDirs.add(logdir);
+      lfs.mkdir(logdir,null,true);
+    }
+  }
+ catch (  IOException e) {
+    throw new YarnException("Failed to initialize LocalizationService",e);
+  }
+  localDirs=Collections.unmodifiableList(localDirs);
+  logDirs=Collections.unmodifiableList(logDirs);
+  sysDirs=Collections.unmodifiableList(sysDirs);
+  cacheTargetSize=conf.getLong(NM_TARGET_CACHE_MB,DEFAULT_NM_TARGET_CACHE_MB) << 20;
+  cacheCleanupPeriod=conf.getLong(NM_CACHE_CLEANUP_MS,DEFAULT_NM_CACHE_CLEANUP_MS);
+  localizationServerAddress=NetUtils.createSocketAddr(conf.get(NM_LOCALIZER_BIND_ADDRESS,DEFAULT_NM_LOCALIZER_BIND_ADDRESS));
+  localizerTracker=new LocalizerTracker(conf);
+  dispatcher.register(LocalizerEventType.class,localizerTracker);
+  cacheCleanup.scheduleWithFixedDelay(new CacheCleanup(dispatcher),cacheCleanupPeriod,cacheCleanupPeriod,TimeUnit.MILLISECONDS);
+  super.init(conf);
+}

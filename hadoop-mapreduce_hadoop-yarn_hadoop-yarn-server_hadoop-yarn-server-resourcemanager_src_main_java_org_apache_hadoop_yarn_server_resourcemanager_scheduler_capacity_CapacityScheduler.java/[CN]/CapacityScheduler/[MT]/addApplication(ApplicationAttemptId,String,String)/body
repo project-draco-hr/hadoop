@@ -1,0 +1,24 @@
+{
+  Queue queue=getQueue(queueName);
+  if (queue == null) {
+    String message="Application " + applicationAttemptId + " submitted by user "+ user+ " to unknown queue: "+ queueName;
+    this.rmContext.getDispatcher().getEventHandler().handle(new RMAppAttemptRejectedEvent(applicationAttemptId,message));
+    return;
+  }
+  if (!(queue instanceof LeafQueue)) {
+    String message="Application " + applicationAttemptId + " submitted by user "+ user+ " to non-leaf queue: "+ queueName;
+    this.rmContext.getDispatcher().getEventHandler().handle(new RMAppAttemptRejectedEvent(applicationAttemptId,message));
+    return;
+  }
+  SchedulerApp SchedulerApp=new SchedulerApp(applicationAttemptId,user,queue,rmContext,null);
+  try {
+    queue.submitApplication(SchedulerApp,user,queueName);
+  }
+ catch (  AccessControlException ace) {
+    this.rmContext.getDispatcher().getEventHandler().handle(new RMAppAttemptRejectedEvent(applicationAttemptId,ace.toString()));
+    return;
+  }
+  applications.put(applicationAttemptId,SchedulerApp);
+  LOG.info("Application Submission: " + applicationAttemptId + ", user: "+ user+ " queue: "+ queue+ ", currently active: "+ applications.size());
+  rmContext.getDispatcher().getEventHandler().handle(new RMAppAttemptEvent(applicationAttemptId,RMAppAttemptEventType.APP_ACCEPTED));
+}

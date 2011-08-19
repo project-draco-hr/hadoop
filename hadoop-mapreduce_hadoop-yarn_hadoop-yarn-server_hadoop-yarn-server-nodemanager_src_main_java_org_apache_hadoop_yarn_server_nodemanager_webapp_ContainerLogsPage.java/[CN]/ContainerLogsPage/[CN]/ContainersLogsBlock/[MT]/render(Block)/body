@@ -1,0 +1,69 @@
+{
+  DIV<Hamlet> div=html.div("#content");
+  ContainerId containerId=ConverterUtils.toContainerId(this.recordFactory,$(CONTAINER_ID));
+  Container container=this.nmContext.getContainers().get(containerId);
+  if (container == null) {
+    div.h1("Unknown container. Container is either not yet running or " + "has already completed or " + "doesn't belong to this node at all.")._();
+  }
+ else   if (EnumSet.of(ContainerState.NEW,ContainerState.LOCALIZING,ContainerState.LOCALIZING).contains(container.getContainerState())) {
+    div.h1("Container is not yet running. Current state is " + container.getContainerState())._();
+  }
+ else   if (EnumSet.of(ContainerState.RUNNING,ContainerState.EXITED_WITH_FAILURE,ContainerState.EXITED_WITH_SUCCESS).contains(container.getContainerState())) {
+    if (!$(CONTAINER_LOG_TYPE).isEmpty()) {
+      File logFile=null;
+      try {
+        logFile=new File(this.logsSelector.getLocalPathToRead(ConverterUtils.toString(containerId.getAppId()) + Path.SEPARATOR + $(CONTAINER_ID)+ Path.SEPARATOR+ $(CONTAINER_LOG_TYPE),this.conf).toUri().getPath());
+      }
+ catch (      Exception e) {
+        div.h1("Cannot find this log on the local disk.")._();
+      }
+      div.h1(logFile == null ? "Unknown LogFile" : logFile.getName());
+      long start=$("start").isEmpty() ? -4 * 1024 : Long.parseLong($("start"));
+      start=start < 0 ? logFile.length() + start : start;
+      start=start < 0 ? 0 : start;
+      long end=$("end").isEmpty() ? logFile.length() : Long.parseLong($("end"));
+      end=end < 0 ? logFile.length() + end : end;
+      end=end < 0 ? logFile.length() : end;
+      if (start > end) {
+        writer().write("Invalid start and end values!");
+      }
+ else {
+        try {
+          long toRead=end - start;
+          if (toRead < logFile.length()) {
+            div._("Showing " + toRead + " bytes. Click ").a(url("containerlogs",$(CONTAINER_ID),logFile.getName()),"here")._(" for full log").br()._();
+          }
+          FileReader reader=new FileReader(logFile);
+          char[] cbuf=new char[65536];
+          reader.skip(start);
+          int len=0;
+          int totalRead=0;
+          writer().write("<pre>");
+          while ((len=reader.read(cbuf,0,(int)toRead)) > 0 && totalRead < (end - start)) {
+            writer().write(cbuf,0,len);
+            totalRead+=len;
+            toRead=toRead - totalRead;
+          }
+          reader.close();
+          writer().write("</pre>");
+        }
+ catch (        IOException e) {
+          writer().write("Exception reading log-file " + StringUtils.stringifyException(e));
+        }
+      }
+      div._();
+    }
+ else {
+      List<File> containerLogsDirs=getContainerLogDirs(this.conf,containerId);
+      for (      File containerLogsDir : containerLogsDirs) {
+        for (        File logFile : containerLogsDir.listFiles()) {
+          div.p().a(url("containerlogs",$(CONTAINER_ID),logFile.getName(),"?start=-4076"),logFile.getName() + " : Total file length is " + logFile.length()+ " bytes.")._();
+        }
+      }
+      div._();
+    }
+  }
+ else {
+    div.h1("Container is no longer running..")._();
+  }
+}

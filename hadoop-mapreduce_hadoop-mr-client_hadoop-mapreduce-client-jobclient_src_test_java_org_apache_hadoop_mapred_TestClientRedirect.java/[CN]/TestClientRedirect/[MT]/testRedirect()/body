@@ -1,0 +1,49 @@
+{
+  Configuration conf=new YarnConfiguration();
+  conf.set(MRConfig.FRAMEWORK_NAME,"yarn");
+  conf.set(YarnConfiguration.APPSMANAGER_ADDRESS,RMADDRESS);
+  conf.set(JHConfig.HS_BIND_ADDRESS,HSHOSTADDRESS);
+  RMService rmService=new RMService("test");
+  rmService.init(conf);
+  rmService.start();
+  AMService amService=new AMService();
+  amService.init(conf);
+  amService.start(conf);
+  amRunning=true;
+  HistoryService historyService=new HistoryService();
+  historyService.init(conf);
+  historyService.start(conf);
+  LOG.info("services started");
+  Cluster cluster=new Cluster(conf);
+  org.apache.hadoop.mapreduce.JobID jobID=new org.apache.hadoop.mapred.JobID("201103121733",1);
+  org.apache.hadoop.mapreduce.Counters counters=cluster.getJob(jobID).getCounters();
+  Iterator<org.apache.hadoop.mapreduce.CounterGroup> it=counters.iterator();
+  while (it.hasNext()) {
+    org.apache.hadoop.mapreduce.CounterGroup group=it.next();
+    LOG.info("Group " + group.getDisplayName());
+    Iterator<org.apache.hadoop.mapreduce.Counter> itc=group.iterator();
+    while (itc.hasNext()) {
+      LOG.info("Counter is " + itc.next().getDisplayName());
+    }
+  }
+  Assert.assertTrue(amContact);
+  LOG.info("Sleeping for 5 seconds before stop for" + " the client socket to not get EOF immediately..");
+  Thread.sleep(5000);
+  amService.stop();
+  amRunning=false;
+  LOG.info("Sleeping for 5 seconds after stop for" + " the server to exit cleanly..");
+  Thread.sleep(5000);
+  counters=cluster.getJob(jobID).getCounters();
+  it=counters.iterator();
+  while (it.hasNext()) {
+    org.apache.hadoop.mapreduce.CounterGroup group=it.next();
+    LOG.info("Group " + group.getDisplayName());
+    Iterator<org.apache.hadoop.mapreduce.Counter> itc=group.iterator();
+    while (itc.hasNext()) {
+      LOG.info("Counter is " + itc.next().getDisplayName());
+    }
+  }
+  Assert.assertTrue(hsContact);
+  rmService.stop();
+  historyService.stop();
+}

@@ -1,0 +1,23 @@
+{
+  FileSystem fs=file.getFileSystem(conf);
+  FSDataInputStream inFile=fs.open(file);
+  inFile.seek(offset);
+  String className=Text.readString(inFile);
+  Class<T> cls;
+  try {
+    cls=(Class<T>)conf.getClassByName(className);
+  }
+ catch (  ClassNotFoundException ce) {
+    IOException wrap=new IOException("Split class " + className + " not found");
+    wrap.initCause(ce);
+    throw wrap;
+  }
+  SerializationFactory factory=new SerializationFactory(conf);
+  Deserializer<T> deserializer=(Deserializer<T>)factory.getDeserializer(cls);
+  deserializer.open(inFile);
+  T split=deserializer.deserialize(null);
+  long pos=inFile.getPos();
+  getCounters().findCounter(TaskCounter.SPLIT_RAW_BYTES).increment(pos - offset);
+  inFile.close();
+  return split;
+}

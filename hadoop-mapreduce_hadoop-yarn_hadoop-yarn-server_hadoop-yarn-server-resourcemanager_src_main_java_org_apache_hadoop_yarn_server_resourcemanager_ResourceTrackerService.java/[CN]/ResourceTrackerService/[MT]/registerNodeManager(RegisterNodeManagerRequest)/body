@@ -1,0 +1,29 @@
+{
+  NodeId nodeId=request.getNodeId();
+  String host=nodeId.getHost();
+  int cmPort=nodeId.getPort();
+  int httpPort=request.getHttpPort();
+  Resource capability=request.getResource();
+  try {
+    if (!this.nodesListManager.isValidNode(host)) {
+      LOG.info("Disallowed NodeManager from  " + host);
+      throw new IOException("Disallowed NodeManager from  " + host);
+    }
+    RMNode rmNode=new RMNodeImpl(nodeId,rmContext,host,cmPort,httpPort,resolve(host),capability);
+    if (this.rmContext.getRMNodes().putIfAbsent(nodeId,rmNode) != null) {
+      throw new IOException("Duplicate registration from the node!");
+    }
+    this.nmLivelinessMonitor.register(nodeId);
+    LOG.info("NodeManager from node " + host + "(cmPort: "+ cmPort+ " httpPort: "+ httpPort+ ") "+ "registered with capability: "+ capability.getMemory()+ ", assigned nodeId "+ nodeId);
+    RegistrationResponse regResponse=recordFactory.newRecordInstance(RegistrationResponse.class);
+    SecretKey secretKey=this.containerTokenSecretManager.createAndGetSecretKey(nodeId.toString());
+    regResponse.setSecretKey(ByteBuffer.wrap(secretKey.getEncoded()));
+    RegisterNodeManagerResponse response=recordFactory.newRecordInstance(RegisterNodeManagerResponse.class);
+    response.setRegistrationResponse(regResponse);
+    return response;
+  }
+ catch (  IOException ioe) {
+    LOG.info("Exception in node registration from " + nodeId.getHost(),ioe);
+    throw RPCUtil.getRemoteException(ioe);
+  }
+}

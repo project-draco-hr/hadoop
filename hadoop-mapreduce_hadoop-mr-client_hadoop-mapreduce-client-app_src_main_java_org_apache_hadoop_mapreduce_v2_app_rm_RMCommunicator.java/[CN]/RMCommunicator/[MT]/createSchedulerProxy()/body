@@ -1,0 +1,31 @@
+{
+  final YarnRPC rpc=YarnRPC.create(getConfig());
+  final Configuration conf=new Configuration(getConfig());
+  final String serviceAddr=conf.get(YarnConfiguration.SCHEDULER_ADDRESS,YarnConfiguration.DEFAULT_SCHEDULER_BIND_ADDRESS);
+  UserGroupInformation currentUser;
+  try {
+    currentUser=UserGroupInformation.getCurrentUser();
+  }
+ catch (  IOException e) {
+    throw new YarnException(e);
+  }
+  if (UserGroupInformation.isSecurityEnabled()) {
+    conf.setClass(YarnConfiguration.YARN_SECURITY_INFO,SchedulerSecurityInfo.class,SecurityInfo.class);
+    String tokenURLEncodedStr=System.getenv().get(ApplicationConstants.APPLICATION_MASTER_TOKEN_ENV_NAME);
+    LOG.debug("AppMasterToken is " + tokenURLEncodedStr);
+    Token<? extends TokenIdentifier> token=new Token<TokenIdentifier>();
+    try {
+      token.decodeFromUrlString(tokenURLEncodedStr);
+    }
+ catch (    IOException e) {
+      throw new YarnException(e);
+    }
+    currentUser.addToken(token);
+  }
+  return currentUser.doAs(new PrivilegedAction<AMRMProtocol>(){
+    @Override public AMRMProtocol run(){
+      return (AMRMProtocol)rpc.getProxy(AMRMProtocol.class,NetUtils.createSocketAddr(serviceAddr),conf);
+    }
+  }
+);
+}

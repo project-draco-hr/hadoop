@@ -1,0 +1,77 @@
+{
+  res.setCharacterEncoding("UTF-8");
+  String uri=req.getRequestURI();
+  if (uri == null) {
+    uri="/";
+  }
+  if (devMode && uri.equals("/__stop")) {
+    res.setStatus(res.SC_NO_CONTENT);
+    LOG.info("dev mode restart requested");
+    prepareToExit();
+    return;
+  }
+  String method=req.getMethod();
+  if (method.equals("OPTIONS")) {
+    doOptions(req,res);
+    return;
+  }
+  if (method.equals("TRACE")) {
+    doTrace(req,res);
+    return;
+  }
+  if (method.equals("HEAD")) {
+    doGet(req,res);
+    return;
+  }
+  String pathInfo=req.getPathInfo();
+  if (pathInfo == null) {
+    pathInfo="/";
+  }
+  Controller.RequestContext rc=injector.getInstance(Controller.RequestContext.class);
+  if (setCookieParams(rc,req) > 0) {
+    Cookie ec=rc.cookies().get(ERROR_COOKIE);
+    if (ec != null) {
+      rc.setStatus(Integer.parseInt(rc.cookies().get(STATUS_COOKIE).getValue()));
+      removeErrorCookies(res,uri);
+      rc.set(Params.ERROR_DETAILS,ec.getValue());
+      render(ErrorPage.class);
+      return;
+    }
+  }
+  rc.prefix=webApp.name();
+  Router.Dest dest=null;
+  try {
+    dest=router.resolve(method,pathInfo);
+  }
+ catch (  WebAppException e) {
+    rc.error=e;
+    if (!e.getMessage().contains("not found")) {
+      rc.setStatus(res.SC_INTERNAL_SERVER_ERROR);
+      render(ErrorPage.class);
+      return;
+    }
+  }
+  if (dest == null) {
+    rc.setStatus(res.SC_NOT_FOUND);
+    render(ErrorPage.class);
+    return;
+  }
+  rc.devMode=devMode;
+  setMoreParams(rc,pathInfo,dest);
+  Controller controller=injector.getInstance(dest.controllerClass);
+  try {
+    dest.action.invoke(controller,(Object[])null);
+    if (!rc.rendered) {
+      if (dest.defaultViewClass != null) {
+        render(dest.defaultViewClass);
+      }
+ else       if (rc.status == 200) {
+        throw new IllegalStateException("No view rendered for 200");
+      }
+    }
+  }
+ catch (  Exception e) {
+    LOG.error("error handling URI: " + uri,e);
+    redirectToErrorPage(res,e,uri,devMode);
+  }
+}

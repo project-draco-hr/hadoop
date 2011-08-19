@@ -1,0 +1,47 @@
+{
+  Job job=context.getJob(taskID.getJobId());
+  Task task=job.getTask(taskID);
+  Map<TaskAttemptId,TaskAttempt> attempts=task.getAttempts();
+  long acceptableRuntime=Long.MIN_VALUE;
+  long result=Long.MIN_VALUE;
+  if (!mayHaveSpeculated.contains(taskID)) {
+    acceptableRuntime=estimator.thresholdRuntime(taskID);
+    if (acceptableRuntime == Long.MAX_VALUE) {
+      return ON_SCHEDULE;
+    }
+  }
+  TaskAttemptId runningTaskAttemptID=null;
+  int numberRunningAttempts=0;
+  for (  TaskAttempt taskAttempt : attempts.values()) {
+    if (taskAttempt.getState() == TaskAttemptState.RUNNING || taskAttempt.getState() == TaskAttemptState.ASSIGNED) {
+      if (++numberRunningAttempts > 1) {
+        return ALREADY_SPECULATING;
+      }
+      runningTaskAttemptID=taskAttempt.getID();
+      long estimatedRunTime=estimator.estimatedRuntime(runningTaskAttemptID);
+      long taskAttemptStartTime=estimator.attemptEnrolledTime(runningTaskAttemptID);
+      if (taskAttemptStartTime > now) {
+        return TOO_NEW;
+      }
+      long estimatedEndTime=estimatedRunTime + taskAttemptStartTime;
+      long estimatedReplacementEndTime=now + estimator.estimatedNewAttemptRuntime(taskID);
+      if (estimatedEndTime < now) {
+        return PROGRESS_IS_GOOD;
+      }
+      if (estimatedReplacementEndTime >= estimatedEndTime) {
+        return TOO_LATE_TO_SPECULATE;
+      }
+      result=estimatedEndTime - estimatedReplacementEndTime;
+    }
+  }
+  if (numberRunningAttempts == 0) {
+    return NOT_RUNNING;
+  }
+  if (acceptableRuntime == Long.MIN_VALUE) {
+    acceptableRuntime=estimator.thresholdRuntime(taskID);
+    if (acceptableRuntime == Long.MAX_VALUE) {
+      return ON_SCHEDULE;
+    }
+  }
+  return result;
+}

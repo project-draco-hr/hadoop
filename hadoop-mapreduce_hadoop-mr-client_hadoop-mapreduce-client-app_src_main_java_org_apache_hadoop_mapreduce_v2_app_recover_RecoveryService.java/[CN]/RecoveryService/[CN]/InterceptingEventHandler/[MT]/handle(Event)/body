@@ -1,0 +1,50 @@
+{
+  if (!recoveryMode) {
+    actualHandler.handle(event);
+    return;
+  }
+ else   if (event.getType() == TaskEventType.T_SCHEDULE) {
+    TaskEvent taskEvent=(TaskEvent)event;
+    if (completedTasks.get(taskEvent.getTaskID()) == null) {
+      LOG.debug("Adding to pending task events " + taskEvent.getTaskID());
+      pendingTaskScheduleEvents.add(taskEvent);
+      return;
+    }
+  }
+ else   if (event.getType() == ContainerAllocator.EventType.CONTAINER_REQ) {
+    TaskAttemptId aId=((ContainerAllocatorEvent)event).getAttemptID();
+    TaskAttemptInfo attInfo=getTaskAttemptInfo(aId);
+    LOG.debug("CONTAINER_REQ " + aId);
+    sendAssignedEvent(aId,attInfo);
+    return;
+  }
+ else   if (event.getType() == TaskCleaner.EventType.TASK_CLEAN) {
+    TaskAttemptId aId=((TaskCleanupEvent)event).getAttemptID();
+    LOG.debug("TASK_CLEAN");
+    actualHandler.handle(new TaskAttemptEvent(aId,TaskAttemptEventType.TA_CLEANUP_DONE));
+    return;
+  }
+ else   if (event.getType() == ContainerLauncher.EventType.CONTAINER_REMOTE_LAUNCH) {
+    TaskAttemptId aId=((ContainerRemoteLaunchEvent)event).getTaskAttemptID();
+    TaskAttemptInfo attInfo=getTaskAttemptInfo(aId);
+    actualHandler.handle(new TaskAttemptEvent(aId,TaskAttemptEventType.TA_CONTAINER_LAUNCHED));
+    sendStatusUpdateEvent(aId,attInfo);
+    TaskAttemptState state=TaskAttemptState.valueOf(attInfo.getTaskStatus());
+switch (state) {
+case SUCCEEDED:
+      LOG.info("Sending done event to " + aId);
+    actualHandler.handle(new TaskAttemptEvent(aId,TaskAttemptEventType.TA_DONE));
+  break;
+case KILLED:
+LOG.info("Sending kill event to " + aId);
+actualHandler.handle(new TaskAttemptEvent(aId,TaskAttemptEventType.TA_KILL));
+break;
+default :
+LOG.info("Sending fail event to " + aId);
+actualHandler.handle(new TaskAttemptEvent(aId,TaskAttemptEventType.TA_FAILMSG));
+break;
+}
+return;
+}
+actualHandler.handle(event);
+}

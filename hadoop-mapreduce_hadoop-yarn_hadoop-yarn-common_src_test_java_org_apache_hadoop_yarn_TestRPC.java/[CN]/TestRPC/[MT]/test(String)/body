@@ -1,0 +1,42 @@
+{
+  Configuration conf=new Configuration();
+  conf.set(YarnRPC.RPC_CLASSNAME,rpcClass);
+  YarnRPC rpc=YarnRPC.create(conf);
+  String bindAddr="localhost:0";
+  InetSocketAddress addr=NetUtils.createSocketAddr(bindAddr);
+  Server server=rpc.getServer(ContainerManager.class,new DummyContainerManager(),addr,conf,null,1);
+  server.start();
+  ContainerManager proxy=(ContainerManager)rpc.getProxy(ContainerManager.class,NetUtils.createSocketAddr("localhost:" + server.getPort()),conf);
+  ContainerLaunchContext containerLaunchContext=recordFactory.newRecordInstance(ContainerLaunchContext.class);
+  containerLaunchContext.setUser("dummy-user");
+  containerLaunchContext.setContainerId(recordFactory.newRecordInstance(ContainerId.class));
+  containerLaunchContext.getContainerId().setAppId(recordFactory.newRecordInstance(ApplicationId.class));
+  containerLaunchContext.getContainerId().getAppId().setId(0);
+  containerLaunchContext.getContainerId().setId(100);
+  containerLaunchContext.setResource(recordFactory.newRecordInstance(Resource.class));
+  StartContainerRequest scRequest=recordFactory.newRecordInstance(StartContainerRequest.class);
+  scRequest.setContainerLaunchContext(containerLaunchContext);
+  proxy.startContainer(scRequest);
+  GetContainerStatusRequest gcsRequest=recordFactory.newRecordInstance(GetContainerStatusRequest.class);
+  gcsRequest.setContainerId(containerLaunchContext.getContainerId());
+  GetContainerStatusResponse response=proxy.getContainerStatus(gcsRequest);
+  ContainerStatus status=response.getStatus();
+  boolean exception=false;
+  try {
+    StopContainerRequest stopRequest=recordFactory.newRecordInstance(StopContainerRequest.class);
+    stopRequest.setContainerId(containerLaunchContext.getContainerId());
+    proxy.stopContainer(stopRequest);
+  }
+ catch (  YarnRemoteException e) {
+    exception=true;
+    System.err.println(e.getMessage());
+    System.err.println(e.getCause().getMessage());
+    Assert.assertTrue(EXCEPTION_MSG.equals(e.getMessage()));
+    Assert.assertTrue(EXCEPTION_CAUSE.equals(e.getCause().getMessage()));
+    System.out.println("Test Exception is " + RPCUtil.toString(e));
+  }
+  Assert.assertTrue(exception);
+  server.close();
+  Assert.assertNotNull(status);
+  Assert.assertEquals(ContainerState.RUNNING,status.getState().RUNNING);
+}

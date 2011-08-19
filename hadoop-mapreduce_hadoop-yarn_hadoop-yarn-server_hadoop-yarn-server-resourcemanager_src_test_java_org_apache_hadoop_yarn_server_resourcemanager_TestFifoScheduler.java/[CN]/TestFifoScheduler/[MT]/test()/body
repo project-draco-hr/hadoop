@@ -1,0 +1,62 @@
+{
+  Logger rootLogger=LogManager.getRootLogger();
+  rootLogger.setLevel(Level.DEBUG);
+  MockRM rm=new MockRM();
+  rm.start();
+  int GB=1024;
+  MockNM nm1=rm.registerNode("h1:1234",6 * GB);
+  MockNM nm2=rm.registerNode("h2:5678",4 * GB);
+  RMApp app1=rm.submitApp(2048);
+  nm1.nodeHeartbeat(true);
+  RMAppAttempt attempt1=app1.getCurrentAppAttempt();
+  MockAM am1=rm.sendAMLaunched(attempt1.getAppAttemptId());
+  am1.registerAppAttempt();
+  Assert.assertEquals(2 * GB,rm.getResourceScheduler().getUsedResource(nm1.getNodeId()).getMemory());
+  RMApp app2=rm.submitApp(2048);
+  nm2.nodeHeartbeat(true);
+  RMAppAttempt attempt2=app2.getCurrentAppAttempt();
+  MockAM am2=rm.sendAMLaunched(attempt2.getAppAttemptId());
+  am2.registerAppAttempt();
+  Assert.assertEquals(2 * GB,rm.getResourceScheduler().getUsedResource(nm2.getNodeId()).getMemory());
+  am1.addRequests(new String[]{"h1","h2"},GB,1,1);
+  AMResponse am1Response=am1.schedule();
+  am2.addRequests(new String[]{"h1","h2"},3 * GB,0,1);
+  AMResponse am2Response=am2.schedule();
+  nm1.nodeHeartbeat(true);
+  while (am1Response.getNewContainerCount() < 1) {
+    LOG.info("Waiting for containers to be created for app 1...");
+    Thread.sleep(1000);
+    am1Response=am1.schedule();
+  }
+  while (am2Response.getNewContainerCount() < 1) {
+    LOG.info("Waiting for containers to be created for app 2...");
+    Thread.sleep(1000);
+    am2Response=am2.schedule();
+  }
+  nm2.nodeHeartbeat(true);
+  List<Container> allocated1=am1Response.getNewContainerList();
+  Assert.assertEquals(1,allocated1.size());
+  Assert.assertEquals(1 * GB,allocated1.get(0).getResource().getMemory());
+  Assert.assertEquals(nm1.getNodeId(),allocated1.get(0).getNodeId());
+  List<Container> allocated2=am2Response.getNewContainerList();
+  Assert.assertEquals(1,allocated2.size());
+  Assert.assertEquals(3 * GB,allocated2.get(0).getResource().getMemory());
+  Assert.assertEquals(nm1.getNodeId(),allocated2.get(0).getNodeId());
+  Assert.assertEquals(0,rm.getResourceScheduler().getAvailableResource(nm1.getNodeId()).getMemory());
+  Assert.assertEquals(2 * GB,rm.getResourceScheduler().getAvailableResource(nm2.getNodeId()).getMemory());
+  Assert.assertEquals(6 * GB,rm.getResourceScheduler().getUsedResource(nm1.getNodeId()).getMemory());
+  Assert.assertEquals(2 * GB,rm.getResourceScheduler().getUsedResource(nm2.getNodeId()).getMemory());
+  Container c1=allocated1.get(0);
+  Assert.assertEquals(GB,c1.getResource().getMemory());
+  c1.setState(ContainerState.COMPLETE);
+  nm1.containerStatus(c1);
+  int waitCount=0;
+  while (attempt1.getJustFinishedContainers().size() < 1 && waitCount++ != 20) {
+    LOG.info("Waiting for containers to be finished for app 1... Tried " + waitCount + " times already..");
+    Thread.sleep(1000);
+  }
+  Assert.assertEquals(1,attempt1.getJustFinishedContainers().size());
+  Assert.assertEquals(1,am1.schedule().getFinishedContainerList().size());
+  Assert.assertEquals(5 * GB,rm.getResourceScheduler().getUsedResource(nm1.getNodeId()).getMemory());
+  rm.stop();
+}

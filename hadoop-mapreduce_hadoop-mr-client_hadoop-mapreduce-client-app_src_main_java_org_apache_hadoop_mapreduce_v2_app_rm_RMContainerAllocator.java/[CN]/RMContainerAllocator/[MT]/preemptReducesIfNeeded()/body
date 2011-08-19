@@ -1,0 +1,22 @@
+{
+  if (reduceResourceReqt == 0) {
+    return;
+  }
+  if (scheduledRequests.maps.size() > 0) {
+    int memLimit=getMemLimit();
+    int availableMemForMap=memLimit - ((assignedRequests.reduces.size() - assignedRequests.preemptionWaitingReduces.size()) * reduceResourceReqt);
+    if (availableMemForMap < mapResourceReqt) {
+      LOG.info("Ramping down all scheduled reduces:" + scheduledRequests.reduces.size());
+      for (      ContainerRequest req : scheduledRequests.reduces.values()) {
+        pendingReduces.add(req);
+      }
+      scheduledRequests.reduces.clear();
+      int premeptionLimit=Math.max(mapResourceReqt,(int)(maxReducePreemptionLimit * memLimit));
+      int preemptMem=Math.min(scheduledRequests.maps.size() * mapResourceReqt,premeptionLimit);
+      int toPreempt=(int)Math.ceil((float)preemptMem / reduceResourceReqt);
+      toPreempt=Math.min(toPreempt,assignedRequests.reduces.size());
+      LOG.info("Going to preempt " + toPreempt);
+      assignedRequests.preemptReduce(toPreempt);
+    }
+  }
+}

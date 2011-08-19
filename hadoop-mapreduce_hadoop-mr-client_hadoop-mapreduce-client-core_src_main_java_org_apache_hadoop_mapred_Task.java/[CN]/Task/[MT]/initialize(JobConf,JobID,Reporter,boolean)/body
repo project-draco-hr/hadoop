@@ -1,0 +1,33 @@
+{
+  jobContext=new JobContextImpl(job,id,reporter);
+  taskContext=new TaskAttemptContextImpl(job,taskId,reporter);
+  if (getState() == TaskStatus.State.UNASSIGNED) {
+    setState(TaskStatus.State.RUNNING);
+  }
+  if (useNewApi) {
+    if (LOG.isDebugEnabled()) {
+      LOG.debug("using new api for output committer");
+    }
+    outputFormat=ReflectionUtils.newInstance(taskContext.getOutputFormatClass(),job);
+    committer=outputFormat.getOutputCommitter(taskContext);
+  }
+ else {
+    committer=conf.getOutputCommitter();
+  }
+  Path outputPath=FileOutputFormat.getOutputPath(conf);
+  if (outputPath != null) {
+    if ((committer instanceof FileOutputCommitter)) {
+      FileOutputFormat.setWorkOutputPath(conf,((FileOutputCommitter)committer).getTempTaskOutputPath(taskContext));
+    }
+ else {
+      FileOutputFormat.setWorkOutputPath(conf,outputPath);
+    }
+  }
+  committer.setupTask(taskContext);
+  Class<? extends ResourceCalculatorPlugin> clazz=conf.getClass(MRConfig.RESOURCE_CALCULATOR_PLUGIN,null,ResourceCalculatorPlugin.class);
+  resourceCalculator=ResourceCalculatorPlugin.getResourceCalculatorPlugin(clazz,conf);
+  LOG.info(" Using ResourceCalculatorPlugin : " + resourceCalculator);
+  if (resourceCalculator != null) {
+    initCpuCumulativeTime=resourceCalculator.getProcResourceValues().getCumulativeCpuTime();
+  }
+}

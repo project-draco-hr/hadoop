@@ -1,0 +1,20 @@
+{
+  conf.set(DFSConfigKeys.DFS_HOSTS,hostsFile.toUri().getPath());
+  int numDatanodes=1;
+  cluster=new MiniDFSCluster.Builder(conf).numNameNodes(numNameNodes).numDataNodes(numDatanodes).setupHostsFile(true).build();
+  cluster.waitActive();
+  ArrayList<String> list=new ArrayList<String>();
+  list.add("invalidhost");
+  writeConfigFile(hostsFile,list);
+  for (int j=0; j < numNameNodes; j++) {
+    refreshNodes(cluster.getNamesystem(j),conf);
+    DFSClient client=getDfsClient(cluster.getNameNode(j),conf);
+    DatanodeInfo[] info=client.datanodeReport(DatanodeReportType.LIVE);
+    for (int i=0; i < 5 && info.length != 0; i++) {
+      LOG.info("Waiting for datanode to be marked dead");
+      Thread.sleep(HEARTBEAT_INTERVAL * 1000);
+      info=client.datanodeReport(DatanodeReportType.LIVE);
+    }
+    assertEquals("Number of live nodes should be 0",0,info.length);
+  }
+}

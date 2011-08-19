@@ -1,0 +1,49 @@
+{
+  DrainDispatcher dispatcher=new DrainDispatcher();
+  dispatcher.init(null);
+  dispatcher.start();
+  try {
+    EventHandler<LocalizationEvent> localizerBus=mock(EventHandler.class);
+    dispatcher.register(LocalizationEventType.class,localizerBus);
+    EventHandler<AuxServicesEvent> auxBus=mock(EventHandler.class);
+    dispatcher.register(AuxServicesEventType.class,auxBus);
+    EventHandler<ContainersLauncherEvent> launchBus=mock(EventHandler.class);
+    dispatcher.register(ContainersLauncherEventType.class,launchBus);
+    ContainerLaunchContext ctxt=mock(ContainerLaunchContext.class);
+    final ContainerId cId=getMockContainerId(9,314159265358979L,4344);
+    when(ctxt.getUser()).thenReturn("yak");
+    when(ctxt.getContainerId()).thenReturn(cId);
+    when(ctxt.getAllLocalResources()).thenReturn(Collections.<String,LocalResource>emptyMap());
+    Random r=new Random();
+    long seed=r.nextLong();
+    r.setSeed(seed);
+    System.out.println("testServiceData seed: " + seed);
+    final Map<String,ByteBuffer> serviceData=createServiceData(r);
+    when(ctxt.getAllServiceData()).thenReturn(serviceData);
+    final Container c=newContainer(dispatcher,ctxt);
+    assertEquals(ContainerState.NEW,c.getContainerState());
+    c.handle(new ContainerEvent(cId,ContainerEventType.INIT_CONTAINER));
+    dispatcher.await();
+    for (    final Map.Entry<String,ByteBuffer> e : serviceData.entrySet()) {
+      ArgumentMatcher<AuxServicesEvent> matchesServiceReq=new ArgumentMatcher<AuxServicesEvent>(){
+        @Override public boolean matches(        Object o){
+          AuxServicesEvent evt=(AuxServicesEvent)o;
+          return e.getKey().equals(evt.getServiceID()) && 0 == e.getValue().compareTo(evt.getServiceData());
+        }
+      }
+;
+      verify(auxBus).handle(argThat(matchesServiceReq));
+    }
+    ArgumentMatcher<ContainersLauncherEvent> matchesLaunchReq=new ArgumentMatcher<ContainersLauncherEvent>(){
+      @Override public boolean matches(      Object o){
+        ContainersLauncherEvent evt=(ContainersLauncherEvent)o;
+        return evt.getType() == ContainersLauncherEventType.LAUNCH_CONTAINER && cId == evt.getContainer().getContainerID();
+      }
+    }
+;
+    verify(launchBus).handle(argThat(matchesLaunchReq));
+  }
+  finally {
+    dispatcher.stop();
+  }
+}

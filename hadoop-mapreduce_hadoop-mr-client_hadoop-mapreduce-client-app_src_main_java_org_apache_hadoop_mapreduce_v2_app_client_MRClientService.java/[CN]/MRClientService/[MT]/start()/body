@@ -1,0 +1,32 @@
+{
+  Configuration conf=new Configuration(getConfig());
+  YarnRPC rpc=YarnRPC.create(conf);
+  InetSocketAddress address=NetUtils.createSocketAddr("0.0.0.0:0");
+  InetAddress hostNameResolved=null;
+  try {
+    hostNameResolved=InetAddress.getLocalHost();
+  }
+ catch (  UnknownHostException e) {
+    throw new YarnException(e);
+  }
+  ClientToAMSecretManager secretManager=null;
+  if (UserGroupInformation.isSecurityEnabled()) {
+    secretManager=new ClientToAMSecretManager();
+    String secretKeyStr=System.getenv(ApplicationConstants.APPLICATION_CLIENT_SECRET_ENV_NAME);
+    byte[] bytes=Base64.decodeBase64(secretKeyStr);
+    ApplicationTokenIdentifier identifier=new ApplicationTokenIdentifier(this.appContext.getApplicationID());
+    secretManager.setMasterKey(identifier,bytes);
+    conf.setClass(YarnConfiguration.YARN_SECURITY_INFO,SchedulerSecurityInfo.class,SecurityInfo.class);
+  }
+  server=rpc.getServer(MRClientProtocol.class,protocolHandler,address,conf,secretManager,conf.getInt(AMConstants.AM_JOB_CLIENT_THREADS,AMConstants.DEFAULT_AM_JOB_CLIENT_THREADS));
+  server.start();
+  this.bindAddress=NetUtils.createSocketAddr(hostNameResolved.getHostAddress() + ":" + server.getPort());
+  LOG.info("Instantiated MRClientService at " + this.bindAddress);
+  try {
+    webApp=WebApps.$for("yarn",AppContext.class,appContext).with(conf).start(new AMWebApp());
+  }
+ catch (  Exception e) {
+    LOG.error("Webapps failed to start. Ignoring for now:",e);
+  }
+  super.start();
+}

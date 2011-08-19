@@ -1,0 +1,71 @@
+{
+  estimator=testedEstimator;
+  clock=new MockClock();
+  dispatcher=new AsyncDispatcher();
+  myJob=null;
+  slotsInUse.set(0);
+  completedMaps.set(0);
+  completedReduces.set(0);
+  successfulSpeculations.set(0);
+  taskTimeSavedBySpeculation.set(0);
+  clock.advanceTime(1000);
+  Configuration conf=new Configuration();
+  myAppContext=new MyAppContext(MAP_TASKS,REDUCE_TASKS);
+  myJob=myAppContext.getAllJobs().values().iterator().next();
+  estimator.contextualize(conf,myAppContext);
+  speculator=new DefaultSpeculator(conf,myAppContext,estimator,clock);
+  dispatcher.register(Speculator.EventType.class,speculator);
+  dispatcher.register(TaskEventType.class,new SpeculationRequestEventHandler());
+  dispatcher.init(conf);
+  dispatcher.start();
+  speculator.init(conf);
+  speculator.start();
+  int undoneMaps=MAP_TASKS;
+  int undoneReduces=REDUCE_TASKS;
+  List<Task> allTasksSequence=new LinkedList<Task>();
+  allTasksSequence.addAll(myJob.getTasks(TaskType.MAP).values());
+  allTasksSequence.addAll(myJob.getTasks(TaskType.REDUCE).values());
+  while (undoneMaps + undoneReduces > 0) {
+    undoneMaps=0;
+    undoneReduces=0;
+    for (    Task task : allTasksSequence) {
+      if (!task.isFinished()) {
+        if (task.getType() == TaskType.MAP) {
+          ++undoneMaps;
+        }
+ else {
+          ++undoneReduces;
+        }
+      }
+      for (      TaskAttempt attempt : task.getAttempts().values()) {
+        if (attempt.getState() == TaskAttemptState.NEW && INITIAL_NUMBER_FREE_SLOTS - slotsInUse.get() >= taskTypeSlots(task.getType())) {
+          MyTaskAttemptImpl attemptImpl=(MyTaskAttemptImpl)attempt;
+          SpeculatorEvent event=new SpeculatorEvent(attempt.getID(),false,clock.getTime());
+          speculator.handle(event);
+          attemptImpl.startUp();
+        }
+ else {
+          TaskAttemptStatus status=new TaskAttemptStatus();
+          status.id=attempt.getID();
+          status.progress=attempt.getProgress();
+          status.stateString=attempt.getState().name();
+          status.taskState=attempt.getState();
+          SpeculatorEvent event=new SpeculatorEvent(status,clock.getTime());
+          speculator.handle(event);
+        }
+      }
+    }
+    long startTime=System.currentTimeMillis();
+    while (!speculator.eventQueueEmpty()) {
+      Thread.yield();
+      if (System.currentTimeMillis() > startTime + 130000) {
+        return;
+      }
+    }
+    clock.advanceTime(1000L);
+    if (clock.getTime() % 10000L == 0L) {
+      speculator.scanForSpeculations();
+    }
+  }
+  Assert.assertEquals("We got the wrong number of successful speculations.",expectedSpeculations,successfulSpeculations.get());
+}

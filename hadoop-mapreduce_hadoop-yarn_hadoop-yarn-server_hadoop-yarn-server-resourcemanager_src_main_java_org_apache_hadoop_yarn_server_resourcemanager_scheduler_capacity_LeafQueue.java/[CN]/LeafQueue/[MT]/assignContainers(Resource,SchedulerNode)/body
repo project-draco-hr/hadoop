@@ -1,0 +1,43 @@
+{
+  LOG.info("DEBUG --- assignContainers:" + " node=" + node.getHostName() + " #applications="+ applications.size());
+  RMContainer reservedContainer=node.getReservedContainer();
+  if (reservedContainer != null) {
+    SchedulerApp application=getApplication(reservedContainer.getApplicationAttemptId());
+    return assignReservedContainer(application,node,reservedContainer,clusterResource);
+  }
+  for (  SchedulerApp application : applications) {
+    LOG.info("DEBUG --- pre-assignContainers for application " + application.getApplicationId());
+    application.showRequests();
+synchronized (application) {
+      Resource userLimit=computeUserLimit(application,clusterResource,Resources.none());
+      setUserResourceLimit(application,userLimit);
+      for (      Priority priority : application.getPriorities()) {
+        if (!needContainers(application,priority)) {
+          continue;
+        }
+        ResourceRequest required=application.getResourceRequest(priority,RMNode.ANY);
+        if (!assignToQueue(clusterResource,required.getCapability())) {
+          return Resources.none();
+        }
+        userLimit=computeUserLimit(application,clusterResource,required.getCapability());
+        if (!assignToUser(application.getUser(),userLimit)) {
+          break;
+        }
+        application.addSchedulingOpportunity(priority);
+        Resource assigned=assignContainersOnNode(clusterResource,node,application,priority,null);
+        if (Resources.greaterThan(assigned,Resources.none())) {
+          Resource assignedResource=application.getResourceRequest(priority,RMNode.ANY).getCapability();
+          allocateResource(clusterResource,application.getUser(),assignedResource);
+          application.resetSchedulingOpportunities(priority);
+          return assignedResource;
+        }
+ else {
+          break;
+        }
+      }
+    }
+    LOG.info("DEBUG --- post-assignContainers for application " + application.getApplicationId());
+    application.showRequests();
+  }
+  return Resources.none();
+}

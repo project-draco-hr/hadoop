@@ -1,0 +1,53 @@
+{
+  this.conf=conf;
+  String stagingDirStr=null;
+  String doneDirStr=null;
+  String userDoneDirStr=null;
+  try {
+    stagingDirStr=JobHistoryUtils.getConfiguredHistoryStagingDirPrefix(conf);
+    doneDirStr=JobHistoryUtils.getConfiguredHistoryIntermediateDoneDirPrefix(conf);
+    userDoneDirStr=JobHistoryUtils.getHistoryIntermediateDoneDirForUser(conf);
+  }
+ catch (  IOException e) {
+    LOG.error("Failed while getting the configured log directories",e);
+    throw new YarnException(e);
+  }
+  try {
+    stagingDirPath=FileSystem.get(conf).makeQualified(new Path(stagingDirStr));
+    stagingDirFS=FileSystem.get(stagingDirPath.toUri(),conf);
+    mkdir(stagingDirFS,stagingDirPath,new FsPermission(JobHistoryUtils.HISTORY_STAGING_DIR_PERMISSIONS));
+  }
+ catch (  IOException e) {
+    LOG.error("Failed while checking for/creating  history staging path: [" + stagingDirPath + "]",e);
+    throw new YarnException(e);
+  }
+  Path doneDirPath=null;
+  try {
+    doneDirPath=FileSystem.get(conf).makeQualified(new Path(doneDirStr));
+    doneDirFS=FileSystem.get(doneDirPath.toUri(),conf);
+    if (!doneDirFS.exists(doneDirPath)) {
+      if (JobHistoryUtils.shouldCreateNonUserDirectory(conf)) {
+        LOG.info("Creating intermediate history logDir: [" + doneDirPath + "] + based on conf. Should ideally be created by the JobHistoryServer: "+ JHConfig.CREATE_HISTORY_INTERMEDIATE_BASE_DIR_KEY);
+        mkdir(doneDirFS,doneDirPath,new FsPermission(JobHistoryUtils.HISTORY_INTERMEDIATE_DONE_DIR_PERMISSIONS.toShort()));
+      }
+ else {
+        String message="Not creating intermediate history logDir: [" + doneDirPath + "] based on conf: "+ JHConfig.CREATE_HISTORY_INTERMEDIATE_BASE_DIR_KEY+ ". Either set to true or pre-create this directory with appropriate permissions";
+        LOG.error(message);
+        throw new YarnException(message);
+      }
+    }
+  }
+ catch (  IOException e) {
+    LOG.error("Failed checking for the existance of history intermediate done directory: [" + doneDirPath + "]");
+    throw new YarnException(e);
+  }
+  try {
+    doneDirPrefixPath=FileSystem.get(conf).makeQualified(new Path(userDoneDirStr));
+    mkdir(doneDirFS,doneDirPrefixPath,new FsPermission(JobHistoryUtils.HISTORY_INTERMEDIATE_USER_DIR_PERMISSIONS));
+  }
+ catch (  IOException e) {
+    LOG.error("Error creating user intermediate history done directory: [ " + doneDirPrefixPath + "]",e);
+    throw new YarnException(e);
+  }
+  super.init(conf);
+}

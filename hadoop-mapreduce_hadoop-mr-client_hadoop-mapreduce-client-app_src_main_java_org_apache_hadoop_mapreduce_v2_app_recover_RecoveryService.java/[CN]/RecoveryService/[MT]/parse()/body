@@ -1,0 +1,20 @@
+{
+  String jobName=TypeConverter.fromYarn(appID).toString();
+  String jobhistoryDir=JobHistoryUtils.getConfiguredHistoryStagingDirPrefix(getConfig());
+  FSDataInputStream in=null;
+  Path historyFile=null;
+  Path histDirPath=FileContext.getFileContext(getConfig()).makeQualified(new Path(jobhistoryDir));
+  FileContext fc=FileContext.getFileContext(histDirPath.toUri(),getConfig());
+  historyFile=fc.makeQualified(JobHistoryUtils.getStagingJobHistoryFile(histDirPath,jobName,startCount - 1));
+  in=fc.open(historyFile);
+  JobHistoryParser parser=new JobHistoryParser(in);
+  jobInfo=parser.parse();
+  Map<org.apache.hadoop.mapreduce.TaskID,TaskInfo> taskInfos=jobInfo.getAllTasks();
+  for (  TaskInfo taskInfo : taskInfos.values()) {
+    if (TaskState.SUCCEEDED.toString().equals(taskInfo.getTaskStatus())) {
+      completedTasks.put(TypeConverter.toYarn(taskInfo.getTaskId()),taskInfo);
+      LOG.info("Read from history task " + TypeConverter.toYarn(taskInfo.getTaskId()));
+    }
+  }
+  LOG.info("Read completed tasks from history " + completedTasks.size());
+}

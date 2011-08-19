@@ -1,0 +1,21 @@
+{
+  String oldJobIDString=job.oldJobId.toString();
+  String user=UserGroupInformation.getCurrentUser().getShortUserName();
+  Path path=MRApps.getStagingAreaDir(job.conf,user);
+  LOG.info("DEBUG --- startJobs:" + " parent=" + path + " child="+ oldJobIDString);
+  job.remoteJobSubmitDir=FileSystem.get(job.conf).makeQualified(new Path(path,oldJobIDString));
+  job.remoteJobConfFile=new Path(job.remoteJobSubmitDir,MRConstants.JOB_CONF_FILE);
+  JobTokenIdentifier identifier=new JobTokenIdentifier(new Text(oldJobIDString));
+  job.jobToken=new Token<JobTokenIdentifier>(identifier,job.jobTokenSecretManager);
+  job.jobToken.setService(identifier.getJobId());
+  job.jobTokenSecretManager.addTokenForJob(oldJobIDString,job.jobToken);
+  LOG.info("Adding job token for " + oldJobIDString + " to jobTokenSecretManager");
+  Credentials tokenStorage=new Credentials();
+  TokenCache.setJobToken(job.jobToken,tokenStorage);
+  if (UserGroupInformation.isSecurityEnabled()) {
+    tokenStorage.addAll(job.fsTokens);
+  }
+  Path remoteJobTokenFile=new Path(job.remoteJobSubmitDir,MRConstants.APPLICATION_TOKENS_FILE);
+  tokenStorage.writeTokenStorageFile(remoteJobTokenFile,job.conf);
+  LOG.info("Writing back the job-token file on the remote file system:" + remoteJobTokenFile.toString());
+}

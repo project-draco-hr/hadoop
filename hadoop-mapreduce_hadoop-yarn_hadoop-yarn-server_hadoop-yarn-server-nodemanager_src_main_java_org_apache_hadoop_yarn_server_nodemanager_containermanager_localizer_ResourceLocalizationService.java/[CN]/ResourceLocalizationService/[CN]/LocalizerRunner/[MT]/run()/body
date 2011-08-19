@@ -1,0 +1,34 @@
+{
+  try {
+    Path nmPrivateCTokensPath=localDirsSelector.getLocalPathForWrite(NM_PRIVATE_DIR + Path.SEPARATOR + String.format(ContainerLocalizer.TOKEN_FILE_NAME_FMT,localizerId),getConfig());
+    DataOutputStream tokenOut=null;
+    try {
+      Credentials credentials=context.getCredentials();
+      FileContext lfs=getLocalFileContext(getConfig());
+      tokenOut=lfs.create(nmPrivateCTokensPath,EnumSet.of(CREATE,OVERWRITE));
+      LOG.info("Writing credentials to the nmPrivate file " + nmPrivateCTokensPath.toString() + ". Credentials list: ");
+      if (LOG.isDebugEnabled()) {
+        for (        Token<? extends TokenIdentifier> tk : credentials.getAllTokens()) {
+          LOG.debug(tk.getService() + " : " + tk.encodeToUrlString());
+        }
+      }
+      credentials.writeTokenStorageToStream(tokenOut);
+    }
+  finally {
+      if (tokenOut != null) {
+        tokenOut.close();
+      }
+    }
+    exec.startLocalizer(nmPrivateCTokensPath,localizationServerAddress,context.getUser(),ConverterUtils.toString(context.getContainerId().getAppId()),localizerId,localDirs);
+  }
+ catch (  Exception e) {
+    LOG.info("Localizer failed",e);
+    ContainerId cId=context.getContainerId();
+    dispatcher.getEventHandler().handle(new ContainerResourceFailedEvent(cId,null,e));
+  }
+ finally {
+    for (    LocalizerResourceRequestEvent event : scheduled.values()) {
+      event.getResource().unlock();
+    }
+  }
+}

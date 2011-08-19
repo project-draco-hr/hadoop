@@ -1,0 +1,43 @@
+{
+  ContainerId containerId=container.getContainerID();
+  String containerIdStr=ConverterUtils.toString(containerId);
+  String appIdStr=ConverterUtils.toString(container.getContainerID().getAppId());
+  String[] sLocalDirs=getConf().getStrings(NMConfig.NM_LOCAL_DIR,NMConfig.DEFAULT_NM_LOCAL_DIR);
+  for (  String sLocalDir : sLocalDirs) {
+    Path usersdir=new Path(sLocalDir,ContainerLocalizer.USERCACHE);
+    Path userdir=new Path(usersdir,userName);
+    Path appCacheDir=new Path(userdir,ContainerLocalizer.APPCACHE);
+    Path appDir=new Path(appCacheDir,appIdStr);
+    Path containerDir=new Path(appDir,containerIdStr);
+    lfs.mkdir(containerDir,null,false);
+  }
+  createContainerLogDirs(appIdStr,containerIdStr);
+  Path launchDst=new Path(containerWorkDir,ContainerLaunch.CONTAINER_SCRIPT);
+  lfs.util().copy(nmPrivateContainerScriptPath,launchDst);
+  Path tokenDst=new Path(containerWorkDir,ContainerLaunch.FINAL_CONTAINER_TOKENS_FILE);
+  lfs.util().copy(nmPrivateTokensPath,tokenDst);
+  ShellCommandExecutor shExec=null;
+  try {
+    lfs.setPermission(launchDst,ContainerExecutor.TASK_LAUNCH_SCRIPT_PERMISSION);
+    String[] command=new String[]{"bash","-c",launchDst.toUri().getPath().toString()};
+    LOG.info("launchContainer: " + Arrays.toString(command));
+    shExec=new ShellCommandExecutor(command,new File(containerWorkDir.toUri().getPath()));
+    launchCommandObjs.put(containerId,shExec);
+    shExec.execute();
+  }
+ catch (  IOException e) {
+    if (null == shExec) {
+      return -1;
+    }
+    int exitCode=shExec.getExitCode();
+    LOG.warn("Exit code from task is : " + exitCode);
+    String message=shExec.getOutput();
+    logOutput(message);
+    container.handle(new ContainerDiagnosticsUpdateEvent(containerId,message));
+    return exitCode;
+  }
+ finally {
+    launchCommandObjs.remove(containerId);
+  }
+  return 0;
+}

@@ -1,0 +1,38 @@
+{
+  InetSocketAddress targetAddr=null;
+  Socket s=null;
+  BlockReader blockReader=null;
+  ExtendedBlock block=lblock.getBlock();
+  try {
+    DatanodeInfo[] nodes=lblock.getLocations();
+    targetAddr=NetUtils.createSocketAddr(nodes[0].getName());
+    s=new Socket();
+    s.connect(targetAddr,HdfsConstants.READ_TIMEOUT);
+    s.setSoTimeout(HdfsConstants.READ_TIMEOUT);
+    String file=BlockReaderFactory.getFileName(targetAddr,"test-blockpoolid",block.getBlockId());
+    blockReader=BlockReaderFactory.newBlockReader(s,file,block,lblock.getBlockToken(),0,-1,conf.getInt("io.file.buffer.size",4096));
+  }
+ catch (  IOException ex) {
+    if (ex instanceof InvalidBlockTokenException) {
+      assertFalse("OP_READ_BLOCK: access token is invalid, " + "when it is expected to be valid",shouldSucceed);
+      return;
+    }
+    fail("OP_READ_BLOCK failed due to reasons other than access token: " + StringUtils.stringifyException(ex));
+  }
+ finally {
+    if (s != null) {
+      try {
+        s.close();
+      }
+ catch (      IOException iex) {
+      }
+ finally {
+        s=null;
+      }
+    }
+  }
+  if (blockReader == null) {
+    fail("OP_READ_BLOCK failed due to reasons other than access token");
+  }
+  assertTrue("OP_READ_BLOCK: access token is valid, " + "when it is expected to be invalid",shouldSucceed);
+}
