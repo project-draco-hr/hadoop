@@ -1,0 +1,63 @@
+{
+  AuthenticationFilter filter=new AuthenticationFilter();
+  try {
+    FilterConfig config=Mockito.mock(FilterConfig.class);
+    Mockito.when(config.getInitParameter(AuthenticationFilter.AUTH_TYPE)).thenReturn(DummyAuthenticationHandler.class.getName());
+    Mockito.when(config.getInitParameter(AuthenticationFilter.AUTH_TOKEN_VALIDITY)).thenReturn("1000");
+    Mockito.when(config.getInitParameter(AuthenticationFilter.SIGNATURE_SECRET)).thenReturn("secret");
+    Mockito.when(config.getInitParameterNames()).thenReturn(new Vector(Arrays.asList(AuthenticationFilter.AUTH_TYPE,AuthenticationFilter.AUTH_TOKEN_VALIDITY,AuthenticationFilter.SIGNATURE_SECRET)).elements());
+    if (withDomainPath) {
+      Mockito.when(config.getInitParameter(AuthenticationFilter.COOKIE_DOMAIN)).thenReturn(".foo.com");
+      Mockito.when(config.getInitParameter(AuthenticationFilter.COOKIE_PATH)).thenReturn("/bar");
+      Mockito.when(config.getInitParameterNames()).thenReturn(new Vector(Arrays.asList(AuthenticationFilter.AUTH_TYPE,AuthenticationFilter.AUTH_TOKEN_VALIDITY,AuthenticationFilter.SIGNATURE_SECRET,AuthenticationFilter.COOKIE_DOMAIN,AuthenticationFilter.COOKIE_PATH)).elements());
+    }
+    filter.init(config);
+    HttpServletRequest request=Mockito.mock(HttpServletRequest.class);
+    Mockito.when(request.getParameter("authenticated")).thenReturn("true");
+    Mockito.when(request.getRequestURL()).thenReturn(new StringBuffer("http://foo:8080/bar"));
+    Mockito.when(request.getQueryString()).thenReturn("authenticated=true");
+    HttpServletResponse response=Mockito.mock(HttpServletResponse.class);
+    FilterChain chain=Mockito.mock(FilterChain.class);
+    final boolean[] calledDoFilter=new boolean[1];
+    Mockito.doAnswer(new Answer(){
+      @Override public Object answer(      InvocationOnMock invocation) throws Throwable {
+        calledDoFilter[0]=true;
+        return null;
+      }
+    }
+).when(chain).doFilter(Mockito.<ServletRequest>anyObject(),Mockito.<ServletResponse>anyObject());
+    final Cookie[] setCookie=new Cookie[1];
+    Mockito.doAnswer(new Answer(){
+      @Override public Object answer(      InvocationOnMock invocation) throws Throwable {
+        Object[] args=invocation.getArguments();
+        setCookie[0]=(Cookie)args[0];
+        return null;
+      }
+    }
+).when(response).addCookie(Mockito.<Cookie>anyObject());
+    filter.doFilter(request,response,chain);
+    assertNotNull(setCookie[0]);
+    assertEquals(AuthenticatedURL.AUTH_COOKIE,setCookie[0].getName());
+    assertTrue(setCookie[0].getValue().contains("u="));
+    assertTrue(setCookie[0].getValue().contains("p="));
+    assertTrue(setCookie[0].getValue().contains("t="));
+    assertTrue(setCookie[0].getValue().contains("e="));
+    assertTrue(setCookie[0].getValue().contains("s="));
+    assertTrue(calledDoFilter[0]);
+    Signer signer=new Signer("secret".getBytes());
+    String value=signer.verifyAndExtract(setCookie[0].getValue());
+    AuthenticationToken token=AuthenticationToken.parse(value);
+    assertEquals(System.currentTimeMillis() + 1000 * 1000,token.getExpires(),100);
+    if (withDomainPath) {
+      assertEquals(".foo.com",setCookie[0].getDomain());
+      assertEquals("/bar",setCookie[0].getPath());
+    }
+ else {
+      assertNull(setCookie[0].getDomain());
+      assertNull(setCookie[0].getPath());
+    }
+  }
+  finally {
+    filter.destroy();
+  }
+}
