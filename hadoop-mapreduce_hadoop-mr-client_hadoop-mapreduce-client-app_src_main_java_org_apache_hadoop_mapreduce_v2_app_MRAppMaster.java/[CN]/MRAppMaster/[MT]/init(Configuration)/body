@@ -33,25 +33,26 @@
   }
   dispatcher.register(Speculator.EventType.class,new SpeculatorEventDispatcher());
   Credentials fsTokens=new Credentials();
-  if (UserGroupInformation.isSecurityEnabled()) {
-    try {
+  UserGroupInformation currentUser=null;
+  try {
+    currentUser=UserGroupInformation.getCurrentUser();
+    if (UserGroupInformation.isSecurityEnabled()) {
       Path jobSubmitDir=FileContext.getLocalFSFileContext().makeQualified(new Path(new File(MRConstants.JOB_SUBMIT_DIR).getAbsolutePath()));
       Path jobTokenFile=new Path(jobSubmitDir,MRConstants.APPLICATION_TOKENS_FILE);
       fsTokens.addAll(Credentials.readTokenStorageFile(jobTokenFile,conf));
       LOG.info("jobSubmitDir=" + jobSubmitDir + " jobTokenFile="+ jobTokenFile);
-      UserGroupInformation currentUser=UserGroupInformation.getCurrentUser();
       for (      Token<? extends TokenIdentifier> tk : fsTokens.getAllTokens()) {
         LOG.info(" --- DEBUG: Token of kind " + tk.getKind() + "in current ugi in the AppMaster for service "+ tk.getService());
         currentUser.addToken(tk);
       }
     }
- catch (    IOException e) {
-      throw new YarnException(e);
-    }
+  }
+ catch (  IOException e) {
+    throw new YarnException(e);
   }
   super.init(conf);
   Configuration config=getConfig();
-  job=createJob(config,fsTokens);
+  job=createJob(config,fsTokens,currentUser.getUserName());
   JobEvent initJobEvent=new JobEvent(job.getID(),JobEventType.JOB_INIT);
   synchronousJobEventDispatcher.handle(initJobEvent);
   dispatcher.getEventHandler().handle(new SpeculatorEvent(job.getID(),clock.getTime()));
