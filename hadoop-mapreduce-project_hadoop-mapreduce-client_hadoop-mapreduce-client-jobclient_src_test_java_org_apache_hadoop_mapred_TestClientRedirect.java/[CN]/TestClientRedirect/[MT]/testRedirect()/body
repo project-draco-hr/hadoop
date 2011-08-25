@@ -17,15 +17,7 @@
   Cluster cluster=new Cluster(conf);
   org.apache.hadoop.mapreduce.JobID jobID=new org.apache.hadoop.mapred.JobID("201103121733",1);
   org.apache.hadoop.mapreduce.Counters counters=cluster.getJob(jobID).getCounters();
-  Iterator<org.apache.hadoop.mapreduce.CounterGroup> it=counters.iterator();
-  while (it.hasNext()) {
-    org.apache.hadoop.mapreduce.CounterGroup group=it.next();
-    LOG.info("Group " + group.getDisplayName());
-    Iterator<org.apache.hadoop.mapreduce.Counter> itc=group.iterator();
-    while (itc.hasNext()) {
-      LOG.info("Counter is " + itc.next().getDisplayName());
-    }
-  }
+  validateCounters(counters);
   Assert.assertTrue(amContact);
   LOG.info("Sleeping for 5 seconds before stop for" + " the client socket to not get EOF immediately..");
   Thread.sleep(5000);
@@ -33,16 +25,32 @@
   amRunning=false;
   LOG.info("Sleeping for 5 seconds after stop for" + " the server to exit cleanly..");
   Thread.sleep(5000);
+  amRestarting=true;
   counters=cluster.getJob(jobID).getCounters();
-  it=counters.iterator();
-  while (it.hasNext()) {
-    org.apache.hadoop.mapreduce.CounterGroup group=it.next();
-    LOG.info("Group " + group.getDisplayName());
-    Iterator<org.apache.hadoop.mapreduce.Counter> itc=group.iterator();
-    while (itc.hasNext()) {
-      LOG.info("Counter is " + itc.next().getDisplayName());
-    }
-  }
+  Assert.assertEquals(0,counters.countCounters());
+  Job job=cluster.getJob(jobID);
+  org.apache.hadoop.mapreduce.TaskID taskId=new org.apache.hadoop.mapreduce.TaskID(jobID,TaskType.MAP,0);
+  TaskAttemptID tId=new TaskAttemptID(taskId,0);
+  job.killJob();
+  job.killTask(tId);
+  job.failTask(tId);
+  job.getTaskCompletionEvents(0,100);
+  job.getStatus();
+  job.getTaskDiagnostics(tId);
+  job.getTaskReports(TaskType.MAP);
+  job.getTrackingURL();
+  amRestarting=false;
+  amService=new AMService();
+  amService.init(conf);
+  amService.start(conf);
+  amRunning=true;
+  amContact=false;
+  counters=cluster.getJob(jobID).getCounters();
+  validateCounters(counters);
+  Assert.assertTrue(amContact);
+  amRunning=false;
+  counters=cluster.getJob(jobID).getCounters();
+  validateCounters(counters);
   Assert.assertTrue(hsContact);
   rmService.stop();
   historyService.stop();
