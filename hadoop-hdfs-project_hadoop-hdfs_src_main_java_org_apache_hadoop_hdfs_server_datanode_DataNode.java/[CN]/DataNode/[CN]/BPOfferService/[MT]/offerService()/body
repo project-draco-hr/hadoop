@@ -1,5 +1,5 @@
 {
-  LOG.info("For namenode " + nnAddr + " using BLOCKREPORT_INTERVAL of "+ blockReportInterval+ "msec"+ " Initial delay: "+ initialBlockReportDelay+ "msec"+ "; heartBeatInterval="+ heartBeatInterval);
+  LOG.info("For namenode " + nnAddr + " using DELETEREPORT_INTERVAL of "+ deleteReportInterval+ " msec "+ " BLOCKREPORT_INTERVAL of "+ blockReportInterval+ "msec"+ " Initial delay: "+ initialBlockReportDelay+ "msec"+ "; heartBeatInterval="+ heartBeatInterval);
   while (shouldRun && shouldServiceRun) {
     try {
       long startTime=now();
@@ -11,17 +11,20 @@
           if (!processCommand(cmds))           continue;
         }
       }
-      reportReceivedBlocks();
+      if (pendingReceivedRequests > 0 || (startTime - lastDeletedReport > deleteReportInterval)) {
+        reportReceivedDeletedBlocks();
+        lastDeletedReport=startTime;
+      }
       DatanodeCommand cmd=blockReport();
       processCommand(cmd);
       if (blockScanner != null) {
         blockScanner.addBlockPool(this.blockPoolId);
       }
       long waitTime=heartBeatInterval - (System.currentTimeMillis() - lastHeartbeat);
-synchronized (receivedBlockList) {
-        if (waitTime > 0 && receivedBlockList.size() == 0) {
+synchronized (receivedAndDeletedBlockList) {
+        if (waitTime > 0 && pendingReceivedRequests == 0) {
           try {
-            receivedBlockList.wait(waitTime);
+            receivedAndDeletedBlockList.wait(waitTime);
           }
  catch (          InterruptedException ie) {
             LOG.warn("BPOfferService for block pool=" + this.getBlockPoolId() + " received exception:"+ ie);
