@@ -1,0 +1,31 @@
+{
+  long totalBlocks=0, removedBlocks=0;
+  List<FSVolume> failedVols=volumes.checkDirs();
+  if (failedVols == null) {
+    return;
+  }
+  long mlsec=System.currentTimeMillis();
+synchronized (this) {
+    for (    FSVolume fv : failedVols) {
+      for (      String bpid : fv.map.keySet()) {
+        Iterator<ReplicaInfo> ib=volumeMap.replicas(bpid).iterator();
+        while (ib.hasNext()) {
+          ReplicaInfo b=ib.next();
+          totalBlocks++;
+          if (b.getVolume() == fv) {
+            DataNode.LOG.warn("Removing replica " + bpid + ":"+ b.getBlockId()+ " on failed volume "+ fv.currentDir.getAbsolutePath());
+            ib.remove();
+            removedBlocks++;
+          }
+        }
+      }
+    }
+  }
+  mlsec=System.currentTimeMillis() - mlsec;
+  DataNode.LOG.warn("Removed " + removedBlocks + " out of "+ totalBlocks+ "(took "+ mlsec+ " millisecs)");
+  StringBuilder sb=new StringBuilder();
+  for (  FSVolume fv : failedVols) {
+    sb.append(fv.currentDir.getAbsolutePath() + ";");
+  }
+  throw new DiskErrorException("DataNode failed volumes:" + sb);
+}

@@ -1,0 +1,46 @@
+{
+  Context nmContext=new NodeManager.NMContext();
+  ResourceView resourceView=new ResourceView(){
+    @Override public long getVmemAllocatedForContainers(){
+      return 0;
+    }
+    @Override public long getPmemAllocatedForContainers(){
+      return 0;
+    }
+  }
+;
+  WebServer server=new WebServer(nmContext,resourceView);
+  Configuration conf=new Configuration();
+  conf.set(NMConfig.NM_LOCAL_DIR,testRootDir.getAbsolutePath());
+  server.init(conf);
+  server.start();
+  RecordFactory recordFactory=RecordFactoryProvider.getRecordFactory(conf);
+  Dispatcher dispatcher=new AsyncDispatcher();
+  String user="nobody";
+  long clusterTimeStamp=1234;
+  ApplicationId appId=BuilderUtils.newApplicationId(recordFactory,clusterTimeStamp,1);
+  Application app=mock(Application.class);
+  when(app.getUser()).thenReturn(user);
+  when(app.getAppId()).thenReturn(appId);
+  nmContext.getApplications().put(appId,app);
+  ApplicationAttemptId appAttemptId=recordFactory.newRecordInstance(ApplicationAttemptId.class);
+  appAttemptId.setApplicationId(appId);
+  appAttemptId.setAttemptId(1);
+  ContainerId container1=BuilderUtils.newContainerId(recordFactory,appId,appAttemptId,0);
+  ContainerId container2=BuilderUtils.newContainerId(recordFactory,appId,appAttemptId,1);
+  NodeManagerMetrics metrics=mock(NodeManagerMetrics.class);
+  for (  ContainerId containerId : new ContainerId[]{container1,container2}) {
+    ContainerLaunchContext launchContext=recordFactory.newRecordInstance(ContainerLaunchContext.class);
+    launchContext.setContainerId(containerId);
+    launchContext.setUser(user);
+    Container container=new ContainerImpl(dispatcher,launchContext,null,metrics){
+      @Override public ContainerState getContainerState(){
+        return ContainerState.RUNNING;
+      }
+    }
+;
+    nmContext.getContainers().put(containerId,container);
+    nmContext.getApplications().get(containerId.getAppId()).getContainers().put(containerId,container);
+    writeContainerLogs(conf,nmContext,containerId);
+  }
+}

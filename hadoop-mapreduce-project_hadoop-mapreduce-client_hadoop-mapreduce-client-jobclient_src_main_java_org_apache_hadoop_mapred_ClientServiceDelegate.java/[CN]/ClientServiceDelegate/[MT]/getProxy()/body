@@ -1,0 +1,56 @@
+{
+  if (!forceRefresh && realProxy != null) {
+    return realProxy;
+  }
+  ApplicationReport application=rm.getApplicationReport(appId);
+  String serviceAddr=null;
+  while (ApplicationState.RUNNING.equals(application.getState())) {
+    try {
+      if (application.getHost() == null || "".equals(application.getHost())) {
+        LOG.debug("AM not assigned to Job. Waiting to get the AM ...");
+        Thread.sleep(2000);
+        LOG.debug("Application state is " + application.getState());
+        application=rm.getApplicationReport(appId);
+        continue;
+      }
+      serviceAddr=application.getHost() + ":" + application.getRpcPort();
+      if (UserGroupInformation.isSecurityEnabled()) {
+        String clientTokenEncoded=application.getClientToken();
+        Token<ApplicationTokenIdentifier> clientToken=new Token<ApplicationTokenIdentifier>();
+        clientToken.decodeFromUrlString(clientTokenEncoded);
+        clientToken.setService(new Text(application.getHost() + ":" + application.getRpcPort()));
+        UserGroupInformation.getCurrentUser().addToken(clientToken);
+      }
+      LOG.info("Tracking Url of JOB is " + application.getTrackingUrl());
+      LOG.info("Connecting to " + serviceAddr);
+      instantiateAMProxy(serviceAddr);
+      return realProxy;
+    }
+ catch (    Exception e) {
+      LOG.info("Could not connect to " + serviceAddr + ". Waiting for getting the latest AM address...");
+      try {
+        Thread.sleep(2000);
+      }
+ catch (      InterruptedException e1) {
+      }
+      application=rm.getApplicationReport(appId);
+    }
+  }
+  if (application.getState() == ApplicationState.NEW || application.getState() == ApplicationState.SUBMITTED) {
+    realProxy=null;
+    return NOTSTARTEDJOB;
+  }
+  if (application.getState() == ApplicationState.FAILED) {
+    realProxy=null;
+    return FAILEDJOB;
+  }
+  if (application.getState() == ApplicationState.KILLED) {
+    realProxy=null;
+    return KILLEDJOB;
+  }
+  if (application.getState() == ApplicationState.SUCCEEDED) {
+    LOG.info("Application state is completed. " + "Redirecting to job history server " + serviceAddr);
+    realProxy=historyServerProxy;
+  }
+  return realProxy;
+}

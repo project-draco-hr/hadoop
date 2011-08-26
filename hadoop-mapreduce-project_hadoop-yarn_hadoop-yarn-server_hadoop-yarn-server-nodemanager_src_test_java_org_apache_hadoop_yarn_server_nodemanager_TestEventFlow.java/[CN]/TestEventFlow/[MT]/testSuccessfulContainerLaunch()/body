@@ -1,0 +1,50 @@
+{
+  FileContext localFS=FileContext.getLocalFSFileContext();
+  localFS.delete(new Path(localDir.getAbsolutePath()),true);
+  localFS.delete(new Path(localLogDir.getAbsolutePath()),true);
+  localFS.delete(new Path(remoteLogDir.getAbsolutePath()),true);
+  localDir.mkdir();
+  localLogDir.mkdir();
+  remoteLogDir.mkdir();
+  Context context=new NMContext();
+  YarnConfiguration conf=new YarnConfiguration();
+  conf.set(NMConfig.NM_LOCAL_DIR,localDir.getAbsolutePath());
+  conf.set(NMConfig.NM_LOG_DIR,localLogDir.getAbsolutePath());
+  conf.set(NMConfig.REMOTE_USER_LOG_DIR,remoteLogDir.getAbsolutePath());
+  ContainerExecutor exec=new DefaultContainerExecutor();
+  exec.setConf(conf);
+  DeletionService del=new DeletionService(exec);
+  Dispatcher dispatcher=new AsyncDispatcher();
+  NodeHealthCheckerService healthChecker=null;
+  NodeManagerMetrics metrics=NodeManagerMetrics.create();
+  NodeStatusUpdater nodeStatusUpdater=new NodeStatusUpdaterImpl(context,dispatcher,healthChecker,metrics){
+    @Override protected ResourceTracker getRMClient(){
+      return new LocalRMInterface();
+    }
+    @Override protected void startStatusUpdater(){
+      return;
+    }
+  }
+;
+  DummyContainerManager containerManager=new DummyContainerManager(context,exec,del,nodeStatusUpdater,metrics);
+  containerManager.init(conf);
+  containerManager.start();
+  ContainerLaunchContext launchContext=recordFactory.newRecordInstance(ContainerLaunchContext.class);
+  ContainerId cID=recordFactory.newRecordInstance(ContainerId.class);
+  cID.setAppId(recordFactory.newRecordInstance(ApplicationId.class));
+  ApplicationAttemptId atId=recordFactory.newRecordInstance(ApplicationAttemptId.class);
+  atId.setApplicationId(cID.getAppId());
+  cID.setAppAttemptId(atId);
+  launchContext.setContainerId(cID);
+  launchContext.setUser("testing");
+  launchContext.setResource(recordFactory.newRecordInstance(Resource.class));
+  StartContainerRequest request=recordFactory.newRecordInstance(StartContainerRequest.class);
+  request.setContainerLaunchContext(launchContext);
+  containerManager.startContainer(request);
+  BaseContainerManagerTest.waitForContainerState(containerManager,cID,ContainerState.RUNNING);
+  StopContainerRequest stopRequest=recordFactory.newRecordInstance(StopContainerRequest.class);
+  stopRequest.setContainerId(cID);
+  containerManager.stopContainer(stopRequest);
+  BaseContainerManagerTest.waitForContainerState(containerManager,cID,ContainerState.COMPLETE);
+  containerManager.stop();
+}

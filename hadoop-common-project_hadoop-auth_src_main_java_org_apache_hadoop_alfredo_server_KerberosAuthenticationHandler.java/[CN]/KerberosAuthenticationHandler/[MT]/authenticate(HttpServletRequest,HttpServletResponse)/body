@@ -1,0 +1,64 @@
+{
+  AuthenticationToken token=null;
+  String authorization=request.getHeader(KerberosAuthenticator.AUTHORIZATION);
+  if (authorization == null || !authorization.startsWith(KerberosAuthenticator.NEGOTIATE)) {
+    response.setHeader(KerberosAuthenticator.WWW_AUTHENTICATE,KerberosAuthenticator.NEGOTIATE);
+    response.setStatus(HttpServletResponse.SC_UNAUTHORIZED);
+    if (authorization == null) {
+      LOG.trace("SPNEGO starting");
+    }
+ else {
+      LOG.warn("'" + KerberosAuthenticator.AUTHORIZATION + "' does not start with '"+ KerberosAuthenticator.NEGOTIATE+ "' :  {}",authorization);
+    }
+  }
+ else {
+    authorization=authorization.substring(KerberosAuthenticator.NEGOTIATE.length()).trim();
+    final Base64 base64=new Base64(0);
+    final byte[] clientToken=base64.decode(authorization);
+    Subject serverSubject=loginContext.getSubject();
+    try {
+      token=Subject.doAs(serverSubject,new PrivilegedExceptionAction<AuthenticationToken>(){
+        @Override public AuthenticationToken run() throws Exception {
+          AuthenticationToken token=null;
+          GSSContext gssContext=null;
+          try {
+            gssContext=gssManager.createContext((GSSCredential)null);
+            byte[] serverToken=gssContext.acceptSecContext(clientToken,0,clientToken.length);
+            if (serverToken != null && serverToken.length > 0) {
+              String authenticate=base64.encodeToString(serverToken);
+              response.setHeader(KerberosAuthenticator.WWW_AUTHENTICATE,KerberosAuthenticator.NEGOTIATE + " " + authenticate);
+            }
+            if (!gssContext.isEstablished()) {
+              response.setStatus(HttpServletResponse.SC_UNAUTHORIZED);
+              LOG.trace("SPNEGO in progress");
+            }
+ else {
+              String clientPrincipal=gssContext.getSrcName().toString();
+              KerberosName kerberosName=new KerberosName(clientPrincipal);
+              String userName=kerberosName.getShortName();
+              token=new AuthenticationToken(userName,clientPrincipal,TYPE);
+              response.setStatus(HttpServletResponse.SC_OK);
+              LOG.trace("SPNEGO completed for principal [{}]",clientPrincipal);
+            }
+          }
+  finally {
+            if (gssContext != null) {
+              gssContext.dispose();
+            }
+          }
+          return token;
+        }
+      }
+);
+    }
+ catch (    PrivilegedActionException ex) {
+      if (ex.getException() instanceof IOException) {
+        throw (IOException)ex.getException();
+      }
+ else {
+        throw new AuthenticationException(ex.getException());
+      }
+    }
+  }
+  return token;
+}

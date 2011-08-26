@@ -1,0 +1,53 @@
+{
+  checkBlock(previous);
+  long fileLength, blockSize;
+  int replication;
+  DatanodeDescriptor clientNode=null;
+  Block newBlock=null;
+  if (NameNode.stateChangeLog.isDebugEnabled()) {
+    NameNode.stateChangeLog.debug("BLOCK* NameSystem.getAdditionalBlock: file " + src + " for "+ clientName);
+  }
+  writeLock();
+  try {
+    if (isInSafeMode()) {
+      throw new SafeModeException("Cannot add block to " + src,safeMode);
+    }
+    checkFsObjectLimit();
+    INodeFileUnderConstruction pendingFile=checkLease(src,clientName);
+    commitOrCompleteLastBlock(pendingFile,ExtendedBlock.getLocalBlock(previous));
+    if (!checkFileProgress(pendingFile,false)) {
+      throw new NotReplicatedYetException("Not replicated yet:" + src);
+    }
+    fileLength=pendingFile.computeContentSummary().getLength();
+    blockSize=pendingFile.getPreferredBlockSize();
+    clientNode=pendingFile.getClientNode();
+    replication=(int)pendingFile.getReplication();
+  }
+  finally {
+    writeUnlock();
+  }
+  final DatanodeDescriptor targets[]=blockManager.chooseTarget(src,replication,clientNode,excludedNodes,blockSize);
+  writeLock();
+  try {
+    if (isInSafeMode()) {
+      throw new SafeModeException("Cannot add block to " + src,safeMode);
+    }
+    INode[] pathINodes=dir.getExistingPathINodes(src);
+    int inodesLen=pathINodes.length;
+    checkLease(src,clientName,pathINodes[inodesLen - 1]);
+    INodeFileUnderConstruction pendingFile=(INodeFileUnderConstruction)pathINodes[inodesLen - 1];
+    if (!checkFileProgress(pendingFile,false)) {
+      throw new NotReplicatedYetException("Not replicated yet:" + src);
+    }
+    newBlock=allocateBlock(src,pathINodes,targets);
+    for (    DatanodeDescriptor dn : targets) {
+      dn.incBlocksScheduled();
+    }
+  }
+  finally {
+    writeUnlock();
+  }
+  LocatedBlock b=new LocatedBlock(getExtendedBlock(newBlock),targets,fileLength);
+  blockManager.setBlockToken(b,BlockTokenSecretManager.AccessMode.WRITE);
+  return b;
+}

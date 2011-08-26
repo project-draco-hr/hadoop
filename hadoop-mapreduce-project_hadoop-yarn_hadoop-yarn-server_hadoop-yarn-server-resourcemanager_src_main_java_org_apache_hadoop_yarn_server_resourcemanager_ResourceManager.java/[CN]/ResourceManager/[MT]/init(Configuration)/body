@@ -1,0 +1,40 @@
+{
+  this.rmDispatcher=new AsyncDispatcher();
+  addIfService(this.rmDispatcher);
+  this.containerAllocationExpirer=new ContainerAllocationExpirer(this.rmDispatcher);
+  addService(this.containerAllocationExpirer);
+  AMLivelinessMonitor amLivelinessMonitor=createAMLivelinessMonitor();
+  addService(amLivelinessMonitor);
+  this.rmContext=new RMContextImpl(this.store,this.rmDispatcher,this.containerAllocationExpirer,amLivelinessMonitor);
+  addService(nodesListManager);
+  this.conf=new YarnConfiguration(conf);
+  this.scheduler=createScheduler();
+  this.schedulerDispatcher=new SchedulerEventDispatcher(this.scheduler);
+  addService(this.schedulerDispatcher);
+  this.rmDispatcher.register(SchedulerEventType.class,this.schedulerDispatcher);
+  this.rmDispatcher.register(RMAppEventType.class,new ApplicationEventDispatcher(this.rmContext));
+  this.rmDispatcher.register(RMAppAttemptEventType.class,new ApplicationAttemptEventDispatcher(this.rmContext));
+  this.rmDispatcher.register(RMNodeEventType.class,new NodeEventDispatcher(this.rmContext));
+  this.appTokenSecretManager.setMasterKey(ApplicationTokenSecretManager.createSecretKey("Dummy".getBytes()));
+  this.nmLivelinessMonitor=createNMLivelinessMonitor();
+  addService(this.nmLivelinessMonitor);
+  this.resourceTracker=createResourceTrackerService();
+  addService(resourceTracker);
+  try {
+    this.scheduler.reinitialize(this.conf,this.containerTokenSecretManager,this.rmContext);
+  }
+ catch (  IOException ioe) {
+    throw new RuntimeException("Failed to initialize scheduler",ioe);
+  }
+  masterService=createApplicationMasterService();
+  addService(masterService);
+  clientRM=createClientRMService();
+  addService(clientRM);
+  this.rmAppManager=createRMAppManager();
+  this.rmDispatcher.register(RMAppManagerEventType.class,this.rmAppManager);
+  adminService=createAdminService();
+  addService(adminService);
+  this.applicationMasterLauncher=createAMLauncher();
+  addService(applicationMasterLauncher);
+  super.init(conf);
+}

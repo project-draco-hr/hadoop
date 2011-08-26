@@ -1,0 +1,41 @@
+{
+  LOG.info("History Cleaner started");
+  currentTime=System.currentTimeMillis();
+  boolean halted=false;
+  try {
+    List<FileStatus> serialDirList=findTimestampedDirectories();
+    Collections.sort(serialDirList);
+    for (    FileStatus serialDir : serialDirList) {
+      List<FileStatus> historyFileList=scanDirectoryForHistoryFiles(serialDir.getPath(),doneDirFc);
+      for (      FileStatus historyFile : historyFileList) {
+        JobIndexInfo jobIndexInfo=FileNameIndexUtils.getIndexInfo(historyFile.getPath().getName());
+        long effectiveTimestamp=getEffectiveTimestamp(jobIndexInfo.getFinishTime(),historyFile);
+        if (shouldDelete(effectiveTimestamp)) {
+          String confFileName=JobHistoryUtils.getIntermediateConfFileName(jobIndexInfo.getJobId());
+          MetaInfo metaInfo=new MetaInfo(historyFile.getPath(),new Path(historyFile.getPath().getParent(),confFileName),null,jobIndexInfo);
+          delete(metaInfo);
+        }
+ else {
+          halted=true;
+          break;
+        }
+      }
+      if (!halted) {
+        deleteDir(serialDir.getPath());
+        removeDirectoryFromSerialNumberIndex(serialDir.getPath());
+synchronized (existingDoneSubdirs) {
+          existingDoneSubdirs.remove(serialDir.getPath());
+        }
+      }
+ else {
+        break;
+      }
+    }
+  }
+ catch (  IOException e) {
+    LOG.warn("Error in History cleaner run",e);
+  }
+  LOG.info("History Cleaner complete");
+  LOG.info("FilesDeleted: " + filesDeleted);
+  LOG.info("Directories Deleted: " + dirsDeleted);
+}

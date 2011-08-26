@@ -1,0 +1,33 @@
+{
+  initializeGenericKeys(conf);
+  InetSocketAddress socAddr=getRpcServerAddress(conf);
+  UserGroupInformation.setConfiguration(conf);
+  loginAsNameNodeUser(conf);
+  int handlerCount=conf.getInt(DFS_DATANODE_HANDLER_COUNT_KEY,DFS_DATANODE_HANDLER_COUNT_DEFAULT);
+  NameNode.initMetrics(conf,this.getRole());
+  loadNamesystem(conf);
+  InetSocketAddress dnSocketAddr=getServiceRpcServerAddress(conf);
+  if (dnSocketAddr != null) {
+    int serviceHandlerCount=conf.getInt(DFS_NAMENODE_SERVICE_HANDLER_COUNT_KEY,DFS_NAMENODE_SERVICE_HANDLER_COUNT_DEFAULT);
+    this.serviceRpcServer=RPC.getServer(NamenodeProtocols.class,this,dnSocketAddr.getHostName(),dnSocketAddr.getPort(),serviceHandlerCount,false,conf,namesystem.getDelegationTokenSecretManager());
+    this.serviceRPCAddress=this.serviceRpcServer.getListenerAddress();
+    setRpcServiceServerAddress(conf);
+  }
+  this.server=RPC.getServer(NamenodeProtocols.class,this,socAddr.getHostName(),socAddr.getPort(),handlerCount,false,conf,namesystem.getDelegationTokenSecretManager());
+  if (serviceAuthEnabled=conf.getBoolean(CommonConfigurationKeys.HADOOP_SECURITY_AUTHORIZATION,false)) {
+    this.server.refreshServiceAcl(conf,new HDFSPolicyProvider());
+    if (this.serviceRpcServer != null) {
+      this.serviceRpcServer.refreshServiceAcl(conf,new HDFSPolicyProvider());
+    }
+  }
+  this.rpcAddress=this.server.getListenerAddress();
+  setRpcServerAddress(conf);
+  try {
+    validateConfigurationSettings(conf);
+  }
+ catch (  IOException e) {
+    LOG.fatal(e.toString());
+    throw e;
+  }
+  activate(conf);
+}

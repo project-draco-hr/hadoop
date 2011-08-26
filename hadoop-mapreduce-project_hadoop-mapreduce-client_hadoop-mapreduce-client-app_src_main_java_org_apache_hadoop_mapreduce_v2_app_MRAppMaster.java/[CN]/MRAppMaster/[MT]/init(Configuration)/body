@@ -1,0 +1,77 @@
+{
+  context=new RunningAppContext();
+  appName=conf.get(MRJobConfig.JOB_NAME,"<missing app name>");
+  if (conf.getBoolean(AMConstants.RECOVERY_ENABLE,false) && startCount > 1) {
+    LOG.info("Recovery is enabled. Will try to recover from previous life.");
+    Recovery recoveryServ=new RecoveryService(appID,clock,startCount);
+    addIfService(recoveryServ);
+    dispatcher=recoveryServ.getDispatcher();
+    clock=recoveryServ.getClock();
+    completedTasksFromPreviousRun=recoveryServ.getCompletedTasks();
+  }
+ else {
+    dispatcher=new AsyncDispatcher();
+    addIfService(dispatcher);
+  }
+  taskAttemptListener=createTaskAttemptListener(context);
+  addIfService(taskAttemptListener);
+  taskCleaner=createTaskCleaner(context);
+  addIfService(taskCleaner);
+  clientService=createClientService(context);
+  addIfService(clientService);
+  EventHandler<JobHistoryEvent> historyService=createJobHistoryHandler(context);
+  addIfService(historyService);
+  JobEventDispatcher synchronousJobEventDispatcher=new JobEventDispatcher();
+  dispatcher.register(JobEventType.class,synchronousJobEventDispatcher);
+  dispatcher.register(TaskEventType.class,new TaskEventDispatcher());
+  dispatcher.register(TaskAttemptEventType.class,new TaskAttemptEventDispatcher());
+  dispatcher.register(TaskCleaner.EventType.class,taskCleaner);
+  dispatcher.register(org.apache.hadoop.mapreduce.jobhistory.EventType.class,historyService);
+  if (conf.getBoolean(MRJobConfig.MAP_SPECULATIVE,false) || conf.getBoolean(MRJobConfig.REDUCE_SPECULATIVE,false)) {
+    speculator=createSpeculator(conf,context);
+    addIfService(speculator);
+  }
+  dispatcher.register(Speculator.EventType.class,new SpeculatorEventDispatcher());
+  Credentials fsTokens=new Credentials();
+  UserGroupInformation currentUser=null;
+  try {
+    currentUser=UserGroupInformation.getCurrentUser();
+    if (UserGroupInformation.isSecurityEnabled()) {
+      Path jobSubmitDir=FileContext.getLocalFSFileContext().makeQualified(new Path(new File(MRConstants.JOB_SUBMIT_DIR).getAbsolutePath()));
+      Path jobTokenFile=new Path(jobSubmitDir,MRConstants.APPLICATION_TOKENS_FILE);
+      fsTokens.addAll(Credentials.readTokenStorageFile(jobTokenFile,conf));
+      LOG.info("jobSubmitDir=" + jobSubmitDir + " jobTokenFile="+ jobTokenFile);
+      for (      Token<? extends TokenIdentifier> tk : fsTokens.getAllTokens()) {
+        LOG.info(" --- DEBUG: Token of kind " + tk.getKind() + "in current ugi in the AppMaster for service "+ tk.getService());
+        currentUser.addToken(tk);
+      }
+    }
+  }
+ catch (  IOException e) {
+    throw new YarnException(e);
+  }
+  super.init(conf);
+  Configuration config=getConfig();
+  job=createJob(config,fsTokens,currentUser.getUserName());
+  JobEvent initJobEvent=new JobEvent(job.getID(),JobEventType.JOB_INIT);
+  synchronousJobEventDispatcher.handle(initJobEvent);
+  dispatcher.getEventHandler().handle(new SpeculatorEvent(job.getID(),clock.getTime()));
+  if (job.isUber()) {
+    LOG.info("MRAppMaster uberizing job " + job.getID() + " in local container (\"uber-AM\").");
+  }
+ else {
+    LOG.info("MRAppMaster launching normal, non-uberized, multi-container " + "job " + job.getID() + ".");
+  }
+  containerAllocator=createContainerAllocator(clientService,context,job.isUber());
+  addIfService(containerAllocator);
+  dispatcher.register(ContainerAllocator.EventType.class,containerAllocator);
+  if (containerAllocator instanceof Service) {
+    ((Service)containerAllocator).init(config);
+  }
+  containerLauncher=createContainerLauncher(context,job.isUber());
+  addIfService(containerLauncher);
+  dispatcher.register(ContainerLauncher.EventType.class,containerLauncher);
+  if (containerLauncher instanceof Service) {
+    ((Service)containerLauncher).init(config);
+  }
+}

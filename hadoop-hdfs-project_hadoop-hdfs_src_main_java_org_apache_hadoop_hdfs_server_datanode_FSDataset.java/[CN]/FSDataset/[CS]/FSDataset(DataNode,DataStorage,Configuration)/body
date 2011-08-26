@@ -1,0 +1,31 @@
+{
+  this.datanode=datanode;
+  this.maxBlocksPerDir=conf.getInt(DFSConfigKeys.DFS_DATANODE_NUMBLOCKS_KEY,DFSConfigKeys.DFS_DATANODE_NUMBLOCKS_DEFAULT);
+  this.supportAppends=conf.getBoolean(DFSConfigKeys.DFS_SUPPORT_APPEND_KEY,DFSConfigKeys.DFS_SUPPORT_APPEND_DEFAULT);
+  final int volFailuresTolerated=conf.getInt(DFSConfigKeys.DFS_DATANODE_FAILED_VOLUMES_TOLERATED_KEY,DFSConfigKeys.DFS_DATANODE_FAILED_VOLUMES_TOLERATED_DEFAULT);
+  String[] dataDirs=conf.getTrimmedStrings(DFSConfigKeys.DFS_DATANODE_DATA_DIR_KEY);
+  int volsConfigured=(dataDirs == null) ? 0 : dataDirs.length;
+  int volsFailed=volsConfigured - storage.getNumStorageDirs();
+  this.validVolsRequired=volsConfigured - volFailuresTolerated;
+  if (volFailuresTolerated < 0 || volFailuresTolerated >= volsConfigured) {
+    throw new DiskErrorException("Invalid volume failure " + " config value: " + volFailuresTolerated);
+  }
+  if (volsFailed > volFailuresTolerated) {
+    throw new DiskErrorException("Too many failed volumes - " + "current valid volumes: " + storage.getNumStorageDirs() + ", volumes configured: "+ volsConfigured+ ", volumes failed: "+ volsFailed+ ", volume failures tolerated: "+ volFailuresTolerated);
+  }
+  FSVolume[] volArray=new FSVolume[storage.getNumStorageDirs()];
+  for (int idx=0; idx < storage.getNumStorageDirs(); idx++) {
+    volArray[idx]=new FSVolume(storage.getStorageDir(idx).getCurrentDir(),conf);
+    DataNode.LOG.info("FSDataset added volume - " + storage.getStorageDir(idx).getCurrentDir());
+  }
+  volumeMap=new ReplicasMap(this);
+  BlockVolumeChoosingPolicy blockChooserImpl=(BlockVolumeChoosingPolicy)ReflectionUtils.newInstance(conf.getClass(DFSConfigKeys.DFS_DATANODE_BLOCKVOLUMECHOICEPOLICY,RoundRobinVolumesPolicy.class,BlockVolumeChoosingPolicy.class),conf);
+  volumes=new FSVolumeSet(volArray,volsFailed,blockChooserImpl);
+  volumes.getVolumeMap(volumeMap);
+  File[] roots=new File[storage.getNumStorageDirs()];
+  for (int idx=0; idx < storage.getNumStorageDirs(); idx++) {
+    roots[idx]=storage.getStorageDir(idx).getCurrentDir();
+  }
+  asyncDiskService=new FSDatasetAsyncDiskService(this,roots);
+  registerMBean(storage.getStorageID());
+}

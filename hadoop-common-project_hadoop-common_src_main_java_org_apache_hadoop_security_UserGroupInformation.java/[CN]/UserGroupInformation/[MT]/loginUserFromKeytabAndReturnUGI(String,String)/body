@@ -1,0 +1,31 @@
+{
+  if (!isSecurityEnabled())   return UserGroupInformation.getCurrentUser();
+  String oldKeytabFile=null;
+  String oldKeytabPrincipal=null;
+  long start=0;
+  try {
+    oldKeytabFile=keytabFile;
+    oldKeytabPrincipal=keytabPrincipal;
+    keytabFile=path;
+    keytabPrincipal=user;
+    Subject subject=new Subject();
+    LoginContext login=new LoginContext(HadoopConfiguration.KEYTAB_KERBEROS_CONFIG_NAME,subject);
+    start=System.currentTimeMillis();
+    login.login();
+    metrics.loginSuccess.add(System.currentTimeMillis() - start);
+    UserGroupInformation newLoginUser=new UserGroupInformation(subject);
+    newLoginUser.setLogin(login);
+    newLoginUser.setAuthenticationMethod(AuthenticationMethod.KERBEROS);
+    return newLoginUser;
+  }
+ catch (  LoginException le) {
+    if (start > 0) {
+      metrics.loginFailure.add(System.currentTimeMillis() - start);
+    }
+    throw new IOException("Login failure for " + user + " from keytab "+ path,le);
+  }
+ finally {
+    if (oldKeytabFile != null)     keytabFile=oldKeytabFile;
+    if (oldKeytabPrincipal != null)     keytabPrincipal=oldKeytabPrincipal;
+  }
+}

@@ -1,0 +1,40 @@
+{
+  String token=KerberosTestUtils.doAsClient(new Callable<String>(){
+    @Override public String call() throws Exception {
+      GSSManager gssManager=GSSManager.getInstance();
+      GSSContext gssContext=null;
+      try {
+        String servicePrincipal=KerberosTestUtils.getServerPrincipal();
+        GSSName serviceName=gssManager.createName(servicePrincipal,GSSUtil.NT_GSS_KRB5_PRINCIPAL);
+        gssContext=gssManager.createContext(serviceName,GSSUtil.GSS_KRB5_MECH_OID,null,GSSContext.DEFAULT_LIFETIME);
+        gssContext.requestCredDeleg(true);
+        gssContext.requestMutualAuth(true);
+        byte[] inToken=new byte[0];
+        byte[] outToken=gssContext.initSecContext(inToken,0,inToken.length);
+        Base64 base64=new Base64(0);
+        return base64.encodeToString(outToken);
+      }
+  finally {
+        if (gssContext != null) {
+          gssContext.dispose();
+        }
+      }
+    }
+  }
+);
+  HttpServletRequest request=Mockito.mock(HttpServletRequest.class);
+  HttpServletResponse response=Mockito.mock(HttpServletResponse.class);
+  Mockito.when(request.getHeader(KerberosAuthenticator.AUTHORIZATION)).thenReturn(KerberosAuthenticator.NEGOTIATE + " " + token);
+  AuthenticationToken authToken=handler.authenticate(request,response);
+  if (authToken != null) {
+    Mockito.verify(response).setHeader(Mockito.eq(KerberosAuthenticator.WWW_AUTHENTICATE),Mockito.matches(KerberosAuthenticator.NEGOTIATE + " .*"));
+    Mockito.verify(response).setStatus(HttpServletResponse.SC_OK);
+    assertEquals(KerberosTestUtils.getClientPrincipal(),authToken.getName());
+    assertTrue(KerberosTestUtils.getClientPrincipal().startsWith(authToken.getUserName()));
+    assertEquals(KerberosAuthenticationHandler.TYPE,authToken.getType());
+  }
+ else {
+    Mockito.verify(response).setHeader(Mockito.eq(KerberosAuthenticator.WWW_AUTHENTICATE),Mockito.matches(KerberosAuthenticator.NEGOTIATE + " .*"));
+    Mockito.verify(response).setStatus(HttpServletResponse.SC_UNAUTHORIZED);
+  }
+}

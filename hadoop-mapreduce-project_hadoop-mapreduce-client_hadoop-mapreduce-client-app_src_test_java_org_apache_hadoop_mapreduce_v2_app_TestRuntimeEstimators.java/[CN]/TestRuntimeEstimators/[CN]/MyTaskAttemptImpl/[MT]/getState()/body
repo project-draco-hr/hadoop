@@ -1,0 +1,35 @@
+{
+  if (overridingState != null) {
+    return overridingState;
+  }
+  TaskAttemptState result=getProgress() < 1.0F ? TaskAttemptState.RUNNING : TaskAttemptState.SUCCEEDED;
+  if (result == TaskAttemptState.SUCCEEDED) {
+    overridingState=TaskAttemptState.SUCCEEDED;
+    System.out.println("MyTaskAttemptImpl.getState() -- attempt " + myAttemptID + " finished.");
+    slotsInUse.addAndGet(-taskTypeSlots(myAttemptID.getTaskId().getTaskType()));
+    (myAttemptID.getTaskId().getTaskType() == TaskType.MAP ? completedMaps : completedReduces).getAndIncrement();
+    TaskId taskID=myAttemptID.getTaskId();
+    Task task=myJob.getTask(taskID);
+    for (    TaskAttempt otherAttempt : task.getAttempts().values()) {
+      if (otherAttempt != this && otherAttempt.getState() == TaskAttemptState.RUNNING) {
+        if (getID().getId() > otherAttempt.getID().getId()) {
+          successfulSpeculations.getAndIncrement();
+          float hisProgress=otherAttempt.getProgress();
+          long hisStartTime=((MyTaskAttemptImpl)otherAttempt).startMockTime;
+          System.out.println("TLTRE:A speculation finished at time " + clock.getTime() + ".  The stalled attempt is at "+ (hisProgress * 100.0)+ "% progress, and it started at "+ hisStartTime+ ", which is "+ (clock.getTime() - hisStartTime)+ " ago.");
+          long originalTaskEndEstimate=(hisStartTime + estimator.estimatedRuntime(otherAttempt.getID()));
+          System.out.println("TLTRE: We would have expected the original attempt to take " + estimator.estimatedRuntime(otherAttempt.getID()) + ", finishing at "+ originalTaskEndEstimate);
+          long estimatedSavings=originalTaskEndEstimate - clock.getTime();
+          taskTimeSavedBySpeculation.addAndGet(estimatedSavings);
+          System.out.println("TLTRE: The task is " + task.getID());
+          slotsInUse.addAndGet(-taskTypeSlots(myAttemptID.getTaskId().getTaskType()));
+          ((MyTaskAttemptImpl)otherAttempt).overridingState=TaskAttemptState.KILLED;
+        }
+ else {
+          System.out.println("TLTRE: The normal attempt beat the speculation in " + task.getID());
+        }
+      }
+    }
+  }
+  return result;
+}
