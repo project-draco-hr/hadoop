@@ -12,9 +12,17 @@ try {
   ContainerLaunchContext containerLaunchContext=launchEv.getContainer();
   StartContainerRequest startRequest=recordFactory.newRecordInstance(StartContainerRequest.class);
   startRequest.setContainerLaunchContext(containerLaunchContext);
-  proxy.startContainer(startRequest);
-  LOG.info("Returning from container-launch for " + taskAttemptID);
-  context.getEventHandler().handle(new TaskAttemptEvent(taskAttemptID,TaskAttemptEventType.TA_CONTAINER_LAUNCHED));
+  StartContainerResponse response=proxy.startContainer(startRequest);
+  ByteBuffer portInfo=response.getServiceResponse(ShuffleHandler.MAPREDUCE_SHUFFLE_SERVICEID);
+  int port=-1;
+  if (portInfo != null) {
+    port=ShuffleHandler.deserializeMetaData(portInfo);
+  }
+  LOG.info("Shuffle port returned by ContainerManager for " + taskAttemptID + " : "+ port);
+  if (port < 0) {
+    throw new IllegalStateException("Invalid shuffle port number " + port + " returned for "+ taskAttemptID);
+  }
+  context.getEventHandler().handle(new TaskAttemptContainerLaunchedEvent(taskAttemptID,port));
 }
  catch (Throwable t) {
   String message="Container launch failed for " + containerID + " : "+ StringUtils.stringifyException(t);
