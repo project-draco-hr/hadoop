@@ -1,33 +1,43 @@
 {
   FSImageStorageInspector inspector=storage.readAndInspectDirs();
   isUpgradeFinalized=inspector.isUpgradeFinalized();
+  FSImageStorageInspector.FSImageFile imageFile=inspector.getLatestImage();
   boolean needToSave=inspector.needToSave();
-  LoadPlan loadPlan=inspector.createLoadPlan();
-  LOG.debug("Planning to load image using following plan:\n" + loadPlan);
-  needToSave|=loadPlan.doRecovery();
-  StorageDirectory sdForProperties=loadPlan.getStorageDirectoryForProperties();
-  storage.readProperties(sdForProperties);
-  File imageFile=loadPlan.getImageFile();
+  Iterable<EditLogInputStream> editStreams=null;
+  editLog.recoverUnclosedStreams();
+  if (LayoutVersion.supports(Feature.TXID_BASED_LAYOUT,getLayoutVersion())) {
+    editStreams=editLog.selectInputStreams(imageFile.getCheckpointTxId() + 1,inspector.getMaxSeenTxId());
+  }
+ else {
+    editStreams=FSImagePreTransactionalStorageInspector.getEditLogStreams(storage);
+  }
+  LOG.debug("Planning to load image :\n" + imageFile);
+  for (  EditLogInputStream l : editStreams) {
+    LOG.debug("\t Planning to load edit stream: " + l);
+  }
   try {
+    StorageDirectory sdForProperties=imageFile.sd;
+    storage.readProperties(sdForProperties);
     if (LayoutVersion.supports(Feature.TXID_BASED_LAYOUT,getLayoutVersion())) {
-      loadFSImage(imageFile);
+      loadFSImage(imageFile.getFile());
     }
  else     if (LayoutVersion.supports(Feature.FSIMAGE_CHECKSUM,getLayoutVersion())) {
       String md5=storage.getDeprecatedProperty(NNStorage.DEPRECATED_MESSAGE_DIGEST_PROPERTY);
       if (md5 == null) {
         throw new InconsistentFSStateException(sdForProperties.getRoot(),"Message digest property " + NNStorage.DEPRECATED_MESSAGE_DIGEST_PROPERTY + " not set for storage directory "+ sdForProperties.getRoot());
       }
-      loadFSImage(imageFile,new MD5Hash(md5));
+      loadFSImage(imageFile.getFile(),new MD5Hash(md5));
     }
  else {
-      loadFSImage(imageFile,null);
+      loadFSImage(imageFile.getFile(),null);
     }
   }
  catch (  IOException ioe) {
-    throw new IOException("Failed to load image from " + loadPlan.getImageFile(),ioe);
+    FSEditLog.closeAllStreams(editStreams);
+    throw new IOException("Failed to load image from " + imageFile,ioe);
   }
-  long numLoaded=loadEdits(loadPlan.getEditsFiles());
-  needToSave|=needsResaveBasedOnStaleCheckpoint(imageFile,numLoaded);
+  long numLoaded=loadEdits(editStreams);
+  needToSave|=needsResaveBasedOnStaleCheckpoint(imageFile.getFile(),numLoaded);
   editLog.setNextTxId(storage.getMostRecentCheckpointTxId() + numLoaded + 1);
   return needToSave;
 }

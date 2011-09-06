@@ -1,10 +1,23 @@
 {
-  long numValid=0;
   long lastPos=0;
+  long firstTxId=HdfsConstants.INVALID_TXID;
+  long lastTxId=HdfsConstants.INVALID_TXID;
+  long numValid=0;
   try {
+    FSEditLogOp op=null;
     while (true) {
       lastPos=in.getPosition();
-      if (in.readOp() == null) {
+      if ((op=in.readOp()) == null) {
+        break;
+      }
+      if (firstTxId == HdfsConstants.INVALID_TXID) {
+        firstTxId=op.txid;
+      }
+      if (lastTxId == HdfsConstants.INVALID_TXID || op.txid == lastTxId + 1) {
+        lastTxId=op.txid;
+      }
+ else {
+        FSImage.LOG.error("Out of order txid found. Found " + op.txid + ", expected "+ (lastTxId + 1));
         break;
       }
       numValid++;
@@ -13,5 +26,5 @@
  catch (  Throwable t) {
     FSImage.LOG.debug("Caught exception after reading " + numValid + " ops from "+ in+ " while determining its valid length.",t);
   }
-  return new EditLogValidation(lastPos,numValid);
+  return new EditLogValidation(lastPos,firstTxId,lastTxId);
 }
