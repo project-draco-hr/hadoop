@@ -2,7 +2,7 @@
   Configuration conf=getConf();
   NameNode.initMetrics(conf,NamenodeRole.NAMENODE);
   DFSTestUtil.formatNameNode(conf);
-  FSNamesystem fsn=new FSNamesystem(conf);
+  FSNamesystem fsn=FSNamesystem.loadFromDisk(conf);
   final FSImage originalImage=fsn.dir.fsImage;
   NNStorage storage=originalImage.getStorage();
   storage.close();
@@ -11,7 +11,7 @@
   FSImage spyImage=spy(originalImage);
   fsn.dir.fsImage=spyImage;
   spyImage.storage.setStorageDirectories(FSNamesystem.getNamespaceDirs(conf),FSNamesystem.getNamespaceEditsDirs(conf));
-  doThrow(new IOException("Injected fault: saveFSImage")).when(spyImage).saveFSImage((StorageDirectory)anyObject(),Mockito.anyLong());
+  doThrow(new IOException("Injected fault: saveFSImage")).when(spyImage).saveFSImage(Mockito.eq(fsn),(StorageDirectory)anyObject(),Mockito.anyLong());
   try {
     doAnEdit(fsn,1);
     fsn.setSafeMode(SafeModeAction.SAFEMODE_ENTER);
@@ -31,7 +31,7 @@
     originalImage.close();
     fsn.close();
     fsn=null;
-    fsn=new FSNamesystem(conf);
+    fsn=FSNamesystem.loadFromDisk(conf);
     checkEditExists(fsn,1);
   }
   finally {

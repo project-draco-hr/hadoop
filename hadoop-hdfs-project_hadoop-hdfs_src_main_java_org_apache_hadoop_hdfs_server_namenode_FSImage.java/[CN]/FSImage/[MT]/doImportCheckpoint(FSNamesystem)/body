@@ -1,0 +1,25 @@
+{
+  Collection<URI> checkpointDirs=FSImage.getCheckpointDirs(conf,null);
+  Collection<URI> checkpointEditsDirs=FSImage.getCheckpointEditsDirs(conf,null);
+  if (checkpointDirs == null || checkpointDirs.isEmpty()) {
+    throw new IOException("Cannot import image from a checkpoint. " + "\"dfs.namenode.checkpoint.dir\" is not set.");
+  }
+  if (checkpointEditsDirs == null || checkpointEditsDirs.isEmpty()) {
+    throw new IOException("Cannot import image from a checkpoint. " + "\"dfs.namenode.checkpoint.dir\" is not set.");
+  }
+  FSImage realImage=target.getFSImage();
+  FSImage ckptImage=new FSImage(conf,checkpointDirs,checkpointEditsDirs);
+  target.dir.fsImage=ckptImage;
+  try {
+    ckptImage.recoverTransitionRead(StartupOption.REGULAR,target);
+  }
+  finally {
+    ckptImage.close();
+  }
+  realImage.getStorage().setStorageInfo(ckptImage.getStorage());
+  realImage.getEditLog().setNextTxId(ckptImage.getEditLog().getLastWrittenTxId() + 1);
+  target.dir.fsImage=realImage;
+  realImage.getStorage().setBlockPoolID(ckptImage.getBlockPoolID());
+  saveNamespace(target);
+  getStorage().writeAll();
+}
