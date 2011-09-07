@@ -1,16 +1,20 @@
 {
   ApplicationSubmissionContext submissionContext=request.getApplicationSubmissionContext();
+  ApplicationId applicationId=null;
+  String user=null;
   try {
-    String user=UserGroupInformation.getCurrentUser().getShortUserName();
-    ApplicationId applicationId=submissionContext.getApplicationId();
+    user=UserGroupInformation.getCurrentUser().getShortUserName();
+    applicationId=submissionContext.getApplicationId();
     if (rmContext.getRMApps().get(applicationId) != null) {
       throw new IOException("Application with id " + applicationId + " is already present! Cannot add a duplicate!");
     }
     this.rmContext.getDispatcher().getEventHandler().handle(new RMAppManagerSubmitEvent(submissionContext));
     LOG.info("Application with id " + applicationId.getId() + " submitted by user "+ user+ " with "+ submissionContext);
+    RMAuditLogger.logSuccess(user,AuditConstants.SUBMIT_APP_REQUEST,"ClientRMService",applicationId);
   }
  catch (  IOException ie) {
     LOG.info("Exception in submitting application",ie);
+    RMAuditLogger.logFailure(user,AuditConstants.SUBMIT_APP_REQUEST,ie.getMessage(),"ClientRMService","Exception in submitting application",applicationId);
     throw RPCUtil.getRemoteException(ie);
   }
   SubmitApplicationResponse response=recordFactory.newRecordInstance(SubmitApplicationResponse.class);
