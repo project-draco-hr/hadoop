@@ -1,0 +1,22 @@
+{
+  CapacitySchedulerConfiguration csConf=new CapacitySchedulerConfiguration();
+  setupQueueConfiguration(csConf);
+  CapacitySchedulerContext csContext=mock(CapacitySchedulerContext.class);
+  when(csContext.getConfiguration()).thenReturn(csConf);
+  when(csContext.getMinimumResourceCapability()).thenReturn(Resources.createResource(GB));
+  when(csContext.getMaximumResourceCapability()).thenReturn(Resources.createResource(16 * GB));
+  Resource clusterResource=Resources.createResource(100 * 16 * GB);
+  when(csContext.getClusterResources()).thenReturn(clusterResource);
+  Map<String,Queue> queues=new HashMap<String,Queue>();
+  Queue root=CapacityScheduler.parseQueue(csContext,csConf,null,"root",queues,queues,CapacityScheduler.queueComparator,CapacityScheduler.applicationComparator,TestUtils.spyHook);
+  LeafQueue queue=(LeafQueue)queues.get(A);
+  LOG.info("Queue 'A' -" + " maxActiveApplications=" + queue.getMaximumActiveApplications() + " maxActiveApplicationsPerUser="+ queue.getMaximumActiveApplicationsPerUser());
+  int expectedMaxActiveApps=Math.max(1,(int)((clusterResource.getMemory() / LeafQueue.DEFAULT_AM_RESOURCE) * csConf.getMaximumApplicationMasterResourcePercent() * queue.getAbsoluteCapacity()));
+  assertEquals(expectedMaxActiveApps,queue.getMaximumActiveApplications());
+  assertEquals((int)(expectedMaxActiveApps * (queue.getUserLimit() / 100.0f) * queue.getUserLimitFactor()),queue.getMaximumActiveApplicationsPerUser());
+  clusterResource=Resources.createResource(120 * 16 * GB);
+  root.updateClusterResource(clusterResource);
+  expectedMaxActiveApps=Math.max(1,(int)((clusterResource.getMemory() / LeafQueue.DEFAULT_AM_RESOURCE) * csConf.getMaximumApplicationMasterResourcePercent() * queue.getAbsoluteCapacity()));
+  assertEquals(expectedMaxActiveApps,queue.getMaximumActiveApplications());
+  assertEquals((int)(expectedMaxActiveApps * (queue.getUserLimit() / 100.0f) * queue.getUserLimitFactor()),queue.getMaximumActiveApplicationsPerUser());
+}

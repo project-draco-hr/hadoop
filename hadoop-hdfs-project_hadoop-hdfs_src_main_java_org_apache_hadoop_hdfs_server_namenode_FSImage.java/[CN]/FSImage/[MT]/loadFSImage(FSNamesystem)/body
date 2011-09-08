@@ -1,0 +1,43 @@
+{
+  FSImageStorageInspector inspector=storage.readAndInspectDirs();
+  isUpgradeFinalized=inspector.isUpgradeFinalized();
+  FSImageStorageInspector.FSImageFile imageFile=inspector.getLatestImage();
+  boolean needToSave=inspector.needToSave();
+  Iterable<EditLogInputStream> editStreams=null;
+  editLog.recoverUnclosedStreams();
+  if (LayoutVersion.supports(Feature.TXID_BASED_LAYOUT,getLayoutVersion())) {
+    editStreams=editLog.selectInputStreams(imageFile.getCheckpointTxId() + 1,inspector.getMaxSeenTxId());
+  }
+ else {
+    editStreams=FSImagePreTransactionalStorageInspector.getEditLogStreams(storage);
+  }
+  LOG.debug("Planning to load image :\n" + imageFile);
+  for (  EditLogInputStream l : editStreams) {
+    LOG.debug("\t Planning to load edit stream: " + l);
+  }
+  try {
+    StorageDirectory sdForProperties=imageFile.sd;
+    storage.readProperties(sdForProperties);
+    if (LayoutVersion.supports(Feature.TXID_BASED_LAYOUT,getLayoutVersion())) {
+      loadFSImage(imageFile.getFile(),target);
+    }
+ else     if (LayoutVersion.supports(Feature.FSIMAGE_CHECKSUM,getLayoutVersion())) {
+      String md5=storage.getDeprecatedProperty(NNStorage.DEPRECATED_MESSAGE_DIGEST_PROPERTY);
+      if (md5 == null) {
+        throw new InconsistentFSStateException(sdForProperties.getRoot(),"Message digest property " + NNStorage.DEPRECATED_MESSAGE_DIGEST_PROPERTY + " not set for storage directory "+ sdForProperties.getRoot());
+      }
+      loadFSImage(imageFile.getFile(),new MD5Hash(md5),target);
+    }
+ else {
+      loadFSImage(imageFile.getFile(),null,target);
+    }
+  }
+ catch (  IOException ioe) {
+    FSEditLog.closeAllStreams(editStreams);
+    throw new IOException("Failed to load image from " + imageFile,ioe);
+  }
+  long numLoaded=loadEdits(editStreams,target);
+  needToSave|=needsResaveBasedOnStaleCheckpoint(imageFile.getFile(),numLoaded);
+  editLog.setNextTxId(storage.getMostRecentCheckpointTxId() + numLoaded + 1);
+  return needToSave;
+}

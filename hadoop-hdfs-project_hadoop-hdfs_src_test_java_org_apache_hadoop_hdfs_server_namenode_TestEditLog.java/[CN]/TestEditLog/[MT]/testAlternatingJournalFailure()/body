@@ -1,0 +1,21 @@
+{
+  File f1=new File(TEST_DIR + "/alternatingjournaltest0");
+  File f2=new File(TEST_DIR + "/alternatingjournaltest1");
+  List<URI> editUris=ImmutableList.of(f1.toURI(),f2.toURI());
+  NNStorage storage=setupEdits(editUris,10,new AbortSpec(1,0),new AbortSpec(2,1),new AbortSpec(3,0),new AbortSpec(4,1),new AbortSpec(5,0),new AbortSpec(6,1),new AbortSpec(7,0),new AbortSpec(8,1),new AbortSpec(9,0),new AbortSpec(10,1));
+  long totaltxnread=0;
+  FSEditLog editlog=new FSEditLog(storage);
+  long startTxId=1;
+  Iterable<EditLogInputStream> editStreams=editlog.selectInputStreams(startTxId,TXNS_PER_ROLL * 11);
+  for (  EditLogInputStream edits : editStreams) {
+    FSEditLogLoader.EditLogValidation val=FSEditLogLoader.validateEditLog(edits);
+    long read=val.getNumTransactions();
+    LOG.info("Loading edits " + edits + " read "+ read);
+    assertEquals(startTxId,val.getStartTxId());
+    startTxId+=read;
+    totaltxnread+=read;
+  }
+  editlog.close();
+  storage.close();
+  assertEquals(TXNS_PER_ROLL * 11,totaltxnread);
+}

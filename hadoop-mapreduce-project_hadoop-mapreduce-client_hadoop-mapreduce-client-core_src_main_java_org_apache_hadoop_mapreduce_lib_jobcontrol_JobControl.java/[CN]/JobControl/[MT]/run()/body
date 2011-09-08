@@ -1,32 +1,54 @@
 {
-  this.runnerState=ThreadState.RUNNING;
-  while (true) {
-    while (this.runnerState == ThreadState.SUSPENDED) {
-      try {
-        Thread.sleep(5000);
+  try {
+    this.runnerState=ThreadState.RUNNING;
+    while (true) {
+      while (this.runnerState == ThreadState.SUSPENDED) {
+        try {
+          Thread.sleep(5000);
+        }
+ catch (        Exception e) {
+        }
       }
- catch (      Exception e) {
-      }
-    }
-    try {
-      checkRunningJobs();
-      checkWaitingJobs();
-      startReadyJobs();
-    }
- catch (    Exception e) {
-      this.runnerState=ThreadState.STOPPED;
-    }
-    if (this.runnerState != ThreadState.RUNNING && this.runnerState != ThreadState.SUSPENDED) {
-      break;
-    }
-    try {
-      Thread.sleep(5000);
-    }
- catch (    Exception e) {
-    }
-    if (this.runnerState != ThreadState.RUNNING && this.runnerState != ThreadState.SUSPENDED) {
-      break;
-    }
-  }
-  this.runnerState=ThreadState.STOPPED;
+synchronized (this) {
+        Iterator<ControlledJob> it=jobsInProgress.iterator();
+        while (it.hasNext()) {
+          ControlledJob j=it.next();
+          LOG.debug("Checking state of job " + j);
+switch (j.checkState()) {
+case SUCCESS:
+            successfulJobs.add(j);
+          it.remove();
+        break;
+case FAILED:
+case DEPENDENT_FAILED:
+      failedJobs.add(j);
+    it.remove();
+  break;
+case READY:
+j.submit();
+break;
+case RUNNING:
+case WAITING:
+break;
+}
+}
+}
+if (this.runnerState != ThreadState.RUNNING && this.runnerState != ThreadState.SUSPENDED) {
+break;
+}
+try {
+Thread.sleep(5000);
+}
+ catch (Exception e) {
+}
+if (this.runnerState != ThreadState.RUNNING && this.runnerState != ThreadState.SUSPENDED) {
+break;
+}
+}
+}
+ catch (Throwable t) {
+LOG.error("Error while trying to run jobs.",t);
+failAllJobs(t);
+}
+this.runnerState=ThreadState.STOPPED;
 }

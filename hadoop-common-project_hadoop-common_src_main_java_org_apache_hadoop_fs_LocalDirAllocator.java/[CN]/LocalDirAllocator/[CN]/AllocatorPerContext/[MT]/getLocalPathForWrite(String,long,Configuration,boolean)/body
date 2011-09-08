@@ -1,0 +1,48 @@
+{
+  confChanged(conf);
+  int numDirs=localDirs.length;
+  int numDirsSearched=0;
+  if (pathStr.startsWith("/")) {
+    pathStr=pathStr.substring(1);
+  }
+  Path returnPath=null;
+  if (size == SIZE_UNKNOWN) {
+    long[] availableOnDisk=new long[dirDF.length];
+    long totalAvailable=0;
+    for (int i=0; i < dirDF.length; ++i) {
+      availableOnDisk[i]=dirDF[i].getAvailable();
+      totalAvailable+=availableOnDisk[i];
+    }
+    Random r=new java.util.Random();
+    while (numDirsSearched < numDirs && returnPath == null) {
+      long randomPosition=Math.abs(r.nextLong()) % totalAvailable;
+      int dir=0;
+      while (randomPosition > availableOnDisk[dir]) {
+        randomPosition-=availableOnDisk[dir];
+        dir++;
+      }
+      dirNumLastAccessed=dir;
+      returnPath=createPath(pathStr,checkWrite);
+      if (returnPath == null) {
+        totalAvailable-=availableOnDisk[dir];
+        availableOnDisk[dir]=0;
+        numDirsSearched++;
+      }
+    }
+  }
+ else {
+    while (numDirsSearched < numDirs && returnPath == null) {
+      long capacity=dirDF[dirNumLastAccessed].getAvailable();
+      if (capacity > size) {
+        returnPath=createPath(pathStr,checkWrite);
+      }
+      dirNumLastAccessed++;
+      dirNumLastAccessed=dirNumLastAccessed % numDirs;
+      numDirsSearched++;
+    }
+  }
+  if (returnPath != null) {
+    return returnPath;
+  }
+  throw new DiskErrorException("Could not find any valid local " + "directory for " + pathStr);
+}
