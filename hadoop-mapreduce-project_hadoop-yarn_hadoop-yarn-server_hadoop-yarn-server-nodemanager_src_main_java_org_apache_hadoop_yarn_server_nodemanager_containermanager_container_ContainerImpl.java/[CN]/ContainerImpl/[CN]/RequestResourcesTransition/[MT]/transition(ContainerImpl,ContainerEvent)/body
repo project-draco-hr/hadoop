@@ -9,9 +9,6 @@
   }
   Map<String,LocalResource> cntrRsrc=ctxt.getAllLocalResources();
   if (!cntrRsrc.isEmpty()) {
-    ArrayList<LocalResourceRequest> publicRsrc=new ArrayList<LocalResourceRequest>();
-    ArrayList<LocalResourceRequest> privateRsrc=new ArrayList<LocalResourceRequest>();
-    ArrayList<LocalResourceRequest> appRsrc=new ArrayList<LocalResourceRequest>();
     try {
       for (      Map.Entry<String,LocalResource> rsrc : cntrRsrc.entrySet()) {
         try {
@@ -19,13 +16,13 @@
           container.pendingResources.put(req,rsrc.getKey());
 switch (rsrc.getValue().getVisibility()) {
 case PUBLIC:
-            publicRsrc.add(req);
+            container.publicRsrcs.add(req);
           break;
 case PRIVATE:
-        privateRsrc.add(req);
+        container.privateRsrcs.add(req);
       break;
 case APPLICATION:
-    appRsrc.add(req);
+    container.appRsrcs.add(req);
   break;
 }
 }
@@ -37,19 +34,21 @@ throw e;
 }
  catch (URISyntaxException e) {
 LOG.warn("Failed to parse resource-request",e);
-container.dispatcher.getEventHandler().handle(new ContainerLocalizationEvent(LocalizationEventType.CLEANUP_CONTAINER_RESOURCES,container));
+container.cleanup();
 container.metrics.endInitingContainer();
 return ContainerState.LOCALIZATION_FAILED;
 }
-if (!publicRsrc.isEmpty()) {
-container.dispatcher.getEventHandler().handle(new ContainerLocalizationRequestEvent(container,publicRsrc,LocalResourceVisibility.PUBLIC));
+Map<LocalResourceVisibility,Collection<LocalResourceRequest>> req=new HashMap<LocalResourceVisibility,Collection<LocalResourceRequest>>();
+if (!container.publicRsrcs.isEmpty()) {
+req.put(LocalResourceVisibility.PUBLIC,container.publicRsrcs);
 }
-if (!privateRsrc.isEmpty()) {
-container.dispatcher.getEventHandler().handle(new ContainerLocalizationRequestEvent(container,privateRsrc,LocalResourceVisibility.PRIVATE));
+if (!container.privateRsrcs.isEmpty()) {
+req.put(LocalResourceVisibility.PRIVATE,container.privateRsrcs);
 }
-if (!appRsrc.isEmpty()) {
-container.dispatcher.getEventHandler().handle(new ContainerLocalizationRequestEvent(container,appRsrc,LocalResourceVisibility.APPLICATION));
+if (!container.appRsrcs.isEmpty()) {
+req.put(LocalResourceVisibility.APPLICATION,container.appRsrcs);
 }
+container.dispatcher.getEventHandler().handle(new ContainerLocalizationRequestEvent(container,req));
 return ContainerState.LOCALIZING;
 }
  else {
