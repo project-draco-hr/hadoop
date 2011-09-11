@@ -1,0 +1,57 @@
+{
+  if (LOG.isTraceEnabled()) {
+    LOG.trace(op + ": " + path+ Param.toSortedString(", ",dstPath,owner,group,permission,overwrite,bufferSize,replication,blockSize));
+  }
+  final String fullpath=path.getAbsolutePath();
+  final NameNode namenode=(NameNode)context.getAttribute("name.node");
+  final NamenodeProtocols np=namenode.getRpcServer();
+switch (op.getValue()) {
+case CREATE:
+{
+      final URI uri=redirectURI(namenode,fullpath,op.getValue(),permission,overwrite,bufferSize,replication,blockSize);
+      return Response.temporaryRedirect(uri).build();
+    }
+case MKDIRS:
+{
+    final boolean b=np.mkdirs(fullpath,permission.getFsPermission(),true);
+    final String js=JsonUtil.toJsonString(PutOpParam.Op.MKDIRS,b);
+    return Response.ok(js).type(MediaType.APPLICATION_JSON).build();
+  }
+case RENAME:
+{
+  final EnumSet<Options.Rename> s=renameOptions.getValue();
+  if (s.isEmpty()) {
+    @SuppressWarnings("deprecation") final boolean b=np.rename(fullpath,dstPath.getValue());
+    final String js=JsonUtil.toJsonString(PutOpParam.Op.RENAME,b);
+    return Response.ok(js).type(MediaType.APPLICATION_JSON).build();
+  }
+ else {
+    np.rename(fullpath,dstPath.getValue(),s.toArray(new Options.Rename[s.size()]));
+    return Response.ok().type(MediaType.APPLICATION_JSON).build();
+  }
+}
+case SETREPLICATION:
+{
+final boolean b=np.setReplication(fullpath,replication.getValue());
+final String js=JsonUtil.toJsonString(PutOpParam.Op.SETREPLICATION,b);
+return Response.ok(js).type(MediaType.APPLICATION_JSON).build();
+}
+case SETOWNER:
+{
+np.setOwner(fullpath,owner.getValue(),group.getValue());
+return Response.ok().type(MediaType.APPLICATION_JSON).build();
+}
+case SETPERMISSION:
+{
+np.setPermission(fullpath,permission.getFsPermission());
+return Response.ok().type(MediaType.APPLICATION_JSON).build();
+}
+case SETTIMES:
+{
+np.setTimes(fullpath,modificationTime.getValue(),accessTime.getValue());
+return Response.ok().type(MediaType.APPLICATION_JSON).build();
+}
+default :
+throw new UnsupportedOperationException(op + " is not supported");
+}
+}
