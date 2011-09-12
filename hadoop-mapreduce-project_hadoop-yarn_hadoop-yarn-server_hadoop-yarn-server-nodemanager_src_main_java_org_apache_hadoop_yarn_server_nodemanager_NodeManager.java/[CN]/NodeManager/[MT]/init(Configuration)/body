@@ -1,5 +1,9 @@
 {
   Context context=new NMContext();
+  if (UserGroupInformation.isSecurityEnabled()) {
+    LOG.info("Security is enabled on NodeManager. " + "Creating ContainerTokenSecretManager");
+    this.containerTokenSecretManager=new ContainerTokenSecretManager();
+  }
   ContainerExecutor exec=ReflectionUtils.newInstance(conf.getClass(YarnConfiguration.NM_CONTAINER_EXECUTOR,DefaultContainerExecutor.class,ContainerExecutor.class),conf);
   DeletionService del=new DeletionService(exec);
   addService(del);
@@ -9,11 +13,10 @@
     healthChecker=new NodeHealthCheckerService();
     addService(healthChecker);
   }
-  NodeStatusUpdater nodeStatusUpdater=createNodeStatusUpdater(context,dispatcher,healthChecker);
-  addService(nodeStatusUpdater);
+  NodeStatusUpdater nodeStatusUpdater=createNodeStatusUpdater(context,dispatcher,healthChecker,this.containerTokenSecretManager);
   NodeResourceMonitor nodeResourceMonitor=createNodeResourceMonitor();
   addService(nodeResourceMonitor);
-  ContainerManagerImpl containerManager=createContainerManager(context,exec,del,nodeStatusUpdater);
+  ContainerManagerImpl containerManager=createContainerManager(context,exec,del,nodeStatusUpdater,this.containerTokenSecretManager);
   addService(containerManager);
   Service webServer=createWebServer(context,containerManager.getContainersMonitor());
   addService(webServer);
@@ -26,5 +29,6 @@
   }
 );
   DefaultMetricsSystem.initialize("NodeManager");
+  addService(nodeStatusUpdater);
   super.init(conf);
 }
