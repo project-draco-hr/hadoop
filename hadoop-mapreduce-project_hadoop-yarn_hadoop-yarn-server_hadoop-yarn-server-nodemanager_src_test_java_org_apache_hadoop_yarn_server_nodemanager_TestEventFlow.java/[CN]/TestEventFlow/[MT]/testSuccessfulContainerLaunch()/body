@@ -8,16 +8,17 @@
   remoteLogDir.mkdir();
   Context context=new NMContext();
   YarnConfiguration conf=new YarnConfiguration();
-  conf.set(NMConfig.NM_LOCAL_DIR,localDir.getAbsolutePath());
-  conf.set(NMConfig.NM_LOG_DIR,localLogDir.getAbsolutePath());
-  conf.set(NMConfig.REMOTE_USER_LOG_DIR,remoteLogDir.getAbsolutePath());
+  conf.set(YarnConfiguration.NM_LOCAL_DIRS,localDir.getAbsolutePath());
+  conf.set(YarnConfiguration.NM_LOG_DIRS,localLogDir.getAbsolutePath());
+  conf.set(YarnConfiguration.NM_REMOTE_APP_LOG_DIR,remoteLogDir.getAbsolutePath());
   ContainerExecutor exec=new DefaultContainerExecutor();
   exec.setConf(conf);
   DeletionService del=new DeletionService(exec);
   Dispatcher dispatcher=new AsyncDispatcher();
   NodeHealthCheckerService healthChecker=null;
   NodeManagerMetrics metrics=NodeManagerMetrics.create();
-  NodeStatusUpdater nodeStatusUpdater=new NodeStatusUpdaterImpl(context,dispatcher,healthChecker,metrics){
+  ContainerTokenSecretManager containerTokenSecretManager=new ContainerTokenSecretManager();
+  NodeStatusUpdater nodeStatusUpdater=new NodeStatusUpdaterImpl(context,dispatcher,healthChecker,metrics,containerTokenSecretManager){
     @Override protected ResourceTracker getRMClient(){
       return new LocalRMInterface();
     }
@@ -26,15 +27,18 @@
     }
   }
 ;
-  DummyContainerManager containerManager=new DummyContainerManager(context,exec,del,nodeStatusUpdater,metrics);
+  DummyContainerManager containerManager=new DummyContainerManager(context,exec,del,nodeStatusUpdater,metrics,containerTokenSecretManager);
   containerManager.init(conf);
   containerManager.start();
   ContainerLaunchContext launchContext=recordFactory.newRecordInstance(ContainerLaunchContext.class);
   ContainerId cID=recordFactory.newRecordInstance(ContainerId.class);
-  cID.setAppId(recordFactory.newRecordInstance(ApplicationId.class));
-  ApplicationAttemptId atId=recordFactory.newRecordInstance(ApplicationAttemptId.class);
-  atId.setApplicationId(cID.getAppId());
-  cID.setAppAttemptId(atId);
+  ApplicationId applicationId=recordFactory.newRecordInstance(ApplicationId.class);
+  applicationId.setClusterTimestamp(0);
+  applicationId.setId(0);
+  ApplicationAttemptId applicationAttemptId=recordFactory.newRecordInstance(ApplicationAttemptId.class);
+  applicationAttemptId.setApplicationId(applicationId);
+  applicationAttemptId.setAttemptId(0);
+  cID.setApplicationAttemptId(applicationAttemptId);
   launchContext.setContainerId(cID);
   launchContext.setUser("testing");
   launchContext.setResource(recordFactory.newRecordInstance(Resource.class));

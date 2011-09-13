@@ -9,7 +9,7 @@
     localDirs.add(lfs.makeQualified(new Path(basedir,i + "")));
     sDirs[i]=localDirs.get(i).toString();
   }
-  conf.setStrings(NM_LOCAL_DIR,sDirs);
+  conf.setStrings(YarnConfiguration.NM_LOCAL_DIRS,sDirs);
   Server ignore=mock(Server.class);
   DrainDispatcher dispatcher=new DrainDispatcher();
   dispatcher.init(conf);
@@ -30,9 +30,7 @@
     spyService.init(conf);
     spyService.start();
     final Application app=mock(Application.class);
-    final ApplicationId appId=mock(ApplicationId.class);
-    when(appId.getClusterTimestamp()).thenReturn(314159265358979L);
-    when(appId.getId()).thenReturn(3);
+    final ApplicationId appId=BuilderUtils.newApplicationId(314159265358979L,3);
     when(app.getUser()).thenReturn("user0");
     when(app.getAppId()).thenReturn(appId);
     spyService.handle(new ApplicationLocalizationEvent(LocalizationEventType.INIT_APPLICATION_RESOURCES,app));
@@ -52,9 +50,11 @@
     final Container c=getMockContainer(appId,42);
     FSDataOutputStream out=new FSDataOutputStream(new DataOutputBuffer(),null);
     doReturn(out).when(spylfs).createInternal(isA(Path.class),isA(EnumSet.class),isA(FsPermission.class),anyInt(),anyShort(),anyLong(),isA(Progressable.class),anyInt(),anyBoolean());
-    final LocalResource resource=getMockResource(r);
+    final LocalResource resource=getPrivateMockedResource(r);
     final LocalResourceRequest req=new LocalResourceRequest(resource);
-    spyService.handle(new ContainerLocalizationRequestEvent(c,Collections.singletonList(req),LocalResourceVisibility.PRIVATE));
+    Map<LocalResourceVisibility,Collection<LocalResourceRequest>> rsrcs=new HashMap<LocalResourceVisibility,Collection<LocalResourceRequest>>();
+    rsrcs.put(LocalResourceVisibility.PRIVATE,Collections.singletonList(req));
+    spyService.handle(new ContainerLocalizationRequestEvent(c,rsrcs));
     Thread.sleep(500);
     dispatcher.await();
     String appStr=ConverterUtils.toString(appId);

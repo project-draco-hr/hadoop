@@ -4,9 +4,9 @@
   appID.setId(5);
   final Configuration conf=new Configuration();
   conf.set(CommonConfigurationKeysPublic.HADOOP_SECURITY_AUTHENTICATION,"kerberos");
-  conf.setLong(YarnConfiguration.AM_EXPIRY_INTERVAL,100000L);
+  conf.setLong(YarnConfiguration.RM_AM_EXPIRY_INTERVAL_MS,100000L);
   UserGroupInformation.setConfiguration(conf);
-  MiniYARNCluster yarnCluster=new MiniYARNCluster(TestContainerTokenSecretManager.class.getName());
+  yarnCluster=new MiniYARNCluster(TestContainerTokenSecretManager.class.getName());
   yarnCluster.init(conf);
   yarnCluster.start();
   ResourceManager resourceManager=yarnCluster.getResourceManager();
@@ -49,7 +49,7 @@
   Assert.assertNotNull(state);
   Assert.assertEquals(RMAppAttemptState.LAUNCHED,state);
   UserGroupInformation currentUser=UserGroupInformation.getCurrentUser();
-  String schedulerAddressString=conf.get(YarnConfiguration.SCHEDULER_ADDRESS,YarnConfiguration.DEFAULT_SCHEDULER_BIND_ADDRESS);
+  String schedulerAddressString=conf.get(YarnConfiguration.RM_SCHEDULER_ADDRESS,YarnConfiguration.DEFAULT_RM_SCHEDULER_ADDRESS);
   final InetSocketAddress schedulerAddr=NetUtils.createSocketAddr(schedulerAddressString);
   ApplicationTokenIdentifier appTokenIdentifier=new ApplicationTokenIdentifier(appID);
   ApplicationTokenSecretManager appTokenSecretManager=new ApplicationTokenSecretManager();
@@ -65,7 +65,6 @@
   }
 );
   RegisterApplicationMasterRequest request=recordFactory.newRecordInstance(RegisterApplicationMasterRequest.class);
-  ApplicationMaster applicationMaster=recordFactory.newRecordInstance(ApplicationMaster.class);
   request.setApplicationAttemptId(resourceManager.getRMContext().getRMApps().get(appID).getCurrentAppAttempt().getAppAttemptId());
   scheduler.registerApplicationMaster(request);
   List<ResourceRequest> ask=new ArrayList<ResourceRequest>();
@@ -83,13 +82,13 @@
   allocateRequest.setResponseId(0);
   allocateRequest.addAllAsks(ask);
   allocateRequest.addAllReleases(release);
-  List<Container> allocatedContainers=scheduler.allocate(allocateRequest).getAMResponse().getNewContainerList();
+  List<Container> allocatedContainers=scheduler.allocate(allocateRequest).getAMResponse().getAllocatedContainers();
   waitCounter=0;
   while ((allocatedContainers == null || allocatedContainers.size() == 0) && waitCounter++ != 20) {
     LOG.info("Waiting for container to be allocated..");
     Thread.sleep(1000);
     allocateRequest.setResponseId(allocateRequest.getResponseId() + 1);
-    allocatedContainers=scheduler.allocate(allocateRequest).getAMResponse().getNewContainerList();
+    allocatedContainers=scheduler.allocate(allocateRequest).getAMResponse().getAllocatedContainers();
   }
   Assert.assertNotNull("Container is not allocted!",allocatedContainers);
   Assert.assertEquals("Didn't get one container!",1,allocatedContainers.size());
@@ -108,9 +107,9 @@
         ApplicationAttemptId appAttemptId=recordFactory.newRecordInstance(ApplicationAttemptId.class);
         appAttemptId.setApplicationId(appID);
         appAttemptId.setAttemptId(1);
-        containerID.setAppId(appID);
+        appAttemptId.setApplicationId(appID);
+        containerID.setApplicationAttemptId(appAttemptId);
         containerID.setId(1);
-        containerID.setAppAttemptId(appAttemptId);
         request.setContainerId(containerID);
         client.getContainerStatus(request);
       }
@@ -145,9 +144,9 @@ catch (      AvroRuntimeException e) {
       ApplicationAttemptId appAttemptId=recordFactory.newRecordInstance(ApplicationAttemptId.class);
       appAttemptId.setApplicationId(appID);
       appAttemptId.setAttemptId(1);
-      containerID.setAppId(appID);
+      appAttemptId.setApplicationId(appID);
+      containerID.setApplicationAttemptId(appAttemptId);
       containerID.setId(1);
-      containerID.setAppAttemptId(appAttemptId);
       request.setContainerId(containerID);
       try {
         client.getContainerStatus(request);

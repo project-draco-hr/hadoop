@@ -2,8 +2,8 @@
   int headRoom=getAvailableResources() != null ? getAvailableResources().getMemory() : 0;
   AMResponse response=makeRemoteRequest();
   int newHeadRoom=getAvailableResources() != null ? getAvailableResources().getMemory() : 0;
-  List<Container> newContainers=response.getNewContainerList();
-  List<Container> finishedContainers=response.getFinishedContainerList();
+  List<Container> newContainers=response.getAllocatedContainers();
+  List<ContainerStatus> finishedContainers=response.getCompletedContainersStatuses();
   if (newContainers.size() + finishedContainers.size() > 0 || headRoom != newHeadRoom) {
     recalculateReduceSchedule=true;
   }
@@ -12,11 +12,11 @@
     allocatedContainers.add(cont);
     LOG.debug("Received new Container :" + cont);
   }
-  for (  Container cont : finishedContainers) {
+  for (  ContainerStatus cont : finishedContainers) {
     LOG.info("Received completed container " + cont);
-    TaskAttemptId attemptID=assignedRequests.get(cont.getId());
+    TaskAttemptId attemptID=assignedRequests.get(cont.getContainerId());
     if (attemptID == null) {
-      LOG.error("Container complete event for unknown container id " + cont.getId());
+      LOG.error("Container complete event for unknown container id " + cont.getContainerId());
     }
  else {
       assignedRequests.remove(attemptID);
@@ -27,7 +27,7 @@
         completedReduces++;
       }
       eventHandler.handle(new TaskAttemptEvent(attemptID,TaskAttemptEventType.TA_CONTAINER_COMPLETED));
-      String diagnostics=cont.getContainerStatus().getDiagnostics();
+      String diagnostics=cont.getDiagnostics();
       eventHandler.handle(new TaskAttemptDiagnosticsUpdateEvent(attemptID,diagnostics));
     }
   }

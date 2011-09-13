@@ -1,10 +1,12 @@
 {
   ContainerLaunchContext container=recordFactory.newRecordInstance(ContainerLaunchContext.class);
+  Map<String,LocalResource> localResources=new HashMap<String,LocalResource>();
+  Map<String,String> environment=new HashMap<String,String>();
   try {
     FileSystem remoteFS=FileSystem.get(conf);
     if (conf.get(MRJobConfig.JAR) != null) {
       Path remoteJobJar=(new Path(remoteTask.getConf().get(MRJobConfig.JAR))).makeQualified(remoteFS.getUri(),remoteFS.getWorkingDirectory());
-      container.setLocalResource(MRConstants.JOB_JAR,createLocalResource(remoteFS,recordFactory,remoteJobJar,LocalResourceType.FILE,LocalResourceVisibility.APPLICATION));
+      localResources.put(MRConstants.JOB_JAR,createLocalResource(remoteFS,recordFactory,remoteJobJar,LocalResourceType.FILE,LocalResourceVisibility.APPLICATION));
       LOG.info("The job-jar file on the remote FS is " + remoteJobJar.toUri().toASCIIString());
     }
  else {
@@ -13,9 +15,11 @@
     Path path=MRApps.getStagingAreaDir(conf,UserGroupInformation.getCurrentUser().getShortUserName());
     Path remoteJobSubmitDir=new Path(path,oldJobId.toString());
     Path remoteJobConfPath=new Path(remoteJobSubmitDir,MRConstants.JOB_CONF_FILE);
-    container.setLocalResource(MRConstants.JOB_CONF_FILE,createLocalResource(remoteFS,recordFactory,remoteJobConfPath,LocalResourceType.FILE,LocalResourceVisibility.APPLICATION));
+    localResources.put(MRConstants.JOB_CONF_FILE,createLocalResource(remoteFS,recordFactory,remoteJobConfPath,LocalResourceType.FILE,LocalResourceVisibility.APPLICATION));
     LOG.info("The job-conf file on the remote FS is " + remoteJobConfPath.toUri().toASCIIString());
-    setupDistributedCache(remoteFS,conf,container);
+    setupDistributedCache(remoteFS,conf,localResources,environment);
+    container.setLocalResources(localResources);
+    container.setEnv(environment);
     Credentials taskCredentials=new Credentials();
     if (UserGroupInformation.isSecurityEnabled()) {
       for (      Token<? extends TokenIdentifier> token : fsTokens) {
@@ -29,8 +33,10 @@
     taskCredentials.writeTokenStorageToStream(containerTokens_dob);
     container.setContainerTokens(ByteBuffer.wrap(containerTokens_dob.getData(),0,containerTokens_dob.getLength()));
     LOG.info("Putting shuffle token in serviceData");
-    container.setServiceData(ShuffleHandler.MAPREDUCE_SHUFFLE_SERVICEID,ShuffleHandler.serializeServiceData(jobToken));
-    MRApps.addToClassPath(container.getAllEnv(),getInitialClasspath());
+    Map<String,ByteBuffer> serviceData=new HashMap<String,ByteBuffer>();
+    serviceData.put(ShuffleHandler.MAPREDUCE_SHUFFLE_SERVICEID,ShuffleHandler.serializeServiceData(jobToken));
+    container.setServiceData(serviceData);
+    MRApps.addToClassPath(container.getEnv(),getInitialClasspath());
   }
  catch (  IOException e) {
     throw new YarnException(e);
@@ -47,8 +53,8 @@
   classPaths.add(MRConstants.JOB_JAR);
   classPaths.add(MRConstants.YARN_MAPREDUCE_APP_JAR_PATH);
   classPaths.add(workDir.toString());
-  container.addAllCommands(MapReduceChildJVM.getVMCommand(taskAttemptListener.getAddress(),remoteTask,javaHome,workDir.toString(),containerLogDir,childTmpDir,jvmID));
-  MapReduceChildJVM.setVMEnv(container.getAllEnv(),classPaths,workDir.toString(),containerLogDir,nmLdLibraryPath,remoteTask,localizedApplicationTokensFile);
+  container.setCommands(MapReduceChildJVM.getVMCommand(taskAttemptListener.getAddress(),remoteTask,javaHome,workDir.toString(),containerLogDir,childTmpDir,jvmID));
+  MapReduceChildJVM.setVMEnv(container.getEnv(),classPaths,workDir.toString(),containerLogDir,nmLdLibraryPath,remoteTask,localizedApplicationTokensFile);
   container.setContainerId(containerID);
   container.setUser(conf.get(MRJobConfig.USER_NAME));
   container.setResource(assignedCapability);

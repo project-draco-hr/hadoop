@@ -1,0 +1,27 @@
+{
+  final NodeManager nm=new NodeManager(){
+    @Override protected NodeStatusUpdater createNodeStatusUpdater(    Context context,    Dispatcher dispatcher,    NodeHealthCheckerService healthChecker,    ContainerTokenSecretManager containerTokenSecretManager){
+      return new MyNodeStatusUpdater(context,dispatcher,healthChecker,metrics,containerTokenSecretManager);
+    }
+    @Override protected ContainerManagerImpl createContainerManager(    Context context,    ContainerExecutor exec,    DeletionService del,    NodeStatusUpdater nodeStatusUpdater,    ContainerTokenSecretManager containerTokenSecretManager){
+      return new ContainerManagerImpl(context,exec,del,nodeStatusUpdater,metrics,containerTokenSecretManager){
+        @Override public void start(){
+          throw new YarnException("Starting of RPC Server failed");
+        }
+      }
+;
+    }
+  }
+;
+  YarnConfiguration conf=createNMConfig();
+  nm.init(conf);
+  try {
+    nm.start();
+    Assert.fail("NM should have failed to start. Didn't get exception!!");
+  }
+ catch (  Exception e) {
+    Assert.assertEquals("Starting of RPC Server failed",e.getCause().getMessage());
+  }
+  Assert.assertEquals("NM state is wrong!",Service.STATE.INITED,nm.getServiceState());
+  Assert.assertEquals("Number of registered nodes is wrong!",0,this.registeredNodes.size());
+}

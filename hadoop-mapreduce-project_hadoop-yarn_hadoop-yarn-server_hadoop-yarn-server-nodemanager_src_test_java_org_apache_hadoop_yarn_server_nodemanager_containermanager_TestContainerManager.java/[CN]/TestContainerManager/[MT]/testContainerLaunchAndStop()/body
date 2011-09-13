@@ -9,13 +9,7 @@
   fileWriter.write("\nexec sleep 100");
   fileWriter.close();
   ContainerLaunchContext containerLaunchContext=recordFactory.newRecordInstance(ContainerLaunchContext.class);
-  ApplicationId appId=recordFactory.newRecordInstance(ApplicationId.class);
-  ApplicationAttemptId appAttemptId=recordFactory.newRecordInstance(ApplicationAttemptId.class);
-  appAttemptId.setApplicationId(appId);
-  appAttemptId.setAttemptId(1);
-  ContainerId cId=recordFactory.newRecordInstance(ContainerId.class);
-  cId.setAppId(appId);
-  cId.setAppAttemptId(appAttemptId);
+  ContainerId cId=createContainerId();
   containerLaunchContext.setContainerId(cId);
   containerLaunchContext.setUser(user);
   URL resource_alpha=ConverterUtils.getYarnUrlFromPath(localFS.makeQualified(new Path(scriptFile.getAbsolutePath())));
@@ -26,10 +20,14 @@
   rsrc_alpha.setType(LocalResourceType.FILE);
   rsrc_alpha.setTimestamp(scriptFile.lastModified());
   String destinationFile="dest_file";
-  containerLaunchContext.setLocalResource(destinationFile,rsrc_alpha);
+  Map<String,LocalResource> localResources=new HashMap<String,LocalResource>();
+  localResources.put(destinationFile,rsrc_alpha);
+  containerLaunchContext.setLocalResources(localResources);
   containerLaunchContext.setUser(containerLaunchContext.getUser());
-  containerLaunchContext.addCommand("/bin/bash");
-  containerLaunchContext.addCommand(scriptFile.getAbsolutePath());
+  List<String> commands=new ArrayList<String>();
+  commands.add("/bin/bash");
+  commands.add(scriptFile.getAbsolutePath());
+  containerLaunchContext.setCommands(commands);
   containerLaunchContext.setResource(recordFactory.newRecordInstance(Resource.class));
   containerLaunchContext.getResource().setMemory(100 * 1024 * 1024);
   StartContainerRequest startRequest=recordFactory.newRecordInstance(StartContainerRequest.class);
@@ -54,6 +52,6 @@
   GetContainerStatusRequest gcsRequest=recordFactory.newRecordInstance(GetContainerStatusRequest.class);
   gcsRequest.setContainerId(cId);
   ContainerStatus containerStatus=containerManager.getContainerStatus(gcsRequest).getStatus();
-  Assert.assertEquals(String.valueOf(ExitCode.KILLED.getExitCode()),containerStatus.getExitStatus());
+  Assert.assertEquals(ExitCode.KILLED.getExitCode(),containerStatus.getExitStatus());
   Assert.assertFalse("Process is still alive!",exec.signalContainer(user,pid,Signal.NULL));
 }

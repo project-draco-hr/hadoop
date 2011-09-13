@@ -1,0 +1,26 @@
+{
+  LOG.info("nodeUpdate: " + nm + " clusterResources: "+ clusterResource);
+  SchedulerNode node=getNode(nm.getNodeID());
+  for (  ContainerStatus launchedContainer : newlyLaunchedContainers) {
+    containerLaunchedOnNode(launchedContainer.getContainerId(),node);
+  }
+  for (  ContainerStatus completedContainer : completedContainers) {
+    ContainerId containerId=completedContainer.getContainerId();
+    LOG.info("DEBUG --- Container FINISHED: " + containerId);
+    completedContainer(getRMContainer(containerId),completedContainer,RMContainerEventType.FINISHED);
+  }
+  LOG.info("DEBUG -- Node being looked for scheduling " + nm + " availableResource: "+ node.getAvailableResource());
+  RMContainer reservedContainer=node.getReservedContainer();
+  if (reservedContainer != null) {
+    SchedulerApp reservedApplication=getApplication(reservedContainer.getApplicationAttemptId());
+    LOG.info("Trying to fulfill reservation for application " + reservedApplication.getApplicationId() + " on node: "+ nm);
+    LeafQueue queue=((LeafQueue)reservedApplication.getQueue());
+    queue.assignContainers(clusterResource,node);
+  }
+  if (node.getReservedContainer() == null) {
+    root.assignContainers(clusterResource,node);
+  }
+ else {
+    LOG.info("Skipping scheduling since node " + nm + " is reserved by application "+ node.getReservedContainer().getContainerId().getApplicationAttemptId());
+  }
+}

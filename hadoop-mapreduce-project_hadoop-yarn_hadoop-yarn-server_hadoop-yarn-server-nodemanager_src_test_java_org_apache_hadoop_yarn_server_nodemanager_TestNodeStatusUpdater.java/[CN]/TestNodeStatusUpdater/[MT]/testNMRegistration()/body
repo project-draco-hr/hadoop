@@ -1,18 +1,15 @@
 {
   final NodeManager nm=new NodeManager(){
-    @Override protected NodeStatusUpdater createNodeStatusUpdater(    Context context,    Dispatcher dispatcher,    NodeHealthCheckerService healthChecker){
-      return new MyNodeStatusUpdater(context,dispatcher,healthChecker,metrics);
+    @Override protected NodeStatusUpdater createNodeStatusUpdater(    Context context,    Dispatcher dispatcher,    NodeHealthCheckerService healthChecker,    ContainerTokenSecretManager containerTokenSecretManager){
+      return new MyNodeStatusUpdater(context,dispatcher,healthChecker,metrics,containerTokenSecretManager);
     }
   }
 ;
-  YarnConfiguration conf=new YarnConfiguration();
-  conf.setInt(NMConfig.NM_VMEM_GB,5);
-  conf.set(NMConfig.NM_BIND_ADDRESS,"127.0.0.1:12345");
-  conf.set(NMConfig.NM_LOCALIZER_BIND_ADDRESS,"127.0.0.1:12346");
-  conf.set(NMConfig.NM_LOG_DIR,new Path(basedir,"logs").toUri().getPath());
-  conf.set(NMConfig.REMOTE_USER_LOG_DIR,new Path(basedir,"remotelogs").toUri().getPath());
-  conf.set(NMConfig.NM_LOCAL_DIR,new Path(basedir,"nm0").toUri().getPath());
+  YarnConfiguration conf=createNMConfig();
   nm.init(conf);
+  Object[] services=nm.getServices().toArray();
+  Object lastService=services[services.length - 1];
+  Assert.assertTrue("last service is NOT the node status updater",lastService instanceof NodeStatusUpdater);
   new Thread(){
     public void run(){
       try {
@@ -39,5 +36,6 @@
   while (heartBeatID <= 3) {
     Thread.sleep(500);
   }
+  Assert.assertEquals("Number of registered NMs is wrong!!",1,this.registeredNodes.size());
   nm.stop();
 }
