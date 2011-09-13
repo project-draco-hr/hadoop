@@ -12,13 +12,8 @@
   fileWriter.write("Hello World!");
   fileWriter.close();
   ContainerLaunchContext container=recordFactory.newRecordInstance(ContainerLaunchContext.class);
-  ApplicationId appId=recordFactory.newRecordInstance(ApplicationId.class);
-  ApplicationAttemptId appAttemptId=recordFactory.newRecordInstance(ApplicationAttemptId.class);
-  appAttemptId.setApplicationId(appId);
-  appAttemptId.setAttemptId(1);
-  ContainerId cId=recordFactory.newRecordInstance(ContainerId.class);
-  cId.setAppId(appId);
-  cId.setAppAttemptId(appAttemptId);
+  ContainerId cId=createContainerId();
+  ApplicationId appId=cId.getApplicationAttemptId().getApplicationId();
   container.setContainerId(cId);
   container.setUser(user);
   ContainerLaunchContext containerLaunchContext=recordFactory.newRecordInstance(ContainerLaunchContext.class);
@@ -30,7 +25,9 @@
   rsrc_alpha.setType(LocalResourceType.FILE);
   rsrc_alpha.setTimestamp(file.lastModified());
   String destinationFile="dest_file";
-  containerLaunchContext.setLocalResource(destinationFile,rsrc_alpha);
+  Map<String,LocalResource> localResources=new HashMap<String,LocalResource>();
+  localResources.put(destinationFile,rsrc_alpha);
+  containerLaunchContext.setLocalResources(localResources);
   containerLaunchContext.setUser(container.getUser());
   containerLaunchContext.setContainerId(container.getContainerId());
   containerLaunchContext.setResource(recordFactory.newRecordInstance(Resource.class));
@@ -38,7 +35,7 @@
   request.setContainerLaunchContext(containerLaunchContext);
   containerManager.startContainer(request);
   BaseContainerManagerTest.waitForContainerState(containerManager,cId,ContainerState.COMPLETE);
-  BaseContainerManagerTest.waitForApplicationState(containerManager,cId.getAppId(),ApplicationState.RUNNING);
+  BaseContainerManagerTest.waitForApplicationState(containerManager,cId.getApplicationAttemptId().getApplicationId(),ApplicationState.RUNNING);
   String appIDStr=ConverterUtils.toString(appId);
   String containerIDStr=ConverterUtils.toString(cId);
   File userCacheDir=new File(localDir,ContainerLocalizer.USERCACHE);
@@ -57,7 +54,7 @@
   }
   Assert.assertFalse(targetFile.getAbsolutePath() + " exists!!",targetFile.exists());
   containerManager.handle(new CMgrCompletedAppsEvent(Arrays.asList(new ApplicationId[]{appId})));
-  BaseContainerManagerTest.waitForApplicationState(containerManager,cId.getAppId(),ApplicationState.FINISHED);
+  BaseContainerManagerTest.waitForApplicationState(containerManager,cId.getApplicationAttemptId().getApplicationId(),ApplicationState.FINISHED);
   for (  File f : new File[]{appDir,containerDir,appSysDir,containerSysDir}) {
     int timeout=0;
     while (f.exists() && timeout++ < 15) {
