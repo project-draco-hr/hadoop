@@ -1,0 +1,29 @@
+{
+  Map<String,String> environment=container.getEnvironment();
+  if (UserGroupInformation.isSecurityEnabled()) {
+    Credentials credentials=new Credentials();
+    DataInputByteBuffer dibb=new DataInputByteBuffer();
+    if (container.getContainerTokens() != null) {
+      dibb.reset(container.getContainerTokens());
+      credentials.readTokenStorageStream(dibb);
+    }
+    ApplicationTokenIdentifier id=new ApplicationTokenIdentifier(application.getAppAttemptId().getApplicationId());
+    Token<ApplicationTokenIdentifier> token=new Token<ApplicationTokenIdentifier>(id,this.applicationTokenSecretManager);
+    String schedulerAddressStr=this.conf.get(YarnConfiguration.RM_SCHEDULER_ADDRESS,YarnConfiguration.DEFAULT_RM_SCHEDULER_ADDRESS);
+    InetSocketAddress unresolvedAddr=NetUtils.createSocketAddr(schedulerAddressStr);
+    String resolvedAddr=unresolvedAddr.getAddress().getHostAddress() + ":" + unresolvedAddr.getPort();
+    token.setService(new Text(resolvedAddr));
+    String appMasterTokenEncoded=token.encodeToUrlString();
+    LOG.debug("Putting appMaster token in env : " + appMasterTokenEncoded);
+    environment.put(ApplicationConstants.APPLICATION_MASTER_TOKEN_ENV_NAME,appMasterTokenEncoded);
+    credentials.addToken(new Text(resolvedAddr),token);
+    DataOutputBuffer dob=new DataOutputBuffer();
+    credentials.writeTokenStorageToStream(dob);
+    container.setContainerTokens(ByteBuffer.wrap(dob.getData(),0,dob.getLength()));
+    ApplicationTokenIdentifier identifier=new ApplicationTokenIdentifier(application.getAppAttemptId().getApplicationId());
+    SecretKey clientSecretKey=this.clientToAMSecretManager.getMasterKey(identifier);
+    String encoded=Base64.encodeBase64URLSafeString(clientSecretKey.getEncoded());
+    LOG.debug("The encoded client secret-key to be put in env : " + encoded);
+    environment.put(ApplicationConstants.APPLICATION_CLIENT_SECRET_ENV_NAME,encoded);
+  }
+}
