@@ -1,45 +1,33 @@
 {
-  ApplicationSubmissionContext appContext=recordFactory.newRecordInstance(ApplicationSubmissionContext.class);
   ApplicationId applicationId=resMgrDelegate.getApplicationId();
-  appContext.setApplicationId(applicationId);
   Resource capability=recordFactory.newRecordInstance(Resource.class);
   capability.setMemory(conf.getInt(MRJobConfig.MR_AM_VMEM_MB,MRJobConfig.DEFAULT_MR_AM_VMEM_MB));
   LOG.info("AppMaster capability = " + capability);
-  appContext.setMasterCapability(capability);
+  Map<String,LocalResource> localResources=new HashMap<String,LocalResource>();
   Path jobConfPath=new Path(jobSubmitDir,MRConstants.JOB_CONF_FILE);
   URL yarnUrlForJobSubmitDir=ConverterUtils.getYarnUrlFromPath(defaultFileContext.getDefaultFileSystem().resolvePath(defaultFileContext.makeQualified(new Path(jobSubmitDir))));
   LOG.debug("Creating setup context, jobSubmitDir url is " + yarnUrlForJobSubmitDir);
-  appContext.setResource(MRConstants.JOB_SUBMIT_DIR,yarnUrlForJobSubmitDir);
-  appContext.setResourceTodo(MRConstants.JOB_CONF_FILE,createApplicationResource(defaultFileContext,jobConfPath));
+  localResources.put(MRConstants.JOB_CONF_FILE,createApplicationResource(defaultFileContext,jobConfPath));
   if (jobConf.get(MRJobConfig.JAR) != null) {
-    appContext.setResourceTodo(MRConstants.JOB_JAR,createApplicationResource(defaultFileContext,new Path(jobSubmitDir,MRConstants.JOB_JAR)));
+    localResources.put(MRConstants.JOB_JAR,createApplicationResource(defaultFileContext,new Path(jobSubmitDir,MRConstants.JOB_JAR)));
   }
  else {
     LOG.info("Job jar is not present. " + "Not adding any jar to the list of resources.");
   }
   for (  String s : new String[]{"job.split","job.splitmetainfo",MRConstants.APPLICATION_TOKENS_FILE}) {
-    appContext.setResourceTodo(MRConstants.JOB_SUBMIT_DIR + "/" + s,createApplicationResource(defaultFileContext,new Path(jobSubmitDir,s)));
+    localResources.put(MRConstants.JOB_SUBMIT_DIR + "/" + s,createApplicationResource(defaultFileContext,new Path(jobSubmitDir,s)));
   }
-  List<String> fsTokens=new ArrayList<String>();
-  for (  Token<? extends TokenIdentifier> token : ts.getAllTokens()) {
-    fsTokens.add(token.encodeToUrlString());
+  ByteBuffer securityTokens=null;
+  if (UserGroupInformation.isSecurityEnabled()) {
+    DataOutputBuffer dob=new DataOutputBuffer();
+    ts.writeTokenStorageToStream(dob);
+    securityTokens=ByteBuffer.wrap(dob.getData(),0,dob.getLength());
   }
-  appContext.addAllFsTokens(fsTokens);
-  DataOutputBuffer dob=new DataOutputBuffer();
-  ts.writeTokenStorageToStream(dob);
-  appContext.setFsTokensTodo(ByteBuffer.wrap(dob.getData(),0,dob.getLength()));
-  appContext.setQueue(jobConf.get(JobContext.QUEUE_NAME,JobConf.DEFAULT_QUEUE_NAME));
-  appContext.setApplicationName(jobConf.get(JobContext.JOB_NAME,"N/A"));
   String javaHome="$JAVA_HOME";
   Vector<CharSequence> vargs=new Vector<CharSequence>(8);
   vargs.add(javaHome + "/bin/java");
   vargs.add("-Dhadoop.root.logger=" + conf.get(MRJobConfig.MR_AM_LOG_OPTS,MRJobConfig.DEFAULT_MR_AM_LOG_OPTS) + ",console");
   vargs.add(conf.get(MRJobConfig.MR_AM_COMMAND_OPTS,MRJobConfig.DEFAULT_MR_AM_COMMAND_OPTS));
-  Map<String,String> environment=new HashMap<String,String>();
-  MRApps.setInitialClasspath(environment);
-  MRApps.addToClassPath(environment,MRConstants.JOB_JAR);
-  MRApps.addToClassPath(environment,MRConstants.YARN_MAPREDUCE_APP_JAR_PATH);
-  appContext.addAllEnvironment(environment);
   vargs.add("org.apache.hadoop.mapreduce.v2.app.MRAppMaster");
   vargs.add(String.valueOf(applicationId.getClusterTimestamp()));
   vargs.add(String.valueOf(applicationId.getId()));
@@ -53,7 +41,22 @@
   }
   vargsFinal.add(mergedCommand.toString());
   LOG.info("Command to launch container for ApplicationMaster is : " + mergedCommand);
-  appContext.addAllCommands(vargsFinal);
+  Map<String,String> environment=new HashMap<String,String>();
+  MRApps.setInitialClasspath(environment);
+  MRApps.addToClassPath(environment,MRConstants.JOB_JAR);
+  MRApps.addToClassPath(environment,MRConstants.YARN_MAPREDUCE_APP_JAR_PATH);
+  MRApps.setupDistributedCache(jobConf,localResources,environment);
+  ContainerLaunchContext amContainer=recordFactory.newRecordInstance(ContainerLaunchContext.class);
+  amContainer.setResource(capability);
+  amContainer.setLocalResources(localResources);
+  amContainer.setEnvironment(environment);
+  amContainer.setCommands(vargsFinal);
+  amContainer.setContainerTokens(securityTokens);
+  ApplicationSubmissionContext appContext=recordFactory.newRecordInstance(ApplicationSubmissionContext.class);
+  appContext.setApplicationId(applicationId);
   appContext.setUser(UserGroupInformation.getCurrentUser().getShortUserName());
+  appContext.setQueue(jobConf.get(JobContext.QUEUE_NAME,YarnConfiguration.DEFAULT_QUEUE_NAME));
+  appContext.setApplicationName(jobConf.get(JobContext.JOB_NAME,YarnConfiguration.DEFAULT_APPLICATION_NAME));
+  appContext.setAMContainerSpec(amContainer);
   return appContext;
 }
