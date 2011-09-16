@@ -1,10 +1,19 @@
 {
-  Configuration conf=new Configuration();
+  final Configuration conf=new Configuration();
+  conf.setBoolean(DFSConfigKeys.DFS_WEBHDFS_ENABLED_KEY,true);
   try {
     cluster=new MiniDFSCluster.Builder(conf).numDataNodes(2).build();
     cluster.waitActive();
+    cluster.getFileSystem().setPermission(new Path("/"),new FsPermission((short)0777));
     final String uri=WebHdfsFileSystem.SCHEME + "://" + conf.get(DFSConfigKeys.DFS_NAMENODE_HTTP_ADDRESS_KEY);
-    fSys=FileSystem.get(new URI(uri),conf);
+    final UserGroupInformation current=UserGroupInformation.getCurrentUser();
+    final UserGroupInformation ugi=UserGroupInformation.createUserForTesting(current.getShortUserName() + "x",new String[]{"user"});
+    fSys=ugi.doAs(new PrivilegedExceptionAction<FileSystem>(){
+      @Override public FileSystem run() throws Exception {
+        return FileSystem.get(new URI(uri),conf);
+      }
+    }
+);
     defaultWorkingDirectory=fSys.getWorkingDirectory();
   }
  catch (  Exception e) {
