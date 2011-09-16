@@ -1,0 +1,39 @@
+{
+  final UserGroupInformation ugi;
+  final String usernameFromQuery=getUsernameFromQuery(request,tryUgiParameter);
+  if (UserGroupInformation.isSecurityEnabled()) {
+    final String user=request.getRemoteUser();
+    String tokenString=request.getParameter(DELEGATION_PARAMETER_NAME);
+    if (tokenString != null) {
+      Token<DelegationTokenIdentifier> token=new Token<DelegationTokenIdentifier>();
+      token.decodeFromUrlString(tokenString);
+      String serviceAddress=getNNServiceAddress(context,request);
+      if (serviceAddress != null) {
+        LOG.info("Setting service in token: " + new Text(serviceAddress));
+        token.setService(new Text(serviceAddress));
+      }
+      ByteArrayInputStream buf=new ByteArrayInputStream(token.getIdentifier());
+      DataInputStream in=new DataInputStream(buf);
+      DelegationTokenIdentifier id=new DelegationTokenIdentifier();
+      id.readFields(in);
+      ugi=id.getUser();
+      checkUsername(ugi.getUserName(),user);
+      ugi.addToken(token);
+      ugi.setAuthenticationMethod(AuthenticationMethod.TOKEN);
+    }
+ else {
+      if (user == null) {
+        throw new IOException("Security enabled but user not " + "authenticated by filter");
+      }
+      ugi=UserGroupInformation.createRemoteUser(user);
+      ugi.setAuthenticationMethod(secureAuthMethod);
+    }
+    checkUsername(user,usernameFromQuery);
+  }
+ else {
+    ugi=usernameFromQuery == null ? getDefaultWebUser(conf) : UserGroupInformation.createRemoteUser(usernameFromQuery);
+    ugi.setAuthenticationMethod(AuthenticationMethod.SIMPLE);
+  }
+  if (LOG.isDebugEnabled())   LOG.debug("getUGI is returning: " + ugi.getShortUserName());
+  return ugi;
+}

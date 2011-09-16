@@ -1,0 +1,33 @@
+{
+  if (LOG.isTraceEnabled()) {
+    LOG.trace(op + ": " + path+ ", ugi="+ ugi+ Param.toSortedString(", ",offset,length,bufferSize));
+  }
+  return ugi.doAs(new PrivilegedExceptionAction<Response>(){
+    @Override public Response run() throws IOException, URISyntaxException {
+      final NameNode namenode=(NameNode)context.getAttribute("name.node");
+      final String fullpath=path.getAbsolutePath();
+      final NamenodeProtocols np=namenode.getRpcServer();
+switch (op.getValue()) {
+case OPEN:
+{
+          final URI uri=redirectURI(namenode,ugi,delegation,fullpath,op.getValue(),offset.getValue(),offset,length,bufferSize);
+          return Response.temporaryRedirect(uri).build();
+        }
+case GETFILESTATUS:
+{
+        final HdfsFileStatus status=np.getFileInfo(fullpath);
+        final String js=JsonUtil.toJsonString(status);
+        return Response.ok(js).type(MediaType.APPLICATION_JSON).build();
+      }
+case LISTSTATUS:
+{
+      final StreamingOutput streaming=getListingStream(np,fullpath);
+      return Response.ok(streaming).type(MediaType.APPLICATION_JSON).build();
+    }
+default :
+  throw new UnsupportedOperationException(op + " is not supported");
+}
+}
+}
+);
+}
