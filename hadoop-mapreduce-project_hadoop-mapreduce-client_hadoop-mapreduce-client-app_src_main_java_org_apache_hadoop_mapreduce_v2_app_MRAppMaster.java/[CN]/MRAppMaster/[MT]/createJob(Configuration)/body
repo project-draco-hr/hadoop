@@ -1,0 +1,43 @@
+{
+  Credentials fsTokens=new Credentials();
+  UserGroupInformation currentUser=null;
+  try {
+    currentUser=UserGroupInformation.getCurrentUser();
+    if (UserGroupInformation.isSecurityEnabled()) {
+      Path jobSubmitDir=FileContext.getLocalFSFileContext().makeQualified(new Path(new File(MRConstants.JOB_SUBMIT_DIR).getAbsolutePath()));
+      Path jobTokenFile=new Path(jobSubmitDir,MRConstants.APPLICATION_TOKENS_FILE);
+      fsTokens.addAll(Credentials.readTokenStorageFile(jobTokenFile,conf));
+      LOG.info("jobSubmitDir=" + jobSubmitDir + " jobTokenFile="+ jobTokenFile);
+      for (      Token<? extends TokenIdentifier> tk : fsTokens.getAllTokens()) {
+        LOG.info(" --- DEBUG: Token of kind " + tk.getKind() + "in current ugi in the AppMaster for service "+ tk.getService());
+        currentUser.addToken(tk);
+      }
+    }
+  }
+ catch (  IOException e) {
+    throw new YarnException(e);
+  }
+  Job newJob=new JobImpl(appID,conf,dispatcher.getEventHandler(),taskAttemptListener,jobTokenSecretManager,fsTokens,clock,startCount,completedTasksFromPreviousRun,metrics,currentUser.getUserName());
+  ((RunningAppContext)context).jobs.put(newJob.getID(),newJob);
+  dispatcher.register(JobFinishEvent.Type.class,new EventHandler<JobFinishEvent>(){
+    @Override public void handle(    JobFinishEvent event){
+      try {
+        Thread.sleep(5000);
+      }
+ catch (      InterruptedException e) {
+        e.printStackTrace();
+      }
+      LOG.info("Calling stop for all the services");
+      try {
+        stop();
+      }
+ catch (      Throwable t) {
+        LOG.warn("Graceful stop failed ",t);
+      }
+      LOG.info("Exiting MR AppMaster..GoodBye!");
+      System.exit(0);
+    }
+  }
+);
+  return newJob;
+}
