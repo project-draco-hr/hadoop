@@ -3,6 +3,7 @@
   final Map<Path,String> localResources=container.getLocalizedResources();
   String containerIdStr=ConverterUtils.toString(container.getContainerID());
   final String user=launchContext.getUser();
+  final Map<String,String> env=launchContext.getEnvironment();
   final List<String> command=launchContext.getCommands();
   int ret=-1;
   try {
@@ -13,11 +14,12 @@
       newCmds.add(str.replace(ApplicationConstants.LOG_DIR_EXPANSION_VAR,containerLogDir.toUri().getPath()));
     }
     launchContext.setCommands(newCmds);
-    Map<String,String> environment=launchContext.getEnvironment();
-    for (    Entry<String,String> entry : environment.entrySet()) {
-      String value=entry.getValue();
-      entry.setValue(value.replace(ApplicationConstants.LOG_DIR_EXPANSION_VAR,containerLogDir.toUri().getPath()));
+    Map<String,String> envs=launchContext.getEnvironment();
+    Map<String,String> newEnvs=new HashMap<String,String>(envs.size());
+    for (    Entry<String,String> entry : envs.entrySet()) {
+      newEnvs.put(entry.getKey(),entry.getValue().replace(ApplicationConstants.LOG_DIR_EXPANSION_VAR,containerLogDir.toUri().getPath()));
     }
+    launchContext.setEnvironment(newEnvs);
     FileContext lfs=FileContext.getLocalFSFileContext();
     LocalDirAllocator lDirAllocator=new LocalDirAllocator(YarnConfiguration.NM_LOCAL_DIRS);
     Path nmPrivateContainerScriptPath=lDirAllocator.getLocalPathForWrite(ResourceLocalizationService.NM_PRIVATE_DIR + Path.SEPARATOR + appIdStr+ Path.SEPARATOR+ containerIdStr+ Path.SEPARATOR+ CONTAINER_SCRIPT,this.conf);
@@ -35,9 +37,8 @@
         appDirs.add(new Path(appsdir,appIdStr));
       }
       containerScriptOutStream=lfs.create(nmPrivateContainerScriptPath,EnumSet.of(CREATE,OVERWRITE));
-      environment.put(ApplicationConstants.CONTAINER_TOKEN_FILE_ENV_NAME,new Path(containerWorkDir,FINAL_CONTAINER_TOKENS_FILE).toUri().getPath());
-      sanitizeEnv(environment,containerWorkDir,appDirs);
-      writeLaunchEnv(containerScriptOutStream,environment,localResources,launchContext.getCommands());
+      env.put(ApplicationConstants.CONTAINER_TOKEN_FILE_ENV_NAME,new Path(containerWorkDir,FINAL_CONTAINER_TOKENS_FILE).toUri().getPath());
+      writeLaunchEnv(containerScriptOutStream,env,localResources,launchContext.getCommands(),appDirs);
       tokensOutStream=lfs.create(nmPrivateTokensPath,EnumSet.of(CREATE,OVERWRITE));
       Credentials creds=container.getCredentials();
       creds.writeTokenStorageToStream(tokensOutStream);
