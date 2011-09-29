@@ -4,18 +4,18 @@
   capability.setMemory(conf.getInt(MRJobConfig.MR_AM_VMEM_MB,MRJobConfig.DEFAULT_MR_AM_VMEM_MB));
   LOG.info("AppMaster capability = " + capability);
   Map<String,LocalResource> localResources=new HashMap<String,LocalResource>();
-  Path jobConfPath=new Path(jobSubmitDir,MRConstants.JOB_CONF_FILE);
+  Path jobConfPath=new Path(jobSubmitDir,MRJobConfig.JOB_CONF_FILE);
   URL yarnUrlForJobSubmitDir=ConverterUtils.getYarnUrlFromPath(defaultFileContext.getDefaultFileSystem().resolvePath(defaultFileContext.makeQualified(new Path(jobSubmitDir))));
   LOG.debug("Creating setup context, jobSubmitDir url is " + yarnUrlForJobSubmitDir);
-  localResources.put(MRConstants.JOB_CONF_FILE,createApplicationResource(defaultFileContext,jobConfPath));
+  localResources.put(MRJobConfig.JOB_CONF_FILE,createApplicationResource(defaultFileContext,jobConfPath));
   if (jobConf.get(MRJobConfig.JAR) != null) {
-    localResources.put(MRConstants.JOB_JAR,createApplicationResource(defaultFileContext,new Path(jobSubmitDir,MRConstants.JOB_JAR)));
+    localResources.put(MRJobConfig.JOB_JAR,createApplicationResource(defaultFileContext,new Path(jobSubmitDir,MRJobConfig.JOB_JAR)));
   }
  else {
     LOG.info("Job jar is not present. " + "Not adding any jar to the list of resources.");
   }
-  for (  String s : new String[]{"job.split","job.splitmetainfo",MRConstants.APPLICATION_TOKENS_FILE}) {
-    localResources.put(MRConstants.JOB_SUBMIT_DIR + "/" + s,createApplicationResource(defaultFileContext,new Path(jobSubmitDir,s)));
+  for (  String s : new String[]{MRJobConfig.JOB_SPLIT,MRJobConfig.JOB_SPLIT_METAINFO,MRJobConfig.APPLICATION_TOKENS_FILE}) {
+    localResources.put(MRJobConfig.JOB_SUBMIT_DIR + "/" + s,createApplicationResource(defaultFileContext,new Path(jobSubmitDir,s)));
   }
   ByteBuffer securityTokens=null;
   if (UserGroupInformation.isSecurityEnabled()) {
@@ -23,17 +23,16 @@
     ts.writeTokenStorageToStream(dob);
     securityTokens=ByteBuffer.wrap(dob.getData(),0,dob.getLength());
   }
-  String javaHome="$JAVA_HOME";
   Vector<CharSequence> vargs=new Vector<CharSequence>(8);
-  vargs.add(javaHome + "/bin/java");
-  vargs.add("-Dhadoop.root.logger=" + conf.get(MRJobConfig.MR_AM_LOG_OPTS,MRJobConfig.DEFAULT_MR_AM_LOG_OPTS) + ",console");
+  vargs.add(Environment.JAVA_HOME.$() + "/bin/java");
+  long logSize=TaskLog.getTaskLogLength(new JobConf(conf));
+  vargs.add("-Dlog4j.configuration=container-log4j.properties");
+  vargs.add("-D" + MRJobConfig.TASK_LOG_DIR + "="+ ApplicationConstants.LOG_DIR_EXPANSION_VAR);
+  vargs.add("-D" + MRJobConfig.TASK_LOG_SIZE + "="+ logSize);
   vargs.add(conf.get(MRJobConfig.MR_AM_COMMAND_OPTS,MRJobConfig.DEFAULT_MR_AM_COMMAND_OPTS));
-  vargs.add("org.apache.hadoop.mapreduce.v2.app.MRAppMaster");
-  vargs.add(String.valueOf(applicationId.getClusterTimestamp()));
-  vargs.add(String.valueOf(applicationId.getId()));
-  vargs.add(ApplicationConstants.AM_FAIL_COUNT_STRING);
-  vargs.add("1>" + ApplicationConstants.LOG_DIR_EXPANSION_VAR + "/stdout");
-  vargs.add("2>" + ApplicationConstants.LOG_DIR_EXPANSION_VAR + "/stderr");
+  vargs.add(MRJobConfig.APPLICATION_MASTER_CLASS);
+  vargs.add("1>" + ApplicationConstants.LOG_DIR_EXPANSION_VAR + Path.SEPARATOR+ ApplicationConstants.STDOUT);
+  vargs.add("2>" + ApplicationConstants.LOG_DIR_EXPANSION_VAR + Path.SEPARATOR+ ApplicationConstants.STDERR);
   Vector<String> vargsFinal=new Vector<String>(8);
   StringBuilder mergedCommand=new StringBuilder();
   for (  CharSequence str : vargs) {
@@ -42,10 +41,8 @@
   vargsFinal.add(mergedCommand.toString());
   LOG.info("Command to launch container for ApplicationMaster is : " + mergedCommand);
   Map<String,String> environment=new HashMap<String,String>();
-  MRApps.setInitialClasspath(environment);
-  MRApps.addToClassPath(environment,MRConstants.JOB_JAR);
-  MRApps.addToClassPath(environment,MRConstants.YARN_MAPREDUCE_APP_JAR_PATH);
-  MRApps.setupDistributedCache(jobConf,localResources,environment);
+  MRApps.setClasspath(environment);
+  MRApps.setupDistributedCache(jobConf,localResources);
   ContainerLaunchContext amContainer=recordFactory.newRecordInstance(ContainerLaunchContext.class);
   amContainer.setResource(capability);
   amContainer.setLocalResources(localResources);

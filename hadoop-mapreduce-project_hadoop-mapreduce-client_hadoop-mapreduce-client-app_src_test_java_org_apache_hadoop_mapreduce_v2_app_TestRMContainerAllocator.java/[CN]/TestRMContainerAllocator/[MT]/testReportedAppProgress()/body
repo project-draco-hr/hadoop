@@ -1,0 +1,36 @@
+{
+  LOG.info("Running testReportedAppProgress");
+  Configuration conf=new Configuration();
+  MyResourceManager rm=new MyResourceManager(conf);
+  rm.start();
+  DrainDispatcher dispatcher=(DrainDispatcher)rm.getRMContext().getDispatcher();
+  RMApp app=rm.submitApp(1024);
+  dispatcher.await();
+  MockNM amNodeManager=rm.registerNode("amNM:1234",2048);
+  amNodeManager.nodeHeartbeat(true);
+  dispatcher.await();
+  ApplicationAttemptId appAttemptId=app.getCurrentAppAttempt().getAppAttemptId();
+  rm.sendAMLaunched(appAttemptId);
+  dispatcher.await();
+  FakeJob job=new FakeJob(appAttemptId,conf,2,2);
+  MyContainerAllocator allocator=new MyContainerAllocator(rm,conf,appAttemptId,job);
+  allocator.schedule();
+  dispatcher.await();
+  Assert.assertEquals(0.0,app.getProgress(),0.0);
+  job.setProgress(100,10,0,0);
+  allocator.schedule();
+  dispatcher.await();
+  Assert.assertEquals(9.5f,app.getProgress(),0.0);
+  job.setProgress(100,80,0,0);
+  allocator.schedule();
+  dispatcher.await();
+  Assert.assertEquals(41.0f,app.getProgress(),0.0);
+  job.setProgress(100,100,20,0);
+  allocator.schedule();
+  dispatcher.await();
+  Assert.assertEquals(59.0f,app.getProgress(),0.0);
+  job.setProgress(100,100,100,100);
+  allocator.schedule();
+  dispatcher.await();
+  Assert.assertEquals(100.0f,app.getProgress(),0.0);
+}
