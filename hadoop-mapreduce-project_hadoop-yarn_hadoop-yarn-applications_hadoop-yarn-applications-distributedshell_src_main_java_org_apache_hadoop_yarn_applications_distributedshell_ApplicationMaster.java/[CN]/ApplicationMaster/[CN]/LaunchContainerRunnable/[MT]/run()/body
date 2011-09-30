@@ -1,0 +1,59 @@
+{
+  LOG.info("Connecting to container manager for containerid=" + container.getId());
+  connectToCM();
+  LOG.info("Setting up container launch container for containerid=" + container.getId());
+  ContainerLaunchContext ctx=Records.newRecord(ContainerLaunchContext.class);
+  ctx.setContainerId(container.getId());
+  ctx.setResource(container.getResource());
+  try {
+    ctx.setUser(UserGroupInformation.getCurrentUser().getShortUserName());
+  }
+ catch (  IOException e) {
+    LOG.info("Getting current user info failed when trying to launch the container" + e.getMessage());
+  }
+  ctx.setEnvironment(shellEnv);
+  Map<String,LocalResource> localResources=new HashMap<String,LocalResource>();
+  if (!shellScriptPath.isEmpty()) {
+    LocalResource shellRsrc=Records.newRecord(LocalResource.class);
+    shellRsrc.setType(LocalResourceType.FILE);
+    shellRsrc.setVisibility(LocalResourceVisibility.APPLICATION);
+    try {
+      shellRsrc.setResource(ConverterUtils.getYarnUrlFromURI(new URI(shellScriptPath)));
+    }
+ catch (    URISyntaxException e) {
+      LOG.error("Error when trying to use shell script path specified in env" + ", path=" + shellScriptPath);
+      e.printStackTrace();
+      numCompletedContainers.incrementAndGet();
+      numFailedContainers.incrementAndGet();
+      return;
+    }
+    shellRsrc.setTimestamp(shellScriptPathTimestamp);
+    shellRsrc.setSize(shellScriptPathLen);
+    localResources.put(ExecShellStringPath,shellRsrc);
+  }
+  ctx.setLocalResources(localResources);
+  Vector<CharSequence> vargs=new Vector<CharSequence>(5);
+  vargs.add(shellCommand);
+  if (!shellScriptPath.isEmpty()) {
+    vargs.add(ExecShellStringPath);
+  }
+  vargs.add(shellArgs);
+  vargs.add("1>" + ApplicationConstants.LOG_DIR_EXPANSION_VAR + "/stdout");
+  vargs.add("2>" + ApplicationConstants.LOG_DIR_EXPANSION_VAR + "/stderr");
+  StringBuilder command=new StringBuilder();
+  for (  CharSequence str : vargs) {
+    command.append(str).append(" ");
+  }
+  List<String> commands=new ArrayList<String>();
+  commands.add(command.toString());
+  ctx.setCommands(commands);
+  StartContainerRequest startReq=Records.newRecord(StartContainerRequest.class);
+  startReq.setContainerLaunchContext(ctx);
+  try {
+    cm.startContainer(startReq);
+  }
+ catch (  YarnRemoteException e) {
+    LOG.info("Start container failed for :" + ", containerId=" + container.getId());
+    e.printStackTrace();
+  }
+}
