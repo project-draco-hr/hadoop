@@ -2,10 +2,15 @@
   Configuration conf=new HdfsConfiguration();
   final int BLOCK_SIZE=6 * 1024;
   conf.setInt(DFSConfigKeys.DFS_BLOCK_SIZE_KEY,BLOCK_SIZE);
+  conf.setBoolean(DFSConfigKeys.DFS_WEBHDFS_ENABLED_KEY,true);
   MiniDFSCluster cluster=new MiniDFSCluster.Builder(conf).numDataNodes(3).build();
   cluster.waitActive();
   FileSystem fs=cluster.getFileSystem();
   DFSAdmin admin=new DFSAdmin(conf);
+  final String nnAddr=conf.get(DFSConfigKeys.DFS_NAMENODE_HTTP_ADDRESS_KEY);
+  final String webhdfsuri=WebHdfsFileSystem.SCHEME + "://" + nnAddr;
+  System.out.println("webhdfsuri=" + webhdfsuri);
+  final FileSystem webhdfs=new Path(webhdfsuri).getFileSystem(conf);
   try {
     long nsQuota=FSImageTestUtil.getNSQuota(cluster.getNameNode().getNamesystem());
     assertTrue("Default namespace quota expected as long max. But the value is :" + nsQuota,nsQuota == Long.MAX_VALUE);
@@ -24,6 +29,7 @@
       DFSTestUtil.waitReplication(fs,file,(short)3);
     }
     c=fs.getContentSummary(dir);
+    checkContentSummary(c,webhdfs.getContentSummary(dir));
     assertEquals("Invalid space consumed",59 * FILE_SIZE * 3,c.getSpaceConsumed());
     assertEquals("Invalid space consumed",QUOTA_SIZE - (59 * FILE_SIZE * 3),3 * (fs.getDefaultBlockSize() - FILE_SIZE));
     try {
