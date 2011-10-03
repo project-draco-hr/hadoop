@@ -1,9 +1,20 @@
 {
-  YarnRPC rpc=YarnRPC.create(getConfig());
-  Configuration cmConf=new Configuration(getConfig());
+  Configuration conf=getConfig();
+  YarnRPC rpc=YarnRPC.create(conf);
+  InetSocketAddress initialAddress=NetUtils.createSocketAddr(conf.get(YarnConfiguration.NM_ADDRESS,YarnConfiguration.DEFAULT_NM_ADDRESS));
+  Configuration cmConf=new Configuration(conf);
   cmConf.setClass(YarnConfiguration.YARN_SECURITY_INFO,ContainerManagerSecurityInfo.class,SecurityInfo.class);
-  server=rpc.getServer(ContainerManager.class,this,cmBindAddressStr,cmConf,this.containerTokenSecretManager,cmConf.getInt(YarnConfiguration.NM_CONTAINER_MGR_THREAD_COUNT,YarnConfiguration.DEFAULT_NM_CONTAINER_MGR_THREAD_COUNT));
-  LOG.info("ContainerManager started at " + cmBindAddressStr);
+  server=rpc.getServer(ContainerManager.class,this,initialAddress,cmConf,this.containerTokenSecretManager,cmConf.getInt(YarnConfiguration.NM_CONTAINER_MGR_THREAD_COUNT,YarnConfiguration.DEFAULT_NM_CONTAINER_MGR_THREAD_COUNT));
   server.start();
+  InetAddress hostNameResolved=null;
+  try {
+    hostNameResolved=InetAddress.getLocalHost();
+  }
+ catch (  UnknownHostException e) {
+    throw new YarnException(e);
+  }
+  this.context.getNodeId().setHost(hostNameResolved.getCanonicalHostName());
+  this.context.getNodeId().setPort(server.getPort());
+  LOG.info("ContainerManager started at " + this.context.getNodeId().toString());
   super.start();
 }
