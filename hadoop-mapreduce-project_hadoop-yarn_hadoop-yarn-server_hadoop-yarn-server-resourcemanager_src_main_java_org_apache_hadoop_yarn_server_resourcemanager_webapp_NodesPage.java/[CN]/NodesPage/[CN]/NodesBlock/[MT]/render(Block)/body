@@ -1,8 +1,31 @@
 {
-  TBODY<TABLE<Hamlet>> tbody=html.table("#nodes").thead().tr().th(".rack","Rack").th(".nodeaddress","Node Address").th(".nodehttpaddress","Node HTTP Address").th(".healthStatus","Health-status").th(".lastHealthUpdate","Last health-update").th(".healthReport","Health-report").th(".containers","Containers")._()._().tbody();
+  html._(MetricsOverviewTable.class);
+  ResourceScheduler sched=rm.getResourceScheduler();
+  String type=$(NODE_STATE);
+  TBODY<TABLE<Hamlet>> tbody=html.table("#nodes").thead().tr().th(".rack","Rack").th(".state","Node State").th(".nodeaddress","Node Address").th(".nodehttpaddress","Node HTTP Address").th(".healthStatus","Health-status").th(".lastHealthUpdate","Last health-update").th(".healthReport","Health-report").th(".containers","Containers").th(".mem","Mem Used").th(".mem","Mem Avail")._()._().tbody();
+  RMNodeState stateFilter=null;
+  if (type != null && !type.isEmpty()) {
+    stateFilter=RMNodeState.valueOf(type.toUpperCase());
+  }
   for (  RMNode ni : this.rmContext.getRMNodes().values()) {
+    if (stateFilter != null) {
+      RMNodeState state=ni.getState();
+      if (!stateFilter.equals(state)) {
+        continue;
+      }
+    }
+    NodeId id=ni.getNodeID();
+    SchedulerNodeReport report=sched.getNodeReport(id);
+    int numContainers=0;
+    int usedMemory=0;
+    int availableMemory=0;
+    if (report != null) {
+      numContainers=report.getNumContainers();
+      usedMemory=report.getUsedResource().getMemory();
+      availableMemory=report.getAvailableResource().getMemory();
+    }
     NodeHealthStatus health=ni.getNodeHealthStatus();
-    tbody.tr().td(ni.getRackName()).td(String.valueOf(ni.getNodeID().toString())).td().a("http://" + ni.getHttpAddress(),ni.getHttpAddress())._().td(health.getIsNodeHealthy() ? "Healthy" : "Unhealthy").td(Times.format(health.getLastHealthReportTime())).td(String.valueOf(health.getHealthReport())).td("n/a")._();
+    tbody.tr().td(ni.getRackName()).td(String.valueOf(ni.getState())).td(String.valueOf(ni.getNodeID().toString())).td().a("http://" + ni.getHttpAddress(),ni.getHttpAddress())._().td(health.getIsNodeHealthy() ? "Healthy" : "Unhealthy").td(Times.format(health.getLastHealthReportTime())).td(String.valueOf(health.getHealthReport())).td(String.valueOf(numContainers)).td().br().$title(String.valueOf(usedMemory))._()._(StringUtils.byteDesc(usedMemory * BYTES_IN_MB))._().td().br().$title(String.valueOf(usedMemory))._()._(StringUtils.byteDesc(availableMemory * BYTES_IN_MB))._()._();
   }
   tbody._()._();
 }
