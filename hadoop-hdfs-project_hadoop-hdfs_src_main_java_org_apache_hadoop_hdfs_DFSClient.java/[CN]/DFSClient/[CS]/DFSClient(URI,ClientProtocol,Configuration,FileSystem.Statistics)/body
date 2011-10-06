@@ -1,0 +1,27 @@
+{
+  this.dfsClientConf=new Conf(conf);
+  this.conf=conf;
+  this.stats=stats;
+  this.socketFactory=NetUtils.getSocketFactory(conf,ClientProtocol.class);
+  this.dtpReplaceDatanodeOnFailure=ReplaceDatanodeOnFailure.get(conf);
+  this.hdfsTimeout=Client.getTimeout(conf);
+  this.ugi=UserGroupInformation.getCurrentUser();
+  final String authority=nameNodeUri == null ? "null" : nameNodeUri.getAuthority();
+  this.leaserenewer=LeaseRenewer.getInstance(authority,ugi,this);
+  this.clientName=leaserenewer.getClientName(dfsClientConf.taskId);
+  this.socketCache=new SocketCache(dfsClientConf.socketCacheCapacity);
+  Class<?> failoverProxyProviderClass=getFailoverProxyProviderClass(authority,conf);
+  if (nameNodeUri != null && failoverProxyProviderClass != null) {
+    FailoverProxyProvider failoverProxyProvider=(FailoverProxyProvider)ReflectionUtils.newInstance(failoverProxyProviderClass,conf);
+    this.namenode=(ClientProtocol)RetryProxy.create(ClientProtocol.class,failoverProxyProvider,RetryPolicies.failoverOnNetworkException(1));
+  }
+ else   if (nameNodeUri != null && rpcNamenode == null) {
+    this.namenode=DFSUtil.createNamenode(NameNode.getAddress(nameNodeUri),conf);
+  }
+ else   if (nameNodeUri == null && rpcNamenode != null) {
+    this.namenode=rpcNamenode;
+  }
+ else {
+    throw new IllegalArgumentException("Expecting exactly one of nameNodeAddr and rpcNamenode being null: " + "nameNodeAddr=" + nameNodeUri + ", rpcNamenode="+ rpcNamenode);
+  }
+}

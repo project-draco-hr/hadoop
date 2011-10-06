@@ -1,0 +1,24 @@
+{
+  final String nameServiceId="name-service-uri";
+  InetSocketAddress nnAddr1=cluster.getNameNode(0).getNameNodeAddress();
+  InetSocketAddress nnAddr2=cluster.getNameNode(1).getNameNodeAddress();
+  ClientProtocol nn1=DFSUtil.createNamenode(nnAddr1,conf);
+  ClientProtocol nn2=DFSUtil.createNamenode(nnAddr2,conf);
+  DFSClient dfsClient1=new DFSClient(null,nn1,conf,null);
+  DFSClient dfsClient2=new DFSClient(null,nn2,conf,null);
+  OutputStream out1=dfsClient1.create(TEST_FILE.toString(),false);
+  OutputStream out2=dfsClient2.create(TEST_FILE.toString(),false);
+  AppendTestUtil.write(out1,0,FILE_LENGTH_TO_VERIFY);
+  AppendTestUtil.write(out2,0,FILE_LENGTH_TO_VERIFY);
+  out1.close();
+  out2.close();
+  String address1="hdfs://" + nnAddr1.getHostName() + ":"+ nnAddr1.getPort();
+  String address2="hdfs://" + nnAddr2.getHostName() + ":"+ nnAddr2.getPort();
+  conf.set(ConfiguredFailoverProxyProvider.CONFIGURED_NAMENODE_ADDRESSES,address1 + "," + address2);
+  conf.set(DFS_CLIENT_FAILOVER_PROXY_PROVIDER_KEY_PREFIX + "." + nameServiceId,ConfiguredFailoverProxyProvider.class.getName());
+  FileSystem fs=FileSystem.get(new URI("hdfs://" + nameServiceId),conf);
+  AppendTestUtil.check(fs,TEST_FILE,FILE_LENGTH_TO_VERIFY);
+  cluster.getNameNode(0).stop();
+  AppendTestUtil.check(fs,TEST_FILE,FILE_LENGTH_TO_VERIFY);
+  fs.close();
+}
