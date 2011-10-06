@@ -3,15 +3,19 @@
   if (policy == null) {
     policy=defaultPolicy;
   }
-  int failovers=0;
+  int invocationFailoverCount=0;
   int retries=0;
   while (true) {
+    long invocationAttemptFailoverCount;
+synchronized (proxyProvider) {
+      invocationAttemptFailoverCount=proxyProviderFailoverCount;
+    }
     try {
       return invokeMethod(method,args);
     }
  catch (    Exception e) {
       boolean isMethodIdempotent=proxyProvider.getInterface().getMethod(method.getName(),method.getParameterTypes()).isAnnotationPresent(Idempotent.class);
-      RetryAction action=policy.shouldRetry(e,retries++,failovers,isMethodIdempotent);
+      RetryAction action=policy.shouldRetry(e,retries++,invocationFailoverCount,isMethodIdempotent);
       if (action == RetryAction.FAIL) {
         LOG.warn("Exception while invoking " + method.getName() + " of "+ currentProxy.getClass()+ ". Not retrying.",e);
         if (!method.getReturnType().equals(Void.TYPE)) {
@@ -20,10 +24,18 @@
         return null;
       }
  else       if (action == RetryAction.FAILOVER_AND_RETRY) {
-        LOG.warn("Exception while invoking " + method.getName() + " of "+ currentProxy.getClass()+ ". Trying to fail over.",e);
-        failovers++;
-        proxyProvider.performFailover(currentProxy);
+        LOG.warn("Exception while invoking " + method.getName() + " of "+ currentProxy.getClass()+ " after "+ invocationFailoverCount+ " fail over attempts."+ " Trying to fail over.",e);
+synchronized (proxyProvider) {
+          if (invocationAttemptFailoverCount == proxyProviderFailoverCount) {
+            proxyProvider.performFailover(currentProxy);
+            proxyProviderFailoverCount++;
+          }
+ else {
+            LOG.warn("A failover has occurred since the start of this method" + " invocation attempt.");
+          }
+        }
         currentProxy=proxyProvider.getProxy();
+        invocationFailoverCount++;
       }
       if (LOG.isDebugEnabled()) {
         LOG.debug("Exception while invoking " + method.getName() + " of "+ currentProxy.getClass()+ ". Retrying.",e);

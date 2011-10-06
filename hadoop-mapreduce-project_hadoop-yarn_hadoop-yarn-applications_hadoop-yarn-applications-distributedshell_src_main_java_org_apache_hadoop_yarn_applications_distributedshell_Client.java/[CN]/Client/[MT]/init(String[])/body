@@ -1,0 +1,82 @@
+{
+  Options opts=new Options();
+  opts.addOption("appname",true,"Application Name. Default value - DistributedShell");
+  opts.addOption("priority",true,"Application Priority. Default 0");
+  opts.addOption("queue",true,"RM Queue in which this application is to be submitted");
+  opts.addOption("user",true,"User to run the application as");
+  opts.addOption("timeout",true,"Application timeout in milliseconds");
+  opts.addOption("master_memory",true,"Amount of memory in MB to be requested to run the application master");
+  opts.addOption("jar",true,"Jar file containing the application master");
+  opts.addOption("class",true,"Main class to  be run for the Application Master.");
+  opts.addOption("shell_command",true,"Shell command to be executed by the Application Master");
+  opts.addOption("shell_script",true,"Location of the shell script to be executed");
+  opts.addOption("shell_args",true,"Command line args for the shell script");
+  opts.addOption("shell_env",true,"Environment for shell script. Specified as env_key=env_val pairs");
+  opts.addOption("shell_cmd_priority",true,"Priority for the shell command containers");
+  opts.addOption("container_memory",true,"Amount of memory in MB to be requested to run the shell command");
+  opts.addOption("num_containers",true,"No. of containers on which the shell command needs to be executed");
+  opts.addOption("log_properties",true,"log4j.properties file");
+  opts.addOption("debug",false,"Dump out debug information");
+  opts.addOption("help",false,"Print usage");
+  CommandLine cliParser=new GnuParser().parse(opts,args);
+  if (args.length == 0) {
+    printUsage(opts);
+    throw new IllegalArgumentException("No args specified for client to initialize");
+  }
+  if (cliParser.hasOption("help")) {
+    printUsage(opts);
+    return false;
+  }
+  if (cliParser.hasOption("debug")) {
+    debugFlag=true;
+  }
+  appName=cliParser.getOptionValue("appname","DistributedShell");
+  amPriority=Integer.parseInt(cliParser.getOptionValue("priority","0"));
+  amQueue=cliParser.getOptionValue("queue","");
+  amUser=cliParser.getOptionValue("user","");
+  amMemory=Integer.parseInt(cliParser.getOptionValue("master_memory","10"));
+  if (amMemory < 0) {
+    throw new IllegalArgumentException("Invalid memory specified for application master, exiting." + " Specified memory=" + amMemory);
+  }
+  if (!cliParser.hasOption("jar")) {
+    throw new IllegalArgumentException("No jar file specified for application master");
+  }
+  appMasterJar=cliParser.getOptionValue("jar");
+  appMasterMainClass=cliParser.getOptionValue("class","org.apache.hadoop.yarn.applications.distributedshell.ApplicationMaster");
+  if (!cliParser.hasOption("shell_command")) {
+    throw new IllegalArgumentException("No shell command specified to be executed by application master");
+  }
+  shellCommand=cliParser.getOptionValue("shell_command");
+  if (cliParser.hasOption("shell_script")) {
+    shellScriptPath=cliParser.getOptionValue("shell_script");
+  }
+  if (cliParser.hasOption("shell_args")) {
+    shellArgs=cliParser.getOptionValue("shell_args");
+  }
+  if (cliParser.hasOption("shell_env")) {
+    String envs[]=cliParser.getOptionValues("shell_env");
+    for (    String env : envs) {
+      env=env.trim();
+      int index=env.indexOf('=');
+      if (index == -1) {
+        shellEnv.put(env,"");
+        continue;
+      }
+      String key=env.substring(0,index);
+      String val="";
+      if (index < (env.length() - 1)) {
+        val=env.substring(index + 1);
+      }
+      shellEnv.put(key,val);
+    }
+  }
+  shellCmdPriority=Integer.parseInt(cliParser.getOptionValue("shell_cmd_priority","0"));
+  containerMemory=Integer.parseInt(cliParser.getOptionValue("container_memory","10"));
+  numContainers=Integer.parseInt(cliParser.getOptionValue("num_containers","1"));
+  if (containerMemory < 0 || numContainers < 1) {
+    throw new IllegalArgumentException("Invalid no. of containers or container memory specified, exiting." + " Specified containerMemory=" + containerMemory + ", numContainer="+ numContainers);
+  }
+  clientTimeout=Integer.parseInt(cliParser.getOptionValue("timeout","600000"));
+  log4jPropFile=cliParser.getOptionValue("log_properties","");
+  return true;
+}

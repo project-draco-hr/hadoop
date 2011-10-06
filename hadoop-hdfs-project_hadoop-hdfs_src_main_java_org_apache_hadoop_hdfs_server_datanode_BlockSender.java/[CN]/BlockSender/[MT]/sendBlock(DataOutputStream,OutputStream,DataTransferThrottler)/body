@@ -2,44 +2,35 @@
   if (out == null) {
     throw new IOException("out stream is null");
   }
-  this.throttler=throttler;
-  long initialOffset=offset;
+  final long initialOffset=offset;
   long totalRead=0;
   OutputStream streamForSendChunks=out;
   final long startTime=ClientTraceLog.isInfoEnabled() ? System.nanoTime() : 0;
   try {
-    try {
-      checksum.writeHeader(out);
-      if (chunkOffsetOK) {
-        out.writeLong(offset);
-      }
-      out.flush();
-    }
- catch (    IOException e) {
-      throw ioeToSocketException(e);
-    }
+    writeChecksumHeader(out);
     int maxChunksPerPacket;
     int pktSize=PacketHeader.PKT_HEADER_LEN;
-    if (transferToAllowed && !verifyChecksum && baseStream instanceof SocketOutputStream&& blockIn instanceof FileInputStream) {
+    boolean transferTo=transferToAllowed && !verifyChecksum && baseStream instanceof SocketOutputStream&& blockIn instanceof FileInputStream;
+    if (transferTo) {
       FileChannel fileChannel=((FileInputStream)blockIn).getChannel();
       blockInPosition=fileChannel.position();
       streamForSendChunks=baseStream;
-      maxChunksPerPacket=(Math.max(HdfsConstants.IO_FILE_BUFFER_SIZE,MIN_BUFFER_WITH_TRANSFERTO) + bytesPerChecksum - 1) / bytesPerChecksum;
+      maxChunksPerPacket=numberOfChunks(TRANSFERTO_BUFFER_SIZE);
       pktSize+=checksumSize * maxChunksPerPacket;
     }
  else {
-      maxChunksPerPacket=Math.max(1,(HdfsConstants.IO_FILE_BUFFER_SIZE + bytesPerChecksum - 1) / bytesPerChecksum);
-      pktSize+=(bytesPerChecksum + checksumSize) * maxChunksPerPacket;
+      maxChunksPerPacket=Math.max(1,numberOfChunks(HdfsConstants.IO_FILE_BUFFER_SIZE));
+      pktSize+=(chunkSize + checksumSize) * maxChunksPerPacket;
     }
     ByteBuffer pktBuf=ByteBuffer.allocate(pktSize);
     while (endOffset > offset) {
-      long len=sendChunks(pktBuf,maxChunksPerPacket,streamForSendChunks);
+      long len=sendPacket(pktBuf,maxChunksPerPacket,streamForSendChunks,transferTo,throttler);
       offset+=len;
-      totalRead+=len + ((len + bytesPerChecksum - 1) / bytesPerChecksum * checksumSize);
+      totalRead+=len + (numberOfChunks(len) * checksumSize);
       seqno++;
     }
     try {
-      sendChunks(pktBuf,maxChunksPerPacket,streamForSendChunks);
+      sendPacket(pktBuf,maxChunksPerPacket,streamForSendChunks,transferTo,throttler);
       out.flush();
     }
  catch (    IOException e) {
