@@ -1,0 +1,24 @@
+{
+  WrappedApplication wa=null;
+  try {
+    wa=new WrappedApplication(1,314159265358979L,"yak",3);
+    wa.initApplication(0);
+    assertEquals(ApplicationState.INITING,wa.app.getApplicationState());
+    assertEquals(1,wa.app.getContainers().size());
+    reset(wa.localizerBus);
+    wa.appFinished();
+    verify(wa.containerBus).handle(argThat(new ContainerKillMatcher(wa.containers.get(0).getContainerID())));
+    assertEquals(ApplicationState.FINISHING_CONTAINERS_WAIT,wa.app.getApplicationState());
+    wa.containerFinished(0);
+    assertEquals(ApplicationState.APPLICATION_RESOURCES_CLEANINGUP,wa.app.getApplicationState());
+    verify(wa.localizerBus).handle(refEq(new ApplicationLocalizationEvent(LocalizationEventType.DESTROY_APPLICATION_RESOURCES,wa.app)));
+    wa.initApplication(1);
+    assertEquals(ApplicationState.APPLICATION_RESOURCES_CLEANINGUP,wa.app.getApplicationState());
+    assertEquals(0,wa.app.getContainers().size());
+    wa.appResourcesCleanedup();
+    assertEquals(ApplicationState.FINISHED,wa.app.getApplicationState());
+  }
+  finally {
+    if (wa != null)     wa.finished();
+  }
+}
