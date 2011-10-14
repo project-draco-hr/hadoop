@@ -3,23 +3,17 @@
     TokenWithConf tokenWithConf=null;
     try {
       tokenWithConf=queue.take();
-      DistributedFileSystem dfs=null;
-      try {
-        dfs=getDFSForToken(tokenWithConf.token,tokenWithConf.conf);
-      }
- catch (      Exception e) {
-        LOG.info("couldn't get DFS to cancel. Will retry over HTTPS");
-        dfs=null;
-      }
-      if (dfs != null) {
-        dfs.cancelDelegationToken(tokenWithConf.token);
-      }
- else {
-        cancelDelegationTokenOverHttps(tokenWithConf.token,tokenWithConf.conf);
-      }
+      final TokenWithConf current=tokenWithConf;
       if (LOG.isDebugEnabled()) {
-        LOG.debug("Canceling token " + tokenWithConf.token.getService() + " for dfs="+ dfs);
+        LOG.debug("Canceling token " + tokenWithConf.token.getService());
       }
+      UserGroupInformation.getLoginUser().doAs(new PrivilegedExceptionAction<Void>(){
+        @Override public Void run() throws Exception {
+          current.token.cancel(current.conf);
+          return null;
+        }
+      }
+);
     }
  catch (    IOException e) {
       LOG.warn("Failed to cancel token " + tokenWithConf.token + " "+ StringUtils.stringifyException(e));
