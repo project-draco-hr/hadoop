@@ -1,0 +1,44 @@
+{
+  if (stagingDirPath == null) {
+    LOG.error("Log Directory is null, returning");
+    throw new IOException("Missing Log Directory for History");
+  }
+  MetaInfo oldFi=fileMap.get(jobId);
+  Configuration conf=getConfig();
+  Path historyFile=JobHistoryUtils.getStagingJobHistoryFile(stagingDirPath,jobId,startCount);
+  String user=UserGroupInformation.getCurrentUser().getShortUserName();
+  if (user == null) {
+    throw new IOException("User is null while setting up jobhistory eventwriter");
+  }
+  String jobName=context.getJob(jobId).getName();
+  EventWriter writer=(oldFi == null) ? null : oldFi.writer;
+  Path logDirConfPath=JobHistoryUtils.getStagingConfFile(stagingDirPath,jobId,startCount);
+  if (writer == null) {
+    try {
+      FSDataOutputStream out=stagingDirFS.create(historyFile,true);
+      writer=new EventWriter(out);
+      LOG.info("Event Writer setup for JobId: " + jobId + ", File: "+ historyFile);
+    }
+ catch (    IOException ioe) {
+      LOG.info("Could not create log file: [" + historyFile + "] + for job "+ "["+ jobName+ "]");
+      throw ioe;
+    }
+    if (conf != null) {
+      FSDataOutputStream jobFileOut=null;
+      try {
+        if (logDirConfPath != null) {
+          jobFileOut=stagingDirFS.create(logDirConfPath,true);
+          conf.writeXml(jobFileOut);
+          jobFileOut.close();
+        }
+      }
+ catch (      IOException e) {
+        LOG.info("Failed to write the job configuration file",e);
+        throw e;
+      }
+    }
+  }
+  MetaInfo fi=new MetaInfo(historyFile,logDirConfPath,writer,user,jobName,jobId);
+  fi.getJobSummary().setJobId(jobId);
+  fileMap.put(jobId,fi);
+}
