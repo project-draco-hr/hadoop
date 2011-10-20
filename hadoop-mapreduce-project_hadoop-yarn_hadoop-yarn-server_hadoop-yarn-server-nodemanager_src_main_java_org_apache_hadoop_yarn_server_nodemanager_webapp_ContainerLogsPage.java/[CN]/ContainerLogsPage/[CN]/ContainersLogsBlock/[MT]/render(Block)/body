@@ -8,18 +8,31 @@
     div.h1("Invalid containerId " + $(CONTAINER_ID))._();
     return;
   }
+  ApplicationId applicationId=containerId.getApplicationAttemptId().getApplicationId();
+  Application application=this.nmContext.getApplications().get(applicationId);
   Container container=this.nmContext.getContainers().get(containerId);
-  if (container == null) {
+  if (application == null || container == null) {
     div.h1("Unknown container. Container is either not yet running or " + "has already completed or " + "doesn't belong to this node at all.")._();
+    return;
   }
- else   if (EnumSet.of(ContainerState.NEW,ContainerState.LOCALIZING,ContainerState.LOCALIZING).contains(container.getContainerState())) {
+  if (EnumSet.of(ContainerState.NEW,ContainerState.LOCALIZING,ContainerState.LOCALIZING).contains(container.getContainerState())) {
     div.h1("Container is not yet running. Current state is " + container.getContainerState())._();
+    return;
   }
- else   if (EnumSet.of(ContainerState.RUNNING,ContainerState.EXITED_WITH_FAILURE,ContainerState.EXITED_WITH_SUCCESS).contains(container.getContainerState())) {
+  if (EnumSet.of(ContainerState.RUNNING,ContainerState.EXITED_WITH_FAILURE,ContainerState.EXITED_WITH_SUCCESS).contains(container.getContainerState())) {
+    String remoteUser=request().getRemoteUser();
+    UserGroupInformation callerUGI=null;
+    if (remoteUser != null) {
+      callerUGI=UserGroupInformation.createRemoteUser(remoteUser);
+    }
+    if (callerUGI != null && !this.aclsManager.checkAccess(callerUGI,ApplicationAccessType.VIEW_APP,application.getUser(),applicationId)) {
+      div.h1("You (User " + remoteUser + ") are not authorized to view the logs for application "+ applicationId)._();
+      return;
+    }
     if (!$(CONTAINER_LOG_TYPE).isEmpty()) {
       File logFile=null;
       try {
-        logFile=new File(this.logsSelector.getLocalPathToRead(ConverterUtils.toString(containerId.getApplicationAttemptId().getApplicationId()) + Path.SEPARATOR + $(CONTAINER_ID)+ Path.SEPARATOR+ $(CONTAINER_LOG_TYPE),this.conf).toUri().getPath());
+        logFile=new File(this.logsSelector.getLocalPathToRead(ConverterUtils.toString(applicationId) + Path.SEPARATOR + $(CONTAINER_ID)+ Path.SEPARATOR+ $(CONTAINER_LOG_TYPE),this.conf).toUri().getPath());
       }
  catch (      Exception e) {
         div.h1("Cannot find this log on the local disk.")._();
