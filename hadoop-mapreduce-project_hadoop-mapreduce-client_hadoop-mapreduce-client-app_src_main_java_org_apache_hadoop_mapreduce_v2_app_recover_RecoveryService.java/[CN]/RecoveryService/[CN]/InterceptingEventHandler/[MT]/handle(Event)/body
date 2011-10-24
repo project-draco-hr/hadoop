@@ -32,9 +32,18 @@
     TaskAttemptState state=TaskAttemptState.valueOf(attInfo.getTaskStatus());
 switch (state) {
 case SUCCEEDED:
-      LOG.info("Sending done event to " + aId);
-    actualHandler.handle(new TaskAttemptEvent(aId,TaskAttemptEventType.TA_DONE));
-  break;
+      TaskAttemptContext taskContext=new TaskAttemptContextImpl(getConfig(),attInfo.getAttemptId());
+    try {
+      committer.recoverTask(taskContext);
+    }
+ catch (    IOException e) {
+      actualHandler.handle(new JobDiagnosticsUpdateEvent(aId.getTaskId().getJobId(),"Error in recovering task output " + e.getMessage()));
+      actualHandler.handle(new JobEvent(aId.getTaskId().getJobId(),JobEventType.INTERNAL_ERROR));
+    }
+  LOG.info("Recovered output from task attempt " + attInfo.getAttemptId());
+LOG.info("Sending done event to " + aId);
+actualHandler.handle(new TaskAttemptEvent(aId,TaskAttemptEventType.TA_DONE));
+break;
 case KILLED:
 LOG.info("Sending kill event to " + aId);
 actualHandler.handle(new TaskAttemptEvent(aId,TaskAttemptEventType.TA_KILL));
@@ -44,6 +53,11 @@ LOG.info("Sending fail event to " + aId);
 actualHandler.handle(new TaskAttemptEvent(aId,TaskAttemptEventType.TA_FAILMSG));
 break;
 }
+return;
+}
+ else if (event.getType() == ContainerLauncher.EventType.CONTAINER_REMOTE_CLEANUP) {
+TaskAttemptId aId=((ContainerLauncherEvent)event).getTaskAttemptID();
+actualHandler.handle(new TaskAttemptEvent(aId,TaskAttemptEventType.TA_CONTAINER_CLEANED));
 return;
 }
 actualHandler.handle(event);
