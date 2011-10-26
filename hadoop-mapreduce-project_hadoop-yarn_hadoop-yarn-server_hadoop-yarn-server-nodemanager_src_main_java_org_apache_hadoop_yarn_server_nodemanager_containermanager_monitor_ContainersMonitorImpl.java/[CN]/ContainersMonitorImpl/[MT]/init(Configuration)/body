@@ -11,18 +11,13 @@
       totalPhysicalMemoryOnNM=DISABLED_MEMORY_LIMIT;
     }
   }
-  this.maxVmemAllottedForContainers=conf.getLong(YarnConfiguration.NM_VMEM_GB,YarnConfiguration.DEFAULT_NM_VMEM_GB);
-  this.maxVmemAllottedForContainers=this.maxVmemAllottedForContainers * 1024 * 1024* 1024L;
-  if (this.maxVmemAllottedForContainers > totalPhysicalMemoryOnNM) {
-    LOG.info("totalMemoryAllottedForContainers > totalPhysicalMemoryOnNM." + " Thrashing might happen.");
+  this.maxPmemAllottedForContainers=conf.getLong(YarnConfiguration.NM_PMEM_MB,YarnConfiguration.DEFAULT_NM_PMEM_MB);
+  this.maxPmemAllottedForContainers=this.maxPmemAllottedForContainers * 1024 * 1024L;
+  if (totalPhysicalMemoryOnNM != DISABLED_MEMORY_LIMIT && this.maxPmemAllottedForContainers > totalPhysicalMemoryOnNM * 0.80f) {
+    LOG.warn("NodeManager configured with " + StringUtils.humanReadableInt(maxPmemAllottedForContainers) + " physical memory allocated to containers, which is more than "+ "80% of the total physical memory available ("+ StringUtils.humanReadableInt(totalPhysicalMemoryOnNM)+ "). Thrashing might happen.");
   }
-  long reservedPmemOnNM=conf.getLong(YarnConfiguration.NM_RESERVED_MEMORY_MB,DISABLED_MEMORY_LIMIT);
-  reservedPmemOnNM=reservedPmemOnNM == DISABLED_MEMORY_LIMIT ? DISABLED_MEMORY_LIMIT : reservedPmemOnNM * 1024 * 1024;
-  if (reservedPmemOnNM == DISABLED_MEMORY_LIMIT || totalPhysicalMemoryOnNM == DISABLED_MEMORY_LIMIT) {
-    this.maxPmemAllottedForContainers=DISABLED_MEMORY_LIMIT;
-  }
- else {
-    this.maxPmemAllottedForContainers=totalPhysicalMemoryOnNM - reservedPmemOnNM;
-  }
+  float vmemRatio=conf.getFloat(YarnConfiguration.NM_VMEM_PMEM_RATIO,YarnConfiguration.DEFAULT_NM_VMEM_PMEM_RATIO);
+  Preconditions.checkArgument(vmemRatio > 0.99f,YarnConfiguration.NM_VMEM_PMEM_RATIO + " should be at least 1.0");
+  this.maxVmemAllottedForContainers=(long)(vmemRatio * maxPmemAllottedForContainers);
   super.init(conf);
 }
