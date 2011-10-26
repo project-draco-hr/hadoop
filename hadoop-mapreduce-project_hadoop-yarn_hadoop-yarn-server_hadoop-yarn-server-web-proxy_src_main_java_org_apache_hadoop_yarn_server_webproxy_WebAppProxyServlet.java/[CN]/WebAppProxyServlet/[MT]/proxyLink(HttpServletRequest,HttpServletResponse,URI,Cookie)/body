@@ -1,0 +1,35 @@
+{
+  org.apache.commons.httpclient.URI uri=new org.apache.commons.httpclient.URI(link.toString(),false);
+  HttpClient client=new HttpClient();
+  HttpMethod method=new GetMethod(uri.getEscapedURI());
+  @SuppressWarnings("unchecked") Enumeration<String> names=req.getHeaderNames();
+  while (names.hasMoreElements()) {
+    String name=names.nextElement();
+    if (passThroughHeaders.contains(name)) {
+      String value=req.getHeader(name);
+      LOG.debug("REQ HEADER: " + name + " : "+ value);
+      method.setRequestHeader(name,value);
+    }
+  }
+  String user=req.getRemoteUser();
+  if (user != null && !user.isEmpty()) {
+    method.setRequestHeader("Cookie",PROXY_USER_COOKIE_NAME + "=" + URLEncoder.encode(user,"ASCII"));
+  }
+  OutputStream out=resp.getOutputStream();
+  try {
+    resp.setStatus(client.executeMethod(method));
+    for (    Header header : method.getResponseHeaders()) {
+      resp.setHeader(header.getName(),header.getValue());
+    }
+    if (c != null) {
+      resp.addCookie(c);
+    }
+    InputStream in=method.getResponseBodyAsStream();
+    if (in != null) {
+      IOUtils.copyBytes(in,out,4096,true);
+    }
+  }
+  finally {
+    method.releaseConnection();
+  }
+}

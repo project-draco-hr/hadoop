@@ -1,0 +1,65 @@
+{
+  try {
+    String userApprovedParamS=req.getParameter(ProxyUriUtils.PROXY_APPROVAL_PARAM);
+    boolean userWasWarned=false;
+    boolean userApproved=(userApprovedParamS != null && Boolean.valueOf(userApprovedParamS));
+    boolean securityEnabled=isSecurityEnabled();
+    final String remoteUser=req.getRemoteUser();
+    final String pathInfo=req.getPathInfo();
+    String parts[]=pathInfo.split("/",3);
+    if (parts.length < 2) {
+      LOG.warn(remoteUser + " Gave an invalid proxy path " + pathInfo);
+      notFound(resp,"Your path appears to be formatted incorrectly.");
+      return;
+    }
+    String appId=parts[1];
+    String rest=parts.length > 2 ? parts[2] : "";
+    ApplicationId id=Apps.toAppID(appId);
+    if (id == null) {
+      LOG.warn(req.getRemoteUser() + " Attempting to access " + appId+ " that is invalid");
+      notFound(resp,appId + " appears to be formatted incorrectly.");
+      return;
+    }
+    if (securityEnabled) {
+      String cookieName=getCheckCookieName(id);
+      for (      Cookie c : req.getCookies()) {
+        if (cookieName.equals(c.getName())) {
+          userWasWarned=true;
+          userApproved=userApproved || Boolean.valueOf(c.getValue());
+          break;
+        }
+      }
+    }
+    boolean checkUser=securityEnabled && (!userWasWarned || !userApproved);
+    ApplicationReport applicationReport=getApplicationReport(id);
+    if (applicationReport == null) {
+      LOG.warn(req.getRemoteUser() + " Attempting to access " + id+ " that was not found");
+      notFound(resp,"Application " + appId + " could not be found, "+ "please try the history server");
+      return;
+    }
+    URI trackingUri=ProxyUriUtils.getUriFromAMUrl(applicationReport.getOriginalTrackingUrl());
+    String runningUser=applicationReport.getUser();
+    if (checkUser && !runningUser.equals(remoteUser)) {
+      LOG.info("Asking " + remoteUser + " if they want to connect to the "+ "app master GUI of "+ appId+ " owned by "+ runningUser);
+      warnUserPage(resp,ProxyUriUtils.getPathAndQuery(id,rest,req.getQueryString(),true),runningUser,id);
+      return;
+    }
+    URI toFetch=new URI(req.getScheme(),trackingUri.getAuthority(),StringHelper.ujoin(trackingUri.getPath(),rest),req.getQueryString(),null);
+    LOG.info(req.getRemoteUser() + " is accessing unchecked " + toFetch+ " which is the app master GUI of "+ appId+ " owned by "+ runningUser);
+switch (applicationReport.getYarnApplicationState()) {
+case KILLED:
+case FINISHED:
+case FAILED:
+      resp.sendRedirect(resp.encodeRedirectURL(toFetch.toString()));
+    return;
+}
+Cookie c=null;
+if (userWasWarned && userApproved) {
+  c=makeCheckCookie(id,true);
+}
+proxyLink(req,resp,toFetch,c);
+}
+ catch (URISyntaxException e) {
+throw new IOException(e);
+}
+}
