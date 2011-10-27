@@ -1,0 +1,45 @@
+{
+  MyContainerManager containerManager=new MyContainerManager();
+  MockRM rm=new MockRMWithAMS(containerManager);
+  rm.start();
+  MockNM nm1=rm.registerNode("localhost:1234",5120);
+  RMApp app=rm.submitApp(1024);
+  nm1.nodeHeartbeat(true);
+  int waitCount=0;
+  while (containerManager.containerEnv == null && waitCount++ < 20) {
+    LOG.info("Waiting for AM Launch to happen..");
+    Thread.sleep(1000);
+  }
+  Assert.assertNotNull(containerManager.containerEnv);
+  RMAppAttempt attempt=app.getCurrentAppAttempt();
+  ApplicationAttemptId applicationAttemptId=attempt.getAppAttemptId();
+  waitForLaunchedState(attempt);
+  final Configuration conf=rm.getConfig();
+  final YarnRPC rpc=YarnRPC.create(conf);
+  final String serviceAddr=conf.get(YarnConfiguration.RM_SCHEDULER_ADDRESS,YarnConfiguration.DEFAULT_RM_SCHEDULER_ADDRESS);
+  UserGroupInformation currentUser=UserGroupInformation.createRemoteUser(applicationAttemptId.toString());
+  String tokenURLEncodedStr=containerManager.containerEnv.get(ApplicationConstants.APPLICATION_MASTER_TOKEN_ENV_NAME);
+  LOG.info("AppMasterToken is " + tokenURLEncodedStr);
+  Token<? extends TokenIdentifier> token=new Token<TokenIdentifier>();
+  token.decodeFromUrlString(tokenURLEncodedStr);
+  currentUser.addToken(token);
+  AMRMProtocol client=currentUser.doAs(new PrivilegedAction<AMRMProtocol>(){
+    @Override public AMRMProtocol run(){
+      return (AMRMProtocol)rpc.getProxy(AMRMProtocol.class,NetUtils.createSocketAddr(serviceAddr),conf);
+    }
+  }
+);
+  RegisterApplicationMasterRequest request=Records.newRecord(RegisterApplicationMasterRequest.class);
+  ApplicationAttemptId otherAppAttemptId=BuilderUtils.newApplicationAttemptId(applicationAttemptId.getApplicationId(),42);
+  request.setApplicationAttemptId(otherAppAttemptId);
+  try {
+    client.registerApplicationMaster(request);
+    Assert.fail("Should fail with authorization error");
+  }
+ catch (  YarnRemoteException e) {
+    Assert.assertEquals("Unauthorized request from ApplicationMaster. " + "Expected ApplicationAttemptID: " + applicationAttemptId.toString() + " Found: "+ otherAppAttemptId.toString(),e.getMessage());
+  }
+ finally {
+    rm.stop();
+  }
+}
