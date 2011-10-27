@@ -3,6 +3,7 @@
   String[] names=INode.getPathNames(src);
   byte[][] components=INode.getPathComponents(names);
   INode[] inodes=new INode[components.length];
+  final int lastInodeIndex=inodes.length - 1;
   writeLock();
   try {
     rootDir.getExistingPathINodes(components,inodes,false);
@@ -14,10 +15,21 @@
         throw new FileAlreadyExistsException("Parent path is not a directory: " + pathbuilder + " "+ inodes[i].getLocalName());
       }
     }
+    PermissionStatus parentPermissions=permissions;
+    if (inheritPermission || (i < lastInodeIndex)) {
+      FsPermission parentFsPerm=inheritPermission ? inodes[i - 1].getFsPermission() : permissions.getPermission();
+      if (!parentFsPerm.getUserAction().implies(FsAction.WRITE_EXECUTE)) {
+        parentFsPerm=new FsPermission(parentFsPerm.getUserAction().or(FsAction.WRITE_EXECUTE),parentFsPerm.getGroupAction(),parentFsPerm.getOtherAction());
+      }
+      if (!parentPermissions.getPermission().equals(parentFsPerm)) {
+        parentPermissions=new PermissionStatus(parentPermissions.getUserName(),parentPermissions.getGroupName(),parentFsPerm);
+        if (inheritPermission)         permissions=parentPermissions;
+      }
+    }
     for (; i < inodes.length; i++) {
       pathbuilder.append(Path.SEPARATOR + names[i]);
       String cur=pathbuilder.toString();
-      unprotectedMkdir(inodes,i,components[i],permissions,inheritPermission || i != components.length - 1,now);
+      unprotectedMkdir(inodes,i,components[i],(i < lastInodeIndex) ? parentPermissions : permissions,now);
       if (inodes[i] == null) {
         return false;
       }
