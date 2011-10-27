@@ -1,30 +1,23 @@
 {
   Container container=event.getContainer();
   ContainerId containerId=container.getContainerID();
-  String userName=container.getUser();
 switch (event.getType()) {
 case LAUNCH_CONTAINER:
     Application app=context.getApplications().get(containerId.getApplicationAttemptId().getApplicationId());
   ContainerLaunch launch=new ContainerLaunch(getConfig(),dispatcher,exec,app,event.getContainer());
-running.put(containerId,new RunningContainer(userName,containerLauncher.submit(launch)));
+running.put(containerId,new RunningContainer(containerLauncher.submit(launch),launch));
 break;
 case CLEANUP_CONTAINER:
 RunningContainer rContainerDatum=running.remove(containerId);
 Future<Integer> rContainer=rContainerDatum.runningcontainer;
-if (rContainer != null) {
-if (rContainer.isDone()) {
-break;
-}
+if (rContainer != null && !rContainer.isDone()) {
 rContainer.cancel(false);
-String processId=exec.getProcessId(containerId);
-if (processId != null) {
+}
 try {
-exec.signalContainer(rContainerDatum.user,processId,Signal.KILL);
+rContainerDatum.launcher.cleanupContainer();
 }
  catch (IOException e) {
-e.printStackTrace();
-}
-}
+LOG.warn("Got exception while cleaning container " + containerId + ". Ignoring.");
 }
 break;
 }

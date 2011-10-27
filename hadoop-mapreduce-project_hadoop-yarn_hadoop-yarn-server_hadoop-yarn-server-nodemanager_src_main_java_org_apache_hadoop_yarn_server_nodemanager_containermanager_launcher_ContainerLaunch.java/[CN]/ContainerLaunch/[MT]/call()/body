@@ -1,7 +1,8 @@
 {
   final ContainerLaunchContext launchContext=container.getLaunchContext();
   final Map<Path,String> localResources=container.getLocalizedResources();
-  String containerIdStr=ConverterUtils.toString(container.getContainerID());
+  ContainerId containerID=container.getContainerID();
+  String containerIdStr=ConverterUtils.toString(containerID);
   final String user=launchContext.getUser();
   final List<String> command=launchContext.getCommands();
   int ret=-1;
@@ -25,6 +26,8 @@
     DataOutputStream containerScriptOutStream=null;
     DataOutputStream tokensOutStream=null;
     Path containerWorkDir=lDirAllocator.getLocalPathForWrite(ContainerLocalizer.USERCACHE + Path.SEPARATOR + user+ Path.SEPARATOR+ ContainerLocalizer.APPCACHE+ Path.SEPARATOR+ appIdStr+ Path.SEPARATOR+ containerIdStr,LocalDirAllocator.SIZE_UNKNOWN,this.conf,false);
+    String pidFileSuffix=String.format(ContainerLaunch.PID_FILE_NAME_FMT,containerIdStr);
+    pidFilePath=lDirAllocator.getLocalPathForWrite(ResourceLocalizationService.NM_PRIVATE_DIR + Path.SEPARATOR + pidFileSuffix,this.conf);
     try {
       String[] localDirs=this.conf.getStrings(YarnConfiguration.NM_LOCAL_DIRS,YarnConfiguration.DEFAULT_NM_LOCAL_DIRS);
       List<Path> appDirs=new ArrayList<Path>(localDirs.length);
@@ -45,15 +48,27 @@
   finally {
       IOUtils.cleanup(LOG,containerScriptOutStream,tokensOutStream);
     }
-    dispatcher.getEventHandler().handle(new ContainerEvent(container.getContainerID(),ContainerEventType.CONTAINER_LAUNCHED));
-    ret=exec.launchContainer(container,nmPrivateContainerScriptPath,nmPrivateTokensPath,user,appIdStr,containerWorkDir);
+    dispatcher.getEventHandler().handle(new ContainerEvent(containerID,ContainerEventType.CONTAINER_LAUNCHED));
+    if (!shouldLaunchContainer.compareAndSet(false,true)) {
+      LOG.info("Container " + containerIdStr + " not launched as "+ "cleanup already called");
+      ret=ExitCode.TERMINATED.getExitCode();
+    }
+ else {
+      exec.activateContainer(containerID,pidFilePath);
+      ret=exec.launchContainer(container,nmPrivateContainerScriptPath,nmPrivateTokensPath,user,appIdStr,containerWorkDir);
+    }
   }
  catch (  Throwable e) {
     LOG.warn("Failed to launch container",e);
     dispatcher.getEventHandler().handle(new ContainerExitEvent(launchContext.getContainerId(),ContainerEventType.CONTAINER_EXITED_WITH_FAILURE,ret));
     return ret;
   }
-  if (ret == ExitCode.KILLED.getExitCode()) {
+ finally {
+    completed.set(true);
+    exec.deactivateContainer(containerID);
+  }
+  LOG.debug("Container " + containerIdStr + " completed with exit code "+ ret);
+  if (ret == ExitCode.FORCE_KILLED.getExitCode() || ret == ExitCode.TERMINATED.getExitCode()) {
     dispatcher.getEventHandler().handle(new ContainerExitEvent(launchContext.getContainerId(),ContainerEventType.CONTAINER_KILLED_ON_REQUEST,ret));
     return ret;
   }
