@@ -1,0 +1,55 @@
+{
+  Configuration conf=getConf();
+  NameNode.initMetrics(conf,NamenodeRole.NAMENODE);
+  DFSTestUtil.formatNameNode(conf);
+  FSNamesystem fsn=FSNamesystem.loadFromDisk(conf);
+  final FSImage image=fsn.dir.fsImage;
+  NNStorage storage=image.getStorage();
+  storage.close();
+  storage.setStorageDirectories(FSNamesystem.getNamespaceDirs(conf),FSNamesystem.getNamespaceEditsDirs(conf));
+  FSNamesystem spyFsn=spy(fsn);
+  final FSNamesystem finalFsn=spyFsn;
+  DelayAnswer delayer=new GenericTestUtils.DelayAnswer(LOG);
+  doAnswer(delayer).when(spyFsn).getGenerationStamp();
+  ExecutorService pool=Executors.newFixedThreadPool(2);
+  try {
+    doAnEdit(fsn,1);
+    fsn.setSafeMode(SafeModeAction.SAFEMODE_ENTER);
+    try {
+      Future<Void> saverFuture=pool.submit(new Callable<Void>(){
+        @Override public Void call() throws Exception {
+          image.saveNamespace(finalFsn);
+          return null;
+        }
+      }
+);
+      delayer.waitForCall();
+      Future<Void> cancelFuture=pool.submit(new Callable<Void>(){
+        public Void call() throws Exception {
+          image.cancelSaveNamespace("cancelled");
+          return null;
+        }
+      }
+);
+      Thread.sleep(500);
+      delayer.proceed();
+      cancelFuture.get();
+      saverFuture.get();
+      fail("saveNamespace did not fail even though cancelled!");
+    }
+ catch (    Throwable t) {
+      GenericTestUtils.assertExceptionContains("SaveNamespaceCancelledException",t);
+    }
+    LOG.info("Successfully cancelled a saveNamespace");
+    FSImageTestUtil.logStorageContents(LOG,storage);
+    for (    StorageDirectory sd : storage.dirIterable(null)) {
+      File curDir=sd.getCurrentDir();
+      GenericTestUtils.assertGlobEquals(curDir,"fsimage_.*",NNStorage.getImageFileName(0),NNStorage.getImageFileName(0) + MD5FileUtils.MD5_SUFFIX);
+    }
+  }
+  finally {
+    if (fsn != null) {
+      fsn.close();
+    }
+  }
+}
