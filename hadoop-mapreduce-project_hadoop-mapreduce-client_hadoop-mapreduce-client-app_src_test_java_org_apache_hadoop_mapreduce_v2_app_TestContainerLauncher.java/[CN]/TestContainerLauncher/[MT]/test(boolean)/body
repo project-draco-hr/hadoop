@@ -1,0 +1,23 @@
+{
+  MRApp app=new MRAppWithSlowNM(swallowInterrupts);
+  Configuration conf=new Configuration();
+  int maxAttempts=1;
+  conf.setInt(MRJobConfig.MAP_MAX_ATTEMPTS,maxAttempts);
+  conf.setBoolean(MRJobConfig.JOB_UBERTASK_ENABLE,false);
+  conf.setInt(ContainerLauncher.MR_AM_NM_COMMAND_TIMEOUT,3000);
+  Job job=app.submit(conf);
+  app.waitForState(job,JobState.RUNNING);
+  Map<TaskId,Task> tasks=job.getTasks();
+  Assert.assertEquals("Num tasks is not correct",1,tasks.size());
+  Task task=tasks.values().iterator().next();
+  app.waitForState(task,TaskState.SCHEDULED);
+  Map<TaskAttemptId,TaskAttempt> attempts=tasks.values().iterator().next().getAttempts();
+  Assert.assertEquals("Num attempts is not correct",maxAttempts,attempts.size());
+  TaskAttempt attempt=attempts.values().iterator().next();
+  app.waitForState(attempt,TaskAttemptState.ASSIGNED);
+  app.waitForState(job,JobState.FAILED);
+  LOG.info("attempt.getDiagnostics: " + attempt.getDiagnostics());
+  Assert.assertTrue(attempt.getDiagnostics().toString().contains("Container launch failed for container_0_0000_01_000000 : "));
+  Assert.assertTrue(attempt.getDiagnostics().toString().contains(": java.lang.InterruptedException"));
+  app.stop();
+}
