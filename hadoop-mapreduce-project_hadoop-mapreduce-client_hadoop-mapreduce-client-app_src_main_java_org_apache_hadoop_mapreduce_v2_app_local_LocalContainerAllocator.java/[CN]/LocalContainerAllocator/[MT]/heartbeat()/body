@@ -1,8 +1,21 @@
 {
   AllocateRequest allocateRequest=BuilderUtils.newAllocateRequest(this.applicationAttemptId,this.lastResponseID,super.getApplicationProgress(),new ArrayList<ResourceRequest>(),new ArrayList<ContainerId>());
   AllocateResponse allocateResponse=scheduler.allocate(allocateRequest);
-  AMResponse response=allocateResponse.getAMResponse();
+  AMResponse response;
+  try {
+    response=allocateResponse.getAMResponse();
+    retrystartTime=System.currentTimeMillis();
+  }
+ catch (  Exception e) {
+    if (System.currentTimeMillis() - retrystartTime >= retryInterval) {
+      eventHandler.handle(new JobEvent(this.getJob().getID(),JobEventType.INTERNAL_ERROR));
+      throw new YarnException("Could not contact RM after " + retryInterval + " milliseconds.");
+    }
+    throw e;
+  }
   if (response.getReboot()) {
     LOG.info("Event from RM: shutting down Application Master");
+    eventHandler.handle(new JobEvent(this.getJob().getID(),JobEventType.INTERNAL_ERROR));
+    throw new YarnException("Resource Manager doesn't recognize AttemptId: " + this.getContext().getApplicationID());
   }
 }
