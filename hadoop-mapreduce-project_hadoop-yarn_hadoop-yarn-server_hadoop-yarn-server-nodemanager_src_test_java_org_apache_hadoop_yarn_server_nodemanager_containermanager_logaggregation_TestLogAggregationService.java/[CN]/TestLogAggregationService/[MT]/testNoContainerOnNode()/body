@@ -1,14 +1,24 @@
 {
   this.conf.set(YarnConfiguration.NM_LOG_DIRS,localLogDir.getAbsolutePath());
   this.conf.set(YarnConfiguration.NM_REMOTE_APP_LOG_DIR,this.remoteRootLogDir.getAbsolutePath());
-  LogAggregationService logAggregationService=new LogAggregationService(this.context,this.delSrvc);
+  this.conf.setBoolean(YarnConfiguration.NM_LOG_AGGREGATION_ENABLED,true);
+  DrainDispatcher dispatcher=createDispatcher();
+  EventHandler<ApplicationEvent> appEventHandler=mock(EventHandler.class);
+  dispatcher.register(ApplicationEventType.class,appEventHandler);
+  LogAggregationService logAggregationService=new LogAggregationService(dispatcher,this.context,this.delSrvc);
   logAggregationService.init(this.conf);
   logAggregationService.start();
   ApplicationId application1=BuilderUtils.newApplicationId(1234,1);
   File app1LogDir=new File(localLogDir,ConverterUtils.toString(application1));
   app1LogDir.mkdir();
-  logAggregationService.handle(new LogAggregatorAppStartedEvent(application1,this.user,null,ContainerLogsRetentionPolicy.ALL_CONTAINERS));
+  logAggregationService.handle(new LogAggregatorAppStartedEvent(application1,this.user,null,ContainerLogsRetentionPolicy.ALL_CONTAINERS,this.acls));
   logAggregationService.handle(new LogAggregatorAppFinishedEvent(application1));
   logAggregationService.stop();
-  Assert.assertFalse(new File(logAggregationService.getRemoteNodeLogFileForApp(application1).toUri().getPath()).exists());
+  Assert.assertFalse(new File(logAggregationService.getRemoteNodeLogFileForApp(application1,this.user).toUri().getPath()).exists());
+  dispatcher.await();
+  ArgumentCaptor<ApplicationEvent> eventCaptor=ArgumentCaptor.forClass(ApplicationEvent.class);
+  verify(appEventHandler).handle(eventCaptor.capture());
+  assertEquals(ApplicationEventType.APPLICATION_LOG_AGGREGATION_FINISHED,eventCaptor.getValue().getType());
+  verify(appEventHandler).handle(eventCaptor.capture());
+  assertEquals(application1,eventCaptor.getValue().getApplicationID());
 }

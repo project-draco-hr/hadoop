@@ -11,6 +11,7 @@
     return;
   }
   Map<JobACL,AccessControlList> acls=job.getJobACLs();
+  List<AMInfo> amInfos=job.getAMInfos();
   JobReport jobReport=job.getReport();
   int mapTasks=job.getTotalMaps();
   int mapTasksComplete=job.getCompletedMaps();
@@ -20,6 +21,7 @@
   long finishTime=jobReport.getFinishTime();
   countTasksAndAttempts(job);
   ResponseInfo infoBlock=info("Job Overview")._("Job Name:",job.getName())._("User Name:",job.getUserName())._("State:",job.getState())._("Uberized:",job.isUber())._("Started:",new Date(startTime))._("Finished:",new Date(finishTime))._("Elapsed:",StringUtils.formatTime(Times.elapsed(startTime,finishTime,false)));
+  String amString=amInfos.size() == 1 ? "ApplicationMaster" : "ApplicationMasters";
   List<String> diagnostics=job.getDiagnostics();
   if (diagnostics != null && !diagnostics.isEmpty()) {
     StringBuffer b=new StringBuffer();
@@ -39,5 +41,15 @@
   for (  Map.Entry<JobACL,AccessControlList> entry : acls.entrySet()) {
     infoBlock._("ACL " + entry.getKey().getAclName() + ":",entry.getValue().getAclString());
   }
-  html._(InfoBlock.class).div(_INFO_WRAP).table("#job").tr().th(_TH,"Task Type").th(_TH,"Total").th(_TH,"Complete")._().tr(_ODD).th().a(url("tasks",jid,"m"),"Map")._().td(String.valueOf(mapTasks)).td(String.valueOf(mapTasksComplete))._().tr(_EVEN).th().a(url("tasks",jid,"r"),"Reduce")._().td(String.valueOf(reduceTasks)).td(String.valueOf(reducesTasksComplete))._()._().table("#job").tr().th(_TH,"Attempt Type").th(_TH,"Failed").th(_TH,"Killed").th(_TH,"Successful")._().tr(_ODD).th("Maps").td().a(url("attempts",jid,"m",TaskAttemptStateUI.FAILED.toString()),String.valueOf(failedMapAttempts))._().td().a(url("attempts",jid,"m",TaskAttemptStateUI.KILLED.toString()),String.valueOf(killedMapAttempts))._().td().a(url("attempts",jid,"m",TaskAttemptStateUI.SUCCESSFUL.toString()),String.valueOf(successfulMapAttempts))._()._().tr(_EVEN).th("Reduces").td().a(url("attempts",jid,"r",TaskAttemptStateUI.FAILED.toString()),String.valueOf(failedReduceAttempts))._().td().a(url("attempts",jid,"r",TaskAttemptStateUI.KILLED.toString()),String.valueOf(killedReduceAttempts))._().td().a(url("attempts",jid,"r",TaskAttemptStateUI.SUCCESSFUL.toString()),String.valueOf(successfulReduceAttempts))._()._()._()._();
+  DIV<Hamlet> div=html._(InfoBlock.class).div(_INFO_WRAP);
+  TABLE<DIV<Hamlet>> table=div.table("#job");
+  table.tr().th(amString)._().tr().th(_TH,"Attempt Number").th(_TH,"Start Time").th(_TH,"Node").th(_TH,"Logs")._();
+  for (  AMInfo amInfo : amInfos) {
+    String nodeHttpAddress=amInfo.getNodeManagerHost() + ":" + amInfo.getNodeManagerHttpPort();
+    NodeId nodeId=BuilderUtils.newNodeId(amInfo.getNodeManagerHost(),amInfo.getNodeManagerPort());
+    table.tr().td(String.valueOf(amInfo.getAppAttemptId().getAttemptId())).td(new Date(amInfo.getStartTime()).toString()).td().a(".nodelink",url("http://",nodeHttpAddress),nodeHttpAddress)._().td().a(".logslink",url("logs",nodeId.toString(),amInfo.getContainerId().toString(),jid,job.getUserName()),"logs")._()._();
+  }
+  table._();
+  div._();
+  html.div(_INFO_WRAP).table("#job").tr().th(_TH,"Task Type").th(_TH,"Total").th(_TH,"Complete")._().tr(_ODD).th().a(url("tasks",jid,"m"),"Map")._().td(String.valueOf(mapTasks)).td(String.valueOf(mapTasksComplete))._().tr(_EVEN).th().a(url("tasks",jid,"r"),"Reduce")._().td(String.valueOf(reduceTasks)).td(String.valueOf(reducesTasksComplete))._()._().table("#job").tr().th(_TH,"Attempt Type").th(_TH,"Failed").th(_TH,"Killed").th(_TH,"Successful")._().tr(_ODD).th("Maps").td().a(url("attempts",jid,"m",TaskAttemptStateUI.FAILED.toString()),String.valueOf(failedMapAttempts))._().td().a(url("attempts",jid,"m",TaskAttemptStateUI.KILLED.toString()),String.valueOf(killedMapAttempts))._().td().a(url("attempts",jid,"m",TaskAttemptStateUI.SUCCESSFUL.toString()),String.valueOf(successfulMapAttempts))._()._().tr(_EVEN).th("Reduces").td().a(url("attempts",jid,"r",TaskAttemptStateUI.FAILED.toString()),String.valueOf(failedReduceAttempts))._().td().a(url("attempts",jid,"r",TaskAttemptStateUI.KILLED.toString()),String.valueOf(killedReduceAttempts))._().td().a(url("attempts",jid,"r",TaskAttemptStateUI.SUCCESSFUL.toString()),String.valueOf(successfulReduceAttempts))._()._()._()._();
 }

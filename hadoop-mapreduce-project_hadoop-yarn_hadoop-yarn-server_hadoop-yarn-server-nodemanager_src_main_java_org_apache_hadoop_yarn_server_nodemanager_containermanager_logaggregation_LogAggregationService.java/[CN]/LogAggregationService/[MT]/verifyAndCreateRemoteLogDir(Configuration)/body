@@ -1,0 +1,38 @@
+{
+  FileSystem remoteFS=null;
+  try {
+    remoteFS=FileSystem.get(conf);
+  }
+ catch (  IOException e) {
+    throw new YarnException("Unable to get Remote FileSystem isntance",e);
+  }
+  boolean remoteExists=false;
+  try {
+    remoteExists=remoteFS.exists(this.remoteRootLogDir);
+  }
+ catch (  IOException e) {
+    throw new YarnException("Failed to check for existance of remoteLogDir [" + this.remoteRootLogDir + "]");
+  }
+  if (remoteExists) {
+    try {
+      FsPermission perms=remoteFS.getFileStatus(this.remoteRootLogDir).getPermission();
+      if (!perms.equals(TLDIR_PERMISSIONS)) {
+        LOG.warn("Remote Root Log Dir [" + this.remoteRootLogDir + "] already exist, but with incorrect permissions. "+ "Expected: ["+ TLDIR_PERMISSIONS+ "], Found: ["+ perms+ "]."+ " The cluster may have problems with multiple users.");
+      }
+    }
+ catch (    IOException e) {
+      throw new YarnException("Failed while attempting to check permissions for dir [" + this.remoteRootLogDir + "]");
+    }
+  }
+ else {
+    LOG.warn("Remote Root Log Dir [" + this.remoteRootLogDir + "] does not exist. Attempting to create it.");
+    try {
+      Path qualified=this.remoteRootLogDir.makeQualified(remoteFS.getUri(),remoteFS.getWorkingDirectory());
+      remoteFS.mkdirs(qualified,new FsPermission(TLDIR_PERMISSIONS));
+      remoteFS.setPermission(qualified,new FsPermission(TLDIR_PERMISSIONS));
+    }
+ catch (    IOException e) {
+      throw new YarnException("Failed to create remoteLogDir [" + this.remoteRootLogDir + "]",e);
+    }
+  }
+}
