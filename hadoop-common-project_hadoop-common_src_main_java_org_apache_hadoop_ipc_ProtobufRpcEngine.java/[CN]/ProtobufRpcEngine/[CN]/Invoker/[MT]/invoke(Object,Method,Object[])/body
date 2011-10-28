@@ -1,0 +1,42 @@
+{
+  long startTime=0;
+  if (LOG.isDebugEnabled()) {
+    startTime=System.currentTimeMillis();
+  }
+  HadoopRpcRequestProto rpcRequest=constructRpcRequest(method,args);
+  RpcResponseWritable val=null;
+  try {
+    val=(RpcResponseWritable)client.call(new RpcRequestWritable(rpcRequest),remoteId);
+  }
+ catch (  Exception e) {
+    RpcClientException ce=new RpcClientException("Client exception",e);
+    throw new ServiceException(getRemoteException(ce));
+  }
+  HadoopRpcResponseProto response=val.message;
+  if (LOG.isDebugEnabled()) {
+    long callTime=System.currentTimeMillis() - startTime;
+    LOG.debug("Call: " + method.getName() + " "+ callTime);
+  }
+  ResponseStatus status=response.getStatus();
+  if (status != ResponseStatus.SUCCESS) {
+    RemoteException re=new RemoteException(response.getException().getExceptionName(),response.getException().getStackTrace());
+    re.fillInStackTrace();
+    throw new ServiceException(re);
+  }
+  Message prototype=null;
+  try {
+    prototype=getReturnProtoType(method);
+  }
+ catch (  Exception e) {
+    throw new ServiceException(e);
+  }
+  Message returnMessage;
+  try {
+    returnMessage=prototype.newBuilderForType().mergeFrom(response.getResponse()).build();
+  }
+ catch (  InvalidProtocolBufferException e) {
+    RpcClientException ce=new RpcClientException("Client exception",e);
+    throw new ServiceException(getRemoteException(ce));
+  }
+  return returnMessage;
+}
