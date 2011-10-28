@@ -12,6 +12,16 @@ synchronized (heartbeatMonitor) {
           NodeHeartbeatRequest request=recordFactory.newRecordInstance(NodeHeartbeatRequest.class);
           request.setNodeStatus(nodeStatus);
           HeartbeatResponse response=resourceTracker.nodeHeartbeat(request).getHeartbeatResponse();
+          if (response.getNodeAction() == NodeAction.SHUTDOWN) {
+            LOG.info("Recieved SHUTDOWN signal from Resourcemanager as part of heartbeat," + " hence shutting down.");
+            NodeStatusUpdaterImpl.this.stop();
+            break;
+          }
+          if (response.getNodeAction() == NodeAction.REBOOT) {
+            LOG.info("Node is out of sync with ResourceManager," + " hence shutting down.");
+            NodeStatusUpdaterImpl.this.stop();
+            break;
+          }
           lastHeartBeatID=response.getResponseId();
           List<ContainerId> containersToCleanup=response.getContainersToCleanupList();
           if (containersToCleanup.size() != 0) {
@@ -24,7 +34,6 @@ synchronized (heartbeatMonitor) {
         }
  catch (        Throwable e) {
           LOG.error("Caught exception in status-updater",e);
-          break;
         }
       }
     }

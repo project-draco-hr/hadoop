@@ -4,26 +4,27 @@
   int cmPort=nodeId.getPort();
   int httpPort=request.getHttpPort();
   Resource capability=request.getResource();
-  try {
-    if (!this.nodesListManager.isValidNode(host)) {
-      LOG.info("Disallowed NodeManager from  " + host);
-      throw new IOException("Disallowed NodeManager from  " + host);
-    }
-    RMNode rmNode=new RMNodeImpl(nodeId,rmContext,host,cmPort,httpPort,resolve(host),capability);
-    if (this.rmContext.getRMNodes().putIfAbsent(nodeId,rmNode) != null) {
-      throw new IOException("Duplicate registration from the node!");
-    }
-    this.nmLivelinessMonitor.register(nodeId);
-    LOG.info("NodeManager from node " + host + "(cmPort: "+ cmPort+ " httpPort: "+ httpPort+ ") "+ "registered with capability: "+ capability.getMemory()+ ", assigned nodeId "+ nodeId);
-    RegistrationResponse regResponse=recordFactory.newRecordInstance(RegistrationResponse.class);
-    SecretKey secretKey=this.containerTokenSecretManager.createAndGetSecretKey(nodeId.toString());
-    regResponse.setSecretKey(ByteBuffer.wrap(secretKey.getEncoded()));
-    RegisterNodeManagerResponse response=recordFactory.newRecordInstance(RegisterNodeManagerResponse.class);
+  RegisterNodeManagerResponse response=recordFactory.newRecordInstance(RegisterNodeManagerResponse.class);
+  RegistrationResponse regResponse=recordFactory.newRecordInstance(RegistrationResponse.class);
+  SecretKey secretKey=this.containerTokenSecretManager.createAndGetSecretKey(nodeId.toString());
+  regResponse.setSecretKey(ByteBuffer.wrap(secretKey.getEncoded()));
+  if (!this.nodesListManager.isValidNode(host)) {
+    LOG.info("Disallowed NodeManager from  " + host + ", Sending SHUTDOWN signal to the NodeManager.");
+    regResponse.setNodeAction(NodeAction.SHUTDOWN);
     response.setRegistrationResponse(regResponse);
     return response;
   }
- catch (  IOException ioe) {
-    LOG.info("Exception in node registration from " + nodeId.getHost(),ioe);
-    throw RPCUtil.getRemoteException(ioe);
+  RMNode rmNode=new RMNodeImpl(nodeId,rmContext,host,cmPort,httpPort,resolve(host),capability);
+  if (this.rmContext.getRMNodes().putIfAbsent(nodeId,rmNode) != null) {
+    LOG.info("Duplicate registration from the node at: " + host + ", Sending SHUTDOWN Signal to the NodeManager");
+    regResponse.setNodeAction(NodeAction.SHUTDOWN);
+    response.setRegistrationResponse(regResponse);
+    return response;
   }
+  this.rmContext.getDispatcher().getEventHandler().handle(new RMNodeEvent(nodeId,RMNodeEventType.STARTED));
+  this.nmLivelinessMonitor.register(nodeId);
+  LOG.info("NodeManager from node " + host + "(cmPort: "+ cmPort+ " httpPort: "+ httpPort+ ") "+ "registered with capability: "+ capability.getMemory()+ ", assigned nodeId "+ nodeId);
+  regResponse.setNodeAction(NodeAction.NORMAL);
+  response.setRegistrationResponse(regResponse);
+  return response;
 }
