@@ -1,0 +1,43 @@
+{
+  if (!UserGroupInformation.isSecurityEnabled()) {
+    return;
+  }
+  String containerIDStr=containerID.toString();
+  UserGroupInformation remoteUgi;
+  try {
+    remoteUgi=UserGroupInformation.getCurrentUser();
+  }
+ catch (  IOException e) {
+    String msg="Cannot obtain the user-name for containerId: " + containerIDStr + ". Got exception: "+ StringUtils.stringifyException(e);
+    LOG.warn(msg);
+    throw RPCUtil.getRemoteException(msg);
+  }
+  boolean unauthorized=false;
+  StringBuilder messageBuilder=new StringBuilder("Unauthorized request to start container. ");
+  if (!remoteUgi.getUserName().equals(containerIDStr)) {
+    unauthorized=true;
+    messageBuilder.append("\nExpected containerId: " + remoteUgi.getUserName() + " Found: "+ containerIDStr);
+  }
+  if (launchContext != null) {
+    if (LOG.isDebugEnabled()) {
+      LOG.debug("Number of TokenIdentifiers in the UGI from RPC: " + remoteUgi.getTokenIdentifiers().size());
+    }
+    ContainerTokenIdentifier tokenId=(ContainerTokenIdentifier)remoteUgi.getTokenIdentifiers().iterator().next();
+    if (tokenId == null) {
+      unauthorized=true;
+      messageBuilder.append("\nContainerTokenIdentifier cannot be null! Null found for " + containerIDStr);
+    }
+ else {
+      Resource resource=tokenId.getResource();
+      if (!resource.equals(launchContext.getResource())) {
+        unauthorized=true;
+        messageBuilder.append("\nExpected resource " + resource + " but found "+ launchContext.getResource());
+      }
+    }
+  }
+  if (unauthorized) {
+    String msg=messageBuilder.toString();
+    LOG.error(msg);
+    throw RPCUtil.getRemoteException(msg);
+  }
+}

@@ -1,0 +1,31 @@
+{
+  LOG.info("\n\nRunning test for malice user");
+  ResourceManager resourceManager=yarnCluster.getResourceManager();
+  final YarnRPC yarnRPC=YarnRPC.create(conf);
+  final ApplicationId appID=resourceManager.getClientRMService().getNewApplication(Records.newRecord(GetNewApplicationRequest.class)).getApplicationId();
+  AMRMProtocol scheduler=submitAndRegisterApplication(resourceManager,yarnRPC,appID);
+  final Container allocatedContainer=requestAndGetContainer(scheduler,appID);
+  final ContainerId containerID=allocatedContainer.getId();
+  UserGroupInformation unauthorizedUser=UserGroupInformation.createRemoteUser(containerID.toString());
+  ContainerToken containerToken=allocatedContainer.getContainerToken();
+  byte[] identifierBytes=containerToken.getIdentifier().array();
+  DataInputBuffer di=new DataInputBuffer();
+  di.reset(identifierBytes,identifierBytes.length);
+  final ContainerTokenIdentifier tokenId=new ContainerTokenIdentifier();
+  tokenId.readFields(di);
+  Token<ContainerTokenIdentifier> token=new Token<ContainerTokenIdentifier>(identifierBytes,containerToken.getPassword().array(),new Text(containerToken.getKind()),new Text(containerToken.getService()));
+  unauthorizedUser.addToken(token);
+  unauthorizedUser.doAs(new PrivilegedAction<Void>(){
+    @Override public Void run(){
+      ContainerManager client=(ContainerManager)yarnRPC.getProxy(ContainerManager.class,NetUtils.createSocketAddr(allocatedContainer.getNodeId().toString()),conf);
+      LOG.info("Going to contact NM:  unauthorized request");
+      callWithIllegalContainerID(client,tokenId);
+      callWithIllegalResource(client,tokenId);
+      return null;
+    }
+  }
+);
+  KillApplicationRequest request=Records.newRecord(KillApplicationRequest.class);
+  request.setApplicationId(appID);
+  resourceManager.getClientRMService().forceKillApplication(request);
+}
