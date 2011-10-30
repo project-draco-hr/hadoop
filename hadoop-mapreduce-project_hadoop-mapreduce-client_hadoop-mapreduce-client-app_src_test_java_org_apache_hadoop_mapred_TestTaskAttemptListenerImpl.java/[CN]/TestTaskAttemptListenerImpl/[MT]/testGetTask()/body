@@ -1,0 +1,31 @@
+{
+  AppContext appCtx=mock(AppContext.class);
+  JobTokenSecretManager secret=mock(JobTokenSecretManager.class);
+  TaskHeartbeatHandler hbHandler=mock(TaskHeartbeatHandler.class);
+  MockTaskAttemptListenerImpl listener=new MockTaskAttemptListenerImpl(appCtx,secret,hbHandler);
+  Configuration conf=new Configuration();
+  listener.init(conf);
+  listener.start();
+  JVMId id=new JVMId("foo",1,true,1);
+  WrappedJvmID wid=new WrappedJvmID(id.getJobId(),id.isMap,id.getId());
+  JvmContext context=new JvmContext();
+  context.jvmId=id;
+  JvmTask result=listener.getTask(context);
+  assertNotNull(result);
+  assertTrue(result.shouldDie);
+  listener.registerPendingTask(wid);
+  result=listener.getTask(context);
+  assertNull(result);
+  TaskAttemptId attemptID=mock(TaskAttemptId.class);
+  Task task=mock(Task.class);
+  listener.registerLaunchedTask(attemptID,task,wid);
+  verify(hbHandler).register(attemptID);
+  result=listener.getTask(context);
+  assertNotNull(result);
+  assertFalse(result.shouldDie);
+  result=listener.getTask(context);
+  assertNotNull(result);
+  assertTrue(result.shouldDie);
+  listener.unregister(attemptID,wid);
+  listener.stop();
+}
