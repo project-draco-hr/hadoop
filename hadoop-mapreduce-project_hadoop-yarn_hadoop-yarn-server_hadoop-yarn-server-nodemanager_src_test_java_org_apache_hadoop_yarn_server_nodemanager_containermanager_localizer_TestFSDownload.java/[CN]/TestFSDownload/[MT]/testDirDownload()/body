@@ -12,11 +12,9 @@
   Map<LocalResource,Future<Path>> pending=new HashMap<LocalResource,Future<Path>>();
   ExecutorService exec=Executors.newSingleThreadExecutor();
   LocalDirAllocator dirs=new LocalDirAllocator(TestFSDownload.class.getName());
-  int[] sizes=new int[10];
-  for (int i=0; i < 10; ++i) {
-    sizes[i]=rand.nextInt(512) + 512;
+  for (int i=0; i < 5; ++i) {
     LocalResourceVisibility vis=LocalResourceVisibility.PUBLIC;
-switch (i % 3) {
+switch (rand.nextInt() % 3) {
 case 1:
       vis=LocalResourceVisibility.PRIVATE;
     break;
@@ -24,7 +22,7 @@ case 2:
   vis=LocalResourceVisibility.APPLICATION;
 break;
 }
-LocalResource rsrc=createFile(files,new Path(basedir,"" + i),sizes[i],rand,vis);
+LocalResource rsrc=createJar(files,new Path(basedir,"dir" + i + ".jar"),vis);
 rsrcVis.put(rsrc,vis);
 FSDownload fsd=new FSDownload(files,UserGroupInformation.getCurrentUser(),conf,dirs,rsrc,new Random(sharedSeed));
 pending.put(rsrc,exec.submit(fsd));
@@ -32,20 +30,11 @@ pending.put(rsrc,exec.submit(fsd));
 try {
 for (Map.Entry<LocalResource,Future<Path>> p : pending.entrySet()) {
 Path localized=p.getValue().get();
-assertEquals(sizes[Integer.valueOf(localized.getName())],p.getKey().getSize());
 FileStatus status=files.getFileStatus(localized);
-FsPermission perm=status.getPermission();
-System.out.println("File permission " + perm + " for rsrc vis "+ p.getKey().getVisibility().name());
+System.out.println("Testing path " + localized);
+assert(status.isDirectory());
 assert(rsrcVis.containsKey(p.getKey()));
-switch (rsrcVis.get(p.getKey())) {
-case PUBLIC:
-Assert.assertTrue("Public file should be 555",perm.toShort() == FSDownload.PUBLIC_FILE_PERMS.toShort());
-break;
-case PRIVATE:
-case APPLICATION:
-Assert.assertTrue("Private file should be 500",perm.toShort() == FSDownload.PRIVATE_FILE_PERMS.toShort());
-break;
-}
+verifyPermsRecursively(localized.getFileSystem(conf),files,localized,rsrcVis.get(p.getKey()));
 }
 }
  catch (ExecutionException e) {
