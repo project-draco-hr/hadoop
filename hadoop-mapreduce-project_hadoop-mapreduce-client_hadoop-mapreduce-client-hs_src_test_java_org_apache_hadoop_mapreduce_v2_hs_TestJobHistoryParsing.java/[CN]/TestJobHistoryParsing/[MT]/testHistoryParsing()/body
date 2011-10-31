@@ -1,6 +1,8 @@
 {
   Configuration conf=new Configuration();
   long amStartTimeEst=System.currentTimeMillis();
+  conf.setClass(CommonConfigurationKeysPublic.NET_TOPOLOGY_NODE_SWITCH_MAPPING_IMPL_KEY,MyResolver.class,DNSToSwitchMapping.class);
+  RackResolver.init(conf);
   MRApp app=new MRAppWithHistory(2,1,true,this.getClass().getName(),true);
   app.submit(conf);
   Job job=app.getContext().getAllJobs().values().iterator().next();
@@ -34,7 +36,8 @@
   Assert.assertEquals("incorrect finishedMap ",2,jobInfo.getFinishedMaps());
   Assert.assertEquals("incorrect finishedReduces ",1,jobInfo.getFinishedReduces());
   Assert.assertEquals("incorrect uberized ",job.isUber(),jobInfo.getUberized());
-  int totalTasks=jobInfo.getAllTasks().size();
+  Map<TaskID,TaskInfo> allTasks=jobInfo.getAllTasks();
+  int totalTasks=allTasks.size();
   Assert.assertEquals("total number of tasks is incorrect  ",3,totalTasks);
   Assert.assertEquals(1,jobInfo.getAMInfos().size());
   Assert.assertEquals(MRApp.NM_HOST,jobInfo.getAMInfos().get(0).getNodeManagerHost());
@@ -45,7 +48,7 @@
   Assert.assertEquals(amInfo.getAppAttemptId(),amInfo.getContainerId().getApplicationAttemptId());
   Assert.assertTrue(amInfo.getStartTime() <= System.currentTimeMillis() && amInfo.getStartTime() >= amStartTimeEst);
   ContainerId fakeCid=BuilderUtils.newContainerId(-1,-1,-1,-1);
-  for (  TaskInfo taskInfo : jobInfo.getAllTasks().values()) {
+  for (  TaskInfo taskInfo : allTasks.values()) {
     int taskAttemptCount=taskInfo.getAllTaskAttempts().size();
     Assert.assertEquals("total number of task attempts ",1,taskAttemptCount);
     TaskAttemptInfo taInfo=taskInfo.getAllTaskAttempts().values().iterator().next();
@@ -53,12 +56,13 @@
     Assert.assertFalse(taInfo.getContainerId().equals(fakeCid));
   }
   for (  Task task : job.getTasks().values()) {
-    TaskInfo taskInfo=jobInfo.getAllTasks().get(TypeConverter.fromYarn(task.getID()));
+    TaskInfo taskInfo=allTasks.get(TypeConverter.fromYarn(task.getID()));
     Assert.assertNotNull("TaskInfo not found",taskInfo);
     for (    TaskAttempt taskAttempt : task.getAttempts().values()) {
       TaskAttemptInfo taskAttemptInfo=taskInfo.getAllTaskAttempts().get(TypeConverter.fromYarn((taskAttempt.getID())));
       Assert.assertNotNull("TaskAttemptInfo not found",taskAttemptInfo);
       Assert.assertEquals("Incorrect shuffle port for task attempt",taskAttempt.getShufflePort(),taskAttemptInfo.getShufflePort());
+      Assert.assertEquals("rack-name is incorrect",taskAttemptInfo.getRackname(),"MyRackName");
     }
   }
   String summaryFileName=JobHistoryUtils.getIntermediateSummaryFileName(jobId);
