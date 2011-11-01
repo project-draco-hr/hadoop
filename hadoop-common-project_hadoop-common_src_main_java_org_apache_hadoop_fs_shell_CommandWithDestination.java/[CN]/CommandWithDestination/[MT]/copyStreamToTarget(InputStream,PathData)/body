@@ -1,0 +1,28 @@
+{
+  if (target.exists && (target.stat.isDirectory() || !overwrite)) {
+    throw new PathExistsException(target.toString());
+  }
+  PathData tempFile=null;
+  try {
+    tempFile=target.createTempFile(target + "._COPYING_");
+    FSDataOutputStream out=target.fs.create(tempFile.path,true);
+    IOUtils.copyBytes(in,out,getConf(),true);
+    if (target.exists && !target.fs.delete(target.path,false)) {
+      PathIOException e=new PathIOException(target.toString());
+      e.setOperation("delete");
+      throw e;
+    }
+    if (!tempFile.fs.rename(tempFile.path,target.path)) {
+      PathIOException e=new PathIOException(tempFile.toString());
+      e.setOperation("rename");
+      e.setTargetPath(target.toString());
+      throw e;
+    }
+    tempFile=null;
+  }
+  finally {
+    if (tempFile != null) {
+      tempFile.fs.delete(tempFile.path,false);
+    }
+  }
+}
