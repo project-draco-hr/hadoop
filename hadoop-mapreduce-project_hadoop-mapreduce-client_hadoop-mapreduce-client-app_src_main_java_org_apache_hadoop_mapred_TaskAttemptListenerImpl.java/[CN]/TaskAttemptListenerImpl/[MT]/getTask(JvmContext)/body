@@ -1,13 +1,22 @@
 {
   JVMId jvmId=context.jvmId;
   LOG.info("JVM with ID : " + jvmId + " asked for a task");
+  JvmTask jvmTask=null;
   WrappedJvmID wJvmID=new WrappedJvmID(jvmId.getJobId(),jvmId.isMap,jvmId.getId());
-  org.apache.hadoop.mapred.Task task=jvmIDToAttemptMap.get(wJvmID);
-  if (task != null) {
-    LOG.info("JVM with ID: " + jvmId + " given task: "+ task.getTaskID());
-    JvmTask jvmTask=new JvmTask(task,false);
-    jvmIDToAttemptMap.remove(wJvmID);
-    return jvmTask;
+synchronized (this) {
+    if (pendingJvms.contains(wJvmID)) {
+      org.apache.hadoop.mapred.Task task=jvmIDToActiveAttemptMap.get(wJvmID);
+      if (task != null) {
+        LOG.info("JVM with ID: " + jvmId + " given task: "+ task.getTaskID());
+        jvmTask=new JvmTask(task,false);
+        pendingJvms.remove(wJvmID);
+        jvmIDToActiveAttemptMap.remove(wJvmID);
+      }
+    }
+ else {
+      LOG.info("JVM with ID: " + jvmId + " is invalid and will be killed.");
+      jvmTask=new JvmTask(null,true);
+    }
   }
-  return null;
+  return jvmTask;
 }

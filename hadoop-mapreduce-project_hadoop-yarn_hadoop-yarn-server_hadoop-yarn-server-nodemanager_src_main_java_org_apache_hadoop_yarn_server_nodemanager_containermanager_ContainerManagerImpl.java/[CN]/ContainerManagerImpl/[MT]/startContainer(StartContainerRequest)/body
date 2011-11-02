@@ -1,5 +1,7 @@
 {
   ContainerLaunchContext launchContext=request.getContainerLaunchContext();
+  ContainerId containerID=launchContext.getContainerId();
+  authorizeRequest(containerID,launchContext);
   LOG.info(" container is " + request);
   ByteBuffer tokens=launchContext.getContainerTokens();
   Credentials credentials=new Credentials();
@@ -19,21 +21,21 @@
       throw RPCUtil.getRemoteException(e);
     }
   }
-  Container container=new ContainerImpl(this.dispatcher,launchContext,credentials,metrics);
-  ContainerId containerID=launchContext.getContainerId();
+  Container container=new ContainerImpl(getConfig(),this.dispatcher,launchContext,credentials,metrics);
   ApplicationId applicationID=containerID.getApplicationAttemptId().getApplicationId();
   if (context.getContainers().putIfAbsent(containerID,container) != null) {
     NMAuditLogger.logFailure(launchContext.getUser(),AuditConstants.START_CONTAINER,"ContainerManagerImpl","Container already running on this node!",applicationID,containerID);
     throw RPCUtil.getRemoteException("Container " + containerID + " already is running on this node!!");
   }
-  Application application=new ApplicationImpl(dispatcher,launchContext.getUser(),applicationID,credentials);
+  Application application=new ApplicationImpl(dispatcher,this.aclsManager,launchContext.getUser(),applicationID,credentials,context);
   if (null == context.getApplications().putIfAbsent(applicationID,application)) {
     LOG.info("Creating a new application reference for app " + applicationID);
+    dispatcher.getEventHandler().handle(new ApplicationInitEvent(applicationID,container.getLaunchContext().getApplicationACLs()));
   }
-  dispatcher.getEventHandler().handle(new ApplicationInitEvent(container));
+  dispatcher.getEventHandler().handle(new ApplicationContainerInitEvent(container));
   NMAuditLogger.logSuccess(launchContext.getUser(),AuditConstants.START_CONTAINER,"ContainerManageImpl",applicationID,containerID);
   StartContainerResponse response=recordFactory.newRecordInstance(StartContainerResponse.class);
-  response.addAllServiceResponse(auxiluaryServices.getMeta());
+  response.addAllServiceResponse(auxiliaryServices.getMeta());
   metrics.launchedContainer();
   metrics.allocateContainer(launchContext.getResource());
   return response;

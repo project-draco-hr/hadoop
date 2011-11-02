@@ -1,0 +1,46 @@
+{
+  Configuration conf=new Configuration();
+  FileContext files=FileContext.getLocalFSFileContext(conf);
+  final Path basedir=files.makeQualified(new Path("target",TestFSDownload.class.getSimpleName()));
+  files.mkdir(basedir,null,true);
+  conf.setStrings(TestFSDownload.class.getName(),basedir.toString());
+  Map<LocalResource,LocalResourceVisibility> rsrcVis=new HashMap<LocalResource,LocalResourceVisibility>();
+  Random rand=new Random();
+  long sharedSeed=rand.nextLong();
+  rand.setSeed(sharedSeed);
+  System.out.println("SEED: " + sharedSeed);
+  Map<LocalResource,Future<Path>> pending=new HashMap<LocalResource,Future<Path>>();
+  ExecutorService exec=Executors.newSingleThreadExecutor();
+  LocalDirAllocator dirs=new LocalDirAllocator(TestFSDownload.class.getName());
+  for (int i=0; i < 5; ++i) {
+    LocalResourceVisibility vis=LocalResourceVisibility.PUBLIC;
+switch (rand.nextInt() % 3) {
+case 1:
+      vis=LocalResourceVisibility.PRIVATE;
+    break;
+case 2:
+  vis=LocalResourceVisibility.APPLICATION;
+break;
+}
+LocalResource rsrc=createJar(files,new Path(basedir,"dir" + i + ".jar"),vis);
+rsrcVis.put(rsrc,vis);
+FSDownload fsd=new FSDownload(files,UserGroupInformation.getCurrentUser(),conf,dirs,rsrc,new Random(sharedSeed));
+pending.put(rsrc,exec.submit(fsd));
+}
+try {
+for (Map.Entry<LocalResource,Future<Path>> p : pending.entrySet()) {
+Path localized=p.getValue().get();
+FileStatus status=files.getFileStatus(localized);
+System.out.println("Testing path " + localized);
+assert(status.isDirectory());
+assert(rsrcVis.containsKey(p.getKey()));
+verifyPermsRecursively(localized.getFileSystem(conf),files,localized,rsrcVis.get(p.getKey()));
+}
+}
+ catch (ExecutionException e) {
+throw new IOException("Failed exec",e);
+}
+ finally {
+exec.shutdown();
+}
+}

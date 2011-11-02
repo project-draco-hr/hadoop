@@ -16,14 +16,30 @@
   lfs.util().copy(nmPrivateContainerScriptPath,launchDst);
   Path tokenDst=new Path(containerWorkDir,ContainerLaunch.FINAL_CONTAINER_TOKENS_FILE);
   lfs.util().copy(nmPrivateTokensPath,tokenDst);
+  Path wrapperScriptDst=new Path(containerWorkDir,WRAPPER_LAUNCH_SCRIPT);
+  DataOutputStream wrapperScriptOutStream=lfs.create(wrapperScriptDst,EnumSet.of(CREATE,OVERWRITE));
+  Path pidFile=getPidFilePath(containerId);
+  if (pidFile != null) {
+    writeLocalWrapperScript(wrapperScriptOutStream,launchDst.toUri().getPath().toString(),pidFile.toString());
+  }
+ else {
+    LOG.info("Container " + containerIdStr + " was marked as inactive. Returning terminated error");
+    return ExitCode.TERMINATED.getExitCode();
+  }
   ShellCommandExecutor shExec=null;
   try {
     lfs.setPermission(launchDst,ContainerExecutor.TASK_LAUNCH_SCRIPT_PERMISSION);
-    String[] command=new String[]{"bash","-c",launchDst.toUri().getPath().toString()};
+    lfs.setPermission(wrapperScriptDst,ContainerExecutor.TASK_LAUNCH_SCRIPT_PERMISSION);
+    String[] command={"bash","-c",wrapperScriptDst.toUri().getPath().toString()};
     LOG.info("launchContainer: " + Arrays.toString(command));
     shExec=new ShellCommandExecutor(command,new File(containerWorkDir.toUri().getPath()),container.getLaunchContext().getEnvironment());
-    launchCommandObjs.put(containerId,shExec);
-    shExec.execute();
+    if (isContainerActive(containerId)) {
+      shExec.execute();
+    }
+ else {
+      LOG.info("Container " + containerIdStr + " was marked as inactive. Returning terminated error");
+      return ExitCode.TERMINATED.getExitCode();
+    }
   }
  catch (  IOException e) {
     if (null == shExec) {
@@ -37,7 +53,7 @@
     return exitCode;
   }
  finally {
-    launchCommandObjs.remove(containerId);
+    ;
   }
   return 0;
 }

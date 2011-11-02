@@ -1,0 +1,27 @@
+{
+  LOG.info("Running test for authenticated user");
+  ResourceManager resourceManager=yarnCluster.getResourceManager();
+  final YarnRPC yarnRPC=YarnRPC.create(conf);
+  ApplicationId appID=resourceManager.getClientRMService().getNewApplication(Records.newRecord(GetNewApplicationRequest.class)).getApplicationId();
+  AMRMProtocol scheduler=submitAndRegisterApplication(resourceManager,yarnRPC,appID);
+  final Container allocatedContainer=requestAndGetContainer(scheduler,appID);
+  final ContainerId containerID=allocatedContainer.getId();
+  UserGroupInformation authenticatedUser=UserGroupInformation.createRemoteUser(containerID.toString());
+  ContainerToken containerToken=allocatedContainer.getContainerToken();
+  Token<ContainerTokenIdentifier> token=new Token<ContainerTokenIdentifier>(containerToken.getIdentifier().array(),containerToken.getPassword().array(),new Text(containerToken.getKind()),new Text(containerToken.getService()));
+  authenticatedUser.addToken(token);
+  authenticatedUser.doAs(new PrivilegedExceptionAction<Void>(){
+    @Override public Void run() throws Exception {
+      ContainerManager client=(ContainerManager)yarnRPC.getProxy(ContainerManager.class,NetUtils.createSocketAddr(allocatedContainer.getNodeId().toString()),conf);
+      LOG.info("Going to make a legal stopContainer() request");
+      StopContainerRequest request=recordFactory.newRecordInstance(StopContainerRequest.class);
+      request.setContainerId(containerID);
+      client.stopContainer(request);
+      return null;
+    }
+  }
+);
+  KillApplicationRequest request=Records.newRecord(KillApplicationRequest.class);
+  request.setApplicationId(appID);
+  resourceManager.getClientRMService().forceKillApplication(request);
+}

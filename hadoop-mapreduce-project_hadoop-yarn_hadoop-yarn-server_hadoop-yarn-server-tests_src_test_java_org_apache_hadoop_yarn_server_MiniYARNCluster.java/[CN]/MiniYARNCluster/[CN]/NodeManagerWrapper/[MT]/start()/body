@@ -1,70 +1,35 @@
 {
   try {
-    File localDir=new File(testWorkDir,MiniYARNCluster.this.getName() + "-localDir");
+    File localDir=new File(testWorkDir,MiniYARNCluster.this.getName() + "-localDir-nm-" + index);
     localDir.mkdir();
     LOG.info("Created localDir in " + localDir.getAbsolutePath());
     getConfig().set(YarnConfiguration.NM_LOCAL_DIRS,localDir.getAbsolutePath());
-    File logDir=new File(testWorkDir,MiniYARNCluster.this.getName() + "-logDir");
-    File remoteLogDir=new File(testWorkDir,MiniYARNCluster.this.getName() + "-remoteLogDir");
+    File logDir=new File(testWorkDir,MiniYARNCluster.this.getName() + "-logDir-nm-" + index);
+    File remoteLogDir=new File(testWorkDir,MiniYARNCluster.this.getName() + "-remoteLogDir-nm-" + index);
     logDir.mkdir();
     remoteLogDir.mkdir();
     LOG.info("Created logDir in " + logDir.getAbsolutePath());
     getConfig().set(YarnConfiguration.NM_LOG_DIRS,logDir.getAbsolutePath());
     getConfig().set(YarnConfiguration.NM_REMOTE_APP_LOG_DIR,remoteLogDir.getAbsolutePath());
-    getConfig().setInt(YarnConfiguration.NM_VMEM_GB,4);
-    nodeManager=new NodeManager(){
-      @Override protected void doSecureLogin() throws IOException {
-      }
-      @Override protected NodeStatusUpdater createNodeStatusUpdater(      Context context,      Dispatcher dispatcher,      NodeHealthCheckerService healthChecker,      ContainerTokenSecretManager containerTokenSecretManager){
-        return new NodeStatusUpdaterImpl(context,dispatcher,healthChecker,metrics,containerTokenSecretManager){
-          @Override protected ResourceTracker getRMClient(){
-            final ResourceTrackerService rt=resourceManager.getResourceTrackerService();
-            final RecordFactory recordFactory=RecordFactoryProvider.getRecordFactory(null);
-            return new ResourceTracker(){
-              @Override public NodeHeartbeatResponse nodeHeartbeat(              NodeHeartbeatRequest request) throws YarnRemoteException {
-                NodeHeartbeatResponse response=recordFactory.newRecordInstance(NodeHeartbeatResponse.class);
-                try {
-                  response.setHeartbeatResponse(rt.nodeHeartbeat(request).getHeartbeatResponse());
-                }
- catch (                IOException ioe) {
-                  LOG.info("Exception in heartbeat from node " + request.getNodeStatus().getNodeId(),ioe);
-                  throw RPCUtil.getRemoteException(ioe);
-                }
-                return response;
-              }
-              @Override public RegisterNodeManagerResponse registerNodeManager(              RegisterNodeManagerRequest request) throws YarnRemoteException {
-                RegisterNodeManagerResponse response=recordFactory.newRecordInstance(RegisterNodeManagerResponse.class);
-                try {
-                  response.setRegistrationResponse(rt.registerNodeManager(request).getRegistrationResponse());
-                }
- catch (                IOException ioe) {
-                  LOG.info("Exception in node registration from " + request.getNodeId().toString(),ioe);
-                  throw RPCUtil.getRemoteException(ioe);
-                }
-                return response;
-              }
-            }
-;
-          }
-        }
-;
-      }
-    }
-;
-    nodeManager.init(getConfig());
+    getConfig().setInt(YarnConfiguration.NM_PMEM_MB,4 * 1024);
+    getConfig().set(YarnConfiguration.NM_ADDRESS,"0.0.0.0:0");
+    getConfig().set(YarnConfiguration.NM_LOCALIZER_ADDRESS,"0.0.0.0:0");
+    getConfig().set(YarnConfiguration.NM_WEBAPP_ADDRESS,"0.0.0.0:0");
+    LOG.info("Starting NM: " + index);
+    nodeManagers[index].init(getConfig());
     new Thread(){
       public void run(){
-        nodeManager.start();
+        nodeManagers[index].start();
       }
     }
 .start();
     int waitCount=0;
-    while (nodeManager.getServiceState() == STATE.INITED && waitCount++ < 60) {
-      LOG.info("Waiting for NM to start...");
+    while (nodeManagers[index].getServiceState() == STATE.INITED && waitCount++ < 60) {
+      LOG.info("Waiting for NM " + index + " to start...");
       Thread.sleep(1000);
     }
-    if (nodeManager.getServiceState() != STATE.STARTED) {
-      throw new IOException("NodeManager failed to start");
+    if (nodeManagers[index].getServiceState() != STATE.STARTED) {
+      throw new IOException("NodeManager " + index + " failed to start");
     }
     super.start();
   }

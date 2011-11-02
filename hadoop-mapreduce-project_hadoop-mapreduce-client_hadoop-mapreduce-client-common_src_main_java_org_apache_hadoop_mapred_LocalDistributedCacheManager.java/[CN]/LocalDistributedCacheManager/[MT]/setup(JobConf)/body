@@ -1,0 +1,72 @@
+{
+  Map<String,LocalResource> localResources=new LinkedHashMap<String,LocalResource>();
+  MRApps.setupDistributedCache(conf,localResources);
+  Map<String,Path> classpaths=new HashMap<String,Path>();
+  Path[] archiveClassPaths=DistributedCache.getArchiveClassPaths(conf);
+  if (archiveClassPaths != null) {
+    for (    Path p : archiveClassPaths) {
+      FileSystem remoteFS=p.getFileSystem(conf);
+      p=remoteFS.resolvePath(p.makeQualified(remoteFS.getUri(),remoteFS.getWorkingDirectory()));
+      classpaths.put(p.toUri().getPath().toString(),p);
+    }
+  }
+  Path[] fileClassPaths=DistributedCache.getFileClassPaths(conf);
+  if (fileClassPaths != null) {
+    for (    Path p : fileClassPaths) {
+      FileSystem remoteFS=p.getFileSystem(conf);
+      p=remoteFS.resolvePath(p.makeQualified(remoteFS.getUri(),remoteFS.getWorkingDirectory()));
+      classpaths.put(p.toUri().getPath().toString(),p);
+    }
+  }
+  LocalDirAllocator localDirAllocator=new LocalDirAllocator(MRConfig.LOCAL_DIR);
+  FileContext localFSFileContext=FileContext.getLocalFSFileContext();
+  UserGroupInformation ugi=UserGroupInformation.getCurrentUser();
+  Map<LocalResource,Future<Path>> resourcesToPaths=Maps.newHashMap();
+  ExecutorService exec=Executors.newCachedThreadPool();
+  for (  LocalResource resource : localResources.values()) {
+    Callable<Path> download=new FSDownload(localFSFileContext,ugi,conf,localDirAllocator,resource,new Random());
+    Future<Path> future=exec.submit(download);
+    resourcesToPaths.put(resource,future);
+  }
+  for (  LocalResource resource : localResources.values()) {
+    Path path;
+    try {
+      path=resourcesToPaths.get(resource).get();
+    }
+ catch (    InterruptedException e) {
+      throw new IOException(e);
+    }
+catch (    ExecutionException e) {
+      throw new IOException(e);
+    }
+    String pathString=path.toUri().toString();
+    if (resource.getType() == LocalResourceType.ARCHIVE) {
+      localArchives.add(pathString);
+    }
+ else     if (resource.getType() == LocalResourceType.FILE) {
+      localFiles.add(pathString);
+    }
+    Path resourcePath;
+    try {
+      resourcePath=ConverterUtils.getPathFromYarnURL(resource.getResource());
+    }
+ catch (    URISyntaxException e) {
+      throw new IOException(e);
+    }
+    LOG.info(String.format("Localized %s as %s",resourcePath,path));
+    String cp=resourcePath.toUri().getPath();
+    if (classpaths.keySet().contains(cp)) {
+      localClasspaths.add(path.toUri().getPath().toString());
+    }
+  }
+  if (!localArchives.isEmpty()) {
+    conf.set(MRJobConfig.CACHE_LOCALARCHIVES,StringUtils.arrayToString(localArchives.toArray(new String[localArchives.size()])));
+  }
+  if (!localFiles.isEmpty()) {
+    conf.set(MRJobConfig.CACHE_LOCALFILES,StringUtils.arrayToString(localFiles.toArray(new String[localArchives.size()])));
+  }
+  if (DistributedCache.getSymlink(conf)) {
+    LOG.warn("LocalJobRunner does not support " + "symlinking into current working dir.");
+  }
+  setupCalled=true;
+}

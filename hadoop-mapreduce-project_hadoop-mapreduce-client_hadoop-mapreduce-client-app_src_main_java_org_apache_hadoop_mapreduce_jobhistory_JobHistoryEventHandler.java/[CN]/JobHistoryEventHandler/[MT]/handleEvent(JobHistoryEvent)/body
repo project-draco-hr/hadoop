@@ -1,9 +1,8 @@
 {
 synchronized (lock) {
-    if (event.getHistoryEvent().getEventType() == EventType.JOB_SUBMITTED) {
+    if (event.getHistoryEvent().getEventType() == EventType.AM_STARTED) {
       try {
-        JobSubmittedEvent jobSubmittedEvent=(JobSubmittedEvent)event.getHistoryEvent();
-        setupEventWriter(event.getJobID(),jobSubmittedEvent);
+        setupEventWriter(event.getJobID());
       }
  catch (      IOException ioe) {
         LOG.error("Error JobHistoryEventHandler in handleEvent: " + event,ioe);
@@ -13,13 +12,19 @@ synchronized (lock) {
     MetaInfo mi=fileMap.get(event.getJobID());
     try {
       HistoryEvent historyEvent=event.getHistoryEvent();
-      mi.writeEvent(historyEvent);
+      if (!(historyEvent instanceof NormalizedResourceEvent)) {
+        mi.writeEvent(historyEvent);
+      }
       processEventForJobSummary(event.getHistoryEvent(),mi.getJobSummary(),event.getJobID());
       LOG.info("In HistoryEventHandler " + event.getHistoryEvent().getEventType());
     }
  catch (    IOException e) {
       LOG.error("Error writing History Event: " + event.getHistoryEvent(),e);
       throw new YarnException(e);
+    }
+    if (event.getHistoryEvent().getEventType() == EventType.JOB_SUBMITTED) {
+      JobSubmittedEvent jobSubmittedEvent=(JobSubmittedEvent)event.getHistoryEvent();
+      mi.getJobIndexInfo().setSubmitTime(jobSubmittedEvent.getSubmitTime());
     }
     if (event.getHistoryEvent().getEventType() == EventType.JOB_FINISHED) {
       try {

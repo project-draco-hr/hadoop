@@ -1,0 +1,16 @@
+{
+  if (!isLongRead() || blockInFd == null) {
+    return;
+  }
+  if (readaheadLength > 0 && readaheadPool != null) {
+    curReadahead=readaheadPool.readaheadStream(clientTraceFmt,blockInFd,offset,readaheadLength,Long.MAX_VALUE,curReadahead);
+  }
+  long nextCacheDropOffset=lastCacheDropOffset + CACHE_DROP_INTERVAL_BYTES;
+  if (shouldDropCacheBehindRead && offset >= nextCacheDropOffset) {
+    long dropLength=offset - lastCacheDropOffset;
+    if (dropLength >= 1024) {
+      NativeIO.posixFadviseIfPossible(blockInFd,lastCacheDropOffset,dropLength,NativeIO.POSIX_FADV_DONTNEED);
+    }
+    lastCacheDropOffset+=CACHE_DROP_INTERVAL_BYTES;
+  }
+}

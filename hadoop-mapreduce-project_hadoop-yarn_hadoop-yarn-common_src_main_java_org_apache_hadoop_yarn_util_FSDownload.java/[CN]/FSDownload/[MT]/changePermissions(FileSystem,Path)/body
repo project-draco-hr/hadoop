@@ -1,0 +1,30 @@
+{
+  FileStatus fStatus=fs.getFileStatus(path);
+  FsPermission perm=cachePerms;
+  if (resource.getVisibility() == LocalResourceVisibility.PUBLIC) {
+    perm=fStatus.isDirectory() ? PUBLIC_DIR_PERMS : PUBLIC_FILE_PERMS;
+  }
+ else {
+    perm=fStatus.isDirectory() ? PRIVATE_DIR_PERMS : PRIVATE_FILE_PERMS;
+  }
+  LOG.debug("Changing permissions for path " + path + " to perm "+ perm);
+  final FsPermission fPerm=perm;
+  if (null == userUgi) {
+    files.setPermission(path,perm);
+  }
+ else {
+    userUgi.doAs(new PrivilegedExceptionAction<Void>(){
+      public Void run() throws Exception {
+        files.setPermission(path,fPerm);
+        return null;
+      }
+    }
+);
+  }
+  if (fStatus.isDirectory() && !fStatus.isSymlink()) {
+    FileStatus[] statuses=fs.listStatus(path);
+    for (    FileStatus status : statuses) {
+      changePermissions(fs,status.getPath());
+    }
+  }
+}

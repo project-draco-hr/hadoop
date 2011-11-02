@@ -2,6 +2,7 @@
   if (LOG.isTraceEnabled()) {
     LOG.trace(op + ": " + path+ ", ugi="+ ugi+ Param.toSortedString(", ",permission,overwrite,bufferSize,replication,blockSize));
   }
+  response.setContentType(null);
   return ugi.doAs(new PrivilegedExceptionAction<Response>(){
     @Override public Response run() throws IOException, URISyntaxException {
       final String fullpath=path.getAbsolutePath();
@@ -11,14 +12,21 @@ case CREATE:
 {
           final Configuration conf=new Configuration(datanode.getConf());
           final InetSocketAddress nnRpcAddr=NameNode.getAddress(conf);
-          final DFSClient dfsclient=new DFSClient(nnRpcAddr,conf);
+          conf.set(FsPermission.UMASK_LABEL,"000");
           final int b=bufferSize.getValue(conf);
-          final FSDataOutputStream out=new FSDataOutputStream(dfsclient.create(fullpath,permission.getFsPermission(),overwrite.getValue() ? EnumSet.of(CreateFlag.CREATE,CreateFlag.OVERWRITE) : EnumSet.of(CreateFlag.CREATE),replication.getValue(),blockSize.getValue(conf),null,b),null);
+          DFSClient dfsclient=new DFSClient(nnRpcAddr,conf);
+          FSDataOutputStream out=null;
           try {
+            out=new FSDataOutputStream(dfsclient.create(fullpath,permission.getFsPermission(),overwrite.getValue() ? EnumSet.of(CreateFlag.CREATE,CreateFlag.OVERWRITE) : EnumSet.of(CreateFlag.CREATE),replication.getValue(conf),blockSize.getValue(conf),null,b),null);
             IOUtils.copyBytes(in,out,b);
+            out.close();
+            out=null;
+            dfsclient.close();
+            dfsclient=null;
           }
   finally {
-            out.close();
+            IOUtils.cleanup(LOG,out);
+            IOUtils.cleanup(LOG,dfsclient);
           }
           final InetSocketAddress nnHttpAddr=NameNode.getHttpAddress(conf);
           final URI uri=new URI(WebHdfsFileSystem.SCHEME,null,nnHttpAddr.getHostName(),nnHttpAddr.getPort(),fullpath,null,null);

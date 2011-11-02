@@ -1,6 +1,21 @@
 {
   int headRoom=getAvailableResources() != null ? getAvailableResources().getMemory() : 0;
-  AMResponse response=makeRemoteRequest();
+  AMResponse response;
+  try {
+    response=makeRemoteRequest();
+    retrystartTime=System.currentTimeMillis();
+  }
+ catch (  Exception e) {
+    if (System.currentTimeMillis() - retrystartTime >= retryInterval) {
+      eventHandler.handle(new JobEvent(this.getJob().getID(),JobEventType.INTERNAL_ERROR));
+      throw new YarnException("Could not contact RM after " + retryInterval + " milliseconds.");
+    }
+    throw e;
+  }
+  if (response.getReboot()) {
+    eventHandler.handle(new JobEvent(this.getJob().getID(),JobEventType.INTERNAL_ERROR));
+    throw new YarnException("Resource Manager doesn't recognize AttemptId: " + this.getContext().getApplicationID());
+  }
   int newHeadRoom=getAvailableResources() != null ? getAvailableResources().getMemory() : 0;
   List<Container> newContainers=response.getAllocatedContainers();
   List<ContainerStatus> finishedContainers=response.getCompletedContainersStatuses();

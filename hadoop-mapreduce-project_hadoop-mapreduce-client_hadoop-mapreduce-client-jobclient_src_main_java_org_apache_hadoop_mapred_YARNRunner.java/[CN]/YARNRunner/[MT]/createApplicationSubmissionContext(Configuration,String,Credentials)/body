@@ -23,12 +23,11 @@
     ts.writeTokenStorageToStream(dob);
     securityTokens=ByteBuffer.wrap(dob.getData(),0,dob.getLength());
   }
-  Vector<CharSequence> vargs=new Vector<CharSequence>(8);
+  List<String> vargs=new ArrayList<String>(8);
   vargs.add(Environment.JAVA_HOME.$() + "/bin/java");
   long logSize=TaskLog.getTaskLogLength(new JobConf(conf));
-  vargs.add("-Dlog4j.configuration=container-log4j.properties");
-  vargs.add("-D" + MRJobConfig.TASK_LOG_DIR + "="+ ApplicationConstants.LOG_DIR_EXPANSION_VAR);
-  vargs.add("-D" + MRJobConfig.TASK_LOG_SIZE + "="+ logSize);
+  String logLevel=jobConf.get(MRJobConfig.MR_AM_LOG_LEVEL,MRJobConfig.DEFAULT_MR_AM_LOG_LEVEL);
+  MRApps.addLog4jSystemProperties(logLevel,logSize,vargs);
   vargs.add(conf.get(MRJobConfig.MR_AM_COMMAND_OPTS,MRJobConfig.DEFAULT_MR_AM_COMMAND_OPTS));
   vargs.add(MRJobConfig.APPLICATION_MASTER_CLASS);
   vargs.add("1>" + ApplicationConstants.LOG_DIR_EXPANSION_VAR + Path.SEPARATOR+ ApplicationConstants.STDOUT);
@@ -43,12 +42,10 @@
   Map<String,String> environment=new HashMap<String,String>();
   MRApps.setClasspath(environment);
   MRApps.setupDistributedCache(jobConf,localResources);
-  ContainerLaunchContext amContainer=recordFactory.newRecordInstance(ContainerLaunchContext.class);
-  amContainer.setResource(capability);
-  amContainer.setLocalResources(localResources);
-  amContainer.setEnvironment(environment);
-  amContainer.setCommands(vargsFinal);
-  amContainer.setContainerTokens(securityTokens);
+  Map<ApplicationAccessType,String> acls=new HashMap<ApplicationAccessType,String>(2);
+  acls.put(ApplicationAccessType.VIEW_APP,jobConf.get(MRJobConfig.JOB_ACL_VIEW_JOB,MRJobConfig.DEFAULT_JOB_ACL_VIEW_JOB));
+  acls.put(ApplicationAccessType.MODIFY_APP,jobConf.get(MRJobConfig.JOB_ACL_MODIFY_JOB,MRJobConfig.DEFAULT_JOB_ACL_MODIFY_JOB));
+  ContainerLaunchContext amContainer=BuilderUtils.newContainerLaunchContext(null,UserGroupInformation.getCurrentUser().getShortUserName(),capability,localResources,environment,vargsFinal,null,securityTokens,acls);
   ApplicationSubmissionContext appContext=recordFactory.newRecordInstance(ApplicationSubmissionContext.class);
   appContext.setApplicationId(applicationId);
   appContext.setUser(UserGroupInformation.getCurrentUser().getShortUserName());

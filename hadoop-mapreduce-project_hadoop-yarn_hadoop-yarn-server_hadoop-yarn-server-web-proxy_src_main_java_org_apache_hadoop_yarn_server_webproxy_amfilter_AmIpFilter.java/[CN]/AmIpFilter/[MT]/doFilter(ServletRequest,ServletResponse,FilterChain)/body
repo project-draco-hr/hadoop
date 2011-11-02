@@ -1,0 +1,28 @@
+{
+  if (!(req instanceof HttpServletRequest)) {
+    throw new ServletException("This filter only works for HTTP/HTTPS");
+  }
+  HttpServletRequest httpReq=(HttpServletRequest)req;
+  HttpServletResponse httpResp=(HttpServletResponse)resp;
+  if (!getProxyAddresses().contains(httpReq.getRemoteAddr())) {
+    String redirectUrl=httpResp.encodeRedirectURL(proxyUriBase + httpReq.getRequestURI());
+    httpResp.sendRedirect(redirectUrl);
+    return;
+  }
+  String user=null;
+  for (  Cookie c : httpReq.getCookies()) {
+    if (WebAppProxyServlet.PROXY_USER_COOKIE_NAME.equals(c.getName())) {
+      user=c.getValue();
+      break;
+    }
+  }
+  if (user == null) {
+    LOG.warn("Could not find " + WebAppProxyServlet.PROXY_USER_COOKIE_NAME + " cookie, so user will not be set");
+    chain.doFilter(req,resp);
+  }
+ else {
+    final AmIpPrincipal principal=new AmIpPrincipal(user);
+    ServletRequest requestWrapper=new AmIpServletRequestWrapper(httpReq,principal);
+    chain.doFilter(requestWrapper,resp);
+  }
+}

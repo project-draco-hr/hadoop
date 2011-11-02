@@ -3,20 +3,21 @@
   this.delSrvc.init(conf);
   this.conf.set(YarnConfiguration.NM_LOG_DIRS,localLogDir.getAbsolutePath());
   this.conf.set(YarnConfiguration.NM_REMOTE_APP_LOG_DIR,this.remoteRootLogDir.getAbsolutePath());
-  LogAggregationService logAggregationService=new LogAggregationService(this.context,this.delSrvc);
+  DrainDispatcher dispatcher=createDispatcher();
+  EventHandler<ApplicationEvent> appEventHandler=mock(EventHandler.class);
+  dispatcher.register(ApplicationEventType.class,appEventHandler);
+  LogAggregationService logAggregationService=new LogAggregationService(dispatcher,this.context,this.delSrvc);
   logAggregationService.init(this.conf);
   logAggregationService.start();
   ApplicationId application1=BuilderUtils.newApplicationId(1234,1);
   File app1LogDir=new File(localLogDir,ConverterUtils.toString(application1));
   app1LogDir.mkdir();
-  logAggregationService.handle(new LogAggregatorAppStartedEvent(application1,this.user,null,ContainerLogsRetentionPolicy.ALL_CONTAINERS));
-  ApplicationAttemptId appAttemptId=recordFactory.newRecordInstance(ApplicationAttemptId.class);
-  appAttemptId.setApplicationId(application1);
-  appAttemptId.setAttemptId(1);
-  ContainerId container11=BuilderUtils.newContainerId(recordFactory,application1,appAttemptId,1);
+  logAggregationService.handle(new LogHandlerAppStartedEvent(application1,this.user,null,ContainerLogsRetentionPolicy.ALL_CONTAINERS,this.acls));
+  ApplicationAttemptId appAttemptId=BuilderUtils.newApplicationAttemptId(application1,1);
+  ContainerId container11=BuilderUtils.newContainerId(appAttemptId,1);
   writeContainerLogs(app1LogDir,container11);
-  logAggregationService.handle(new LogAggregatorContainerFinishedEvent(container11,0));
-  logAggregationService.handle(new LogAggregatorAppFinishedEvent(application1));
+  logAggregationService.handle(new LogHandlerContainerFinishedEvent(container11,0));
+  logAggregationService.handle(new LogHandlerAppFinishedEvent(application1));
   logAggregationService.stop();
   String containerIdStr=ConverterUtils.toString(container11);
   File containerLogDir=new File(app1LogDir,containerIdStr);
@@ -24,5 +25,11 @@
     Assert.assertFalse(new File(containerLogDir,fileType).exists());
   }
   Assert.assertFalse(app1LogDir.exists());
-  Assert.assertTrue(new File(logAggregationService.getRemoteNodeLogFileForApp(application1).toUri().getPath()).exists());
+  Path logFilePath=logAggregationService.getRemoteNodeLogFileForApp(application1,this.user);
+  Assert.assertTrue("Log file [" + logFilePath + "] not found",new File(logFilePath.toUri().getPath()).exists());
+  dispatcher.await();
+  ArgumentCaptor<ApplicationEvent> eventCaptor=ArgumentCaptor.forClass(ApplicationEvent.class);
+  verify(appEventHandler).handle(eventCaptor.capture());
+  assertEquals(ApplicationEventType.APPLICATION_LOG_HANDLING_FINISHED,eventCaptor.getValue().getType());
+  assertEquals(appAttemptId.getApplicationId(),eventCaptor.getValue().getApplicationID());
 }

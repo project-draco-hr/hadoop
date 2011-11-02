@@ -2,6 +2,7 @@
   if (LOG.isTraceEnabled()) {
     LOG.trace(op + ": " + path+ ", ugi="+ ugi+ Param.toSortedString(", ",offset,length,renewer,bufferSize));
   }
+  response.setContentType(null);
   return ugi.doAs(new PrivilegedExceptionAction<Response>(){
     @Override public Response run() throws IOException, URISyntaxException {
       REMOTE_ADDRESS.set(request.getRemoteAddr());
@@ -19,14 +20,17 @@ case GETFILEBLOCKLOCATIONS:
 {
           final long offsetValue=offset.getValue();
           final Long lengthValue=length.getValue();
-          final LocatedBlocks locatedblocks=np.getBlockLocations(fullpath,offsetValue,lengthValue != null ? lengthValue : offsetValue + 1);
+          final LocatedBlocks locatedblocks=np.getBlockLocations(fullpath,offsetValue,lengthValue != null ? lengthValue : Long.MAX_VALUE);
           final String js=JsonUtil.toJsonString(locatedblocks);
           return Response.ok(js).type(MediaType.APPLICATION_JSON).build();
         }
 case GETFILESTATUS:
 {
         final HdfsFileStatus status=np.getFileInfo(fullpath);
-        final String js=JsonUtil.toJsonString(status);
+        if (status == null) {
+          throw new FileNotFoundException("File does not exist: " + fullpath);
+        }
+        final String js=JsonUtil.toJsonString(status,true);
         return Response.ok(js).type(MediaType.APPLICATION_JSON).build();
       }
 case LISTSTATUS:

@@ -2,12 +2,16 @@
   if (out == null) {
     throw new IOException("out stream is null");
   }
-  final long initialOffset=offset;
+  initialOffset=offset;
   long totalRead=0;
   OutputStream streamForSendChunks=out;
+  lastCacheDropOffset=initialOffset;
+  if (isLongRead() && blockInFd != null) {
+    NativeIO.posixFadviseIfPossible(blockInFd,0,0,NativeIO.POSIX_FADV_SEQUENTIAL);
+  }
+  manageOsCache();
   final long startTime=ClientTraceLog.isInfoEnabled() ? System.nanoTime() : 0;
   try {
-    writeChecksumHeader(out);
     int maxChunksPerPacket;
     int pktSize=PacketHeader.PKT_HEADER_LEN;
     boolean transferTo=transferToAllowed && !verifyChecksum && baseStream instanceof SocketOutputStream&& blockIn instanceof FileInputStream;
@@ -24,6 +28,7 @@
     }
     ByteBuffer pktBuf=ByteBuffer.allocate(pktSize);
     while (endOffset > offset) {
+      manageOsCache();
       long len=sendPacket(pktBuf,maxChunksPerPacket,streamForSendChunks,transferTo,throttler);
       offset+=len;
       totalRead+=len + (numberOfChunks(len) * checksumSize);

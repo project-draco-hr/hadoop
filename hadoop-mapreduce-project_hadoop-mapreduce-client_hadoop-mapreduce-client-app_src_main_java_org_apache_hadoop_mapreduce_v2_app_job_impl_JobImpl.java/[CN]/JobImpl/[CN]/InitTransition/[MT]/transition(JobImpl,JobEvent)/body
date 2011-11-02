@@ -1,11 +1,10 @@
 {
-  job.submitTime=job.clock.getTime();
   job.metrics.submittedJob(job);
   job.metrics.preparingJob(job);
   try {
     setup(job);
-    job.fs=FileSystem.get(job.conf);
-    JobSubmittedEvent jse=new JobSubmittedEvent(job.oldJobId,job.conf.get(MRJobConfig.JOB_NAME,"test"),job.conf.get(MRJobConfig.USER_NAME,"mapred"),job.submitTime,job.remoteJobConfFile.toString(),job.jobACLs,job.conf.get(MRJobConfig.QUEUE_NAME,"default"));
+    job.fs=job.getFileSystem(job.conf);
+    JobSubmittedEvent jse=new JobSubmittedEvent(job.oldJobId,job.conf.get(MRJobConfig.JOB_NAME,"test"),job.conf.get(MRJobConfig.USER_NAME,"mapred"),job.appSubmitTime,job.remoteJobConfFile.toString(),job.jobACLs,job.conf.get(MRJobConfig.QUEUE_NAME,"default"));
     job.eventHandler.handle(new JobHistoryEvent(job.jobId,jse));
     TaskSplitMetaInfo[] taskSplitMetaInfo=createSplits(job,job.jobId);
     job.numMapTasks=taskSplitMetaInfo.length;
@@ -14,32 +13,12 @@
       job.addDiagnostic("No of maps and reduces are 0 " + job.jobId);
     }
     checkTaskLimits();
-    boolean newApiCommitter=false;
-    if ((job.numReduceTasks > 0 && job.conf.getBoolean("mapred.reducer.new-api",false)) || (job.numReduceTasks == 0 && job.conf.getBoolean("mapred.mapper.new-api",false))) {
-      newApiCommitter=true;
-      LOG.info("Using mapred newApiCommitter.");
-    }
-    LOG.info("OutputCommitter set in config " + job.conf.get("mapred.output.committer.class"));
-    if (newApiCommitter) {
+    if (job.newApiCommitter) {
       job.jobContext=new JobContextImpl(job.conf,job.oldJobId);
-      org.apache.hadoop.mapreduce.v2.api.records.TaskAttemptId attemptID=RecordFactoryProvider.getRecordFactory(null).newRecordInstance(org.apache.hadoop.mapreduce.v2.api.records.TaskAttemptId.class);
-      attemptID.setTaskId(RecordFactoryProvider.getRecordFactory(null).newRecordInstance(TaskId.class));
-      attemptID.getTaskId().setJobId(job.jobId);
-      attemptID.getTaskId().setTaskType(TaskType.MAP);
-      TaskAttemptContext taskContext=new TaskAttemptContextImpl(job.conf,TypeConverter.fromYarn(attemptID));
-      try {
-        OutputFormat outputFormat=ReflectionUtils.newInstance(taskContext.getOutputFormatClass(),job.conf);
-        job.committer=outputFormat.getOutputCommitter(taskContext);
-      }
- catch (      Exception e) {
-        throw new IOException("Failed to assign outputcommitter",e);
-      }
     }
  else {
       job.jobContext=new org.apache.hadoop.mapred.JobContextImpl(new JobConf(job.conf),job.oldJobId);
-      job.committer=ReflectionUtils.newInstance(job.conf.getClass("mapred.output.committer.class",FileOutputCommitter.class,org.apache.hadoop.mapred.OutputCommitter.class),job.conf);
     }
-    LOG.info("OutputCommitter is " + job.committer.getClass().getName());
     long inputLength=0;
     for (int i=0; i < job.numMapTasks; ++i) {
       inputLength+=taskSplitMetaInfo[i].getInputDataLength();

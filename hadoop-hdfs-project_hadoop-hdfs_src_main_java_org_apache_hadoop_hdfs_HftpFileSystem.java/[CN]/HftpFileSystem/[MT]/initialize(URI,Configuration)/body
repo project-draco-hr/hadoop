@@ -5,9 +5,16 @@
   nnAddr=NetUtils.createSocketAddr(name.toString());
   int urlPort=conf.getInt("dfs.hftp.https.port",-1);
   if (urlPort == -1)   urlPort=conf.getInt(DFSConfigKeys.DFS_HTTPS_PORT_KEY,DFSConfigKeys.DFS_HTTPS_PORT_DEFAULT);
-  nnHttpUrl=buildUri("https://",NetUtils.normalizeHostName(name.getHost()),urlPort);
+  String normalizedNN=NetUtils.normalizeHostName(name.getHost());
+  nnHttpUrl=buildUri("https://",normalizedNN,urlPort);
   LOG.debug("using url to get DT:" + nnHttpUrl);
-  String key=HftpFileSystem.HFTP_SERVICE_NAME_KEY + SecurityUtil.buildDTServiceName(name,DFSConfigKeys.DFS_HTTPS_PORT_DEFAULT);
+  try {
+    hftpURI=new URI(buildUri("hftp://",normalizedNN,urlPort));
+  }
+ catch (  URISyntaxException ue) {
+    throw new IOException("bad uri for hdfs",ue);
+  }
+  String key=DelegationTokenSelector.SERVICE_NAME_KEY + SecurityUtil.buildDTServiceName(name,DFSConfigKeys.DFS_HTTPS_PORT_DEFAULT);
   if (LOG.isDebugEnabled()) {
     LOG.debug("Trying to find DT for " + name + " using key="+ key+ "; conf="+ conf.get(key,""));
   }
@@ -17,25 +24,32 @@
     nnPort=NetUtils.createSocketAddr(nnServiceName,NameNode.DEFAULT_PORT).getPort();
   }
   try {
-    hdfsURI=new URI(buildUri("hdfs://",nnAddr.getHostName(),nnPort));
+    URI hdfsURI=new URI("hdfs://" + normalizedNN + ":"+ nnPort);
+    hdfsServiceName=new Text(SecurityUtil.buildDTServiceName(hdfsURI,nnPort));
   }
  catch (  URISyntaxException ue) {
     throw new IOException("bad uri for hdfs",ue);
   }
   if (UserGroupInformation.isSecurityEnabled()) {
-    String canonicalName=getCanonicalServiceName();
+    String hftpServiceName=getCanonicalServiceName();
     for (    Token<? extends TokenIdentifier> t : ugi.getTokens()) {
-      if (DelegationTokenIdentifier.HDFS_DELEGATION_KIND.equals(t.getKind()) && t.getService().toString().equals(canonicalName)) {
-        if (LOG.isDebugEnabled()) {
-          LOG.debug("Found existing DT for " + name);
+      Text kind=t.getKind();
+      if (DelegationTokenIdentifier.HDFS_DELEGATION_KIND.equals(kind)) {
+        if (t.getService().equals(hdfsServiceName)) {
+          setDelegationToken(t);
+          break;
         }
-        delegationToken=(Token<DelegationTokenIdentifier>)t;
-        break;
+      }
+ else       if (TOKEN_KIND.equals(kind)) {
+        if (hftpServiceName.equals(normalizeService(t.getService().toString()))) {
+          setDelegationToken(t);
+          break;
+        }
       }
     }
     if (delegationToken == null) {
-      delegationToken=(Token<DelegationTokenIdentifier>)getDelegationToken(null);
-      renewer.addTokenToRenew(this);
+      setDelegationToken(getDelegationToken(null));
+      dtRenewer.addRenewAction(this);
     }
   }
 }

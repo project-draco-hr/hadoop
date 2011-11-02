@@ -6,15 +6,40 @@
   if (stats == null) {
     items=new PathData[]{new PathData(fs,pattern,null)};
   }
- else   if (stats.length == 1 && stats[0].getPath().equals(fs.makeQualified(globPath))) {
-    items=new PathData[]{new PathData(fs,pattern,stats[0])};
-  }
  else {
+    PathType globType;
+    URI globUri=globPath.toUri();
+    if (globUri.getScheme() != null) {
+      globType=PathType.HAS_SCHEME;
+    }
+ else     if (new File(globUri.getPath()).isAbsolute()) {
+      globType=PathType.SCHEMELESS_ABSOLUTE;
+    }
+ else {
+      globType=PathType.RELATIVE;
+    }
     items=new PathData[stats.length];
     int i=0;
     for (    FileStatus stat : stats) {
-      items[i++]=new PathData(fs,stat);
-    }
-  }
-  return items;
+      URI matchUri=stat.getPath().toUri();
+      String globMatch=null;
+switch (globType) {
+case HAS_SCHEME:
+        if (globUri.getAuthority() == null) {
+          matchUri=removeAuthority(matchUri);
+        }
+      globMatch=matchUri.toString();
+    break;
+case SCHEMELESS_ABSOLUTE:
+  globMatch=matchUri.getPath();
+break;
+case RELATIVE:
+URI cwdUri=fs.getWorkingDirectory().toUri();
+globMatch=relativize(cwdUri,matchUri,stat.isDirectory());
+break;
+}
+items[i++]=new PathData(fs,globMatch,stat);
+}
+}
+return items;
 }

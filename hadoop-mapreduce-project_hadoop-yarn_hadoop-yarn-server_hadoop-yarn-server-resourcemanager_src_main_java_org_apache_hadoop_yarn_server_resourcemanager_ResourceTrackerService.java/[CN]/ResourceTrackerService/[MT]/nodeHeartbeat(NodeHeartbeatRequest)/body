@@ -1,39 +1,36 @@
 {
   NodeStatus remoteNodeStatus=request.getNodeStatus();
-  try {
-    NodeId nodeId=remoteNodeStatus.getNodeId();
-    RMNode rmNode=this.rmContext.getRMNodes().get(nodeId);
-    if (rmNode == null) {
-      LOG.info("Node not found rebooting " + remoteNodeStatus.getNodeId());
-      return reboot;
-    }
-    this.nmLivelinessMonitor.receivedPing(nodeId);
-    if (!this.nodesListManager.isValidNode(rmNode.getHostName())) {
-      LOG.info("Disallowed NodeManager nodeId: " + nodeId + " hostname: "+ rmNode.getNodeAddress());
-      throw new IOException("Disallowed NodeManager nodeId: " + remoteNodeStatus.getNodeId());
-    }
-    NodeHeartbeatResponse nodeHeartBeatResponse=recordFactory.newRecordInstance(NodeHeartbeatResponse.class);
-    HeartbeatResponse lastHeartbeatResponse=rmNode.getLastHeartBeatResponse();
-    if (remoteNodeStatus.getResponseId() + 1 == lastHeartbeatResponse.getResponseId()) {
-      LOG.info("Received duplicate heartbeat from node " + rmNode.getNodeAddress());
-      nodeHeartBeatResponse.setHeartbeatResponse(lastHeartbeatResponse);
-      return nodeHeartBeatResponse;
-    }
- else     if (remoteNodeStatus.getResponseId() + 1 < lastHeartbeatResponse.getResponseId()) {
-      LOG.info("Too far behind rm response id:" + lastHeartbeatResponse.getResponseId() + " nm response id:"+ remoteNodeStatus.getResponseId());
-      this.rmContext.getDispatcher().getEventHandler().handle(new RMNodeEvent(nodeId,RMNodeEventType.REBOOTING));
-      return reboot;
-    }
-    HeartbeatResponse latestResponse=recordFactory.newRecordInstance(HeartbeatResponse.class);
-    latestResponse.setResponseId(lastHeartbeatResponse.getResponseId() + 1);
-    latestResponse.addAllContainersToCleanup(rmNode.pullContainersToCleanUp());
-    latestResponse.addAllApplicationsToCleanup(rmNode.pullAppsToCleanup());
-    this.rmContext.getDispatcher().getEventHandler().handle(new RMNodeStatusEvent(nodeId,remoteNodeStatus.getNodeHealthStatus(),remoteNodeStatus.getContainersStatuses(),latestResponse));
-    nodeHeartBeatResponse.setHeartbeatResponse(latestResponse);
+  NodeId nodeId=remoteNodeStatus.getNodeId();
+  RMNode rmNode=this.rmContext.getRMNodes().get(nodeId);
+  if (rmNode == null) {
+    LOG.info("Node not found rebooting " + remoteNodeStatus.getNodeId());
+    ClusterMetrics.getMetrics().incrNumRebootedNMs();
+    return reboot;
+  }
+  this.nmLivelinessMonitor.receivedPing(nodeId);
+  if (!this.nodesListManager.isValidNode(rmNode.getHostName())) {
+    LOG.info("Disallowed NodeManager nodeId: " + nodeId + " hostname: "+ rmNode.getNodeAddress());
+    this.rmContext.getDispatcher().getEventHandler().handle(new RMNodeEvent(nodeId,RMNodeEventType.DECOMMISSION));
+    return shutDown;
+  }
+  NodeHeartbeatResponse nodeHeartBeatResponse=recordFactory.newRecordInstance(NodeHeartbeatResponse.class);
+  HeartbeatResponse lastHeartbeatResponse=rmNode.getLastHeartBeatResponse();
+  if (remoteNodeStatus.getResponseId() + 1 == lastHeartbeatResponse.getResponseId()) {
+    LOG.info("Received duplicate heartbeat from node " + rmNode.getNodeAddress());
+    nodeHeartBeatResponse.setHeartbeatResponse(lastHeartbeatResponse);
     return nodeHeartBeatResponse;
   }
- catch (  IOException ioe) {
-    LOG.info("Exception in heartbeat from node " + request.getNodeStatus().getNodeId(),ioe);
-    throw RPCUtil.getRemoteException(ioe);
+ else   if (remoteNodeStatus.getResponseId() + 1 < lastHeartbeatResponse.getResponseId()) {
+    LOG.info("Too far behind rm response id:" + lastHeartbeatResponse.getResponseId() + " nm response id:"+ remoteNodeStatus.getResponseId());
+    this.rmContext.getDispatcher().getEventHandler().handle(new RMNodeEvent(nodeId,RMNodeEventType.REBOOTING));
+    return reboot;
   }
+  HeartbeatResponse latestResponse=recordFactory.newRecordInstance(HeartbeatResponse.class);
+  latestResponse.setResponseId(lastHeartbeatResponse.getResponseId() + 1);
+  latestResponse.addAllContainersToCleanup(rmNode.pullContainersToCleanUp());
+  latestResponse.addAllApplicationsToCleanup(rmNode.pullAppsToCleanup());
+  latestResponse.setNodeAction(NodeAction.NORMAL);
+  this.rmContext.getDispatcher().getEventHandler().handle(new RMNodeStatusEvent(nodeId,remoteNodeStatus.getNodeHealthStatus(),remoteNodeStatus.getContainersStatuses(),latestResponse));
+  nodeHeartBeatResponse.setHeartbeatResponse(latestResponse);
+  return nodeHeartBeatResponse;
 }

@@ -5,12 +5,8 @@
       in=null;
     }
     final URLOpener opener=(resolvedURL.getURL() == null) ? originalURL : resolvedURL;
-    final HttpURLConnection connection=opener.openConnection();
+    final HttpURLConnection connection=opener.openConnection(startPos);
     try {
-      connection.setRequestMethod("GET");
-      if (startPos != 0) {
-        connection.setRequestProperty("Range","bytes=" + startPos + "-");
-      }
       connection.connect();
       final String cl=connection.getHeaderField(StreamFile.CONTENT_LENGTH);
       filelength=(cl == null) ? -1 : Long.parseLong(cl);
@@ -19,7 +15,10 @@
       }
       in=connection.getInputStream();
     }
- catch (    IOException ioe) {
+ catch (    FileNotFoundException fnfe) {
+      throw fnfe;
+    }
+catch (    IOException ioe) {
       HftpFileSystem.throwIOExceptionFromConnection(connection,ioe);
     }
     int respCode=connection.getResponseCode();
@@ -29,7 +28,7 @@
  else     if (startPos == 0 && respCode != HttpURLConnection.HTTP_OK) {
       throw new IOException("HTTP_OK expected, received " + respCode);
     }
-    resolvedURL.setURL(connection.getURL());
+    resolvedURL.setURL(removeOffsetParam(connection.getURL()));
     status=StreamStatus.NORMAL;
   }
   return in;

@@ -1,0 +1,46 @@
+{
+  final CountDownLatch latch=new CountDownLatch(1);
+  ServerSocket sock=new ServerSocket(){
+    @Override public Socket accept() throws IOException {
+      return new Socket(){
+        @Override public InetAddress getInetAddress(){
+          return super.getLocalAddress();
+        }
+        @Override public SocketAddress getRemoteSocketAddress(){
+          return new InetSocketAddress(8080);
+        }
+        @Override public SocketAddress getLocalSocketAddress(){
+          return new InetSocketAddress(0);
+        }
+        @Override public synchronized void close() throws IOException {
+          latch.countDown();
+          super.close();
+        }
+        @Override public InputStream getInputStream() throws IOException {
+          return null;
+        }
+      }
+;
+    }
+  }
+;
+  Thread thread=null;
+  System.setProperty("fi.enabledOOM","true");
+  DataNode dn=Mockito.mock(DataNode.class);
+  try {
+    Configuration conf=new Configuration();
+    Mockito.doReturn(conf).when(dn).getConf();
+    dn.shouldRun=true;
+    DataXceiverServer server=new DataXceiverServer(sock,conf,dn);
+    thread=new Thread(server);
+    thread.start();
+    latch.await();
+    assertTrue("Not running the thread",thread.isAlive());
+  }
+  finally {
+    System.setProperty("fi.enabledOOM","false");
+    dn.shouldRun=false;
+    if (null != thread)     thread.interrupt();
+    sock.close();
+  }
+}

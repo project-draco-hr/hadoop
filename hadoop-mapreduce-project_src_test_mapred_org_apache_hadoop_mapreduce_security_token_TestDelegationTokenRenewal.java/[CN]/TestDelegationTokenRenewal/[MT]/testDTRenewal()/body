@@ -1,12 +1,12 @@
 {
   MyFS dfs=(MyFS)FileSystem.get(conf);
-  System.out.println("dfs=" + (Object)dfs);
+  LOG.info("dfs=" + (Object)dfs.hashCode() + ";conf="+ conf.hashCode());
   MyToken token1, token2, token3;
   token1=dfs.getDelegationToken(new Text("user1"));
   token2=dfs.getDelegationToken(new Text("user2"));
   token3=dfs.getDelegationToken(new Text("user3"));
-  dfs.setTokenToRenewIn2Sec(token1);
-  System.out.println("token=" + token1 + " should be renewed for 2 secs");
+  Renewer.tokenToRenewIn2Sec=token1;
+  LOG.info("token=" + token1 + " should be renewed for 2 secs");
   String nn1=DelegationTokenRenewal.SCHEME + "://host1:0";
   String nn2=DelegationTokenRenewal.SCHEME + "://host2:0";
   String nn3=DelegationTokenRenewal.SCHEME + "://host3:0";
@@ -23,34 +23,31 @@
     }
  catch (    InterruptedException e) {
     }
-    if (dfs.getCounter() == numberOfExpectedRenewals)     break;
+    if (Renewer.counter == numberOfExpectedRenewals)     break;
   }
-  System.out.println("Counter = " + dfs.getCounter() + ";t="+ dfs.getToken());
-  assertEquals("renew wasn't called as many times as expected(4):",numberOfExpectedRenewals,dfs.getCounter());
-  assertEquals("most recently renewed token mismatch",dfs.getToken(),token1);
+  assertEquals("renew wasn't called as many times as expected(4):",numberOfExpectedRenewals,Renewer.counter);
+  assertEquals("most recently renewed token mismatch",Renewer.lastRenewed,token1);
   ts=new Credentials();
   MyToken token4=dfs.getDelegationToken(new Text("user4"));
-  dfs.setTokenToRenewIn2Sec(token4);
-  System.out.println("token=" + token4 + " should be renewed for 2 secs");
+  Renewer.tokenToRenewIn2Sec=token4;
+  LOG.info("token=" + token4 + " should be renewed for 2 secs");
   String nn4=DelegationTokenRenewal.SCHEME + "://host4:0";
   ts.addToken(new Text(nn4),token4);
   JobID jid2=new JobID("job2",1);
   DelegationTokenRenewal.registerDelegationTokensForRenewal(jid2,ts,conf);
   DelegationTokenRenewal.removeDelegationTokenRenewalForJob(jid2);
-  numberOfExpectedRenewals=dfs.getCounter();
+  numberOfExpectedRenewals=Renewer.counter;
   try {
     Thread.sleep(6 * 1000);
   }
  catch (  InterruptedException e) {
   }
-  System.out.println("Counter = " + dfs.getCounter() + ";t="+ dfs.getToken());
-  assertEquals("renew wasn't called as many times as expected",numberOfExpectedRenewals,dfs.getCounter());
-  boolean exception=false;
+  System.out.println("Counter = " + Renewer.counter + ";t="+ Renewer.lastRenewed);
+  assertEquals("renew wasn't called as many times as expected",numberOfExpectedRenewals,Renewer.counter);
   try {
-    dfs.renewDelegationToken(token4);
+    token4.renew(conf);
+    fail("Renew of canceled token didn't fail");
   }
  catch (  InvalidToken ite) {
-    exception=true;
   }
-  assertTrue("Renew of canceled token didn't fail",exception);
 }

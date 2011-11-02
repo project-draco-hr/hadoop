@@ -1,0 +1,42 @@
+{
+  JobConf conf=new JobConf();
+  conf.set(FileSystem.FS_DEFAULT_NAME_KEY,"faildel:///");
+  conf.setClass("fs.faildel.impl",FakeFileSystem.class,FileSystem.class);
+  conf.set(JobContext.TASK_ATTEMPT_ID,attempt);
+  conf.setInt(MRConstants.APPLICATION_ATTEMPT_ID,1);
+  FileOutputFormat.setOutputPath(conf,outDir);
+  JobContext jContext=new JobContextImpl(conf,taskID.getJobID());
+  TaskAttemptContext tContext=new TaskAttemptContextImpl(conf,taskID);
+  FileOutputCommitter committer=new FileOutputCommitter();
+  committer.setupJob(jContext);
+  committer.setupTask(tContext);
+  File jobTmpDir=new File(new Path(outDir,FileOutputCommitter.TEMP_DIR_NAME + Path.SEPARATOR + conf.getInt(MRConstants.APPLICATION_ATTEMPT_ID,0)+ Path.SEPARATOR+ FileOutputCommitter.TEMP_DIR_NAME).toString());
+  File taskTmpDir=new File(jobTmpDir,"_" + taskID);
+  File expectedFile=new File(taskTmpDir,partFile);
+  TextOutputFormat<?,?> theOutputFormat=new TextOutputFormat();
+  RecordWriter<?,?> theRecordWriter=theOutputFormat.getRecordWriter(null,conf,expectedFile.getAbsolutePath(),null);
+  writeOutput(theRecordWriter,tContext);
+  Throwable th=null;
+  try {
+    committer.abortTask(tContext);
+  }
+ catch (  IOException ie) {
+    th=ie;
+  }
+  assertNotNull(th);
+  assertTrue(th instanceof IOException);
+  assertTrue(th.getMessage().contains("fake delete failed"));
+  assertTrue(expectedFile + " does not exists",expectedFile.exists());
+  th=null;
+  try {
+    committer.abortJob(jContext,JobStatus.State.FAILED);
+  }
+ catch (  IOException ie) {
+    th=ie;
+  }
+  assertNotNull(th);
+  assertTrue(th instanceof IOException);
+  assertTrue(th.getMessage().contains("fake delete failed"));
+  assertTrue("job temp dir does not exists",jobTmpDir.exists());
+  FileUtil.fullyDelete(new File(outDir.toString()));
+}

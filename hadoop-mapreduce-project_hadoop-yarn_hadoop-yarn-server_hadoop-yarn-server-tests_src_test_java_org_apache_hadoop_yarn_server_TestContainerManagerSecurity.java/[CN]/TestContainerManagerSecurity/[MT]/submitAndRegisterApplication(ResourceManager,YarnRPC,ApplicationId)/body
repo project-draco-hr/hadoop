@@ -1,0 +1,51 @@
+{
+  String fileName="testFile-" + appID.toString();
+  File testFile=new File(localDir.getAbsolutePath(),fileName);
+  FileWriter tmpFile=new FileWriter(testFile);
+  tmpFile.write("testing");
+  tmpFile.close();
+  URL testFileURL=ConverterUtils.getYarnUrlFromPath(FileContext.getFileContext().makeQualified(new Path(localDir.getAbsolutePath(),fileName)));
+  LocalResource rsrc=BuilderUtils.newLocalResource(testFileURL,LocalResourceType.FILE,LocalResourceVisibility.PRIVATE,testFile.length(),testFile.lastModified());
+  ContainerLaunchContext amContainer=BuilderUtils.newContainerLaunchContext(null,"testUser",BuilderUtils.newResource(1024),Collections.singletonMap(fileName,rsrc),new HashMap<String,String>(),Arrays.asList("sleep","100"),new HashMap<String,ByteBuffer>(),null,new HashMap<ApplicationAccessType,String>());
+  ApplicationSubmissionContext appSubmissionContext=recordFactory.newRecordInstance(ApplicationSubmissionContext.class);
+  appSubmissionContext.setApplicationId(appID);
+  appSubmissionContext.setUser("testUser");
+  appSubmissionContext.setAMContainerSpec(amContainer);
+  SubmitApplicationRequest submitRequest=recordFactory.newRecordInstance(SubmitApplicationRequest.class);
+  submitRequest.setApplicationSubmissionContext(appSubmissionContext);
+  resourceManager.getClientRMService().submitApplication(submitRequest);
+  int waitCounter=0;
+  RMApp app=resourceManager.getRMContext().getRMApps().get(appID);
+  RMAppAttempt appAttempt=app == null ? null : app.getCurrentAppAttempt();
+  RMAppAttemptState state=appAttempt == null ? null : appAttempt.getAppAttemptState();
+  while ((app == null || appAttempt == null || state == null || !state.equals(RMAppAttemptState.LAUNCHED)) && waitCounter++ != 20) {
+    LOG.info("Waiting for applicationAttempt to be created.. ");
+    Thread.sleep(1000);
+    app=resourceManager.getRMContext().getRMApps().get(appID);
+    appAttempt=app == null ? null : app.getCurrentAppAttempt();
+    state=appAttempt == null ? null : appAttempt.getAppAttemptState();
+  }
+  Assert.assertNotNull(app);
+  Assert.assertNotNull(appAttempt);
+  Assert.assertNotNull(state);
+  Assert.assertEquals(RMAppAttemptState.LAUNCHED,state);
+  UserGroupInformation currentUser=UserGroupInformation.createRemoteUser(appAttempt.getAppAttemptId().toString());
+  String schedulerAddressString=conf.get(YarnConfiguration.RM_SCHEDULER_ADDRESS,YarnConfiguration.DEFAULT_RM_SCHEDULER_ADDRESS);
+  final InetSocketAddress schedulerAddr=NetUtils.createSocketAddr(schedulerAddressString);
+  ApplicationTokenIdentifier appTokenIdentifier=new ApplicationTokenIdentifier(appAttempt.getAppAttemptId());
+  ApplicationTokenSecretManager appTokenSecretManager=new ApplicationTokenSecretManager();
+  appTokenSecretManager.setMasterKey(ApplicationTokenSecretManager.createSecretKey("Dummy".getBytes()));
+  Token<ApplicationTokenIdentifier> appToken=new Token<ApplicationTokenIdentifier>(appTokenIdentifier,appTokenSecretManager);
+  appToken.setService(new Text(schedulerAddressString));
+  currentUser.addToken(appToken);
+  AMRMProtocol scheduler=currentUser.doAs(new PrivilegedAction<AMRMProtocol>(){
+    @Override public AMRMProtocol run(){
+      return (AMRMProtocol)yarnRPC.getProxy(AMRMProtocol.class,schedulerAddr,conf);
+    }
+  }
+);
+  RegisterApplicationMasterRequest request=recordFactory.newRecordInstance(RegisterApplicationMasterRequest.class);
+  request.setApplicationAttemptId(resourceManager.getRMContext().getRMApps().get(appID).getCurrentAppAttempt().getAppAttemptId());
+  scheduler.registerApplicationMaster(request);
+  return scheduler;
+}
