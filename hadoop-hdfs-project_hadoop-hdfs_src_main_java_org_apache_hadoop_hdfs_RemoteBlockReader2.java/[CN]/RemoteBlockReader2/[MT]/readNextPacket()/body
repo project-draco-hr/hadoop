@@ -1,0 +1,38 @@
+{
+  Preconditions.checkState(curHeader == null || !curHeader.isLastPacketInBlock());
+  readPacketHeader();
+  if (LOG.isTraceEnabled()) {
+    LOG.trace("DFSClient readNextPacket got header " + curHeader);
+  }
+  if (!curHeader.sanityCheck(lastSeqNo)) {
+    throw new IOException("BlockReader: error in packet header " + curHeader);
+  }
+  if (curHeader.getDataLen() > 0) {
+    int chunks=1 + (curHeader.getDataLen() - 1) / bytesPerChecksum;
+    int checksumsLen=chunks * checksumSize;
+    int bufsize=checksumsLen + curHeader.getDataLen();
+    resetPacketBuffer(checksumsLen,curHeader.getDataLen());
+    lastSeqNo=curHeader.getSeqno();
+    if (bufsize > 0) {
+      readChannelFully(in,curPacketBuf);
+      curPacketBuf.flip();
+      if (verifyChecksum) {
+        verifyPacketChecksums();
+      }
+    }
+    bytesNeededToFinish-=curHeader.getDataLen();
+  }
+  if (curHeader.getOffsetInBlock() < startOffset) {
+    int newPos=(int)(startOffset - curHeader.getOffsetInBlock());
+    curDataSlice.position(newPos);
+  }
+  if (bytesNeededToFinish <= 0) {
+    readTrailingEmptyPacket();
+    if (verifyChecksum) {
+      sendReadResult(dnSock,Status.CHECKSUM_OK);
+    }
+ else {
+      sendReadResult(dnSock,Status.SUCCESS);
+    }
+  }
+}
