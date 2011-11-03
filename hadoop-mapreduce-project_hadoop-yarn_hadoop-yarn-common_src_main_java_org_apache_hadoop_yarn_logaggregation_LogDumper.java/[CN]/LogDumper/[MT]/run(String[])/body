@@ -1,0 +1,57 @@
+{
+  Options opts=new Options();
+  opts.addOption(APPLICATION_ID_OPTION,true,"ApplicationId");
+  opts.addOption(CONTAINER_ID_OPTION,true,"ContainerId");
+  opts.addOption(NODE_ADDRESS_OPTION,true,"NodeAddress");
+  opts.addOption(APP_OWNER_OPTION,true,"AppOwner");
+  if (args.length < 1) {
+    HelpFormatter formatter=new HelpFormatter();
+    formatter.printHelp("general options are: ",opts);
+    return -1;
+  }
+  CommandLineParser parser=new GnuParser();
+  String appIdStr=null;
+  String containerIdStr=null;
+  String nodeAddress=null;
+  String appOwner=null;
+  try {
+    CommandLine commandLine=parser.parse(opts,args,true);
+    appIdStr=commandLine.getOptionValue(APPLICATION_ID_OPTION);
+    containerIdStr=commandLine.getOptionValue(CONTAINER_ID_OPTION);
+    nodeAddress=commandLine.getOptionValue(NODE_ADDRESS_OPTION);
+    appOwner=commandLine.getOptionValue(APP_OWNER_OPTION);
+  }
+ catch (  ParseException e) {
+    System.out.println("options parsing failed: " + e.getMessage());
+    HelpFormatter formatter=new HelpFormatter();
+    formatter.printHelp("general options are: ",opts);
+    return -1;
+  }
+  if (appIdStr == null) {
+    System.out.println("ApplicationId cannot be null!");
+    HelpFormatter formatter=new HelpFormatter();
+    formatter.printHelp("general options are: ",opts);
+    return -1;
+  }
+  RecordFactory recordFactory=RecordFactoryProvider.getRecordFactory(getConf());
+  ApplicationId appId=ConverterUtils.toApplicationId(recordFactory,appIdStr);
+  DataOutputStream out=new DataOutputStream(System.out);
+  if (appOwner == null || appOwner.isEmpty()) {
+    appOwner=UserGroupInformation.getCurrentUser().getShortUserName();
+  }
+  if (containerIdStr == null && nodeAddress == null) {
+    dumpAllContainersLogs(appId,appOwner,out);
+  }
+ else   if ((containerIdStr == null && nodeAddress != null) || (containerIdStr != null && nodeAddress == null)) {
+    System.out.println("ContainerId or NodeAddress cannot be null!");
+    HelpFormatter formatter=new HelpFormatter();
+    formatter.printHelp("general options are: ",opts);
+    return -1;
+  }
+ else {
+    Path remoteRootLogDir=new Path(getConf().get(YarnConfiguration.NM_REMOTE_APP_LOG_DIR,YarnConfiguration.DEFAULT_NM_REMOTE_APP_LOG_DIR));
+    AggregatedLogFormat.LogReader reader=new AggregatedLogFormat.LogReader(getConf(),LogAggregationUtils.getRemoteNodeLogFileForApp(remoteRootLogDir,appId,appOwner,ConverterUtils.toNodeId(nodeAddress),getConf().get(YarnConfiguration.NM_REMOTE_APP_LOG_DIR_SUFFIX,YarnConfiguration.DEFAULT_NM_REMOTE_APP_LOG_DIR_SUFFIX)));
+    return dumpAContainerLogs(containerIdStr,reader,out);
+  }
+  return 0;
+}
