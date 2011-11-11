@@ -1,8 +1,9 @@
 {
   final UserGroupInformation ugi;
   final String usernameFromQuery=getUsernameFromQuery(request,tryUgiParameter);
+  final String doAsUserFromQuery=request.getParameter(DoAsParam.NAME);
   if (UserGroupInformation.isSecurityEnabled()) {
-    final String user=request.getRemoteUser();
+    final String remoteUser=request.getRemoteUser();
     String tokenString=request.getParameter(DELEGATION_PARAMETER_NAME);
     if (tokenString != null) {
       Token<DelegationTokenIdentifier> token=new Token<DelegationTokenIdentifier>();
@@ -23,23 +24,32 @@
         }
       }
       ugi=id.getUser();
-      checkUsername(ugi.getShortUserName(),usernameFromQuery);
-      checkUsername(ugi.getShortUserName(),user);
+      if (ugi.getRealUser() == null) {
+        checkUsername(ugi.getShortUserName(),usernameFromQuery);
+        checkUsername(null,doAsUserFromQuery);
+      }
+ else {
+        checkUsername(ugi.getRealUser().getShortUserName(),usernameFromQuery);
+        checkUsername(ugi.getShortUserName(),doAsUserFromQuery);
+        ProxyUsers.authorize(ugi,request.getRemoteAddr(),conf);
+      }
       ugi.addToken(token);
       ugi.setAuthenticationMethod(AuthenticationMethod.TOKEN);
     }
  else {
-      if (user == null) {
+      if (remoteUser == null) {
         throw new IOException("Security enabled but user not " + "authenticated by filter");
       }
-      ugi=UserGroupInformation.createRemoteUser(user);
-      checkUsername(ugi.getShortUserName(),usernameFromQuery);
-      ugi.setAuthenticationMethod(secureAuthMethod);
+      final UserGroupInformation realUgi=UserGroupInformation.createRemoteUser(remoteUser);
+      checkUsername(realUgi.getShortUserName(),usernameFromQuery);
+      realUgi.setAuthenticationMethod(secureAuthMethod);
+      ugi=initUGI(realUgi,doAsUserFromQuery,request,true,conf);
     }
   }
  else {
-    ugi=usernameFromQuery == null ? getDefaultWebUser(conf) : UserGroupInformation.createRemoteUser(usernameFromQuery);
-    ugi.setAuthenticationMethod(AuthenticationMethod.SIMPLE);
+    final UserGroupInformation realUgi=usernameFromQuery == null ? getDefaultWebUser(conf) : UserGroupInformation.createRemoteUser(usernameFromQuery);
+    realUgi.setAuthenticationMethod(AuthenticationMethod.SIMPLE);
+    ugi=initUGI(realUgi,doAsUserFromQuery,request,false,conf);
   }
   if (LOG.isDebugEnabled())   LOG.debug("getUGI is returning: " + ugi.getShortUserName());
   return ugi;

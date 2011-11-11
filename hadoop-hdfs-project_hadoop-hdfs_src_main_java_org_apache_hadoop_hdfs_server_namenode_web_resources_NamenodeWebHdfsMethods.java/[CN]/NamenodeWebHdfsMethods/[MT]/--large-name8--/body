@@ -1,0 +1,85 @@
+{
+  init(ugi,delegation,username,doAsUser,path,op,destination,owner,group,permission,overwrite,bufferSize,replication,blockSize,modificationTime,accessTime,renameOptions,delegationTokenArgument);
+  return ugi.doAs(new PrivilegedExceptionAction<Response>(){
+    @Override public Response run() throws IOException, URISyntaxException {
+      REMOTE_ADDRESS.set(request.getRemoteAddr());
+      try {
+        final String fullpath=path.getAbsolutePath();
+        final Configuration conf=(Configuration)context.getAttribute(JspHelper.CURRENT_CONF);
+        final NameNode namenode=(NameNode)context.getAttribute("name.node");
+        final NamenodeProtocols np=namenode.getRpcServer();
+switch (op.getValue()) {
+case CREATE:
+{
+            final URI uri=redirectURI(namenode,ugi,delegation,username,doAsUser,fullpath,op.getValue(),-1L,permission,overwrite,bufferSize,replication,blockSize);
+            return Response.temporaryRedirect(uri).build();
+          }
+case MKDIRS:
+{
+          final boolean b=np.mkdirs(fullpath,permission.getFsPermission(),true);
+          final String js=JsonUtil.toJsonString("boolean",b);
+          return Response.ok(js).type(MediaType.APPLICATION_JSON).build();
+        }
+case RENAME:
+{
+        final EnumSet<Options.Rename> s=renameOptions.getValue();
+        if (s.isEmpty()) {
+          final boolean b=np.rename(fullpath,destination.getValue());
+          final String js=JsonUtil.toJsonString("boolean",b);
+          return Response.ok(js).type(MediaType.APPLICATION_JSON).build();
+        }
+ else {
+          np.rename2(fullpath,destination.getValue(),s.toArray(new Options.Rename[s.size()]));
+          return Response.ok().type(MediaType.APPLICATION_JSON).build();
+        }
+      }
+case SETREPLICATION:
+{
+      final boolean b=np.setReplication(fullpath,replication.getValue(conf));
+      final String js=JsonUtil.toJsonString("boolean",b);
+      return Response.ok(js).type(MediaType.APPLICATION_JSON).build();
+    }
+case SETOWNER:
+{
+    if (owner.getValue() == null && group.getValue() == null) {
+      throw new IllegalArgumentException("Both owner and group are empty.");
+    }
+    np.setOwner(fullpath,owner.getValue(),group.getValue());
+    return Response.ok().type(MediaType.APPLICATION_JSON).build();
+  }
+case SETPERMISSION:
+{
+  np.setPermission(fullpath,permission.getFsPermission());
+  return Response.ok().type(MediaType.APPLICATION_JSON).build();
+}
+case SETTIMES:
+{
+np.setTimes(fullpath,modificationTime.getValue(),accessTime.getValue());
+return Response.ok().type(MediaType.APPLICATION_JSON).build();
+}
+case RENEWDELEGATIONTOKEN:
+{
+final Token<DelegationTokenIdentifier> token=new Token<DelegationTokenIdentifier>();
+token.decodeFromUrlString(delegationTokenArgument.getValue());
+final long expiryTime=np.renewDelegationToken(token);
+final String js=JsonUtil.toJsonString("long",expiryTime);
+return Response.ok(js).type(MediaType.APPLICATION_JSON).build();
+}
+case CANCELDELEGATIONTOKEN:
+{
+final Token<DelegationTokenIdentifier> token=new Token<DelegationTokenIdentifier>();
+token.decodeFromUrlString(delegationTokenArgument.getValue());
+np.cancelDelegationToken(token);
+return Response.ok().type(MediaType.APPLICATION_JSON).build();
+}
+default :
+throw new UnsupportedOperationException(op + " is not supported");
+}
+}
+  finally {
+REMOTE_ADDRESS.set(null);
+}
+}
+}
+);
+}
