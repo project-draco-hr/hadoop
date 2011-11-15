@@ -1,0 +1,32 @@
+{
+  Call call=new Call(rpcKind,param);
+  Connection connection=getConnection(remoteId,call);
+  connection.sendParam(call);
+  boolean interrupted=false;
+synchronized (call) {
+    while (!call.done) {
+      try {
+        call.wait();
+      }
+ catch (      InterruptedException ie) {
+        interrupted=true;
+      }
+    }
+    if (interrupted) {
+      Thread.currentThread().interrupt();
+    }
+    if (call.error != null) {
+      if (call.error instanceof RemoteException) {
+        call.error.fillInStackTrace();
+        throw call.error;
+      }
+ else {
+        InetSocketAddress address=remoteId.getAddress();
+        throw NetUtils.wrapException(address.getHostName(),address.getPort(),NetUtils.getHostname(),0,call.error);
+      }
+    }
+ else {
+      return call.rpcResponse;
+    }
+  }
+}

@@ -1,0 +1,22 @@
+{
+  if (op == GetOpParam.Op.OPEN || op == GetOpParam.Op.GETFILECHECKSUM || op == PostOpParam.Op.APPEND) {
+    final NamenodeProtocols np=namenode.getRpcServer();
+    final HdfsFileStatus status=np.getFileInfo(path);
+    if (status == null) {
+      throw new FileNotFoundException("File " + path + " not found.");
+    }
+    final long len=status.getLen();
+    if (op == GetOpParam.Op.OPEN && (openOffset < 0L || openOffset >= len)) {
+      throw new IOException("Offset=" + openOffset + " out of the range [0, "+ len+ "); "+ op+ ", path="+ path);
+    }
+    if (len > 0) {
+      final long offset=op == GetOpParam.Op.OPEN ? openOffset : len - 1;
+      final LocatedBlocks locations=np.getBlockLocations(path,offset,1);
+      final int count=locations.locatedBlockCount();
+      if (count > 0) {
+        return JspHelper.bestNode(locations.get(0),conf);
+      }
+    }
+  }
+  return (DatanodeDescriptor)namenode.getNamesystem().getBlockManager().getDatanodeManager().getNetworkTopology().chooseRandom(NodeBase.ROOT);
+}

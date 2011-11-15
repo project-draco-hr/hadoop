@@ -1,0 +1,54 @@
+{
+  File blockFile=getBlockFile();
+  File metaFile=getMetaFile();
+  if (DataNode.LOG.isDebugEnabled()) {
+    DataNode.LOG.debug("writeTo blockfile is " + blockFile + " of size "+ blockFile.length());
+    DataNode.LOG.debug("writeTo metafile is " + metaFile + " of size "+ metaFile.length());
+  }
+  long blockDiskSize=0L;
+  long crcDiskSize=0L;
+  DataChecksum checksum;
+  RandomAccessFile metaRAF=new RandomAccessFile(metaFile,"rw");
+  if (!isCreate) {
+    boolean checkedMeta=false;
+    try {
+      BlockMetadataHeader header=BlockMetadataHeader.readHeader(metaRAF);
+      checksum=header.getChecksum();
+      if (checksum.getBytesPerChecksum() != requestedChecksum.getBytesPerChecksum()) {
+        throw new IOException("Client requested checksum " + requestedChecksum + " when appending to an existing block "+ "with different chunk size: "+ checksum);
+      }
+      int bytesPerChunk=checksum.getBytesPerChecksum();
+      int checksumSize=checksum.getChecksumSize();
+      blockDiskSize=bytesOnDisk;
+      crcDiskSize=BlockMetadataHeader.getHeaderSize() + (blockDiskSize + bytesPerChunk - 1) / bytesPerChunk * checksumSize;
+      if (blockDiskSize > 0 && (blockDiskSize > blockFile.length() || crcDiskSize > metaFile.length())) {
+        throw new IOException("Corrupted block: " + this);
+      }
+      checkedMeta=true;
+    }
+  finally {
+      if (!checkedMeta) {
+        IOUtils.closeStream(metaRAF);
+      }
+    }
+  }
+ else {
+    checksum=requestedChecksum;
+  }
+  FileOutputStream blockOut=null;
+  FileOutputStream crcOut=null;
+  try {
+    blockOut=new FileOutputStream(new RandomAccessFile(blockFile,"rw").getFD());
+    crcOut=new FileOutputStream(metaRAF.getFD());
+    if (!isCreate) {
+      blockOut.getChannel().position(blockDiskSize);
+      crcOut.getChannel().position(crcDiskSize);
+    }
+    return new BlockWriteStreams(blockOut,crcOut,checksum);
+  }
+ catch (  IOException e) {
+    IOUtils.closeStream(blockOut);
+    IOUtils.closeStream(metaRAF);
+    throw e;
+  }
+}

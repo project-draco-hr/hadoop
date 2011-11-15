@@ -1,19 +1,19 @@
 {
-  JobClient client;
+  final JobClient client;
   client=user1.doAs(new PrivilegedExceptionAction<JobClient>(){
     @Override public JobClient run() throws Exception {
       return new JobClient(cluster.createJobConf());
     }
   }
 );
-  JobClient bobClient;
+  final JobClient bobClient;
   bobClient=user2.doAs(new PrivilegedExceptionAction<JobClient>(){
     @Override public JobClient run() throws Exception {
       return new JobClient(cluster.createJobConf());
     }
   }
 );
-  Token<DelegationTokenIdentifier> token=client.getDelegationToken(new Text(user1.getUserName()));
+  final Token<DelegationTokenIdentifier> token=client.getDelegationToken(new Text(user1.getUserName()));
   DataInputBuffer inBuf=new DataInputBuffer();
   byte[] bytes=token.getIdentifier();
   inBuf.reset(bytes,bytes.length);
@@ -28,25 +28,49 @@
   System.out.println("max time: " + maxTime);
   assertTrue("createTime < current",createTime < currentTime);
   assertTrue("current < maxTime",currentTime < maxTime);
-  client.renewDelegationToken(token);
-  client.renewDelegationToken(token);
-  try {
-    bobClient.renewDelegationToken(token);
-    Assert.fail("bob renew");
+  user1.doAs(new PrivilegedExceptionAction<Void>(){
+    @Override public Void run() throws Exception {
+      client.renewDelegationToken(token);
+      client.renewDelegationToken(token);
+      return null;
+    }
   }
- catch (  AccessControlException ace) {
+);
+  user2.doAs(new PrivilegedExceptionAction<Void>(){
+    @Override public Void run() throws Exception {
+      try {
+        bobClient.renewDelegationToken(token);
+        Assert.fail("bob renew");
+      }
+ catch (      AccessControlException ace) {
+      }
+      return null;
+    }
   }
-  try {
-    bobClient.cancelDelegationToken(token);
-    Assert.fail("bob renew");
+);
+  user2.doAs(new PrivilegedExceptionAction<Void>(){
+    @Override public Void run() throws Exception {
+      try {
+        bobClient.cancelDelegationToken(token);
+        Assert.fail("bob cancel");
+      }
+ catch (      AccessControlException ace) {
+      }
+      return null;
+    }
   }
- catch (  AccessControlException ace) {
+);
+  user1.doAs(new PrivilegedExceptionAction<Void>(){
+    @Override public Void run() throws Exception {
+      client.cancelDelegationToken(token);
+      try {
+        client.cancelDelegationToken(token);
+        Assert.fail("second alice cancel");
+      }
+ catch (      InvalidToken it) {
+      }
+      return null;
+    }
   }
-  client.cancelDelegationToken(token);
-  try {
-    client.cancelDelegationToken(token);
-    Assert.fail("second alice cancel");
-  }
- catch (  InvalidToken it) {
-  }
+);
 }

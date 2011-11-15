@@ -1,0 +1,32 @@
+{
+  boolean isCpuEmulOn=false;
+  if (simuJobConf.get(GridMixConfig.GRIDMIX_CPU_EMULATON) != null) {
+    isCpuEmulOn=simuJobConf.get(GridMixConfig.GRIDMIX_CPU_EMULATON).contains(GridMixConfig.GRIDMIX_CPU_USAGE_PLUGIN);
+  }
+  if (isCpuEmulOn) {
+    Map<String,Long> origJobMetrics=getOriginalJobCPUMetrics(origJobHistory);
+    Map<String,Long> simuJobMetrics=getSimulatedJobCPUMetrics(simuJobHistoryInfo);
+    long origMapUsage=origJobMetrics.get("MAP");
+    LOG.info("Maps cpu usage of original job:" + origMapUsage);
+    long origReduceUsage=origJobMetrics.get("REDUCE");
+    LOG.info("Reduces cpu usage of original job:" + origReduceUsage);
+    long simuMapUsage=simuJobMetrics.get("MAP");
+    LOG.info("Maps cpu usage of simulated job:" + simuMapUsage);
+    long simuReduceUsage=simuJobMetrics.get("REDUCE");
+    LOG.info("Reduces cpu usage of simulated job:" + simuReduceUsage);
+    long mapCount=simuJobHistoryInfo.getTotalMaps();
+    long reduceCount=simuJobHistoryInfo.getTotalReduces();
+    if (mapCount > 0) {
+      double mapEmulFactor=(simuMapUsage * 100) / origMapUsage;
+      long mapEmulAccuracy=Math.round(mapEmulFactor);
+      LOG.info("CPU emulation accuracy for maps in job " + simuJobHistoryInfo.getJobId() + ":"+ mapEmulAccuracy+ "%");
+      Assert.assertTrue("Map-side cpu emulaiton inaccurate!" + " Actual cpu usage: " + simuMapUsage + " Expected cpu usage: "+ origMapUsage,mapEmulAccuracy >= GridMixConfig.GRIDMIX_CPU_EMULATION_LOWER_LIMIT && mapEmulAccuracy <= GridMixConfig.GRIDMIX_CPU_EMULATION_UPPER_LIMIT);
+    }
+    if (reduceCount > 0) {
+      double reduceEmulFactor=(simuReduceUsage * 100) / origReduceUsage;
+      long reduceEmulAccuracy=Math.round(reduceEmulFactor);
+      LOG.info("CPU emulation accuracy for reduces in job " + simuJobHistoryInfo.getJobId() + ": "+ reduceEmulAccuracy+ "%");
+      Assert.assertTrue("Reduce side cpu emulaiton inaccurate!" + " Actual cpu usage:" + simuReduceUsage + "Expected cpu usage: "+ origReduceUsage,reduceEmulAccuracy >= GridMixConfig.GRIDMIX_CPU_EMULATION_LOWER_LIMIT && reduceEmulAccuracy <= GridMixConfig.GRIDMIX_CPU_EMULATION_UPPER_LIMIT);
+    }
+  }
+}
