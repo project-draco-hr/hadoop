@@ -1,14 +1,15 @@
 {
   int errCode=-1;
   int numCorrupt=0;
-  String lastBlock=null;
+  int cookie=0;
   final String noCorruptLine="has no CORRUPT files";
   final String noMoreCorruptLine="has no more CORRUPT files";
+  final String cookiePrefix="Cookie:";
   boolean allDone=false;
   while (!allDone) {
     final StringBuffer url=new StringBuffer(baseUrl);
-    if (lastBlock != null) {
-      url.append("&startblockafter=").append(lastBlock);
+    if (cookie > 0) {
+      url.append("&startblockafter=").append(String.valueOf(cookie));
     }
     URL path=new URL(url.toString());
     SecurityUtil.fetchServiceTicket(path);
@@ -18,6 +19,16 @@
     try {
       String line=null;
       while ((line=input.readLine()) != null) {
+        if (line.startsWith(cookiePrefix)) {
+          try {
+            cookie=Integer.parseInt(line.split("\t")[1]);
+          }
+ catch (          Exception e) {
+            allDone=true;
+            break;
+          }
+          continue;
+        }
         if ((line.endsWith(noCorruptLine)) || (line.endsWith(noMoreCorruptLine)) || (line.endsWith(NamenodeFsck.NONEXISTENT_STATUS))) {
           allDone=true;
           break;
@@ -28,13 +39,6 @@
           out.println("The list of corrupt files under path '" + dir + "' are:");
         }
         out.println(line);
-        try {
-          lastBlock=line.split("\t")[0];
-        }
- catch (        Exception e) {
-          allDone=true;
-          break;
-        }
       }
     }
   finally {
