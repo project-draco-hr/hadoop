@@ -4,16 +4,16 @@
   ContainerId containerID=event.getContainerID();
   ContainerToken containerToken=event.getContainerToken();
   TaskAttemptId taskAttemptID=event.getTaskAttemptID();
-  Timer timer=new Timer(true);
   ContainerManager proxy=null;
+  CommandTimerTask timerTask=new CommandTimerTask(Thread.currentThread(),event);
 switch (event.getType()) {
 case CONTAINER_REMOTE_LAUNCH:
     ContainerRemoteLaunchEvent launchEvent=(ContainerRemoteLaunchEvent)event;
   try {
-    timer.schedule(new CommandTimer(Thread.currentThread(),event),nmTimeOut);
+    commandTimer.schedule(timerTask,nmTimeOut);
     proxy=getCMProxy(containerID,containerManagerBindAddr,containerToken);
-    if (Thread.currentThread().isInterrupted()) {
-      String message="Start-container for " + event.getContainerID() + " got interrupted. Returning.";
+    if (Thread.interrupted()) {
+      String message="Container launch failed for " + containerID + " : Start-container for "+ event.getContainerID()+ " got interrupted. Returning.";
       sendContainerLaunchFailedMsg(taskAttemptID,message);
       return;
     }
@@ -21,9 +21,9 @@ case CONTAINER_REMOTE_LAUNCH:
     StartContainerRequest startRequest=Records.newRecord(StartContainerRequest.class);
     startRequest.setContainerLaunchContext(containerLaunchContext);
     StartContainerResponse response=proxy.startContainer(startRequest);
-    timer.cancel();
-    if (Thread.currentThread().isInterrupted()) {
-      String message="Start-container for " + event.getContainerID() + " got interrupted. Returning.";
+    timerTask.cancel();
+    if (Thread.interrupted()) {
+      String message="Container launch failed for " + containerID + " : Start-container for "+ event.getContainerID()+ " got interrupted. Returning.";
       sendContainerLaunchFailedMsg(taskAttemptID,message);
       return;
     }
@@ -39,12 +39,17 @@ case CONTAINER_REMOTE_LAUNCH:
     context.getEventHandler().handle(new TaskAttemptContainerLaunchedEvent(taskAttemptID,port));
   }
  catch (  Throwable t) {
+    if (Thread.interrupted()) {
+      LOG.info("Start-container for " + event.getContainerID() + " got interrupted.");
+    }
     String message="Container launch failed for " + containerID + " : "+ StringUtils.stringifyException(t);
     sendContainerLaunchFailedMsg(taskAttemptID,message);
   }
  finally {
-    timer.cancel();
-    ContainerLauncherImpl.this.rpc.stopProxy(proxy,getConfig());
+    timerTask.cancel();
+    if (proxy != null) {
+      ContainerLauncherImpl.this.rpc.stopProxy(proxy,getConfig());
+    }
   }
 break;
 case CONTAINER_REMOTE_CLEANUP:
@@ -54,9 +59,9 @@ context.getEventHandler().handle(new ContainerAllocatorEvent(taskAttemptID,Conta
 }
  else {
 try {
-  timer.schedule(new CommandTimer(Thread.currentThread(),event),nmTimeOut);
+  commandTimer.schedule(timerTask,nmTimeOut);
   proxy=getCMProxy(containerID,containerManagerBindAddr,containerToken);
-  if (Thread.currentThread().isInterrupted()) {
+  if (Thread.interrupted()) {
     LOG.info("Stop-container for " + event.getContainerID() + " got interrupted.");
   }
  else {
@@ -66,13 +71,22 @@ try {
   }
 }
  catch (Throwable t) {
+  if (Thread.interrupted()) {
+    LOG.info("Stop-container for " + event.getContainerID() + " got interrupted.");
+  }
   String message="cleanup failed for container " + event.getContainerID() + " : "+ StringUtils.stringifyException(t);
   context.getEventHandler().handle(new TaskAttemptDiagnosticsUpdateEvent(taskAttemptID,message));
   LOG.warn(message);
 }
  finally {
-  timer.cancel();
-  ContainerLauncherImpl.this.rpc.stopProxy(proxy,getConfig());
+  timerTask.cancel();
+  if (Thread.interrupted()) {
+    LOG.info("Stop-container for " + event.getContainerID() + " got interrupted.");
+    context.getEventHandler().handle(new TaskAttemptDiagnosticsUpdateEvent(taskAttemptID,"cleanup failed for container " + event.getContainerID()));
+  }
+  if (proxy != null) {
+    ContainerLauncherImpl.this.rpc.stopProxy(proxy,getConfig());
+  }
 }
 context.getEventHandler().handle(new TaskAttemptEvent(event.getTaskAttemptID(),TaskAttemptEventType.TA_CONTAINER_CLEANED));
 }
