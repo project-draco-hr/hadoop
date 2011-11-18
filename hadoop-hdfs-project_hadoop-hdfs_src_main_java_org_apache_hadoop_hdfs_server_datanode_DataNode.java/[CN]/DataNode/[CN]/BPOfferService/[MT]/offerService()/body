@@ -1,13 +1,13 @@
 {
-  LOG.info("For namenode " + nnAddr + " using DELETEREPORT_INTERVAL of "+ deleteReportInterval+ " msec "+ " BLOCKREPORT_INTERVAL of "+ blockReportInterval+ "msec"+ " Initial delay: "+ initialBlockReportDelay+ "msec"+ "; heartBeatInterval="+ heartBeatInterval);
-  while (shouldRun && shouldServiceRun) {
+  LOG.info("For namenode " + nnAddr + " using DELETEREPORT_INTERVAL of "+ dnConf.deleteReportInterval+ " msec "+ " BLOCKREPORT_INTERVAL of "+ dnConf.blockReportInterval+ "msec"+ " Initial delay: "+ dnConf.initialBlockReportDelay+ "msec"+ "; heartBeatInterval="+ dnConf.heartBeatInterval);
+  while (dn.shouldRun && shouldServiceRun) {
     try {
       long startTime=now();
-      if (startTime - lastHeartbeat > heartBeatInterval) {
+      if (startTime - lastHeartbeat > dnConf.heartBeatInterval) {
         lastHeartbeat=startTime;
-        if (!heartbeatsDisabledForTests) {
+        if (!dn.heartbeatsDisabledForTests) {
           DatanodeCommand[] cmds=sendHeartBeat();
-          metrics.addHeartbeat(now() - startTime);
+          dn.metrics.addHeartbeat(now() - startTime);
           long startProcessCommands=now();
           if (!processCommand(cmds))           continue;
           long endProcessCommands=now();
@@ -16,16 +16,16 @@
           }
         }
       }
-      if (pendingReceivedRequests > 0 || (startTime - lastDeletedReport > deleteReportInterval)) {
+      if (pendingReceivedRequests > 0 || (startTime - lastDeletedReport > dnConf.deleteReportInterval)) {
         reportReceivedDeletedBlocks();
         lastDeletedReport=startTime;
       }
       DatanodeCommand cmd=blockReport();
       processCommand(cmd);
-      if (blockScanner != null) {
-        blockScanner.addBlockPool(this.blockPoolId);
+      if (dn.blockScanner != null) {
+        dn.blockScanner.addBlockPool(this.blockPoolId);
       }
-      long waitTime=heartBeatInterval - (System.currentTimeMillis() - lastHeartbeat);
+      long waitTime=dnConf.heartBeatInterval - (System.currentTimeMillis() - lastHeartbeat);
 synchronized (receivedAndDeletedBlockList) {
         if (waitTime > 0 && pendingReceivedRequests == 0) {
           try {
@@ -46,7 +46,7 @@ synchronized (receivedAndDeletedBlockList) {
       }
       LOG.warn("RemoteException in offerService",re);
       try {
-        long sleepTime=Math.min(1000,heartBeatInterval);
+        long sleepTime=Math.min(1000,dnConf.heartBeatInterval);
         Thread.sleep(sleepTime);
       }
  catch (      InterruptedException ie) {

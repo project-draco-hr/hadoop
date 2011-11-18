@@ -10,12 +10,10 @@
     LOG.warn("Data-node and name-node layout versions must be " + "the same. Expected: " + HdfsConstants.LAYOUT_VERSION + " actual "+ bpNSInfo.getLayoutVersion());
     throw new IncorrectVersionException(bpNSInfo.getLayoutVersion(),"namenode");
   }
-  while (shouldRun && shouldServiceRun) {
+  while (dn.shouldRun && shouldServiceRun) {
     try {
       bpRegistration=bpNamenode.registerDatanode(bpRegistration);
       LOG.info("bpReg after =" + bpRegistration.storageInfo + ";sid="+ bpRegistration.storageID+ ";name="+ bpRegistration.getName());
-      NetUtils.getHostname();
-      hostName=bpRegistration.getHost();
       break;
     }
  catch (    SocketTimeoutException e) {
@@ -27,30 +25,7 @@
       }
     }
   }
-  if (storage.getStorageID().equals("")) {
-    storage.setStorageID(bpRegistration.getStorageID());
-    storage.writeAll();
-    LOG.info("New storage id " + bpRegistration.getStorageID() + " is assigned to data-node "+ bpRegistration.getName());
-  }
- else   if (!storage.getStorageID().equals(bpRegistration.getStorageID())) {
-    throw new IOException("Inconsistent storage IDs. Name-node returned " + bpRegistration.getStorageID() + ". Expecting "+ storage.getStorageID());
-  }
-  if (!isBlockTokenInitialized) {
-    ExportedBlockKeys keys=bpRegistration.exportedKeys;
-    isBlockTokenEnabled=keys.isBlockTokenEnabled();
-    if (isBlockTokenEnabled) {
-      long blockKeyUpdateInterval=keys.getKeyUpdateInterval();
-      long blockTokenLifetime=keys.getTokenLifetime();
-      LOG.info("Block token params received from NN: for block pool " + blockPoolId + " keyUpdateInterval="+ blockKeyUpdateInterval / (60 * 1000) + " min(s), tokenLifetime=" + blockTokenLifetime / (60 * 1000) + " min(s)");
-      final BlockTokenSecretManager secretMgr=new BlockTokenSecretManager(false,0,blockTokenLifetime);
-      blockPoolTokenSecretManager.addBlockPool(blockPoolId,secretMgr);
-    }
-    isBlockTokenInitialized=true;
-  }
-  if (isBlockTokenEnabled) {
-    blockPoolTokenSecretManager.setKeys(blockPoolId,bpRegistration.exportedKeys);
-    bpRegistration.exportedKeys=ExportedBlockKeys.DUMMY_KEYS;
-  }
+  dn.bpRegistrationSucceeded(bpRegistration,blockPoolId);
   LOG.info("in register:" + ";bpDNR=" + bpRegistration.storageInfo);
-  scheduleBlockReport(initialBlockReportDelay);
+  scheduleBlockReport(dnConf.initialBlockReportDelay);
 }
