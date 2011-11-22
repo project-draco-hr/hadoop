@@ -1,0 +1,27 @@
+{
+  if (dfsClient.shouldTryShortCircuitRead(dnAddr)) {
+    return DFSClient.getLocalBlockReader(dfsClient.conf,src,block,blockToken,chosenNode,dfsClient.hdfsTimeout,startOffset);
+  }
+  IOException err=null;
+  boolean fromCache=true;
+  for (int retries=0; retries <= nCachedConnRetry && fromCache; ++retries) {
+    Socket sock=socketCache.get(dnAddr);
+    if (sock == null) {
+      fromCache=false;
+      sock=dfsClient.socketFactory.createSocket();
+      sock.setTcpNoDelay(true);
+      NetUtils.connect(sock,dnAddr,dfsClient.getConf().socketTimeout);
+      sock.setSoTimeout(dfsClient.getConf().socketTimeout);
+    }
+    try {
+      BlockReader reader=BlockReaderFactory.newBlockReader(dfsClient.getConf(),sock,file,block,blockToken,startOffset,len,bufferSize,verifyChecksum,clientName);
+      return reader;
+    }
+ catch (    IOException ex) {
+      DFSClient.LOG.debug("Error making BlockReader. Closing stale " + sock,ex);
+      sock.close();
+      err=ex;
+    }
+  }
+  throw err;
+}

@@ -1,0 +1,23 @@
+{
+  DatanodeCommand cmd=null;
+  long startTime=now();
+  if (startTime - lastBlockReport > dnConf.blockReportInterval) {
+    long brCreateStartTime=now();
+    BlockListAsLongs bReport=dn.data.getBlockReport(getBlockPoolId());
+    long brSendStartTime=now();
+    cmd=bpNamenode.blockReport(bpRegistration,getBlockPoolId(),bReport.getBlockListAsLongs());
+    long brSendCost=now() - brSendStartTime;
+    long brCreateCost=brSendStartTime - brCreateStartTime;
+    dn.metrics.addBlockReport(brSendCost);
+    LOG.info("BlockReport of " + bReport.getNumberOfBlocks() + " blocks took "+ brCreateCost+ " msec to generate and "+ brSendCost+ " msecs for RPC and NN processing");
+    if (resetBlockReportTime) {
+      lastBlockReport=startTime - DFSUtil.getRandom().nextInt((int)(dnConf.blockReportInterval));
+      resetBlockReportTime=false;
+    }
+ else {
+      lastBlockReport+=(now() - lastBlockReport) / dnConf.blockReportInterval * dnConf.blockReportInterval;
+    }
+    LOG.info("sent block report, processed command:" + cmd);
+  }
+  return cmd;
+}

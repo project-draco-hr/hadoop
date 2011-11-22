@@ -1,0 +1,46 @@
+{
+  if (args.length != 3) {
+    System.out.println("Usage: test shortcircuit checksum threadCount");
+    System.exit(1);
+  }
+  boolean shortcircuit=Boolean.valueOf(args[0]);
+  boolean checksum=Boolean.valueOf(args[1]);
+  int threadCount=Integer.valueOf(args[2]);
+  Configuration conf=new Configuration();
+  conf.setBoolean(DFSConfigKeys.DFS_CLIENT_READ_SHORTCIRCUIT_KEY,shortcircuit);
+  conf.setBoolean(DFSConfigKeys.DFS_CLIENT_READ_SHORTCIRCUIT_SKIP_CHECKSUM_KEY,checksum);
+  int fileSize=1000 * blockSize + 100;
+  final byte[] dataToWrite=AppendTestUtil.randomBytes(seed,fileSize);
+  final Path file1=new Path("filelocal.dat");
+  final FileSystem fs=FileSystem.get(conf);
+  FSDataOutputStream stm=createFile(fs,file1,1);
+  stm.write(dataToWrite);
+  stm.close();
+  long start=System.currentTimeMillis();
+  final int iteration=20;
+  Thread[] threads=new Thread[threadCount];
+  for (int i=0; i < threadCount; i++) {
+    threads[i]=new Thread(){
+      public void run(){
+        for (int i=0; i < iteration; i++) {
+          try {
+            checkFileContent(fs,file1,dataToWrite,0);
+          }
+ catch (          IOException e) {
+            e.printStackTrace();
+          }
+        }
+      }
+    }
+;
+  }
+  for (int i=0; i < threadCount; i++) {
+    threads[i].start();
+  }
+  for (int i=0; i < threadCount; i++) {
+    threads[i].join();
+  }
+  long end=System.currentTimeMillis();
+  System.out.println("Iteration " + iteration + " took "+ (end - start));
+  fs.delete(file1,false);
+}
