@@ -1,0 +1,37 @@
+{
+  final long sleeptime=2000 * conf.getLong(DFSConfigKeys.DFS_HEARTBEAT_INTERVAL_KEY,DFSConfigKeys.DFS_HEARTBEAT_INTERVAL_DEFAULT);
+  LOG.info("namenodes = " + namenodes);
+  LOG.info("p         = " + p);
+  final Formatter formatter=new Formatter(System.out);
+  System.out.println("Time Stamp               Iteration#  Bytes Already Moved  Bytes Left To Move  Bytes Being Moved");
+  final List<NameNodeConnector> connectors=new ArrayList<NameNodeConnector>(namenodes.size());
+  try {
+    for (    Entry<String,Map<String,InetSocketAddress>> entry : namenodes.entrySet()) {
+      connectors.add(new NameNodeConnector(entry.getValue().values(),conf));
+    }
+    boolean done=false;
+    for (int iteration=0; !done; iteration++) {
+      done=true;
+      Collections.shuffle(connectors);
+      for (      NameNodeConnector nnc : connectors) {
+        final Balancer b=new Balancer(nnc,p,conf);
+        final ReturnStatus r=b.run(iteration,formatter);
+        if (r == ReturnStatus.IN_PROGRESS) {
+          done=false;
+        }
+ else         if (r != ReturnStatus.SUCCESS) {
+          return r.code;
+        }
+      }
+      if (!done) {
+        Thread.sleep(sleeptime);
+      }
+    }
+  }
+  finally {
+    for (    NameNodeConnector nnc : connectors) {
+      nnc.close();
+    }
+  }
+  return ReturnStatus.SUCCESS.code;
+}
