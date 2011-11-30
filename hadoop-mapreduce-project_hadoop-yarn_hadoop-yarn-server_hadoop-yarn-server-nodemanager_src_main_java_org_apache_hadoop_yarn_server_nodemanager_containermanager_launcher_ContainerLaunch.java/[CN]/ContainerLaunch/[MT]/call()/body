@@ -9,7 +9,7 @@
   try {
     List<String> newCmds=new ArrayList<String>(command.size());
     String appIdStr=app.getAppId().toString();
-    Path containerLogDir=this.logDirsSelector.getLocalPathForWrite(ContainerLaunch.getRelativeContainerLogDir(appIdStr,containerIdStr),LocalDirAllocator.SIZE_UNKNOWN,this.conf,false);
+    Path containerLogDir=dirsHandler.getLogPathForWrite(ContainerLaunch.getRelativeContainerLogDir(appIdStr,containerIdStr),false);
     for (    String str : command) {
       newCmds.add(str.replace(ApplicationConstants.LOG_DIR_EXPANSION_VAR,containerLogDir.toUri().getPath()));
     }
@@ -20,17 +20,21 @@
       entry.setValue(value.replace(ApplicationConstants.LOG_DIR_EXPANSION_VAR,containerLogDir.toUri().getPath()));
     }
     FileContext lfs=FileContext.getLocalFSFileContext();
-    LocalDirAllocator lDirAllocator=new LocalDirAllocator(YarnConfiguration.NM_LOCAL_DIRS);
-    Path nmPrivateContainerScriptPath=lDirAllocator.getLocalPathForWrite(getContainerPrivateDir(appIdStr,containerIdStr) + Path.SEPARATOR + CONTAINER_SCRIPT,this.conf);
-    Path nmPrivateTokensPath=lDirAllocator.getLocalPathForWrite(getContainerPrivateDir(appIdStr,containerIdStr) + Path.SEPARATOR + String.format(ContainerLocalizer.TOKEN_FILE_NAME_FMT,containerIdStr),this.conf);
+    Path nmPrivateContainerScriptPath=dirsHandler.getLocalPathForWrite(getContainerPrivateDir(appIdStr,containerIdStr) + Path.SEPARATOR + CONTAINER_SCRIPT);
+    Path nmPrivateTokensPath=dirsHandler.getLocalPathForWrite(getContainerPrivateDir(appIdStr,containerIdStr) + Path.SEPARATOR + String.format(ContainerLocalizer.TOKEN_FILE_NAME_FMT,containerIdStr));
     DataOutputStream containerScriptOutStream=null;
     DataOutputStream tokensOutStream=null;
-    Path containerWorkDir=lDirAllocator.getLocalPathForWrite(ContainerLocalizer.USERCACHE + Path.SEPARATOR + user+ Path.SEPARATOR+ ContainerLocalizer.APPCACHE+ Path.SEPARATOR+ appIdStr+ Path.SEPARATOR+ containerIdStr,LocalDirAllocator.SIZE_UNKNOWN,this.conf,false);
+    Path containerWorkDir=dirsHandler.getLocalPathForWrite(ContainerLocalizer.USERCACHE + Path.SEPARATOR + user+ Path.SEPARATOR+ ContainerLocalizer.APPCACHE+ Path.SEPARATOR+ appIdStr+ Path.SEPARATOR+ containerIdStr,LocalDirAllocator.SIZE_UNKNOWN,false);
     String pidFileSuffix=String.format(ContainerLaunch.PID_FILE_NAME_FMT,containerIdStr);
-    pidFilePath=lDirAllocator.getLocalPathForWrite(ResourceLocalizationService.NM_PRIVATE_DIR + Path.SEPARATOR + pidFileSuffix,this.conf);
+    pidFilePath=dirsHandler.getLocalPathForWrite(ResourceLocalizationService.NM_PRIVATE_DIR + Path.SEPARATOR + pidFileSuffix);
+    List<String> localDirs=dirsHandler.getLocalDirs();
+    List<String> logDirs=dirsHandler.getLogDirs();
+    if (!dirsHandler.areDisksHealthy()) {
+      ret=ExitCode.DISKS_FAILED.getExitCode();
+      throw new IOException("Most of the disks failed. " + dirsHandler.getDisksHealthReport());
+    }
     try {
-      String[] localDirs=this.conf.getStrings(YarnConfiguration.NM_LOCAL_DIRS,YarnConfiguration.DEFAULT_NM_LOCAL_DIRS);
-      List<Path> appDirs=new ArrayList<Path>(localDirs.length);
+      List<Path> appDirs=new ArrayList<Path>(localDirs.size());
       for (      String localDir : localDirs) {
         Path usersdir=new Path(localDir,ContainerLocalizer.USERCACHE);
         Path userdir=new Path(usersdir,user);
@@ -55,26 +59,28 @@
     }
  else {
       exec.activateContainer(containerID,pidFilePath);
-      ret=exec.launchContainer(container,nmPrivateContainerScriptPath,nmPrivateTokensPath,user,appIdStr,containerWorkDir);
+      ret=exec.launchContainer(container,nmPrivateContainerScriptPath,nmPrivateTokensPath,user,appIdStr,containerWorkDir,localDirs,logDirs);
     }
   }
  catch (  Throwable e) {
-    LOG.warn("Failed to launch container",e);
-    dispatcher.getEventHandler().handle(new ContainerExitEvent(launchContext.getContainerId(),ContainerEventType.CONTAINER_EXITED_WITH_FAILURE,ret));
+    LOG.warn("Failed to launch container.",e);
+    dispatcher.getEventHandler().handle(new ContainerExitEvent(launchContext.getContainerId(),ContainerEventType.CONTAINER_EXITED_WITH_FAILURE,ret,e.getMessage()));
     return ret;
   }
  finally {
     completed.set(true);
     exec.deactivateContainer(containerID);
   }
-  LOG.debug("Container " + containerIdStr + " completed with exit code "+ ret);
+  if (LOG.isDebugEnabled()) {
+    LOG.debug("Container " + containerIdStr + " completed with exit code "+ ret);
+  }
   if (ret == ExitCode.FORCE_KILLED.getExitCode() || ret == ExitCode.TERMINATED.getExitCode()) {
-    dispatcher.getEventHandler().handle(new ContainerExitEvent(launchContext.getContainerId(),ContainerEventType.CONTAINER_KILLED_ON_REQUEST,ret));
+    dispatcher.getEventHandler().handle(new ContainerExitEvent(launchContext.getContainerId(),ContainerEventType.CONTAINER_KILLED_ON_REQUEST,ret,"Container exited with a non-zero exit code " + ret));
     return ret;
   }
   if (ret != 0) {
     LOG.warn("Container exited with a non-zero exit code " + ret);
-    this.dispatcher.getEventHandler().handle(new ContainerExitEvent(launchContext.getContainerId(),ContainerEventType.CONTAINER_EXITED_WITH_FAILURE,ret));
+    this.dispatcher.getEventHandler().handle(new ContainerExitEvent(launchContext.getContainerId(),ContainerEventType.CONTAINER_EXITED_WITH_FAILURE,ret,"Container exited with a non-zero exit code " + ret));
     return ret;
   }
   LOG.info("Container " + containerIdStr + " succeeded ");

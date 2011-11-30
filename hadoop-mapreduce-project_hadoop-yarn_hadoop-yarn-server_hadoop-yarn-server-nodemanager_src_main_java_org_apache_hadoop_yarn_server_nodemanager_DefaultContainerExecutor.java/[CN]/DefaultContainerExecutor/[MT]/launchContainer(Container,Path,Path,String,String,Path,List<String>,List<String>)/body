@@ -1,0 +1,58 @@
+{
+  ContainerId containerId=container.getContainerID();
+  String containerIdStr=ConverterUtils.toString(containerId);
+  String appIdStr=ConverterUtils.toString(container.getContainerID().getApplicationAttemptId().getApplicationId());
+  for (  String sLocalDir : localDirs) {
+    Path usersdir=new Path(sLocalDir,ContainerLocalizer.USERCACHE);
+    Path userdir=new Path(usersdir,userName);
+    Path appCacheDir=new Path(userdir,ContainerLocalizer.APPCACHE);
+    Path appDir=new Path(appCacheDir,appIdStr);
+    Path containerDir=new Path(appDir,containerIdStr);
+    lfs.mkdir(containerDir,null,false);
+  }
+  createContainerLogDirs(appIdStr,containerIdStr,logDirs);
+  Path launchDst=new Path(containerWorkDir,ContainerLaunch.CONTAINER_SCRIPT);
+  lfs.util().copy(nmPrivateContainerScriptPath,launchDst);
+  Path tokenDst=new Path(containerWorkDir,ContainerLaunch.FINAL_CONTAINER_TOKENS_FILE);
+  lfs.util().copy(nmPrivateTokensPath,tokenDst);
+  Path wrapperScriptDst=new Path(containerWorkDir,WRAPPER_LAUNCH_SCRIPT);
+  DataOutputStream wrapperScriptOutStream=lfs.create(wrapperScriptDst,EnumSet.of(CREATE,OVERWRITE));
+  Path pidFile=getPidFilePath(containerId);
+  if (pidFile != null) {
+    writeLocalWrapperScript(wrapperScriptOutStream,launchDst.toUri().getPath().toString(),pidFile.toString());
+  }
+ else {
+    LOG.info("Container " + containerIdStr + " was marked as inactive. Returning terminated error");
+    return ExitCode.TERMINATED.getExitCode();
+  }
+  ShellCommandExecutor shExec=null;
+  try {
+    lfs.setPermission(launchDst,ContainerExecutor.TASK_LAUNCH_SCRIPT_PERMISSION);
+    lfs.setPermission(wrapperScriptDst,ContainerExecutor.TASK_LAUNCH_SCRIPT_PERMISSION);
+    String[] command={"bash","-c",wrapperScriptDst.toUri().getPath().toString()};
+    LOG.info("launchContainer: " + Arrays.toString(command));
+    shExec=new ShellCommandExecutor(command,new File(containerWorkDir.toUri().getPath()),container.getLaunchContext().getEnvironment());
+    if (isContainerActive(containerId)) {
+      shExec.execute();
+    }
+ else {
+      LOG.info("Container " + containerIdStr + " was marked as inactive. Returning terminated error");
+      return ExitCode.TERMINATED.getExitCode();
+    }
+  }
+ catch (  IOException e) {
+    if (null == shExec) {
+      return -1;
+    }
+    int exitCode=shExec.getExitCode();
+    LOG.warn("Exit code from task is : " + exitCode);
+    String message=shExec.getOutput();
+    logOutput(message);
+    container.handle(new ContainerDiagnosticsUpdateEvent(containerId,message));
+    return exitCode;
+  }
+ finally {
+    ;
+  }
+  return 0;
+}
