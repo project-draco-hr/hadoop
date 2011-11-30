@@ -1,0 +1,33 @@
+{
+  LOG.info("=> notified of genstamp update for: " + gs);
+  DataNodeMessage msg=pendingDatanodeMessages.take(gs);
+  while (msg != null) {
+    LOG.info("processing message: " + msg);
+    try {
+switch (msg.getType()) {
+case BLOCK_RECEIVED_DELETE:
+        BlockReceivedDeleteMessage m=(BlockReceivedDeleteMessage)msg;
+      if (NameNode.stateChangeLog.isDebugEnabled()) {
+        NameNode.stateChangeLog.debug("*BLOCK* NameNode.blockReceivedAndDeleted: " + "from " + m.getNodeReg().getName() + " "+ m.getReceivedAndDeletedBlocks().length+ " blocks.");
+      }
+    this.getBlockManager().blockReceivedAndDeleted(m.getNodeReg(),m.getPoolId(),m.getReceivedAndDeletedBlocks());
+  break;
+case BLOCK_REPORT:
+BlockReportMessage mbr=(BlockReportMessage)msg;
+if (NameNode.stateChangeLog.isDebugEnabled()) {
+NameNode.stateChangeLog.debug("*BLOCK* NameNode.blockReport: " + "from " + mbr.getNodeReg().getName() + " "+ mbr.getBlockList().getNumberOfBlocks()+ " blocks");
+}
+this.getBlockManager().processReport(mbr.getNodeReg(),mbr.getPoolId(),mbr.getBlockList());
+break;
+case COMMIT_BLOCK_SYNCHRONIZATION:
+CommitBlockSynchronizationMessage mcbm=(CommitBlockSynchronizationMessage)msg;
+this.commitBlockSynchronization(mcbm.getBlock(),mcbm.getNewgenerationstamp(),mcbm.getNewlength(),mcbm.isCloseFile(),mcbm.isDeleteblock(),mcbm.getNewtargets());
+break;
+}
+}
+ catch (IOException ex) {
+LOG.warn("Could not process the message " + msg.getType(),ex);
+}
+msg=pendingDatanodeMessages.take(gs);
+}
+}
