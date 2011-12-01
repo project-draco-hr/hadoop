@@ -20,6 +20,7 @@
         application=rm.getApplicationReport(appId);
         continue;
       }
+      UserGroupInformation newUgi=UserGroupInformation.createRemoteUser(UserGroupInformation.getCurrentUser().getUserName());
       serviceAddr=application.getHost() + ":" + application.getRpcPort();
       if (UserGroupInformation.isSecurityEnabled()) {
         String clientTokenEncoded=application.getClientToken();
@@ -27,11 +28,17 @@
         clientToken.decodeFromUrlString(clientTokenEncoded);
         InetSocketAddress addr=NetUtils.createSocketAddr(application.getHost(),application.getRpcPort());
         clientToken.setService(new Text(addr.getAddress().getHostAddress() + ":" + addr.getPort()));
-        UserGroupInformation.getCurrentUser().addToken(clientToken);
+        newUgi.addToken(clientToken);
       }
       LOG.info("The url to track the job: " + application.getTrackingUrl());
       LOG.debug("Connecting to " + serviceAddr);
-      realProxy=instantiateAMProxy(serviceAddr);
+      final String tempStr=serviceAddr;
+      realProxy=newUgi.doAs(new PrivilegedExceptionAction<MRClientProtocol>(){
+        @Override public MRClientProtocol run() throws IOException {
+          return instantiateAMProxy(tempStr);
+        }
+      }
+);
       return realProxy;
     }
  catch (    IOException e) {
