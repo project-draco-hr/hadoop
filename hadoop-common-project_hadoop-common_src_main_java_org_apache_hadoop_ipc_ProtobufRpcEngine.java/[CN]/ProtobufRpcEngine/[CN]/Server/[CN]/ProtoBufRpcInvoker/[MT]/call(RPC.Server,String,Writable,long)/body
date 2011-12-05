@@ -1,0 +1,39 @@
+{
+  RpcRequestWritable request=(RpcRequestWritable)writableRequest;
+  HadoopRpcRequestProto rpcRequest=request.message;
+  String methodName=rpcRequest.getMethodName();
+  String protoName=rpcRequest.getDeclaringClassProtocolName();
+  long clientVersion=rpcRequest.getClientProtocolVersion();
+  if (server.verbose)   LOG.info("Call: protocol=" + protocol + ", method="+ methodName);
+  ProtoNameVer pv=new ProtoNameVer(protoName,clientVersion);
+  ProtoClassProtoImpl protocolImpl=server.getProtocolImplMap(RpcKind.RPC_PROTOCOL_BUFFER).get(pv);
+  if (protocolImpl == null) {
+    VerProtocolImpl highest=server.getHighestSupportedProtocol(RpcKind.RPC_PROTOCOL_BUFFER,protoName);
+    if (highest == null) {
+      throw new IOException("Unknown protocol: " + protoName);
+    }
+    throw new RPC.VersionMismatch(protoName,clientVersion,highest.version);
+  }
+  BlockingService service=(BlockingService)protocolImpl.protocolImpl;
+  MethodDescriptor methodDescriptor=service.getDescriptorForType().findMethodByName(methodName);
+  if (methodDescriptor == null) {
+    String msg="Unknown method " + methodName + " called on "+ protocol+ " protocol.";
+    LOG.warn(msg);
+    return handleException(new RpcServerException(msg));
+  }
+  Message prototype=service.getRequestPrototype(methodDescriptor);
+  Message param=prototype.newBuilderForType().mergeFrom(rpcRequest.getRequest()).build();
+  Message result;
+  try {
+    result=service.callBlockingMethod(methodDescriptor,null,param);
+  }
+ catch (  ServiceException e) {
+    Throwable cause=e.getCause();
+    return handleException(cause != null ? cause : e);
+  }
+catch (  Exception e) {
+    return handleException(e);
+  }
+  HadoopRpcResponseProto response=constructProtoSpecificRpcSuccessResponse(result);
+  return new RpcResponseWritable(response);
+}

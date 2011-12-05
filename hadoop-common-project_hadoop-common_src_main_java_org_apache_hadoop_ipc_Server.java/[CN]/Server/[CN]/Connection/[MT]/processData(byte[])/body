@@ -6,9 +6,18 @@
   if (header.getOperation() != RpcPayloadOperation.RPC_FINAL_PAYLOAD) {
     throw new IOException("IPC Server does not implement operation" + header.getOperation());
   }
+  Class<? extends Writable> rpcRequestClass=getRpcRequestWrapper(header.getkind());
+  if (rpcRequestClass == null) {
+    LOG.warn("Unknown rpc kind " + header.getkind() + " from client "+ getHostAddress());
+    final Call readParamsFailedCall=new Call(header.getCallId(),null,this);
+    ByteArrayOutputStream responseBuffer=new ByteArrayOutputStream();
+    setupResponse(responseBuffer,readParamsFailedCall,Status.FATAL,null,IOException.class.getName(),"Unknown rpc kind " + header.getkind());
+    responder.doRespond(readParamsFailedCall);
+    return;
+  }
   Writable rpcRequest;
   try {
-    rpcRequest=ReflectionUtils.newInstance(paramClass,conf);
+    rpcRequest=ReflectionUtils.newInstance(rpcRequestClass,conf);
     rpcRequest.readFields(dis);
   }
  catch (  Throwable t) {
