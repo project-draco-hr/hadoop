@@ -1,0 +1,67 @@
+{
+  verifyDir(configDir);
+  File file=new File(configDir);
+  Configuration defaultConf;
+  String defaultConfig=name + "-default.xml";
+  ClassLoader classLoader=Thread.currentThread().getContextClassLoader();
+  InputStream inputStream=classLoader.getResourceAsStream(defaultConfig);
+  if (inputStream == null) {
+    log.warn("Default configuration file not available in classpath [{}]",defaultConfig);
+    defaultConf=new Configuration(false);
+  }
+ else {
+    try {
+      defaultConf=new Configuration(false);
+      ConfigurationUtils.load(defaultConf,inputStream);
+    }
+ catch (    Exception ex) {
+      throw new ServerException(ServerException.ERROR.S03,defaultConfig,ex.getMessage(),ex);
+    }
+  }
+  if (config == null) {
+    Configuration siteConf;
+    File siteFile=new File(file,name + "-site.xml");
+    if (!siteFile.exists()) {
+      log.warn("Site configuration file [{}] not found in config directory",siteFile);
+      siteConf=new Configuration(false);
+    }
+ else {
+      if (!siteFile.isFile()) {
+        throw new ServerException(ServerException.ERROR.S05,siteFile.getAbsolutePath());
+      }
+      try {
+        log.debug("Loading site configuration from [{}]",siteFile);
+        inputStream=new FileInputStream(siteFile);
+        siteConf=new Configuration(false);
+        ConfigurationUtils.load(siteConf,inputStream);
+      }
+ catch (      IOException ex) {
+        throw new ServerException(ServerException.ERROR.S06,siteFile,ex.getMessage(),ex);
+      }
+    }
+    config=new Configuration(false);
+    ConfigurationUtils.copy(siteConf,config);
+  }
+  ConfigurationUtils.injectDefaults(defaultConf,config);
+  for (  String name : System.getProperties().stringPropertyNames()) {
+    String value=System.getProperty(name);
+    if (name.startsWith(getPrefix() + ".")) {
+      config.set(name,value);
+      if (name.endsWith(".password") || name.endsWith(".secret")) {
+        value="*MASKED*";
+      }
+      log.info("System property sets  {}: {}",name,value);
+    }
+  }
+  log.debug("Loaded Configuration:");
+  log.debug("------------------------------------------------------");
+  for (  Map.Entry<String,String> entry : config) {
+    String name=entry.getKey();
+    String value=config.get(entry.getKey());
+    if (name.endsWith(".password") || name.endsWith(".secret")) {
+      value="*MASKED*";
+    }
+    log.debug("  {}: {}",entry.getKey(),value);
+  }
+  log.debug("------------------------------------------------------");
+}

@@ -1,0 +1,51 @@
+{
+  LOG.info("Using FileSystemAccess JARs version [{}]",VersionInfo.getVersion());
+  String security=getServiceConfig().get(AUTHENTICATION_TYPE,"simple").trim();
+  if (security.equals("kerberos")) {
+    String defaultName=getServer().getName();
+    String keytab=System.getProperty("user.home") + "/" + defaultName+ ".keytab";
+    keytab=getServiceConfig().get(KERBEROS_KEYTAB,keytab).trim();
+    if (keytab.length() == 0) {
+      throw new ServiceException(FileSystemAccessException.ERROR.H01,KERBEROS_KEYTAB);
+    }
+    String principal=defaultName + "/localhost@LOCALHOST";
+    principal=getServiceConfig().get(KERBEROS_PRINCIPAL,principal).trim();
+    if (principal.length() == 0) {
+      throw new ServiceException(FileSystemAccessException.ERROR.H01,KERBEROS_PRINCIPAL);
+    }
+    Configuration conf=new Configuration();
+    conf.set("hadoop.security.authentication","kerberos");
+    UserGroupInformation.setConfiguration(conf);
+    try {
+      UserGroupInformation.loginUserFromKeytab(principal,keytab);
+    }
+ catch (    IOException ex) {
+      throw new ServiceException(FileSystemAccessException.ERROR.H02,ex.getMessage(),ex);
+    }
+    LOG.info("Using FileSystemAccess Kerberos authentication, principal [{}] keytab [{}]",principal,keytab);
+  }
+ else   if (security.equals("simple")) {
+    Configuration conf=new Configuration();
+    conf.set("hadoop.security.authentication","simple");
+    UserGroupInformation.setConfiguration(conf);
+    LOG.info("Using FileSystemAccess simple/pseudo authentication, principal [{}]",System.getProperty("user.name"));
+  }
+ else {
+    throw new ServiceException(FileSystemAccessException.ERROR.H09,security);
+  }
+  serviceHadoopConf=new Configuration(false);
+  for (  Map.Entry entry : getServiceConfig()) {
+    String name=(String)entry.getKey();
+    if (name.startsWith(HADOOP_CONF_PREFIX)) {
+      name=name.substring(HADOOP_CONF_PREFIX.length());
+      String value=(String)entry.getValue();
+      serviceHadoopConf.set(name,value);
+    }
+  }
+  setRequiredServiceHadoopConf(serviceHadoopConf);
+  LOG.debug("FileSystemAccess default configuration:");
+  for (  Map.Entry entry : serviceHadoopConf) {
+    LOG.debug("  {} = {}",entry.getKey(),entry.getValue());
+  }
+  nameNodeWhitelist=toLowerCase(getServiceConfig().getTrimmedStringCollection(NAME_NODE_WHITELIST));
+}

@@ -1,0 +1,62 @@
+{
+  HttpServletRequest request=Mockito.mock(HttpServletRequest.class);
+  Mockito.when(request.getUserPrincipal()).thenReturn(null);
+  Mockito.when(request.getMethod()).thenReturn("METHOD");
+  Mockito.when(request.getPathInfo()).thenReturn("/pathinfo");
+  ServletResponse response=Mockito.mock(ServletResponse.class);
+  final AtomicBoolean invoked=new AtomicBoolean();
+  FilterChain chain=new FilterChain(){
+    @Override public void doFilter(    ServletRequest servletRequest,    ServletResponse servletResponse) throws IOException, ServletException {
+      Assert.assertEquals(MDC.get("hostname"),null);
+      Assert.assertEquals(MDC.get("user"),null);
+      Assert.assertEquals(MDC.get("method"),"METHOD");
+      Assert.assertEquals(MDC.get("path"),"/pathinfo");
+      invoked.set(true);
+    }
+  }
+;
+  MDC.clear();
+  Filter filter=new MDCFilter();
+  filter.init(null);
+  filter.doFilter(request,response,chain);
+  Assert.assertTrue(invoked.get());
+  Assert.assertNull(MDC.get("hostname"));
+  Assert.assertNull(MDC.get("user"));
+  Assert.assertNull(MDC.get("method"));
+  Assert.assertNull(MDC.get("path"));
+  Mockito.when(request.getUserPrincipal()).thenReturn(new Principal(){
+    @Override public String getName(){
+      return "name";
+    }
+  }
+);
+  invoked.set(false);
+  chain=new FilterChain(){
+    @Override public void doFilter(    ServletRequest servletRequest,    ServletResponse servletResponse) throws IOException, ServletException {
+      Assert.assertEquals(MDC.get("hostname"),null);
+      Assert.assertEquals(MDC.get("user"),"name");
+      Assert.assertEquals(MDC.get("method"),"METHOD");
+      Assert.assertEquals(MDC.get("path"),"/pathinfo");
+      invoked.set(true);
+    }
+  }
+;
+  filter.doFilter(request,response,chain);
+  Assert.assertTrue(invoked.get());
+  HostnameFilter.HOSTNAME_TL.set("HOST");
+  invoked.set(false);
+  chain=new FilterChain(){
+    @Override public void doFilter(    ServletRequest servletRequest,    ServletResponse servletResponse) throws IOException, ServletException {
+      Assert.assertEquals(MDC.get("hostname"),"HOST");
+      Assert.assertEquals(MDC.get("user"),"name");
+      Assert.assertEquals(MDC.get("method"),"METHOD");
+      Assert.assertEquals(MDC.get("path"),"/pathinfo");
+      invoked.set(true);
+    }
+  }
+;
+  filter.doFilter(request,response,chain);
+  Assert.assertTrue(invoked.get());
+  HostnameFilter.HOSTNAME_TL.remove();
+  filter.destroy();
+}

@@ -1,0 +1,37 @@
+{
+  Check.notEmpty(user,"user");
+  Check.notNull(conf,"conf");
+  Check.notNull(executor,"executor");
+  if (conf.get(NAME_NODE_PROPERTY) == null || conf.getTrimmed(NAME_NODE_PROPERTY).length() == 0) {
+    throw new FileSystemAccessException(FileSystemAccessException.ERROR.H06,NAME_NODE_PROPERTY);
+  }
+  try {
+    validateNamenode(new URI(conf.get(NAME_NODE_PROPERTY)).getAuthority());
+    UserGroupInformation ugi=getUGI(user);
+    return ugi.doAs(new PrivilegedExceptionAction<T>(){
+      public T run() throws Exception {
+        Configuration namenodeConf=createNameNodeConf(conf);
+        FileSystem fs=createFileSystem(namenodeConf);
+        Instrumentation instrumentation=getServer().get(Instrumentation.class);
+        Instrumentation.Cron cron=instrumentation.createCron();
+        try {
+          checkNameNodeHealth(fs);
+          cron.start();
+          return executor.execute(fs);
+        }
+  finally {
+          cron.stop();
+          instrumentation.addCron(INSTRUMENTATION_GROUP,executor.getClass().getSimpleName(),cron);
+          closeFileSystem(fs);
+        }
+      }
+    }
+);
+  }
+ catch (  FileSystemAccessException ex) {
+    throw ex;
+  }
+catch (  Exception ex) {
+    throw new FileSystemAccessException(FileSystemAccessException.ERROR.H03,ex);
+  }
+}
