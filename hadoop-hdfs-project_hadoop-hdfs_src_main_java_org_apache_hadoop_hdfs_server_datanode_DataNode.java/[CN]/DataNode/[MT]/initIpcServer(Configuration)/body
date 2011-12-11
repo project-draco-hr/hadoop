@@ -1,9 +1,12 @@
 {
   InetSocketAddress ipcAddr=NetUtils.createSocketAddr(conf.get(DFS_DATANODE_IPC_ADDRESS_KEY));
-  ClientDatanodeProtocolServerSideTranslatorR23 clientDatanodeProtocolServerTranslator=new ClientDatanodeProtocolServerSideTranslatorR23(this);
-  ipcServer=RPC.getServer(org.apache.hadoop.hdfs.protocolR23Compatible.ClientDatanodeWireProtocol.class,clientDatanodeProtocolServerTranslator,ipcAddr.getHostName(),ipcAddr.getPort(),conf.getInt(DFS_DATANODE_HANDLER_COUNT_KEY,DFS_DATANODE_HANDLER_COUNT_DEFAULT),false,conf,blockPoolTokenSecretManager);
-  InterDatanodeProtocolServerSideTranslatorR23 interDatanodeProtocolServerTranslator=new InterDatanodeProtocolServerSideTranslatorR23(this);
-  ipcServer.addProtocol(RpcKind.RPC_WRITABLE,InterDatanodeWireProtocol.class,interDatanodeProtocolServerTranslator);
+  RPC.setProtocolEngine(conf,ClientDatanodeProtocolPB.class,ProtobufRpcEngine.class);
+  ClientDatanodeProtocolServerSideTranslatorPB clientDatanodeProtocolXlator=new ClientDatanodeProtocolServerSideTranslatorPB(this);
+  BlockingService service=ClientDatanodeProtocolService.newReflectiveBlockingService(clientDatanodeProtocolXlator);
+  ipcServer=RPC.getServer(ClientDatanodeProtocolPB.class,service,ipcAddr.getHostName(),ipcAddr.getPort(),conf.getInt(DFS_DATANODE_HANDLER_COUNT_KEY,DFS_DATANODE_HANDLER_COUNT_DEFAULT),false,conf,blockPoolTokenSecretManager);
+  InterDatanodeProtocolServerSideTranslatorPB interDatanodeProtocolXlator=new InterDatanodeProtocolServerSideTranslatorPB(this);
+  service=InterDatanodeProtocolService.newReflectiveBlockingService(interDatanodeProtocolXlator);
+  DFSUtil.addPBProtocol(conf,InterDatanodeProtocolPB.class,service,ipcServer);
   if (conf.getBoolean(CommonConfigurationKeys.HADOOP_SECURITY_AUTHORIZATION,false)) {
     ipcServer.refreshServiceAcl(conf,new HDFSPolicyProvider());
   }
