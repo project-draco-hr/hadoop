@@ -1,0 +1,36 @@
+{
+  Check.notNull(callable,"callable");
+  if (!scheduler.isShutdown()) {
+    LOG.debug("Scheduling callable [{}], interval [{}] seconds, delay [{}] in [{}]",new Object[]{callable,delay,interval,unit});
+    Runnable r=new Runnable(){
+      public void run(){
+        String instrName=callable.getClass().getSimpleName();
+        Instrumentation instr=getServer().get(Instrumentation.class);
+        if (getServer().getStatus() == Server.Status.HALTED) {
+          LOG.debug("Skipping [{}], server status [{}]",callable,getServer().getStatus());
+          instr.incr(INST_GROUP,instrName + ".skips",1);
+        }
+ else {
+          LOG.debug("Executing [{}]",callable);
+          instr.incr(INST_GROUP,instrName + ".execs",1);
+          Instrumentation.Cron cron=instr.createCron().start();
+          try {
+            callable.call();
+          }
+ catch (          Exception ex) {
+            instr.incr(INST_GROUP,instrName + ".fails",1);
+            LOG.error("Error executing [{}], {}",new Object[]{callable,ex.getMessage(),ex});
+          }
+ finally {
+            instr.addCron(INST_GROUP,instrName,cron.stop());
+          }
+        }
+      }
+    }
+;
+    scheduler.scheduleWithFixedDelay(r,delay,interval,unit);
+  }
+ else {
+    throw new IllegalStateException(MessageFormat.format("Scheduler shutting down, ignoring scheduling of [{}]",callable));
+  }
+}

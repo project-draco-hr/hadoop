@@ -1,0 +1,39 @@
+{
+  HttpURLConnection conn=getConnection(method,params,f,true);
+  conn.setInstanceFollowRedirects(false);
+  boolean exceptionAlreadyHandled=false;
+  try {
+    if (conn.getResponseCode() == HTTP_TEMPORARY_REDIRECT) {
+      exceptionAlreadyHandled=true;
+      String location=conn.getHeaderField("Location");
+      if (location != null) {
+        conn=getConnection(new URL(location),method);
+        conn.setRequestProperty("Content-Type","application/octet-stream");
+        try {
+          OutputStream os=new BufferedOutputStream(conn.getOutputStream(),bufferSize);
+          return new HttpFSDataOutputStream(conn,os,expectedStatus,statistics);
+        }
+ catch (        IOException ex) {
+          validateResponse(conn,expectedStatus);
+          throw ex;
+        }
+      }
+ else {
+        validateResponse(conn,HTTP_TEMPORARY_REDIRECT);
+        throw new IOException("Missing HTTP 'Location' header for [" + conn.getURL() + "]");
+      }
+    }
+ else {
+      throw new IOException(MessageFormat.format("Expected HTTP status was [307], received [{0}]",conn.getResponseCode()));
+    }
+  }
+ catch (  IOException ex) {
+    if (exceptionAlreadyHandled) {
+      throw ex;
+    }
+ else {
+      validateResponse(conn,HTTP_TEMPORARY_REDIRECT);
+      throw ex;
+    }
+  }
+}

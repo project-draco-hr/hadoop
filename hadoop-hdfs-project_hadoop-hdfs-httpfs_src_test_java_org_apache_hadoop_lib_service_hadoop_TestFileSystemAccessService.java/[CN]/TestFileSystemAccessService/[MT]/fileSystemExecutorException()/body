@@ -1,0 +1,36 @@
+{
+  String dir=TestDirHelper.getTestDir().getAbsolutePath();
+  String services=StringUtils.join(",",Arrays.asList(InstrumentationService.class.getName(),FileSystemAccessService.class.getName()));
+  Configuration conf=new Configuration(false);
+  conf.set("server.services",services);
+  Server server=new Server("server",dir,dir,dir,dir,conf);
+  server.init();
+  FileSystemAccess hadoop=server.get(FileSystemAccess.class);
+  final FileSystem fsa[]=new FileSystem[1];
+  try {
+    hadoop.execute("u",TestHdfsHelper.getHdfsConf(),new FileSystemAccess.FileSystemExecutor<Void>(){
+      @Override public Void execute(      FileSystem fs) throws IOException {
+        fsa[0]=fs;
+        throw new IOException();
+      }
+    }
+);
+    Assert.fail();
+  }
+ catch (  FileSystemAccessException ex) {
+    Assert.assertEquals(ex.getError(),FileSystemAccessException.ERROR.H03);
+  }
+catch (  Exception ex) {
+    Assert.fail();
+  }
+  try {
+    fsa[0].mkdirs(new Path("/tmp/foo"));
+    Assert.fail();
+  }
+ catch (  IOException ex) {
+  }
+catch (  Exception ex) {
+    Assert.fail();
+  }
+  server.destroy();
+}

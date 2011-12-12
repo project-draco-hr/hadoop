@@ -1,0 +1,47 @@
+{
+  if (status != Status.UNDEF) {
+    throw new IllegalStateException("Server already initialized");
+  }
+  status=Status.BOOTING;
+  verifyDir(homeDir);
+  verifyDir(tempDir);
+  Properties serverInfo=new Properties();
+  try {
+    InputStream is=getResource(name + ".properties");
+    serverInfo.load(is);
+    is.close();
+  }
+ catch (  IOException ex) {
+    throw new RuntimeException("Could not load server information file: " + name + ".properties");
+  }
+  initLog();
+  log.info("++++++++++++++++++++++++++++++++++++++++++++++++++++++");
+  log.info("Server [{}] starting",name);
+  log.info("  Built information:");
+  log.info("    Version           : {}",serverInfo.getProperty(name + ".version","undef"));
+  log.info("    Source Repository : {}",serverInfo.getProperty(name + ".source.repository","undef"));
+  log.info("    Source Revision   : {}",serverInfo.getProperty(name + ".source.revision","undef"));
+  log.info("    Built by          : {}",serverInfo.getProperty(name + ".build.username","undef"));
+  log.info("    Built timestamp   : {}",serverInfo.getProperty(name + ".build.timestamp","undef"));
+  log.info("  Runtime information:");
+  log.info("    Home   dir: {}",homeDir);
+  log.info("    Config dir: {}",(config == null) ? configDir : "-");
+  log.info("    Log    dir: {}",logDir);
+  log.info("    Temp   dir: {}",tempDir);
+  initConfig();
+  log.debug("Loading services");
+  List<Service> list=loadServices();
+  try {
+    log.debug("Initializing services");
+    initServices(list);
+    log.info("Services initialized");
+  }
+ catch (  ServerException ex) {
+    log.error("Services initialization failure, destroying initialized services");
+    destroyServices();
+    throw ex;
+  }
+  Status status=Status.valueOf(getConfig().get(getPrefixedName(CONF_STARTUP_STATUS),Status.NORMAL.toString()));
+  setStatus(status);
+  log.info("Server [{}] started!, status [{}]",name,status);
+}
