@@ -1,0 +1,27 @@
+{
+  wl.acquire();
+  if (txId <= maxTxId.get()) {
+    throw new IOException("We've already seen " + txId + ". A new stream cannot be created with it");
+  }
+  if (currentLedger != null) {
+    throw new IOException("Already writing to a ledger, id=" + currentLedger.getId());
+  }
+  try {
+    currentLedger=bkc.createLedger(ensembleSize,quorumSize,BookKeeper.DigestType.MAC,digestpw.getBytes());
+    String znodePath=inprogressZNode();
+    EditLogLedgerMetadata l=new EditLogLedgerMetadata(znodePath,HdfsConstants.LAYOUT_VERSION,currentLedger.getId(),txId);
+    l.write(zkc,znodePath);
+    return new BookKeeperEditLogOutputStream(conf,currentLedger,wl);
+  }
+ catch (  Exception e) {
+    if (currentLedger != null) {
+      try {
+        currentLedger.close();
+      }
+ catch (      Exception e2) {
+        LOG.error("Error closing ledger",e2);
+      }
+    }
+    throw new IOException("Error creating ledger",e);
+  }
+}
