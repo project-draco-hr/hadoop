@@ -5,24 +5,16 @@
     return;
   }
   JobId jobID=MRApps.toJobID(jid);
-  Job job=appContext.getJob(jobID);
-  if (job == null) {
+  Job j=appContext.getJob(jobID);
+  if (j == null) {
     html.p()._("Sorry, ",jid," not found.")._();
     return;
   }
-  Map<JobACL,AccessControlList> acls=job.getJobACLs();
-  List<AMInfo> amInfos=job.getAMInfos();
-  JobReport jobReport=job.getReport();
-  int mapTasks=job.getTotalMaps();
-  int mapTasksComplete=job.getCompletedMaps();
-  int reduceTasks=job.getTotalReduces();
-  int reducesTasksComplete=job.getCompletedReduces();
-  long startTime=jobReport.getStartTime();
-  long finishTime=jobReport.getFinishTime();
-  countTasksAndAttempts(job);
-  ResponseInfo infoBlock=info("Job Overview")._("Job Name:",job.getName())._("User Name:",job.getUserName())._("Queue:",job.getQueueName())._("State:",job.getState())._("Uberized:",job.isUber())._("Started:",new Date(startTime))._("Finished:",new Date(finishTime))._("Elapsed:",StringUtils.formatTime(Times.elapsed(startTime,finishTime,false)));
+  List<AMInfo> amInfos=j.getAMInfos();
+  JobInfo job=new JobInfo(j);
+  ResponseInfo infoBlock=info("Job Overview")._("Job Name:",job.getName())._("User Name:",job.getUserName())._("Queue:",job.getQueueName())._("State:",job.getState())._("Uberized:",job.isUber())._("Started:",new Date(job.getStartTime()))._("Finished:",new Date(job.getFinishTime()))._("Elapsed:",StringUtils.formatTime(Times.elapsed(job.getStartTime(),job.getFinishTime(),false)));
   String amString=amInfos.size() == 1 ? "ApplicationMaster" : "ApplicationMasters";
-  List<String> diagnostics=job.getDiagnostics();
+  List<String> diagnostics=j.getDiagnostics();
   if (diagnostics != null && !diagnostics.isEmpty()) {
     StringBuffer b=new StringBuffer();
     for (    String diag : diagnostics) {
@@ -30,26 +22,25 @@
     }
     infoBlock._("Diagnostics:",b.toString());
   }
-  if (numMaps > 0) {
-    infoBlock._("Average Map Time",StringUtils.formatTime(avgMapTime));
+  if (job.getNumMaps() > 0) {
+    infoBlock._("Average Map Time",StringUtils.formatTime(job.getAvgMapTime()));
   }
-  if (numReduces > 0) {
-    infoBlock._("Average Reduce Time",StringUtils.formatTime(avgReduceTime));
-    infoBlock._("Average Shuffle Time",StringUtils.formatTime(avgShuffleTime));
-    infoBlock._("Average Merge Time",StringUtils.formatTime(avgSortTime));
+  if (job.getNumReduces() > 0) {
+    infoBlock._("Average Reduce Time",StringUtils.formatTime(job.getAvgReduceTime()));
+    infoBlock._("Average Shuffle Time",StringUtils.formatTime(job.getAvgShuffleTime()));
+    infoBlock._("Average Merge Time",StringUtils.formatTime(job.getAvgMergeTime()));
   }
-  for (  Map.Entry<JobACL,AccessControlList> entry : acls.entrySet()) {
-    infoBlock._("ACL " + entry.getKey().getAclName() + ":",entry.getValue().getAclString());
+  for (  ConfEntryInfo entry : job.getAcls()) {
+    infoBlock._("ACL " + entry.getName() + ":",entry.getValue());
   }
   DIV<Hamlet> div=html._(InfoBlock.class).div(_INFO_WRAP);
   TABLE<DIV<Hamlet>> table=div.table("#job");
   table.tr().th(amString)._().tr().th(_TH,"Attempt Number").th(_TH,"Start Time").th(_TH,"Node").th(_TH,"Logs")._();
   for (  AMInfo amInfo : amInfos) {
-    String nodeHttpAddress=amInfo.getNodeManagerHost() + ":" + amInfo.getNodeManagerHttpPort();
-    NodeId nodeId=BuilderUtils.newNodeId(amInfo.getNodeManagerHost(),amInfo.getNodeManagerPort());
-    table.tr().td(String.valueOf(amInfo.getAppAttemptId().getAttemptId())).td(new Date(amInfo.getStartTime()).toString()).td().a(".nodelink",url("http://",nodeHttpAddress),nodeHttpAddress)._().td().a(".logslink",url("logs",nodeId.toString(),amInfo.getContainerId().toString(),jid,job.getUserName()),"logs")._()._();
+    AMAttemptInfo attempt=new AMAttemptInfo(amInfo,job.getId(),job.getUserName(),"","");
+    table.tr().td(String.valueOf(attempt.getAttemptId())).td(new Date(attempt.getStartTime()).toString()).td().a(".nodelink",url("http://",attempt.getNodeHttpAddress()),attempt.getNodeHttpAddress())._().td().a(".logslink",url(attempt.getShortLogsLink()),"logs")._()._();
   }
   table._();
   div._();
-  html.div(_INFO_WRAP).table("#job").tr().th(_TH,"Task Type").th(_TH,"Total").th(_TH,"Complete")._().tr(_ODD).th().a(url("tasks",jid,"m"),"Map")._().td(String.valueOf(mapTasks)).td(String.valueOf(mapTasksComplete))._().tr(_EVEN).th().a(url("tasks",jid,"r"),"Reduce")._().td(String.valueOf(reduceTasks)).td(String.valueOf(reducesTasksComplete))._()._().table("#job").tr().th(_TH,"Attempt Type").th(_TH,"Failed").th(_TH,"Killed").th(_TH,"Successful")._().tr(_ODD).th("Maps").td().a(url("attempts",jid,"m",TaskAttemptStateUI.FAILED.toString()),String.valueOf(failedMapAttempts))._().td().a(url("attempts",jid,"m",TaskAttemptStateUI.KILLED.toString()),String.valueOf(killedMapAttempts))._().td().a(url("attempts",jid,"m",TaskAttemptStateUI.SUCCESSFUL.toString()),String.valueOf(successfulMapAttempts))._()._().tr(_EVEN).th("Reduces").td().a(url("attempts",jid,"r",TaskAttemptStateUI.FAILED.toString()),String.valueOf(failedReduceAttempts))._().td().a(url("attempts",jid,"r",TaskAttemptStateUI.KILLED.toString()),String.valueOf(killedReduceAttempts))._().td().a(url("attempts",jid,"r",TaskAttemptStateUI.SUCCESSFUL.toString()),String.valueOf(successfulReduceAttempts))._()._()._()._();
+  html.div(_INFO_WRAP).table("#job").tr().th(_TH,"Task Type").th(_TH,"Total").th(_TH,"Complete")._().tr(_ODD).th().a(url("tasks",jid,"m"),"Map")._().td(String.valueOf(String.valueOf(job.getMapsTotal()))).td(String.valueOf(String.valueOf(job.getMapsCompleted())))._().tr(_EVEN).th().a(url("tasks",jid,"r"),"Reduce")._().td(String.valueOf(String.valueOf(job.getReducesTotal()))).td(String.valueOf(String.valueOf(job.getReducesCompleted())))._()._().table("#job").tr().th(_TH,"Attempt Type").th(_TH,"Failed").th(_TH,"Killed").th(_TH,"Successful")._().tr(_ODD).th("Maps").td().a(url("attempts",jid,"m",TaskAttemptStateUI.FAILED.toString()),String.valueOf(job.getFailedMapAttempts()))._().td().a(url("attempts",jid,"m",TaskAttemptStateUI.KILLED.toString()),String.valueOf(job.getKilledMapAttempts()))._().td().a(url("attempts",jid,"m",TaskAttemptStateUI.SUCCESSFUL.toString()),String.valueOf(job.getSuccessfulMapAttempts()))._()._().tr(_EVEN).th("Reduces").td().a(url("attempts",jid,"r",TaskAttemptStateUI.FAILED.toString()),String.valueOf(job.getFailedReduceAttempts()))._().td().a(url("attempts",jid,"r",TaskAttemptStateUI.KILLED.toString()),String.valueOf(job.getKilledReduceAttempts()))._().td().a(url("attempts",jid,"r",TaskAttemptStateUI.SUCCESSFUL.toString()),String.valueOf(job.getSuccessfulReduceAttempts()))._()._()._()._();
 }
