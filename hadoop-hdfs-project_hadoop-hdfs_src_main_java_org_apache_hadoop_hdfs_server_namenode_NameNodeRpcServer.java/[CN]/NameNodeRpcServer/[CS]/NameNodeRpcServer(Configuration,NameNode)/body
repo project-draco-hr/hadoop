@@ -4,19 +4,23 @@
   this.metrics=NameNode.getNameNodeMetrics();
   int handlerCount=conf.getInt(DFS_DATANODE_HANDLER_COUNT_KEY,DFS_DATANODE_HANDLER_COUNT_DEFAULT);
   InetSocketAddress socAddr=nn.getRpcServerAddress(conf);
-  ClientNamenodeProtocolServerSideTranslatorR23 clientProtocolServerTranslator=new ClientNamenodeProtocolServerSideTranslatorR23(this);
+  RPC.setProtocolEngine(conf,ClientNamenodeProtocolPB.class,ProtobufRpcEngine.class);
+  ClientNamenodeProtocolServerSideTranslatorPB clientProtocolServerTranslator=new ClientNamenodeProtocolServerSideTranslatorPB(this);
+  BlockingService clientNNPbService=ClientNamenodeProtocol.newReflectiveBlockingService(clientProtocolServerTranslator);
+  DatanodeProtocolServerSideTranslatorPB dnProtoPbTranslator=new DatanodeProtocolServerSideTranslatorPB(this);
+  BlockingService dnProtoPbService=DatanodeProtocolService.newReflectiveBlockingService(dnProtoPbTranslator);
   NamenodeProtocolServerSideTranslatorPB namenodeProtocolXlator=new NamenodeProtocolServerSideTranslatorPB(this);
-  BlockingService service=NamenodeProtocolService.newReflectiveBlockingService(namenodeProtocolXlator);
+  BlockingService NNPbService=NamenodeProtocolService.newReflectiveBlockingService(namenodeProtocolXlator);
   InetSocketAddress dnSocketAddr=nn.getServiceRpcServerAddress(conf);
   if (dnSocketAddr != null) {
     int serviceHandlerCount=conf.getInt(DFS_NAMENODE_SERVICE_HANDLER_COUNT_KEY,DFS_NAMENODE_SERVICE_HANDLER_COUNT_DEFAULT);
-    this.serviceRpcServer=RPC.getServer(org.apache.hadoop.hdfs.protocolR23Compatible.ClientNamenodeWireProtocol.class,clientProtocolServerTranslator,dnSocketAddr.getHostName(),dnSocketAddr.getPort(),serviceHandlerCount,false,conf,namesystem.getDelegationTokenSecretManager());
-    this.serviceRpcServer.addProtocol(RpcKind.RPC_WRITABLE,DatanodeProtocol.class,this);
+    this.serviceRpcServer=RPC.getServer(org.apache.hadoop.hdfs.protocolPB.ClientNamenodeProtocolPB.class,clientNNPbService,dnSocketAddr.getHostName(),dnSocketAddr.getPort(),serviceHandlerCount,false,conf,namesystem.getDelegationTokenSecretManager());
     this.serviceRpcServer.addProtocol(RpcKind.RPC_WRITABLE,RefreshAuthorizationPolicyProtocol.class,this);
     this.serviceRpcServer.addProtocol(RpcKind.RPC_WRITABLE,RefreshUserMappingsProtocol.class,this);
     this.serviceRpcServer.addProtocol(RpcKind.RPC_WRITABLE,GetUserMappingsProtocol.class,this);
     this.serviceRpcServer.addProtocol(RpcKind.RPC_WRITABLE,HAServiceProtocol.class,this);
-    DFSUtil.addPBProtocol(conf,NamenodeProtocolPB.class,service,serviceRpcServer);
+    DFSUtil.addPBProtocol(conf,NamenodeProtocolPB.class,NNPbService,serviceRpcServer);
+    DFSUtil.addPBProtocol(conf,DatanodeProtocolPB.class,dnProtoPbService,serviceRpcServer);
     this.serviceRPCAddress=this.serviceRpcServer.getListenerAddress();
     nn.setRpcServiceServerAddress(conf,serviceRPCAddress);
   }
@@ -24,13 +28,13 @@
     serviceRpcServer=null;
     serviceRPCAddress=null;
   }
-  this.clientRpcServer=RPC.getServer(org.apache.hadoop.hdfs.protocolR23Compatible.ClientNamenodeWireProtocol.class,clientProtocolServerTranslator,socAddr.getHostName(),socAddr.getPort(),handlerCount,false,conf,namesystem.getDelegationTokenSecretManager());
-  this.clientRpcServer.addProtocol(RpcKind.RPC_WRITABLE,DatanodeProtocol.class,this);
+  this.clientRpcServer=RPC.getServer(org.apache.hadoop.hdfs.protocolPB.ClientNamenodeProtocolPB.class,clientNNPbService,socAddr.getHostName(),socAddr.getPort(),handlerCount,false,conf,namesystem.getDelegationTokenSecretManager());
   this.clientRpcServer.addProtocol(RpcKind.RPC_WRITABLE,RefreshAuthorizationPolicyProtocol.class,this);
   this.clientRpcServer.addProtocol(RpcKind.RPC_WRITABLE,RefreshUserMappingsProtocol.class,this);
   this.clientRpcServer.addProtocol(RpcKind.RPC_WRITABLE,GetUserMappingsProtocol.class,this);
   this.clientRpcServer.addProtocol(RpcKind.RPC_WRITABLE,HAServiceProtocol.class,this);
-  DFSUtil.addPBProtocol(conf,NamenodeProtocolPB.class,service,clientRpcServer);
+  DFSUtil.addPBProtocol(conf,NamenodeProtocolPB.class,NNPbService,clientRpcServer);
+  DFSUtil.addPBProtocol(conf,DatanodeProtocolPB.class,dnProtoPbService,clientRpcServer);
   if (serviceAuthEnabled=conf.getBoolean(CommonConfigurationKeys.HADOOP_SECURITY_AUTHORIZATION,false)) {
     this.clientRpcServer.refreshServiceAcl(conf,new HDFSPolicyProvider());
     if (this.serviceRpcServer != null) {

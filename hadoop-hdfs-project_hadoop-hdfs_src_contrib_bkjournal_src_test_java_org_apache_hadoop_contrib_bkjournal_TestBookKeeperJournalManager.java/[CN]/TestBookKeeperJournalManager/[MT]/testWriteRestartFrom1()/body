@@ -1,0 +1,43 @@
+{
+  BookKeeperJournalManager bkjm=new BookKeeperJournalManager(conf,URI.create("bookkeeper://" + zkEnsemble + "/hdfsjournal-restartFrom1"));
+  long txid=1;
+  long start=txid;
+  EditLogOutputStream out=bkjm.startLogSegment(txid);
+  for (long j=1; j <= DEFAULT_SEGMENT_SIZE; j++) {
+    FSEditLogOp op=FSEditLogTestUtil.getNoOpInstance();
+    op.setTransactionId(txid++);
+    out.write(op);
+  }
+  out.close();
+  bkjm.finalizeLogSegment(start,(txid - 1));
+  txid=1;
+  try {
+    out=bkjm.startLogSegment(txid);
+    fail("Shouldn't be able to start another journal from " + txid + " when one already exists");
+  }
+ catch (  Exception ioe) {
+    LOG.info("Caught exception as expected",ioe);
+  }
+  txid=DEFAULT_SEGMENT_SIZE;
+  try {
+    out=bkjm.startLogSegment(txid);
+    fail("Shouldn't be able to start another journal from " + txid + " when one already exists");
+  }
+ catch (  IOException ioe) {
+    LOG.info("Caught exception as expected",ioe);
+  }
+  txid=DEFAULT_SEGMENT_SIZE + 1;
+  start=txid;
+  out=bkjm.startLogSegment(start);
+  assertNotNull(out);
+  for (long j=1; j <= DEFAULT_SEGMENT_SIZE; j++) {
+    FSEditLogOp op=FSEditLogTestUtil.getNoOpInstance();
+    op.setTransactionId(txid++);
+    out.write(op);
+  }
+  out.close();
+  bkjm.finalizeLogSegment(start,(txid - 1));
+  txid=DEFAULT_SEGMENT_SIZE * 4;
+  out=bkjm.startLogSegment(txid);
+  assertNotNull(out);
+}

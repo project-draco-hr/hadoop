@@ -1,0 +1,29 @@
+{
+  BookKeeperJournalManager bkjm=new BookKeeperJournalManager(conf,URI.create("bookkeeper://" + zkEnsemble + "/hdfsjournal-inprogressAtEnd"));
+  long txid=1;
+  for (long i=0; i < 3; i++) {
+    long start=txid;
+    EditLogOutputStream out=bkjm.startLogSegment(start);
+    for (long j=1; j <= DEFAULT_SEGMENT_SIZE; j++) {
+      FSEditLogOp op=FSEditLogTestUtil.getNoOpInstance();
+      op.setTransactionId(txid++);
+      out.write(op);
+    }
+    out.close();
+    bkjm.finalizeLogSegment(start,(txid - 1));
+    assertNotNull(zkc.exists(bkjm.finalizedLedgerZNode(start,(txid - 1)),false));
+  }
+  long start=txid;
+  EditLogOutputStream out=bkjm.startLogSegment(start);
+  for (long j=1; j <= DEFAULT_SEGMENT_SIZE / 2; j++) {
+    FSEditLogOp op=FSEditLogTestUtil.getNoOpInstance();
+    op.setTransactionId(txid++);
+    out.write(op);
+  }
+  out.setReadyToFlush();
+  out.flush();
+  out.abort();
+  out.close();
+  long numTrans=bkjm.getNumberOfTransactions(1);
+  assertEquals((txid - 1),numTrans);
+}

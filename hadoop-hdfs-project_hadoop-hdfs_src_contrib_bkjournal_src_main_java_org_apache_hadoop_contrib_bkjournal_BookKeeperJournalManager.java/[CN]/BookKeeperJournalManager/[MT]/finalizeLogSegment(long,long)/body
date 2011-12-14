@@ -1,0 +1,49 @@
+{
+  String inprogressPath=inprogressZNode();
+  try {
+    Stat inprogressStat=zkc.exists(inprogressPath,false);
+    if (inprogressStat == null) {
+      throw new IOException("Inprogress znode " + inprogressPath + " doesn't exist");
+    }
+    wl.checkWriteLock();
+    EditLogLedgerMetadata l=EditLogLedgerMetadata.read(zkc,inprogressPath);
+    if (currentLedger != null) {
+      if (l.getLedgerId() == currentLedger.getId()) {
+        try {
+          currentLedger.close();
+        }
+ catch (        BKException bke) {
+          LOG.error("Error closing current ledger",bke);
+        }
+        currentLedger=null;
+      }
+ else {
+        throw new IOException("Active ledger has different ID to inprogress. " + l.getLedgerId() + " found, "+ currentLedger.getId()+ " expected");
+      }
+    }
+    if (l.getFirstTxId() != firstTxId) {
+      throw new IOException("Transaction id not as expected, " + l.getFirstTxId() + " found, "+ firstTxId+ " expected");
+    }
+    l.finalizeLedger(lastTxId);
+    String finalisedPath=finalizedLedgerZNode(firstTxId,lastTxId);
+    try {
+      l.write(zkc,finalisedPath);
+    }
+ catch (    KeeperException.NodeExistsException nee) {
+      if (!l.verify(zkc,finalisedPath)) {
+        throw new IOException("Node " + finalisedPath + " already exists"+ " but data doesn't match");
+      }
+    }
+    maxTxId.store(lastTxId);
+    zkc.delete(inprogressPath,inprogressStat.getVersion());
+  }
+ catch (  KeeperException e) {
+    throw new IOException("Error finalising ledger",e);
+  }
+catch (  InterruptedException ie) {
+    throw new IOException("Error finalising ledger",ie);
+  }
+ finally {
+    wl.release();
+  }
+}

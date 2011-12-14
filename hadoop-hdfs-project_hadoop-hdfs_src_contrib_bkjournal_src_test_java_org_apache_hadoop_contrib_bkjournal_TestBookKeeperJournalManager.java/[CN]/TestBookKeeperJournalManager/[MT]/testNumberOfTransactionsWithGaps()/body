@@ -1,0 +1,27 @@
+{
+  BookKeeperJournalManager bkjm=new BookKeeperJournalManager(conf,URI.create("bookkeeper://" + zkEnsemble + "/hdfsjournal-gaps"));
+  long txid=1;
+  for (long i=0; i < 3; i++) {
+    long start=txid;
+    EditLogOutputStream out=bkjm.startLogSegment(start);
+    for (long j=1; j <= DEFAULT_SEGMENT_SIZE; j++) {
+      FSEditLogOp op=FSEditLogTestUtil.getNoOpInstance();
+      op.setTransactionId(txid++);
+      out.write(op);
+    }
+    out.close();
+    bkjm.finalizeLogSegment(start,txid - 1);
+    assertNotNull(zkc.exists(bkjm.finalizedLedgerZNode(start,txid - 1),false));
+  }
+  zkc.delete(bkjm.finalizedLedgerZNode(DEFAULT_SEGMENT_SIZE + 1,DEFAULT_SEGMENT_SIZE * 2),-1);
+  long numTrans=bkjm.getNumberOfTransactions(1);
+  assertEquals(DEFAULT_SEGMENT_SIZE,numTrans);
+  try {
+    numTrans=bkjm.getNumberOfTransactions(DEFAULT_SEGMENT_SIZE + 1);
+    fail("Should have thrown corruption exception by this point");
+  }
+ catch (  JournalManager.CorruptionException ce) {
+  }
+  numTrans=bkjm.getNumberOfTransactions((DEFAULT_SEGMENT_SIZE * 2) + 1);
+  assertEquals(DEFAULT_SEGMENT_SIZE,numTrans);
+}
