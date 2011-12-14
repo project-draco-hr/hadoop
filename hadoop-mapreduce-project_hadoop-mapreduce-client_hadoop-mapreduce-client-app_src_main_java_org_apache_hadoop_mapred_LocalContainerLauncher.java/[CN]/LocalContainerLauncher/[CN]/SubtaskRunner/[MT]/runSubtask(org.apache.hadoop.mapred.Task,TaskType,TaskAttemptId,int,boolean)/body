@@ -2,12 +2,22 @@
   org.apache.hadoop.mapred.TaskAttemptID classicAttemptID=TypeConverter.fromYarn(attemptID);
   try {
     JobConf conf=new JobConf(getConfig());
+    conf.set(JobContext.TASK_ID,task.getTaskID().toString());
+    conf.set(JobContext.TASK_ATTEMPT_ID,classicAttemptID.toString());
+    conf.setBoolean(JobContext.TASK_ISMAP,(taskType == TaskType.MAP));
+    conf.setInt(JobContext.TASK_PARTITION,task.getPartition());
+    conf.set(JobContext.ID,task.getJobID().toString());
+    String[] localSysDirs=StringUtils.getTrimmedStrings(System.getenv(ApplicationConstants.LOCAL_DIR_ENV));
+    conf.setStrings(MRConfig.LOCAL_DIR,localSysDirs);
+    LOG.info(MRConfig.LOCAL_DIR + " for uber task: " + conf.get(MRConfig.LOCAL_DIR));
     conf.setBoolean("mapreduce.task.uberized",true);
     if (taskType == TaskType.MAP) {
       if (doneWithMaps) {
         LOG.error("CONTAINER_REMOTE_LAUNCH contains a map task (" + attemptID + "), but should be finished with maps");
+        throw new RuntimeException();
       }
       MapTask map=(MapTask)task;
+      map.setConf(conf);
       map.run(conf,umbilical);
       if (renameOutputs) {
         renameMapOutputForReduce(conf,attemptID,map.getMapOutputFile());
@@ -20,10 +30,12 @@
  else {
       if (!doneWithMaps) {
         LOG.error("CONTAINER_REMOTE_LAUNCH contains a reduce task (" + attemptID + "), but not yet finished with maps");
+        throw new RuntimeException();
       }
-      ReduceTask reduce=(ReduceTask)task;
       conf.set(MRConfig.FRAMEWORK_NAME,MRConfig.LOCAL_FRAMEWORK_NAME);
       conf.set(MRConfig.MASTER_ADDRESS,"local");
+      ReduceTask reduce=(ReduceTask)task;
+      reduce.setConf(conf);
       reduce.run(conf,umbilical);
     }
   }
@@ -53,7 +65,5 @@ catch (  Throwable throwable) {
     String cause=(tCause == null) ? throwable.getMessage() : StringUtils.stringifyException(tCause);
     umbilical.fatalError(classicAttemptID,cause);
     throw new RuntimeException();
-  }
- finally {
   }
 }
