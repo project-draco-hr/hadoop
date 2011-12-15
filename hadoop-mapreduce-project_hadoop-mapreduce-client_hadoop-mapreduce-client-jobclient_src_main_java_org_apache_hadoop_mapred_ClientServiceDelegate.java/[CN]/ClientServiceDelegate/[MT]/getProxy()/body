@@ -20,25 +20,32 @@
         application=rm.getApplicationReport(appId);
         continue;
       }
-      UserGroupInformation newUgi=UserGroupInformation.createRemoteUser(UserGroupInformation.getCurrentUser().getUserName());
-      serviceAddr=application.getHost() + ":" + application.getRpcPort();
-      if (UserGroupInformation.isSecurityEnabled()) {
-        String clientTokenEncoded=application.getClientToken();
-        Token<ApplicationTokenIdentifier> clientToken=new Token<ApplicationTokenIdentifier>();
-        clientToken.decodeFromUrlString(clientTokenEncoded);
-        InetSocketAddress addr=NetUtils.createSocketAddr(application.getHost(),application.getRpcPort());
-        clientToken.setService(new Text(addr.getAddress().getHostAddress() + ":" + addr.getPort()));
-        newUgi.addToken(clientToken);
-      }
-      LOG.info("The url to track the job: " + application.getTrackingUrl());
-      LOG.debug("Connecting to " + serviceAddr);
-      final String tempStr=serviceAddr;
-      realProxy=newUgi.doAs(new PrivilegedExceptionAction<MRClientProtocol>(){
-        @Override public MRClientProtocol run() throws IOException {
-          return instantiateAMProxy(tempStr);
+      if (!conf.getBoolean(YarnConfiguration.RM_AM_NETWORK_ACL_CLOSED,false)) {
+        UserGroupInformation newUgi=UserGroupInformation.createRemoteUser(UserGroupInformation.getCurrentUser().getUserName());
+        serviceAddr=application.getHost() + ":" + application.getRpcPort();
+        if (UserGroupInformation.isSecurityEnabled()) {
+          String clientTokenEncoded=application.getClientToken();
+          Token<ApplicationTokenIdentifier> clientToken=new Token<ApplicationTokenIdentifier>();
+          clientToken.decodeFromUrlString(clientTokenEncoded);
+          InetSocketAddress addr=NetUtils.createSocketAddr(application.getHost(),application.getRpcPort());
+          clientToken.setService(new Text(addr.getAddress().getHostAddress() + ":" + addr.getPort()));
+          newUgi.addToken(clientToken);
         }
-      }
+        LOG.info("The url to track the job: " + application.getTrackingUrl());
+        LOG.debug("Connecting to " + serviceAddr);
+        final String tempStr=serviceAddr;
+        realProxy=newUgi.doAs(new PrivilegedExceptionAction<MRClientProtocol>(){
+          @Override public MRClientProtocol run() throws IOException {
+            return instantiateAMProxy(tempStr);
+          }
+        }
 );
+      }
+ else {
+        logApplicationReportInfo(application);
+        LOG.info("Network ACL closed to AM for job " + jobId + ". Redirecting to job history server.");
+        return checkAndGetHSProxy(null,JobState.RUNNING);
+      }
       return realProxy;
     }
  catch (    IOException e) {
