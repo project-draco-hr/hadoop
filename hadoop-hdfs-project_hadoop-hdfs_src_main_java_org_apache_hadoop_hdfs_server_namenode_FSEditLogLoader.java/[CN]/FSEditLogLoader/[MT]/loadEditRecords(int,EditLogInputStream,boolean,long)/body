@@ -23,81 +23,90 @@
         incrOpCount(op.opCode,opCounts);
 switch (op.opCode) {
 case OP_ADD:
-case OP_CLOSE:
 {
             AddCloseOp addCloseOp=(AddCloseOp)op;
-            final short replication=fsNamesys.getBlockManager().adjustReplication(addCloseOp.replication);
-            long blockSize=addCloseOp.blockSize;
-            BlockInfo blocks[]=new BlockInfo[addCloseOp.blocks.length];
-            for (int i=0; i < addCloseOp.blocks.length; i++) {
-              if (addCloseOp.opCode == FSEditLogOpCodes.OP_ADD && i == addCloseOp.blocks.length - 1) {
-                blocks[i]=new BlockInfoUnderConstruction(addCloseOp.blocks[i],replication);
+            INodeFile oldFile=getINodeFile(fsDir,addCloseOp.path);
+            if (oldFile == null) {
+              final short replication=fsNamesys.getBlockManager().adjustReplication(addCloseOp.replication);
+              PermissionStatus permissions=fsNamesys.getUpgradePermission();
+              if (addCloseOp.permissions != null) {
+                permissions=addCloseOp.permissions;
               }
+              long blockSize=addCloseOp.blockSize;
+              if (FSNamesystem.LOG.isDebugEnabled()) {
+                FSNamesystem.LOG.debug(op.opCode + ": " + addCloseOp.path+ " numblocks : "+ addCloseOp.blocks.length+ " clientHolder "+ addCloseOp.clientName+ " clientMachine "+ addCloseOp.clientMachine);
+              }
+              if (-8 <= logVersion && blockSize == 0) {
+                if (addCloseOp.blocks.length > 1) {
+                  blockSize=addCloseOp.blocks[0].getNumBytes();
+                }
  else {
-                blocks[i]=new BlockInfo(addCloseOp.blocks[i],replication);
+                  long first=((addCloseOp.blocks.length == 1) ? addCloseOp.blocks[0].getNumBytes() : 0);
+                  blockSize=Math.max(fsNamesys.getDefaultBlockSize(),first);
+                }
               }
+              INodeFile node=(INodeFile)fsDir.unprotectedAddFile(addCloseOp.path,permissions,replication,addCloseOp.mtime,addCloseOp.atime,blockSize);
+              fsNamesys.prepareFileForWrite(addCloseOp.path,node,addCloseOp.clientName,addCloseOp.clientMachine,null);
             }
-            PermissionStatus permissions=fsNamesys.getUpgradePermission();
-            if (addCloseOp.permissions != null) {
-              permissions=addCloseOp.permissions;
-            }
-            if (-8 <= logVersion && blockSize == 0) {
-              if (blocks.length > 1) {
-                blockSize=blocks[0].getNumBytes();
-              }
  else {
-                long first=((blocks.length == 1) ? blocks[0].getNumBytes() : 0);
-                blockSize=Math.max(fsNamesys.getDefaultBlockSize(),first);
+              if (!oldFile.isUnderConstruction()) {
+                fsNamesys.prepareFileForWrite(addCloseOp.path,oldFile,addCloseOp.clientName,addCloseOp.clientMachine,null);
+                oldFile=getINodeFile(fsDir,addCloseOp.path);
               }
-            }
-            if (FSNamesystem.LOG.isDebugEnabled()) {
-              FSNamesystem.LOG.debug(op.opCode + ": " + addCloseOp.path+ " numblocks : "+ blocks.length+ " clientHolder "+ addCloseOp.clientName+ " clientMachine "+ addCloseOp.clientMachine);
-            }
-            fsDir.unprotectedDelete(addCloseOp.path,addCloseOp.mtime);
-            INodeFile node=(INodeFile)fsDir.unprotectedAddFile(addCloseOp.path,permissions,blocks,replication,addCloseOp.mtime,addCloseOp.atime,blockSize);
-            if (addCloseOp.opCode == FSEditLogOpCodes.OP_ADD) {
-              INodeFileUnderConstruction cons=new INodeFileUnderConstruction(node.getLocalNameBytes(),node.getReplication(),node.getModificationTime(),node.getPreferredBlockSize(),node.getBlocks(),node.getPermissionStatus(),addCloseOp.clientName,addCloseOp.clientMachine,null);
-              fsDir.replaceNode(addCloseOp.path,node,cons);
-              fsNamesys.leaseManager.addLease(cons.getClientName(),addCloseOp.path);
+              updateBlocks(fsDir,addCloseOp,oldFile);
             }
             break;
           }
-case OP_SET_REPLICATION:
+case OP_CLOSE:
 {
-          SetReplicationOp setReplicationOp=(SetReplicationOp)op;
-          short replication=fsNamesys.getBlockManager().adjustReplication(setReplicationOp.replication);
-          fsDir.unprotectedSetReplication(setReplicationOp.path,replication,null);
+          AddCloseOp addCloseOp=(AddCloseOp)op;
+          INodeFile oldFile=getINodeFile(fsDir,addCloseOp.path);
+          if (oldFile == null) {
+            throw new IOException("Operation trying to close non-existent file " + addCloseOp.path);
+          }
+          updateBlocks(fsDir,addCloseOp,oldFile);
+          INodeFileUnderConstruction ucFile=(INodeFileUnderConstruction)oldFile;
+          fsNamesys.leaseManager.removeLeaseWithPrefixPath(addCloseOp.path);
+          INodeFile newFile=ucFile.convertToInodeFile();
+          fsDir.replaceNode(addCloseOp.path,ucFile,newFile);
           break;
         }
-case OP_CONCAT_DELETE:
+case OP_SET_REPLICATION:
 {
-        ConcatDeleteOp concatDeleteOp=(ConcatDeleteOp)op;
-        fsDir.unprotectedConcat(concatDeleteOp.trg,concatDeleteOp.srcs,concatDeleteOp.timestamp);
+        SetReplicationOp setReplicationOp=(SetReplicationOp)op;
+        short replication=fsNamesys.getBlockManager().adjustReplication(setReplicationOp.replication);
+        fsDir.unprotectedSetReplication(setReplicationOp.path,replication,null);
         break;
       }
-case OP_RENAME_OLD:
+case OP_CONCAT_DELETE:
 {
-      RenameOldOp renameOp=(RenameOldOp)op;
-      HdfsFileStatus dinfo=fsDir.getFileInfo(renameOp.dst,false);
-      fsDir.unprotectedRenameTo(renameOp.src,renameOp.dst,renameOp.timestamp);
-      fsNamesys.unprotectedChangeLease(renameOp.src,renameOp.dst,dinfo);
+      ConcatDeleteOp concatDeleteOp=(ConcatDeleteOp)op;
+      fsDir.unprotectedConcat(concatDeleteOp.trg,concatDeleteOp.srcs,concatDeleteOp.timestamp);
       break;
     }
-case OP_DELETE:
+case OP_RENAME_OLD:
 {
-    DeleteOp deleteOp=(DeleteOp)op;
-    fsDir.unprotectedDelete(deleteOp.path,deleteOp.timestamp);
+    RenameOldOp renameOp=(RenameOldOp)op;
+    HdfsFileStatus dinfo=fsDir.getFileInfo(renameOp.dst,false);
+    fsDir.unprotectedRenameTo(renameOp.src,renameOp.dst,renameOp.timestamp);
+    fsNamesys.unprotectedChangeLease(renameOp.src,renameOp.dst,dinfo);
     break;
   }
+case OP_DELETE:
+{
+  DeleteOp deleteOp=(DeleteOp)op;
+  fsDir.unprotectedDelete(deleteOp.path,deleteOp.timestamp);
+  break;
+}
 case OP_MKDIR:
 {
-  MkdirOp mkdirOp=(MkdirOp)op;
-  PermissionStatus permissions=fsNamesys.getUpgradePermission();
-  if (mkdirOp.permissions != null) {
-    permissions=mkdirOp.permissions;
-  }
-  fsDir.unprotectedMkdir(mkdirOp.path,permissions,mkdirOp.timestamp);
-  break;
+MkdirOp mkdirOp=(MkdirOp)op;
+PermissionStatus permissions=fsNamesys.getUpgradePermission();
+if (mkdirOp.permissions != null) {
+  permissions=mkdirOp.permissions;
+}
+fsDir.unprotectedMkdir(mkdirOp.path,permissions,mkdirOp.timestamp);
+break;
 }
 case OP_SET_GENSTAMP:
 {
