@@ -1,0 +1,60 @@
+{
+  Configuration conf=new Configuration();
+  FileSystem lfs=FileSystem.getLocal(conf);
+  Path rootTempDir=new Path(System.getProperty("test.build.data","/tmp"));
+  Path tempDir=new Path(rootTempDir,"testStatePool");
+  tempDir=lfs.makeQualified(tempDir);
+  lfs.delete(tempDir,true);
+  conf.set(StatePool.DIR_CONFIG,tempDir.toString());
+  StatePool pool=new StatePool();
+  pool.initialize(conf);
+  assertNull("Default state pool error",pool.getState(MyState.class));
+  pool.persist();
+  assertFalse("State pool persisted when disabled",lfs.exists(tempDir));
+  conf.setBoolean(StatePool.RELOAD_CONFIG,true);
+  conf.unset(StatePool.DIR_CONFIG);
+  pool=new StatePool();
+  boolean success=true;
+  try {
+    pool.initialize(conf);
+  }
+ catch (  Exception e) {
+    success=false;
+  }
+  assertFalse("State pool bad configuration succeeded",success);
+  conf.setBoolean(StatePool.RELOAD_CONFIG,false);
+  conf.setBoolean(StatePool.PERSIST_CONFIG,true);
+  pool=new StatePool();
+  success=true;
+  try {
+    pool.initialize(conf);
+  }
+ catch (  Exception e) {
+    success=false;
+  }
+  assertFalse("State manager bad configuration succeeded",success);
+  conf.setBoolean(StatePool.RELOAD_CONFIG,false);
+  conf.set(StatePool.DIR_CONFIG,tempDir.toString());
+  conf.setBoolean(StatePool.PERSIST_CONFIG,true);
+  pool=new StatePool();
+  pool.initialize(conf);
+  MyState myState=new MyState();
+  pool.addState(MyState.class,myState);
+  myState.setState("test-1");
+  pool.persist();
+  assertTrue("State pool persisted when enabled",lfs.exists(tempDir));
+  assertEquals("State pool persisted when enabled",1,lfs.listStatus(tempDir).length);
+  conf.setBoolean(StatePool.RELOAD_CONFIG,true);
+  conf.set(StatePool.DIR_CONFIG,tempDir.toString());
+  conf.setBoolean(StatePool.PERSIST_CONFIG,true);
+  pool=new StatePool();
+  pool.initialize(conf);
+  MyState pState=(MyState)pool.getState(MyState.class);
+  assertEquals("State pool persistence/reload failed","test-1",pState.getState());
+  pool.persist();
+  assertEquals("State pool persisted when disabled",1,lfs.listStatus(tempDir).length);
+  pState.setUpdated(true);
+  pool.persist();
+  assertEquals("State pool persisted when disabled",2,lfs.listStatus(tempDir).length);
+  lfs.delete(tempDir,true);
+}

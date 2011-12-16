@@ -1,0 +1,57 @@
+{
+  Configuration conf=new Configuration();
+  FileSystem lfs=FileSystem.getLocal(conf);
+  Path rootTempDir=new Path(System.getProperty("test.build.data","/tmp"));
+  Path tempDir=new Path(rootTempDir,"testNodeNameState");
+  tempDir=lfs.makeQualified(tempDir);
+  lfs.delete(tempDir,true);
+  conf.set(StatePool.DIR_CONFIG,tempDir.toString());
+  conf.setBoolean(StatePool.PERSIST_CONFIG,true);
+  StatePool pool=new StatePool();
+  NodeNameState nState=new NodeNameState();
+  String testR1="rack1";
+  String testR2="rack2";
+  String testR3="rack3";
+  WordList rackState=new WordList("rack");
+  rackState.add(testR1);
+  rackState.add(testR2);
+  rackState.add(testR3);
+  String testH1="host1";
+  String testH2="host2";
+  String testH3="host3";
+  WordList hostNameState=new WordList("host");
+  hostNameState.add(testH1);
+  hostNameState.add(testH2);
+  hostNameState.add(testH3);
+  nState.setHostNameState(hostNameState);
+  nState.setRackNameState(rackState);
+  try {
+    pool.initialize(conf);
+    pool.addState(getClass(),nState);
+    pool.persist();
+    pool=new StatePool();
+    conf.setBoolean(StatePool.RELOAD_CONFIG,true);
+    pool.initialize(conf);
+    State state=pool.getState(getClass());
+    assertNotNull("Missing state!",state);
+    assertEquals("Incorrect state class!",NodeNameState.class,state.getClass());
+    NodeNameState newNState=(NodeNameState)state;
+    WordList newHostWordList=newNState.getHostNameState();
+    assertTrue("File state failed on reload",newHostWordList.contains(testH1));
+    assertEquals("File state indexing on reload failed",0,newHostWordList.indexOf(testH1));
+    assertTrue("File state failed on reload",newHostWordList.contains(testH2));
+    assertEquals("File state indexing on reload failed",1,newHostWordList.indexOf(testH2));
+    assertTrue("File state failed on reload",newHostWordList.contains(testH3));
+    assertEquals("File state indexing on reload failed",2,newHostWordList.indexOf(testH3));
+    WordList newRackWordList=newNState.getRackNameState();
+    assertTrue("File state failed on reload",newRackWordList.contains(testR1));
+    assertEquals("File state indexing on reload failed",0,newRackWordList.indexOf(testR1));
+    assertTrue("File state failed on reload",newRackWordList.contains(testR2));
+    assertEquals("File state indexing on reload failed",1,newRackWordList.indexOf(testR2));
+    assertTrue("File state failed on reload",newRackWordList.contains(testR3));
+    assertEquals("File state indexing on reload failed",2,newRackWordList.indexOf(testR3));
+  }
+  finally {
+    lfs.delete(tempDir,true);
+  }
+}

@@ -1,0 +1,27 @@
+{
+  if (!persist) {
+    return;
+  }
+  if (isUpdated()) {
+    System.out.println("State is updated! Committing.");
+    Path currStateFile=new Path(persistDirPath,CURRENT_STATE_FILENAME);
+    Path commitStateFile=new Path(persistDirPath,COMMIT_STATE_FILENAME);
+    FileSystem fs=currStateFile.getFileSystem(conf);
+    System.out.println("Starting the persist phase. Persisting to " + currStateFile.toString());
+    FSDataOutputStream out=fs.create(currStateFile,true);
+    write(out);
+    out.close();
+    System.out.println("Persist phase over. The best known un-committed state" + " is located at " + currStateFile.toString());
+    if (fs.exists(commitStateFile)) {
+      Path commitRelocationFile=new Path(persistDirPath,timeStamp);
+      System.out.println("Starting the pre-commit phase. Moving the previous " + "best known state to " + commitRelocationFile.toString());
+      FileUtil.copy(fs,commitStateFile,fs,commitRelocationFile,false,conf);
+    }
+    System.out.println("Starting the commit phase. Committing the states in " + currStateFile.toString());
+    FileUtil.copy(fs,currStateFile,fs,commitStateFile,true,true,conf);
+    System.out.println("Commit phase successful! The best known committed " + "state is located at " + commitStateFile.toString());
+  }
+ else {
+    System.out.println("State not updated! No commit required.");
+  }
+}
