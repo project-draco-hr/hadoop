@@ -6,9 +6,6 @@ class JobEntryComparator implements Comparator<Pair<LoggedJob,JobTraceReader>> {
       return (j1.getSubmitTime() < j2.getSubmitTime()) ? -1 : (j1.getSubmitTime() == j2.getSubmitTime()) ? 0 : 1;
     }
   }
-  ObjectMapper outMapper=new ObjectMapper();
-  outMapper.configure(SerializationConfig.Feature.CAN_OVERRIDE_ACCESS_MODIFIERS,true);
-  JsonFactory outFactory=outMapper.getJsonFactory();
   Queue<Pair<LoggedJob,JobTraceReader>> heap=new PriorityQueue<Pair<LoggedJob,JobTraceReader>>();
   try {
     LoggedJob job=reader.nextJob();
@@ -37,8 +34,7 @@ class JobEntryComparator implements Comparator<Pair<LoggedJob,JobTraceReader>> {
     int numberJobs=0;
     long currentIntervalEnd=Long.MIN_VALUE;
     Path nextSegment=null;
-    OutputStream tempUncompOut=null;
-    JsonGenerator tempGen=null;
+    Outputter<LoggedJob> tempGen=null;
     if (debug) {
       LOG.debug("The first job has a submit time of " + firstJobSubmitTime);
     }
@@ -52,7 +48,8 @@ class JobEntryComparator implements Comparator<Pair<LoggedJob,JobTraceReader>> {
           if (tempGen != null) {
             tempGen.close();
           }
-          for (int i=0; i < 3 && tempUncompOut == null; ++i) {
+          nextSegment=null;
+          for (int i=0; i < 3 && nextSegment == null; ++i) {
             try {
               nextSegment=new Path(tempDir,"segment-" + tempNameGenerator.nextLong() + ".json.gz");
               if (debug) {
@@ -61,7 +58,7 @@ class JobEntryComparator implements Comparator<Pair<LoggedJob,JobTraceReader>> {
               FileSystem fs=nextSegment.getFileSystem(conf);
               try {
                 if (!fs.exists(nextSegment)) {
-                  tempUncompOut=fs.create(nextSegment,false);
+                  break;
                 }
                 continue;
               }
@@ -71,30 +68,22 @@ class JobEntryComparator implements Comparator<Pair<LoggedJob,JobTraceReader>> {
  catch (            IOException e) {
             }
           }
+          if (nextSegment == null) {
+            throw new RuntimeException("Failed to create a new file!");
+          }
           if (debug) {
             LOG.debug("Creating " + nextSegment + " for a job with a submit time of "+ job.getSubmitTime());
           }
           deletees.add(nextSegment);
           tempPaths.add(nextSegment);
-          CompressionCodec codec=new CompressionCodecFactory(conf).getCodec(nextSegment);
-          OutputStream output;
-          Compressor compressor=null;
-          if (codec != null) {
-            compressor=CodecPool.getCompressor(codec);
-            output=codec.createOutputStream(tempUncompOut,compressor);
-          }
- else {
-            output=tempUncompOut;
-          }
-          tempUncompOut=null;
-          tempGen=outFactory.createJsonGenerator(output,JsonEncoding.UTF8);
-          if (debug) {
-            tempGen.useDefaultPrettyPrinter();
-          }
+          tempGen=new DefaultOutputter<LoggedJob>();
+          tempGen.init(nextSegment,conf);
           long currentIntervalNumber=(job.getSubmitTime() - firstJobSubmitTime) / inputCycle;
           currentIntervalEnd=firstJobSubmitTime + ((currentIntervalNumber + 1) * inputCycle);
         }
-        tempGen.writeObject(job);
+        if (tempGen != null) {
+          tempGen.output(job);
+        }
         job=reader.nextJob();
       }
     }

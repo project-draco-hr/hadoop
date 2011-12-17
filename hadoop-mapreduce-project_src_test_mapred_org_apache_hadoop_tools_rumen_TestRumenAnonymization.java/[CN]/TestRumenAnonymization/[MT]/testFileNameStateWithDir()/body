@@ -1,0 +1,38 @@
+{
+  Configuration conf=new Configuration();
+  FileSystem lfs=FileSystem.getLocal(conf);
+  Path rootTempDir=new Path(System.getProperty("test.build.data","/tmp"));
+  Path tempDir=new Path(rootTempDir,"testFileNameStateWithDir");
+  tempDir=lfs.makeQualified(tempDir);
+  lfs.delete(tempDir,true);
+  conf.set(StatePool.DIR_CONFIG,tempDir.toString());
+  conf.setBoolean(StatePool.PERSIST_CONFIG,true);
+  StatePool pool=new StatePool();
+  FileNameState fState=new FileNameState();
+  String test1="test";
+  String test2="home";
+  WordList dirState=new WordList("dir");
+  dirState.add(test1);
+  dirState.add(test2);
+  fState.setDirectoryState(dirState);
+  try {
+    pool.initialize(conf);
+    pool.addState(getClass(),fState);
+    pool.persist();
+    pool=new StatePool();
+    conf.setBoolean(StatePool.RELOAD_CONFIG,true);
+    pool.initialize(conf);
+    State state=pool.getState(getClass());
+    assertNotNull("Missing state!",state);
+    assertEquals("Incorrect state class!",FileNameState.class,state.getClass());
+    FileNameState newFState=(FileNameState)state;
+    WordList newStateWordList=newFState.getDirectoryState();
+    assertTrue("File state failed to store on reload",newStateWordList.contains(test1));
+    assertEquals("File state index on reload failed",0,newStateWordList.indexOf(test1));
+    assertTrue("File state failed to store on reload",newStateWordList.contains(test2));
+    assertEquals("File state index on reload failed",1,newStateWordList.indexOf(test2));
+  }
+  finally {
+    lfs.delete(tempDir,true);
+  }
+}
