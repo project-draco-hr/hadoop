@@ -15,10 +15,21 @@
     DFSTestUtil.writeFile(fs,TEST_FILE_PATH,TEST_FILE_DATA);
     nn1.getRpcServer().rollEditLog();
     System.err.println("==================================");
-    waitForBlockLocations(nn2,TEST_FILE,3);
-    nn1.stop();
-    cluster.transitionToActive(1);
-    assertEquals(TEST_FILE_DATA,DFSTestUtil.readFile(fs,TEST_FILE_PATH));
+    LOG.info("Waiting for block locations to appear on standby node");
+    waitForBlockLocations(cluster,nn2,TEST_FILE,3);
+    cluster.triggerHeartbeats();
+    cluster.triggerBlockReports();
+    LOG.info("Changing replication to 1");
+    fs.setReplication(TEST_FILE_PATH,(short)1);
+    waitForBlockLocations(cluster,nn1,TEST_FILE,1);
+    nn1.getRpcServer().rollEditLog();
+    LOG.info("Waiting for lowered replication to show up on standby");
+    waitForBlockLocations(cluster,nn2,TEST_FILE,1);
+    LOG.info("Changing replication to 3");
+    fs.setReplication(TEST_FILE_PATH,(short)3);
+    nn1.getRpcServer().rollEditLog();
+    LOG.info("Waiting for higher replication to show up on standby");
+    waitForBlockLocations(cluster,nn2,TEST_FILE,3);
   }
   finally {
     cluster.shutdown();
