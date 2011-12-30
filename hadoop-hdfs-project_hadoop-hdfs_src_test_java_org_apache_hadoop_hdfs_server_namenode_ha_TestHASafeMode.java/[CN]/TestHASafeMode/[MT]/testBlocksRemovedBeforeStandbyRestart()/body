@@ -1,0 +1,17 @@
+{
+  banner("Starting with NN0 active and NN1 standby, creating some blocks");
+  DFSTestUtil.createFile(fs,new Path("/test"),5 * BLOCK_SIZE,(short)3,1L);
+  nn0.getRpcServer().rollEditLog();
+  banner("Removing the blocks without rolling the edit log");
+  fs.delete(new Path("/test"),true);
+  BlockManagerTestUtil.computeAllPendingWork(nn0.getNamesystem().getBlockManager());
+  cluster.triggerHeartbeats();
+  banner("Restarting standby");
+  restartStandby();
+  String status=nn1.getNamesystem().getSafemode();
+  assertTrue("Bad safemode status: '" + status + "'",status.startsWith("Safe mode is ON." + "The reported blocks 0 needs additional 5 blocks to reach"));
+  banner("Waiting for standby to catch up to active namespace");
+  TestEditLogTailer.waitForStandbyToCatchUp(nn0,nn1);
+  status=nn1.getNamesystem().getSafemode();
+  assertTrue("Bad safemode status: '" + status + "'",status.startsWith("Safe mode is ON." + "The reported blocks 0 has reached the threshold 0.9990 of " + "total blocks 0. Safe mode will be turned off automatically"));
+}
