@@ -5,9 +5,10 @@
   ByteBuffer tokens=ByteBuffer.wrap(new byte[]{});
   try {
     FileSystem remoteFS=FileSystem.get(conf);
-    if (conf.get(MRJobConfig.JAR) != null) {
-      Path remoteJobJar=(new Path(remoteTask.getConf().get(MRJobConfig.JAR))).makeQualified(remoteFS.getUri(),remoteFS.getWorkingDirectory());
-      localResources.put(MRJobConfig.JOB_JAR,createLocalResource(remoteFS,recordFactory,remoteJobJar,LocalResourceType.FILE,LocalResourceVisibility.APPLICATION));
+    String jobJar=conf.get(MRJobConfig.JAR);
+    if (jobJar != null) {
+      Path remoteJobJar=(new Path(jobJar)).makeQualified(remoteFS.getUri(),remoteFS.getWorkingDirectory());
+      localResources.put(MRJobConfig.JOB_JAR,createLocalResource(remoteFS,remoteJobJar,LocalResourceType.FILE,LocalResourceVisibility.APPLICATION));
       LOG.info("The job-jar file on the remote FS is " + remoteJobJar.toUri().toASCIIString());
     }
  else {
@@ -16,7 +17,7 @@
     Path path=MRApps.getStagingAreaDir(conf,UserGroupInformation.getCurrentUser().getShortUserName());
     Path remoteJobSubmitDir=new Path(path,oldJobId.toString());
     Path remoteJobConfPath=new Path(remoteJobSubmitDir,MRJobConfig.JOB_CONF_FILE);
-    localResources.put(MRJobConfig.JOB_CONF_FILE,createLocalResource(remoteFS,recordFactory,remoteJobConfPath,LocalResourceType.FILE,LocalResourceVisibility.APPLICATION));
+    localResources.put(MRJobConfig.JOB_CONF_FILE,createLocalResource(remoteFS,remoteJobConfPath,LocalResourceType.FILE,LocalResourceVisibility.APPLICATION));
     LOG.info("The job-conf file on the remote FS is " + remoteJobConfPath.toUri().toASCIIString());
     MRApps.setupDistributedCache(conf,localResources);
     Credentials taskCredentials=new Credentials();
@@ -38,8 +39,9 @@
  catch (  IOException e) {
     throw new YarnException(e);
   }
-  MapReduceChildJVM.setVMEnv(environment,remoteTask);
-  List<String> commands=MapReduceChildJVM.getVMCommand(taskAttemptListener.getAddress(),remoteTask,jvmID);
-  ContainerLaunchContext container=BuilderUtils.newContainerLaunchContext(containerID,conf.get(MRJobConfig.USER_NAME),assignedCapability,localResources,environment,commands,serviceData,tokens,applicationACLs);
+  environment.put(Environment.SHELL.name(),conf.get(MRJobConfig.MAPRED_ADMIN_USER_SHELL,MRJobConfig.DEFAULT_SHELL));
+  Apps.addToEnvironment(environment,Environment.LD_LIBRARY_PATH.name(),Environment.PWD.$());
+  Apps.setEnvFromInputString(environment,conf.get(MRJobConfig.MAPRED_ADMIN_USER_ENV,MRJobConfig.DEFAULT_MAPRED_ADMIN_USER_ENV));
+  ContainerLaunchContext container=BuilderUtils.newContainerLaunchContext(null,conf.get(MRJobConfig.USER_NAME),null,localResources,environment,null,serviceData,tokens,applicationACLs);
   return container;
 }
