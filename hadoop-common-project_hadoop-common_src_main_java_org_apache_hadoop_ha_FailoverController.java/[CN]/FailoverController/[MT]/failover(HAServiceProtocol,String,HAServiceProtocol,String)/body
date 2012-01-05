@@ -1,0 +1,42 @@
+{
+  preFailoverChecks(toSvc,toSvcName);
+  try {
+    fromSvc.transitionToStandby();
+  }
+ catch (  ServiceFailedException sfe) {
+    LOG.warn("Unable to make " + fromSvcName + " standby ("+ sfe.getMessage()+ ")");
+  }
+catch (  Exception e) {
+    LOG.warn("Unable to make " + fromSvcName + " standby (unable to connect)",e);
+  }
+  boolean failed=false;
+  Throwable cause=null;
+  try {
+    toSvc.transitionToActive();
+  }
+ catch (  ServiceFailedException sfe) {
+    LOG.error("Unable to make " + toSvcName + " active ("+ sfe.getMessage()+ "). Failing back");
+    failed=true;
+    cause=sfe;
+  }
+catch (  Exception e) {
+    LOG.error("Unable to make " + toSvcName + " active (unable to connect). Failing back",e);
+    failed=true;
+    cause=e;
+  }
+  if (failed) {
+    String msg="Unable to failover to " + toSvcName;
+    try {
+      fromSvc.transitionToActive();
+    }
+ catch (    ServiceFailedException sfe) {
+      msg="Failback to " + fromSvcName + " failed ("+ sfe.getMessage()+ ")";
+      LOG.fatal(msg);
+    }
+catch (    Exception e) {
+      msg="Failback to " + fromSvcName + " failed (unable to connect)";
+      LOG.fatal(msg);
+    }
+    throw new FailoverFailedException(msg,cause);
+  }
+}
