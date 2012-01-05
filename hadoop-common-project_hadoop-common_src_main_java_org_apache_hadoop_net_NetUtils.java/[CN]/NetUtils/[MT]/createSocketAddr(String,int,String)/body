@@ -6,37 +6,22 @@
   if (target == null) {
     throw new IllegalArgumentException("Target address cannot be null." + helpText);
   }
-  int colonIndex=target.indexOf(':');
-  if (colonIndex < 0 && defaultPort == -1) {
-    throw new RuntimeException("Not a host:port pair: " + target + helpText);
+  boolean hasScheme=target.contains("://");
+  URI uri=null;
+  try {
+    uri=hasScheme ? URI.create(target) : URI.create("dummyscheme://" + target);
   }
-  String hostname;
-  int port=-1;
-  if (!target.contains("/")) {
-    if (colonIndex == -1) {
-      hostname=target;
-    }
- else {
-      hostname=target.substring(0,colonIndex);
-      String portStr=target.substring(colonIndex + 1);
-      try {
-        port=Integer.parseInt(portStr);
-      }
- catch (      NumberFormatException nfe) {
-        throw new IllegalArgumentException("Can't parse port '" + portStr + "'"+ helpText);
-      }
-    }
+ catch (  IllegalArgumentException e) {
+    throw new IllegalArgumentException("Does not contain a valid host:port authority: " + target + helpText);
   }
- else {
-    URI addr=new Path(target).toUri();
-    hostname=addr.getHost();
-    port=addr.getPort();
-  }
+  String host=uri.getHost();
+  int port=uri.getPort();
   if (port == -1) {
     port=defaultPort;
   }
-  if (getStaticResolution(hostname) != null) {
-    hostname=getStaticResolution(hostname);
+  String path=uri.getPath();
+  if ((host == null) || (port < 0) || (!hasScheme && path != null && !path.isEmpty())) {
+    throw new IllegalArgumentException("Does not contain a valid host:port authority: " + target + helpText);
   }
-  return new InetSocketAddress(hostname,port);
+  return createSocketAddrForHost(host,port);
 }
