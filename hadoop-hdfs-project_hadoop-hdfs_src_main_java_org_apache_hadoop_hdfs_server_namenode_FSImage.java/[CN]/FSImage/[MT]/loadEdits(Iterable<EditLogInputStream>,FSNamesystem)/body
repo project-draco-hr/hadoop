@@ -1,20 +1,29 @@
 {
   LOG.debug("About to load edits:\n  " + Joiner.on("\n  ").join(editStreams));
   long startingTxId=getLastAppliedTxId() + 1;
-  int numLoaded=0;
+  long numLoaded=0;
   try {
     FSEditLogLoader loader=new FSEditLogLoader(target);
     for (    EditLogInputStream editIn : editStreams) {
       LOG.info("Reading " + editIn + " expecting start txid #"+ startingTxId);
-      int thisNumLoaded=loader.loadFSEdits(editIn,startingTxId);
-      lastAppliedTxId=startingTxId + thisNumLoaded - 1;
-      startingTxId+=thisNumLoaded;
-      numLoaded+=thisNumLoaded;
+      long thisNumLoaded=0;
+      try {
+        thisNumLoaded=loader.loadFSEdits(editIn,startingTxId);
+      }
+ catch (      EditLogInputException elie) {
+        thisNumLoaded=elie.getNumEditsLoaded();
+        throw elie;
+      }
+ finally {
+        lastAppliedTxId=startingTxId + thisNumLoaded - 1;
+        startingTxId+=thisNumLoaded;
+        numLoaded+=thisNumLoaded;
+      }
     }
   }
   finally {
     FSEditLog.closeAllStreams(editStreams);
+    target.dir.updateCountForINodeWithQuota();
   }
-  target.dir.updateCountForINodeWithQuota();
   return numLoaded;
 }

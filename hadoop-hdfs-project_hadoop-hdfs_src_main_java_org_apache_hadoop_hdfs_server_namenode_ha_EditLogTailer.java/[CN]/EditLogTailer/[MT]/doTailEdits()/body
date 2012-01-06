@@ -6,11 +6,25 @@
     if (LOG.isDebugEnabled()) {
       LOG.debug("lastTxnId: " + lastTxnId);
     }
-    Collection<EditLogInputStream> streams=editLog.selectInputStreams(lastTxnId + 1,0,false);
+    Collection<EditLogInputStream> streams;
+    try {
+      streams=editLog.selectInputStreams(lastTxnId + 1,0,false);
+    }
+ catch (    IOException ioe) {
+      LOG.warn("Edits tailer failed to find any streams. Will try again " + "later.",ioe);
+      return;
+    }
     if (LOG.isDebugEnabled()) {
       LOG.debug("edit streams to load from: " + streams.size());
     }
-    long editsLoaded=image.loadEdits(streams,namesystem);
+    long editsLoaded=0;
+    try {
+      editsLoaded=image.loadEdits(streams,namesystem);
+    }
+ catch (    EditLogInputException elie) {
+      LOG.warn("Error while reading edits from disk. Will try again.",elie);
+      editsLoaded=elie.getNumEditsLoaded();
+    }
     if (LOG.isDebugEnabled()) {
       LOG.debug("editsLoaded: " + editsLoaded);
     }
