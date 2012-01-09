@@ -5,18 +5,18 @@
   MiniDFSCluster cluster=null;
   Configuration conf=null;
   FileSystem fileSys=null;
-  File newNameDir=new File(base_dir,"name");
-  File newEditsDir=new File(base_dir,"edits");
-  File nameAndEdits=new File(base_dir,"name_and_edits");
+  File nameOnlyDir=new File(base_dir,"name");
+  File editsOnlyDir=new File(base_dir,"edits");
+  File nameAndEditsDir=new File(base_dir,"name_and_edits");
   conf=new HdfsConfiguration();
-  conf.set(DFSConfigKeys.DFS_NAMENODE_NAME_DIR_KEY,nameAndEdits.getPath());
-  conf.set(DFSConfigKeys.DFS_NAMENODE_EDITS_DIR_KEY,nameAndEdits.getPath());
+  conf.set(DFSConfigKeys.DFS_NAMENODE_NAME_DIR_KEY,nameAndEditsDir.getPath());
+  conf.set(DFSConfigKeys.DFS_NAMENODE_EDITS_DIR_KEY,nameAndEditsDir.getPath());
   replication=(short)conf.getInt(DFSConfigKeys.DFS_REPLICATION_KEY,3);
-  cluster=new MiniDFSCluster.Builder(conf).numDataNodes(NUM_DATA_NODES).manageNameDfsDirs(false).build();
-  cluster.waitActive();
-  assertTrue(new File(nameAndEdits,"current/VERSION").exists());
-  fileSys=cluster.getFileSystem();
   try {
+    cluster=new MiniDFSCluster.Builder(conf).numDataNodes(NUM_DATA_NODES).manageNameDfsDirs(false).build();
+    cluster.waitActive();
+    assertTrue(new File(nameAndEditsDir,"current/VERSION").exists());
+    fileSys=cluster.getFileSystem();
     assertTrue(!fileSys.exists(file1));
     writeFile(fileSys,file1,replication);
     checkFile(fileSys,file1,replication);
@@ -26,18 +26,18 @@
     cluster.shutdown();
   }
   conf=new HdfsConfiguration();
-  assertTrue(newNameDir.mkdir());
-  assertTrue(newEditsDir.mkdir());
-  conf.set(DFSConfigKeys.DFS_NAMENODE_NAME_DIR_KEY,nameAndEdits.getPath() + "," + newNameDir.getPath());
-  conf.set(DFSConfigKeys.DFS_NAMENODE_EDITS_DIR_KEY,nameAndEdits.getPath() + "," + newEditsDir.getPath());
+  assertTrue(nameOnlyDir.mkdir());
+  assertTrue(editsOnlyDir.mkdir());
+  conf.set(DFSConfigKeys.DFS_NAMENODE_NAME_DIR_KEY,nameAndEditsDir.getPath() + "," + nameOnlyDir.getPath());
+  conf.set(DFSConfigKeys.DFS_NAMENODE_EDITS_DIR_KEY,nameAndEditsDir.getPath() + "," + editsOnlyDir.getPath());
   replication=(short)conf.getInt(DFSConfigKeys.DFS_REPLICATION_KEY,3);
-  cluster=new MiniDFSCluster.Builder(conf).numDataNodes(NUM_DATA_NODES).format(false).manageNameDfsDirs(false).build();
-  cluster.waitActive();
-  assertTrue(new File(nameAndEdits,"current/VERSION").exists());
-  assertTrue(new File(newNameDir,"current/VERSION").exists());
-  assertTrue(new File(newEditsDir,"current/VERSION").exists());
-  fileSys=cluster.getFileSystem();
   try {
+    cluster=new MiniDFSCluster.Builder(conf).numDataNodes(NUM_DATA_NODES).format(false).manageNameDfsDirs(false).build();
+    cluster.waitActive();
+    assertTrue(new File(nameAndEditsDir,"current/VERSION").exists());
+    assertTrue(new File(nameOnlyDir,"current/VERSION").exists());
+    assertTrue(new File(editsOnlyDir,"current/VERSION").exists());
+    fileSys=cluster.getFileSystem();
     assertTrue(fileSys.exists(file1));
     checkFile(fileSys,file1,replication);
     cleanupFile(fileSys,file1);
@@ -48,15 +48,15 @@
     fileSys.close();
     cluster.shutdown();
   }
-  conf=new HdfsConfiguration();
-  conf.set(DFSConfigKeys.DFS_NAMENODE_NAME_DIR_KEY,newNameDir.getPath());
-  conf.set(DFSConfigKeys.DFS_NAMENODE_EDITS_DIR_KEY,newEditsDir.getPath());
-  replication=(short)conf.getInt(DFSConfigKeys.DFS_REPLICATION_KEY,3);
-  cluster=new MiniDFSCluster.Builder(conf).numDataNodes(NUM_DATA_NODES).format(false).manageNameDfsDirs(false).build();
-  cluster.waitActive();
-  fileSys=cluster.getFileSystem();
   try {
-    assertTrue(!fileSys.exists(file1));
+    conf=new HdfsConfiguration();
+    conf.set(DFSConfigKeys.DFS_NAMENODE_NAME_DIR_KEY,nameOnlyDir.getPath());
+    conf.set(DFSConfigKeys.DFS_NAMENODE_EDITS_DIR_KEY,editsOnlyDir.getPath());
+    replication=(short)conf.getInt(DFSConfigKeys.DFS_REPLICATION_KEY,3);
+    cluster=new MiniDFSCluster.Builder(conf).numDataNodes(NUM_DATA_NODES).format(false).manageNameDfsDirs(false).build();
+    cluster.waitActive();
+    fileSys=cluster.getFileSystem();
+    assertFalse(fileSys.exists(file1));
     assertTrue(fileSys.exists(file2));
     checkFile(fileSys,file2,replication);
     cleanupFile(fileSys,file2);
@@ -68,36 +68,38 @@
     cluster.shutdown();
   }
   conf=new HdfsConfiguration();
-  conf.set(DFSConfigKeys.DFS_NAMENODE_NAME_DIR_KEY,newNameDir.getPath() + "," + nameAndEdits.getPath());
-  conf.set(DFSConfigKeys.DFS_NAMENODE_EDITS_DIR_KEY,nameAndEdits.getPath());
+  conf.set(DFSConfigKeys.DFS_NAMENODE_NAME_DIR_KEY,nameOnlyDir.getPath() + "," + nameAndEditsDir.getPath());
+  conf.set(DFSConfigKeys.DFS_NAMENODE_EDITS_DIR_KEY,nameAndEditsDir.getPath());
   replication=(short)conf.getInt(DFSConfigKeys.DFS_REPLICATION_KEY,3);
   try {
     cluster=new MiniDFSCluster.Builder(conf).numDataNodes(NUM_DATA_NODES).format(false).manageNameDfsDirs(false).build();
-    assertTrue(false);
+    fail("Successfully started cluster but should not have been able to.");
   }
  catch (  IOException e) {
-    System.out.println("cluster start failed due to missing " + "latest edits dir");
+    LOG.info("EXPECTED: cluster start failed due to missing " + "latest edits dir",e);
   }
  finally {
+    if (cluster != null) {
+      cluster.shutdown();
+    }
     cluster=null;
   }
   conf=new HdfsConfiguration();
-  conf.set(DFSConfigKeys.DFS_NAMENODE_NAME_DIR_KEY,nameAndEdits.getPath());
-  conf.set(DFSConfigKeys.DFS_NAMENODE_EDITS_DIR_KEY,newEditsDir.getPath() + "," + nameAndEdits.getPath());
+  conf.set(DFSConfigKeys.DFS_NAMENODE_NAME_DIR_KEY,nameAndEditsDir.getPath());
+  conf.set(DFSConfigKeys.DFS_NAMENODE_EDITS_DIR_KEY,editsOnlyDir.getPath() + "," + nameAndEditsDir.getPath());
   replication=(short)conf.getInt(DFSConfigKeys.DFS_REPLICATION_KEY,3);
   try {
     cluster=new MiniDFSCluster.Builder(conf).numDataNodes(NUM_DATA_NODES).format(false).manageNameDfsDirs(false).build();
-    assertTrue(!fileSys.exists(file1));
-    assertTrue(fileSys.exists(file2));
-    checkFile(fileSys,file2,replication);
-    cleanupFile(fileSys,file2);
+    fileSys=cluster.getFileSystem();
+    assertFalse(fileSys.exists(file1));
+    assertFalse(fileSys.exists(file2));
+    assertTrue(fileSys.exists(file3));
+    checkFile(fileSys,file3,replication);
+    cleanupFile(fileSys,file3);
     writeFile(fileSys,file3,replication);
     checkFile(fileSys,file3,replication);
   }
- catch (  IOException e) {
-    System.out.println("cluster start failed due to missing latest name dir");
-  }
- finally {
+  finally {
     fileSys.close();
     cluster.shutdown();
   }
