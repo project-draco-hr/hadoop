@@ -1,0 +1,32 @@
+{
+  final Configuration conf=new HdfsConfiguration();
+  String tarFile=System.getProperty("test.cache.data","build/test/cache") + "/" + HADOOP_1_0_MULTIBLOCK_TGZ;
+  String testDir=System.getProperty("test.build.data","build/test/data");
+  File dfsDir=new File(testDir,"image-1.0");
+  if (dfsDir.exists() && !FileUtil.fullyDelete(dfsDir)) {
+    throw new IOException("Could not delete dfs directory '" + dfsDir + "'");
+  }
+  FileUtil.unTar(new File(tarFile),new File(testDir));
+  File nameDir=new File(dfsDir,"name");
+  GenericTestUtils.assertExists(nameDir);
+  File dataDir=new File(dfsDir,"data");
+  GenericTestUtils.assertExists(dataDir);
+  conf.set(DFSConfigKeys.DFS_NAMENODE_NAME_DIR_KEY,nameDir.getAbsolutePath());
+  conf.set(DFSConfigKeys.DFS_DATANODE_DATA_DIR_KEY,dataDir.getAbsolutePath());
+  MiniDFSCluster cluster=new MiniDFSCluster.Builder(conf).numDataNodes(0).format(false).manageDataDfsDirs(false).manageNameDfsDirs(false).numDataNodes(1).startupOption(StartupOption.UPGRADE).build();
+  try {
+    FileSystem fs=cluster.getFileSystem();
+    Path testPath=new Path("/user/todd/4blocks");
+    DFSTestUtil.readFile(fs,testPath);
+    FSDataOutputStream stm=fs.append(testPath);
+    try {
+      stm.write(1);
+    }
+  finally {
+      IOUtils.closeStream(stm);
+    }
+  }
+  finally {
+    cluster.shutdown();
+  }
+}
