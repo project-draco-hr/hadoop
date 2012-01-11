@@ -1,0 +1,61 @@
+{
+  TaskAttemptId taskAttemptID=event.getTaskAttemptID();
+  LOG.info("Launching " + taskAttemptID);
+  if (this.state == ContainerState.KILLED_BEFORE_LAUNCH) {
+    state=ContainerState.DONE;
+    sendContainerLaunchFailedMsg(taskAttemptID,"Container was killed before it was launched");
+    return;
+  }
+  CommandTimerTask timerTask=new CommandTimerTask(Thread.currentThread(),event);
+  final String containerManagerBindAddr=event.getContainerMgrAddress();
+  ContainerId containerID=event.getContainerID();
+  ContainerToken containerToken=event.getContainerToken();
+  ContainerManager proxy=null;
+  try {
+    commandTimer.schedule(timerTask,nmTimeOut);
+    proxy=getCMProxy(containerID,containerManagerBindAddr,containerToken);
+    if (Thread.interrupted()) {
+      String message="Container launch failed for " + containerID + " : Start-container for "+ event.getContainerID()+ " got interrupted. Returning.";
+      this.state=ContainerState.FAILED;
+      sendContainerLaunchFailedMsg(taskAttemptID,message);
+      return;
+    }
+    ContainerLaunchContext containerLaunchContext=event.getContainer();
+    StartContainerRequest startRequest=Records.newRecord(StartContainerRequest.class);
+    startRequest.setContainerLaunchContext(containerLaunchContext);
+    StartContainerResponse response=proxy.startContainer(startRequest);
+    timerTask.cancel();
+    if (Thread.interrupted()) {
+      String message="Container launch failed for " + containerID + " : Start-container for "+ event.getContainerID()+ " got interrupted. Returning.";
+      this.state=ContainerState.FAILED;
+      sendContainerLaunchFailedMsg(taskAttemptID,message);
+      return;
+    }
+    ByteBuffer portInfo=response.getServiceResponse(ShuffleHandler.MAPREDUCE_SHUFFLE_SERVICEID);
+    int port=-1;
+    if (portInfo != null) {
+      port=ShuffleHandler.deserializeMetaData(portInfo);
+    }
+    LOG.info("Shuffle port returned by ContainerManager for " + taskAttemptID + " : "+ port);
+    if (port < 0) {
+      this.state=ContainerState.FAILED;
+      throw new IllegalStateException("Invalid shuffle port number " + port + " returned for "+ taskAttemptID);
+    }
+    context.getEventHandler().handle(new TaskAttemptContainerLaunchedEvent(taskAttemptID,port));
+    this.state=ContainerState.RUNNING;
+  }
+ catch (  Throwable t) {
+    if (Thread.interrupted()) {
+      LOG.info("Start-container for " + event.getContainerID() + " got interrupted.");
+    }
+    String message="Container launch failed for " + containerID + " : "+ StringUtils.stringifyException(t);
+    this.state=ContainerState.FAILED;
+    sendContainerLaunchFailedMsg(taskAttemptID,message);
+  }
+ finally {
+    timerTask.cancel();
+    if (proxy != null) {
+      ContainerLauncherImpl.this.rpc.stopProxy(proxy,getConfig());
+    }
+  }
+}

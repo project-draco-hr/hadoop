@@ -1,0 +1,39 @@
+{
+  ApplicationId appId=BuilderUtils.newApplicationId(12345,67);
+  ApplicationAttemptId appAttemptId=BuilderUtils.newApplicationAttemptId(appId,3);
+  JobId jobId=MRBuilderUtils.newJobId(appId,8);
+  TaskId taskId=MRBuilderUtils.newTaskId(jobId,9,TaskType.MAP);
+  TaskAttemptId taskAttemptId=MRBuilderUtils.newTaskAttemptId(taskId,0);
+  ContainerId containerId=BuilderUtils.newContainerId(appAttemptId,10);
+  AppContext context=mock(AppContext.class);
+  CustomContainerLauncher containerLauncher=new CustomContainerLauncher(context);
+  containerLauncher.init(new Configuration());
+  containerLauncher.start();
+  ThreadPoolExecutor threadPool=containerLauncher.getThreadPool();
+  Assert.assertEquals(0,threadPool.getPoolSize());
+  Assert.assertEquals(ContainerLauncherImpl.INITIAL_POOL_SIZE,threadPool.getCorePoolSize());
+  Assert.assertNull(containerLauncher.foundErrors);
+  containerLauncher.expectedCorePoolSize=ContainerLauncherImpl.INITIAL_POOL_SIZE;
+  for (int i=0; i < 10; i++) {
+    containerLauncher.handle(new ContainerLauncherEvent(taskAttemptId,containerId,"host" + i + ":1234",null,ContainerLauncher.EventType.CONTAINER_REMOTE_LAUNCH));
+  }
+  waitForEvents(containerLauncher,10);
+  Assert.assertEquals(10,threadPool.getPoolSize());
+  Assert.assertNull(containerLauncher.foundErrors);
+  containerLauncher.expectedCorePoolSize=ContainerLauncherImpl.INITIAL_POOL_SIZE;
+  containerLauncher.finishEventHandling=true;
+  for (int i=0; i < 10; i++) {
+    containerLauncher.handle(new ContainerLauncherEvent(taskAttemptId,containerId,"host" + i + ":1234",null,ContainerLauncher.EventType.CONTAINER_REMOTE_LAUNCH));
+  }
+  waitForEvents(containerLauncher,20);
+  Assert.assertEquals(10,threadPool.getPoolSize());
+  Assert.assertNull(containerLauncher.foundErrors);
+  containerLauncher.expectedCorePoolSize=12 + ContainerLauncherImpl.INITIAL_POOL_SIZE;
+  for (int i=1; i <= 2; i++) {
+    containerLauncher.handle(new ContainerLauncherEvent(taskAttemptId,containerId,"host1" + i + ":1234",null,ContainerLauncher.EventType.CONTAINER_REMOTE_LAUNCH));
+  }
+  waitForEvents(containerLauncher,22);
+  Assert.assertEquals(12,threadPool.getPoolSize());
+  Assert.assertNull(containerLauncher.foundErrors);
+  containerLauncher.stop();
+}

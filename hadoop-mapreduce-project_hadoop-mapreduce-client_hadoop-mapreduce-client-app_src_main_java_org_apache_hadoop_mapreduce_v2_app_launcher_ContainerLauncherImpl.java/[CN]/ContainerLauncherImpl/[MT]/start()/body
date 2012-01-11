@@ -1,7 +1,7 @@
 {
   ThreadFactory tf=new ThreadFactoryBuilder().setNameFormat("ContainerLauncher #%d").setDaemon(true).build();
   launcherPool=new ThreadPoolExecutor(INITIAL_POOL_SIZE,Integer.MAX_VALUE,1,TimeUnit.HOURS,new LinkedBlockingQueue<Runnable>(),tf);
-  eventHandlingThread=new Thread(new Runnable(){
+  eventHandlingThread=new Thread(){
     @Override public void run(){
       ContainerLauncherEvent event=null;
       while (!Thread.currentThread().isInterrupted()) {
@@ -16,17 +16,17 @@
         if (poolSize != limitOnPoolSize) {
           int numNodes=allNodes.size();
           int idealPoolSize=Math.min(limitOnPoolSize,numNodes);
-          if (poolSize <= idealPoolSize) {
-            int newPoolSize=idealPoolSize + INITIAL_POOL_SIZE;
-            LOG.info("Setting ContainerLauncher pool size to " + newPoolSize);
+          if (poolSize < idealPoolSize) {
+            int newPoolSize=Math.min(limitOnPoolSize,idealPoolSize + INITIAL_POOL_SIZE);
+            LOG.info("Setting ContainerLauncher pool size to " + newPoolSize + " as number-of-nodes to talk to is "+ numNodes);
             launcherPool.setCorePoolSize(newPoolSize);
           }
         }
-        launcherPool.execute(new EventProcessor(event));
+        launcherPool.execute(createEventProcessor(event));
       }
     }
   }
-);
+;
   eventHandlingThread.setName("ContainerLauncher Event Handler");
   eventHandlingThread.start();
   super.start();
