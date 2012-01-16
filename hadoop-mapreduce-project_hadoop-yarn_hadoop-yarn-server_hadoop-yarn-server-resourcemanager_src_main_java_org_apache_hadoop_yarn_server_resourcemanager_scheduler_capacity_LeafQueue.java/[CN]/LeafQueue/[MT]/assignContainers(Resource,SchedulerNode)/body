@@ -5,7 +5,7 @@
   RMContainer reservedContainer=node.getReservedContainer();
   if (reservedContainer != null) {
     SchedulerApp application=getApplication(reservedContainer.getApplicationAttemptId());
-    return assignReservedContainer(application,node,reservedContainer,clusterResource);
+    return new CSAssignment(assignReservedContainer(application,node,reservedContainer,clusterResource),NodeType.NODE_LOCAL);
   }
   for (  SchedulerApp application : activeApplications) {
     if (LOG.isDebugEnabled()) {
@@ -20,19 +20,19 @@ synchronized (application) {
           continue;
         }
         if (!assignToQueue(clusterResource,required)) {
-          return Resources.none();
+          return NULL_ASSIGNMENT;
         }
         Resource userLimit=computeUserLimit(application,clusterResource,required);
         if (!assignToUser(application.getUser(),userLimit)) {
           break;
         }
         application.addSchedulingOpportunity(priority);
-        Resource assigned=assignContainersOnNode(clusterResource,node,application,priority,null);
+        CSAssignment assignment=assignContainersOnNode(clusterResource,node,application,priority,null);
+        Resource assigned=assignment.getResource();
         if (Resources.greaterThan(assigned,Resources.none())) {
-          Resource assignedResource=application.getResourceRequest(priority,RMNode.ANY).getCapability();
-          allocateResource(clusterResource,application,assignedResource);
+          allocateResource(clusterResource,application,assigned);
           application.resetSchedulingOpportunities(priority);
-          return assignedResource;
+          return assignment;
         }
  else {
           break;
@@ -44,5 +44,5 @@ synchronized (application) {
     }
     application.showRequests();
   }
-  return Resources.none();
+  return NULL_ASSIGNMENT;
 }
