@@ -1,0 +1,24 @@
+{
+  assertTrue(fs.mkdirs(new Path(TEST_DIR1)));
+  HATestUtil.waitForStandbyToCatchUp(nn0,nn1);
+  HATestUtil.waitForCheckpoint(cluster,0,ImmutableList.of(0,3));
+  causeFailureOnEditLogRead();
+  assertTrue(fs.mkdirs(new Path(TEST_DIR2)));
+  assertTrue(fs.mkdirs(new Path(TEST_DIR3)));
+  try {
+    HATestUtil.waitForStandbyToCatchUp(nn0,nn1);
+    fail("Standby fully caught up, but should not have been able to");
+  }
+ catch (  HATestUtil.CouldNotCatchUpException e) {
+    verify(mockRuntime,times(0)).exit(anyInt());
+  }
+  cluster.shutdownNameNode(0);
+  try {
+    cluster.transitionToActive(1);
+    fail("Standby transitioned to active, but should not have been able to");
+  }
+ catch (  ServiceFailedException sfe) {
+    LOG.info("got expected exception: " + sfe.toString(),sfe);
+    assertTrue("Standby failed to catch up for some reason other than " + "failure to read logs",sfe.toString().contains(EditLogInputException.class.getName()));
+  }
+}
