@@ -21,43 +21,52 @@
   LocalDirAllocator localDirAllocator=new LocalDirAllocator(MRConfig.LOCAL_DIR);
   FileContext localFSFileContext=FileContext.getLocalFSFileContext();
   UserGroupInformation ugi=UserGroupInformation.getCurrentUser();
-  Map<LocalResource,Future<Path>> resourcesToPaths=Maps.newHashMap();
-  ExecutorService exec=Executors.newCachedThreadPool();
-  Path destPath=localDirAllocator.getLocalPathForWrite(".",conf);
-  for (  LocalResource resource : localResources.values()) {
-    Callable<Path> download=new FSDownload(localFSFileContext,ugi,conf,destPath,resource,new Random());
-    Future<Path> future=exec.submit(download);
-    resourcesToPaths.put(resource,future);
+  ExecutorService exec=null;
+  try {
+    ThreadFactory tf=new ThreadFactoryBuilder().setNameFormat("LocalDistributedCacheManager Downloader #%d").build();
+    exec=Executors.newCachedThreadPool(tf);
+    Path destPath=localDirAllocator.getLocalPathForWrite(".",conf);
+    Map<LocalResource,Future<Path>> resourcesToPaths=Maps.newHashMap();
+    for (    LocalResource resource : localResources.values()) {
+      Callable<Path> download=new FSDownload(localFSFileContext,ugi,conf,destPath,resource,new Random());
+      Future<Path> future=exec.submit(download);
+      resourcesToPaths.put(resource,future);
+    }
+    for (    LocalResource resource : localResources.values()) {
+      Path path;
+      try {
+        path=resourcesToPaths.get(resource).get();
+      }
+ catch (      InterruptedException e) {
+        throw new IOException(e);
+      }
+catch (      ExecutionException e) {
+        throw new IOException(e);
+      }
+      String pathString=path.toUri().toString();
+      if (resource.getType() == LocalResourceType.ARCHIVE) {
+        localArchives.add(pathString);
+      }
+ else       if (resource.getType() == LocalResourceType.FILE) {
+        localFiles.add(pathString);
+      }
+      Path resourcePath;
+      try {
+        resourcePath=ConverterUtils.getPathFromYarnURL(resource.getResource());
+      }
+ catch (      URISyntaxException e) {
+        throw new IOException(e);
+      }
+      LOG.info(String.format("Localized %s as %s",resourcePath,path));
+      String cp=resourcePath.toUri().getPath();
+      if (classpaths.keySet().contains(cp)) {
+        localClasspaths.add(path.toUri().getPath().toString());
+      }
+    }
   }
-  for (  LocalResource resource : localResources.values()) {
-    Path path;
-    try {
-      path=resourcesToPaths.get(resource).get();
-    }
- catch (    InterruptedException e) {
-      throw new IOException(e);
-    }
-catch (    ExecutionException e) {
-      throw new IOException(e);
-    }
-    String pathString=path.toUri().toString();
-    if (resource.getType() == LocalResourceType.ARCHIVE) {
-      localArchives.add(pathString);
-    }
- else     if (resource.getType() == LocalResourceType.FILE) {
-      localFiles.add(pathString);
-    }
-    Path resourcePath;
-    try {
-      resourcePath=ConverterUtils.getPathFromYarnURL(resource.getResource());
-    }
- catch (    URISyntaxException e) {
-      throw new IOException(e);
-    }
-    LOG.info(String.format("Localized %s as %s",resourcePath,path));
-    String cp=resourcePath.toUri().getPath();
-    if (classpaths.keySet().contains(cp)) {
-      localClasspaths.add(path.toUri().getPath().toString());
+  finally {
+    if (exec != null) {
+      exec.shutdown();
     }
   }
   if (!localArchives.isEmpty()) {
