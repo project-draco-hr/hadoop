@@ -1,5 +1,6 @@
 {
-  Resource assigned=Resources.createResource(0);
+  CSAssignment assignment=new CSAssignment(Resources.createResource(0),NodeType.NODE_LOCAL);
+  boolean assignedOffSwitch=false;
   while (canAssign(node)) {
     if (LOG.isDebugEnabled()) {
       LOG.debug("Trying to assign containers to child-queue of " + getQueueName());
@@ -7,21 +8,30 @@
     if (!assignToQueue(clusterResource)) {
       break;
     }
-    Resource assignedToChild=assignContainersToChildQueues(clusterResource,node);
-    if (Resources.greaterThan(assignedToChild,Resources.none())) {
-      allocateResource(clusterResource,assignedToChild);
-      Resources.addTo(assigned,assignedToChild);
+    CSAssignment assignedToChild=assignContainersToChildQueues(clusterResource,node);
+    assignedOffSwitch=(assignedToChild.getType() == NodeType.OFF_SWITCH);
+    if (Resources.greaterThan(assignedToChild.getResource(),Resources.none())) {
+      allocateResource(clusterResource,assignedToChild.getResource());
+      Resources.addTo(assignment.getResource(),assignedToChild.getResource());
       LOG.info("assignedContainer" + " queue=" + getQueueName() + " util="+ getUtilization()+ " used="+ usedResources+ " cluster="+ clusterResource);
     }
  else {
       break;
     }
     if (LOG.isDebugEnabled()) {
-      LOG.debug("ParentQ=" + getQueueName() + " assignedSoFarInThisIteration="+ assigned+ " utilization="+ getUtilization());
+      LOG.debug("ParentQ=" + getQueueName() + " assignedSoFarInThisIteration="+ assignment.getResource()+ " utilization="+ getUtilization());
     }
-    if (!rootQueue) {
+    if (rootQueue) {
+      if (assignedOffSwitch) {
+        if (LOG.isDebugEnabled()) {
+          LOG.debug("Not assigning more than one off-switch container," + " assignments so far: " + assignment);
+        }
+        break;
+      }
+    }
+ else {
       break;
     }
   }
-  return assigned;
+  return assignment;
 }
