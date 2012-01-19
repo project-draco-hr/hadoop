@@ -1,20 +1,10 @@
 {
-  InetSocketAddress nnAddr1=cluster.getNameNode(0).getNameNodeAddress();
-  InetSocketAddress nnAddr2=cluster.getNameNode(1).getNameNodeAddress();
-  ClientProtocol nn1=DFSUtil.createNamenode(nnAddr1,conf);
-  ClientProtocol nn2=DFSUtil.createNamenode(nnAddr2,conf);
-  DFSClient dfsClient1=new DFSClient(null,nn1,conf,null);
-  DFSClient dfsClient2=new DFSClient(null,nn2,conf,null);
-  OutputStream out1=dfsClient1.create(TEST_FILE.toString(),false);
-  OutputStream out2=dfsClient2.create(TEST_FILE.toString(),false);
-  AppendTestUtil.write(out1,0,FILE_LENGTH_TO_VERIFY);
-  AppendTestUtil.write(out2,0,FILE_LENGTH_TO_VERIFY);
-  out1.close();
-  out2.close();
   FileSystem fs=HATestUtil.configureFailoverFs(cluster,conf);
-  AppendTestUtil.check(fs,TEST_FILE,FILE_LENGTH_TO_VERIFY);
-  cluster.getNameNode(0).stop();
-  AppendTestUtil.check(fs,TEST_FILE,FILE_LENGTH_TO_VERIFY);
+  DFSTestUtil.createFile(fs,TEST_FILE,FILE_LENGTH_TO_VERIFY,(short)1,1L);
+  assertEquals(fs.getFileStatus(TEST_FILE).getLen(),FILE_LENGTH_TO_VERIFY);
+  cluster.shutdownNameNode(0);
+  cluster.transitionToActive(1);
+  assertEquals(fs.getFileStatus(TEST_FILE).getLen(),FILE_LENGTH_TO_VERIFY);
   Path withPort=new Path("hdfs://" + HATestUtil.getLogicalHostname(cluster) + ":"+ NameNode.DEFAULT_PORT+ "/"+ TEST_FILE.toUri().getPath());
   FileSystem fs2=withPort.getFileSystem(fs.getConf());
   assertTrue(fs2.exists(withPort));
