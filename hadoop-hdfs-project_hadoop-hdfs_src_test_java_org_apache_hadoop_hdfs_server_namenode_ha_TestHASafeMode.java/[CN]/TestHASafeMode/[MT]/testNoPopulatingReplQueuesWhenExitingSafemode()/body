@@ -1,0 +1,22 @@
+{
+  DFSTestUtil.createFile(fs,new Path("/test"),15 * BLOCK_SIZE,(short)3,1L);
+  HATestUtil.waitForStandbyToCatchUp(nn0,nn1);
+  nn1.getRpcServer().setSafeMode(SafeModeAction.SAFEMODE_ENTER);
+  NameNodeAdapter.saveNamespace(nn1);
+  nn1.getRpcServer().setSafeMode(SafeModeAction.SAFEMODE_LEAVE);
+  DFSTestUtil.createFile(fs,new Path("/test2"),15 * BLOCK_SIZE,(short)3,1L);
+  nn0.getRpcServer().rollEditLog();
+  cluster.stopDataNode(1);
+  cluster.shutdownNameNode(1);
+  cluster.restartNameNode(1,false);
+  nn1=cluster.getNameNode(1);
+  GenericTestUtils.waitFor(new Supplier<Boolean>(){
+    @Override public Boolean get(){
+      return !nn1.isInSafeMode();
+    }
+  }
+,100,10000);
+  BlockManagerTestUtil.updateState(nn1.getNamesystem().getBlockManager());
+  assertEquals(0L,nn1.getNamesystem().getUnderReplicatedBlocks());
+  assertEquals(0L,nn1.getNamesystem().getPendingReplicationBlocks());
+}
