@@ -1,0 +1,31 @@
+{
+  BlockManagerTestUtil.setWritingPrefersLocalNode(cluster.getNamesystem().getBlockManager(),false);
+  cluster.startDataNodes(conf,2,true,StartupOption.REGULAR,null);
+  cluster.waitActive();
+  DFSTestUtil.createFile(fs,TEST_PATH,15 * BLOCK_SIZE,(short)1,1L);
+  List<DataNodeProperties> dnprops=Lists.newLinkedList();
+  dnprops.add(cluster.stopDataNode(0));
+  dnprops.add(cluster.stopDataNode(0));
+  dnprops.add(cluster.stopDataNode(0));
+  cluster.getConfiguration(0).setFloat(DFSConfigKeys.DFS_NAMENODE_REPL_QUEUE_THRESHOLD_PCT_KEY,1f / 15f);
+  cluster.restartNameNode();
+  final NameNode nn=cluster.getNameNode();
+  String status=nn.getNamesystem().getSafemode();
+  assertEquals("Safe mode is ON.The reported blocks 0 needs additional " + "15 blocks to reach the threshold 0.9990 of total blocks 15. " + "Safe mode will be turned off automatically.",status);
+  assertFalse("Mis-replicated block queues should not be initialized " + "until threshold is crossed",NameNodeAdapter.safeModeInitializedReplQueues(nn));
+  cluster.restartDataNode(dnprops.remove(0));
+  GenericTestUtils.waitFor(new Supplier<Boolean>(){
+    @Override public Boolean get(){
+      return NameNodeAdapter.getSafeModeSafeBlocks(nn) > 0;
+    }
+  }
+,10,10000);
+  nn.getNamesystem().writeLock();
+  nn.getNamesystem().writeUnlock();
+  int safe=NameNodeAdapter.getSafeModeSafeBlocks(nn);
+  assertTrue("Expected first block report to make some but not all blocks " + "safe. Got: " + safe,safe >= 1 && safe < 15);
+  BlockManagerTestUtil.updateState(nn.getNamesystem().getBlockManager());
+  assertTrue(NameNodeAdapter.safeModeInitializedReplQueues(nn));
+  assertEquals(15 - safe,nn.getNamesystem().getUnderReplicatedBlocks());
+  cluster.restartDataNodes();
+}
