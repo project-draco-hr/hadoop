@@ -1,0 +1,49 @@
+{
+  Event.EventType eventType=event.getType();
+  LOG.debug("Watcher event type: " + eventType + " with state:"+ event.getState()+ " for path:"+ event.getPath()+ " connectionState: "+ zkConnectionState);
+  if (zkClient == null) {
+    return;
+  }
+  if (eventType == Event.EventType.None) {
+switch (event.getState()) {
+case SyncConnected:
+      ConnectionState prevConnectionState=zkConnectionState;
+    zkConnectionState=ConnectionState.CONNECTED;
+  if (prevConnectionState == ConnectionState.DISCONNECTED) {
+    monitorActiveStatus();
+  }
+break;
+case Disconnected:
+zkConnectionState=ConnectionState.DISCONNECTED;
+enterNeutralMode();
+break;
+case Expired:
+enterNeutralMode();
+reJoinElection();
+break;
+default :
+fatalError("Unexpected Zookeeper watch event state: " + event.getState());
+break;
+}
+return;
+}
+String path=event.getPath();
+if (path != null) {
+switch (eventType) {
+case NodeDeleted:
+if (state == State.ACTIVE) {
+enterNeutralMode();
+}
+joinElectionInternal();
+break;
+case NodeDataChanged:
+monitorActiveStatus();
+break;
+default :
+LOG.debug("Unexpected node event: " + eventType + " for path: "+ path);
+monitorActiveStatus();
+}
+return;
+}
+fatalError("Unexpected watch error from Zookeeper");
+}

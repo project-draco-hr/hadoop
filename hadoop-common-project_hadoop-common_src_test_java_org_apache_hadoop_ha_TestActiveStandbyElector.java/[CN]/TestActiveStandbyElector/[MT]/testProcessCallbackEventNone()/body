@@ -1,0 +1,26 @@
+{
+  elector.joinElection(data);
+  WatchedEvent mockEvent=Mockito.mock(WatchedEvent.class);
+  Mockito.when(mockEvent.getType()).thenReturn(Event.EventType.None);
+  Mockito.when(mockEvent.getState()).thenReturn(Event.KeeperState.SyncConnected);
+  elector.process(mockEvent);
+  Mockito.verify(mockZK,Mockito.times(0)).exists(Mockito.anyString(),Mockito.anyBoolean(),Mockito.<AsyncCallback.StatCallback>anyObject(),Mockito.<Object>anyObject());
+  Mockito.when(mockEvent.getState()).thenReturn(Event.KeeperState.Disconnected);
+  elector.process(mockEvent);
+  Mockito.verify(mockApp,Mockito.times(1)).enterNeutralMode();
+  Mockito.when(mockEvent.getState()).thenReturn(Event.KeeperState.SyncConnected);
+  elector.process(mockEvent);
+  Mockito.verify(mockZK,Mockito.times(1)).exists(zkLockPathName,true,elector,null);
+  Mockito.when(mockEvent.getState()).thenReturn(Event.KeeperState.Expired);
+  elector.process(mockEvent);
+  Mockito.verify(mockApp,Mockito.times(1)).enterNeutralMode();
+  Assert.assertEquals(2,TestActiveStandbyElector.count);
+  Mockito.verify(mockZK,Mockito.times(2)).create(zkLockPathName,data,Ids.OPEN_ACL_UNSAFE,CreateMode.EPHEMERAL,elector,null);
+  elector.processResult(Code.OK.intValue(),zkLockPathName,null,zkLockPathName);
+  Mockito.verify(mockApp,Mockito.times(1)).becomeActive();
+  Mockito.verify(mockZK,Mockito.times(2)).exists(zkLockPathName,true,elector,null);
+  Mockito.when(mockEvent.getState()).thenReturn(Event.KeeperState.AuthFailed);
+  elector.process(mockEvent);
+  Mockito.verify(mockApp,Mockito.times(1)).notifyFatalError("Unexpected Zookeeper watch event state: AuthFailed");
+  Mockito.verify(mockApp,Mockito.times(1)).enterNeutralMode();
+}

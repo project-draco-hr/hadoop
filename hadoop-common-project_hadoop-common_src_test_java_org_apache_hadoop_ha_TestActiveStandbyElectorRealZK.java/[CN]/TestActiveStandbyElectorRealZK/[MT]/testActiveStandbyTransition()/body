@@ -1,0 +1,23 @@
+{
+  LOG.info("starting test with parentDir:" + parentDir);
+  start=false;
+  byte[] data=new byte[8];
+  createClient().create(parentDir,data,Ids.OPEN_ACL_UNSAFE,CreateMode.PERSISTENT);
+  for (currentClientIndex=0; currentClientIndex < NUM_ELECTORS; ++currentClientIndex) {
+    LOG.info("creating " + currentClientIndex);
+    zkClient[currentClientIndex]=createClient();
+    threadRunner[currentClientIndex]=new ThreadRunner(currentClientIndex,this);
+    elector[currentClientIndex]=new ActiveStandbyElectorTesterRealZK("hostPort",1000,parentDir,Ids.OPEN_ACL_UNSAFE,threadRunner[currentClientIndex]);
+    zkClient[currentClientIndex].register(elector[currentClientIndex]);
+    thread[currentClientIndex]=new Thread(threadRunner[currentClientIndex]);
+    thread[currentClientIndex].start();
+  }
+synchronized (this) {
+    LOG.info("signaling threads");
+    start=true;
+    notifyAll();
+  }
+  for (int i=0; i < thread.length; i++) {
+    thread[i].join();
+  }
+}
