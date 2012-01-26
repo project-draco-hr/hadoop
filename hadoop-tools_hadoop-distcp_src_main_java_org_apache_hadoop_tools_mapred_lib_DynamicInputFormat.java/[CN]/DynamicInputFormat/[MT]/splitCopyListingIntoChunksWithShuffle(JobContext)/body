@@ -1,0 +1,40 @@
+{
+  final Configuration configuration=context.getConfiguration();
+  int numRecords=getNumberOfRecords(configuration);
+  int numMaps=getNumMapTasks(configuration);
+  int splitRatio=getListingSplitRatio(configuration,numMaps,numRecords);
+  validateNumChunksUsing(splitRatio,numMaps);
+  int numEntriesPerChunk=(int)Math.ceil((float)numRecords / (splitRatio * numMaps));
+  DistCpUtils.publish(context.getConfiguration(),CONF_LABEL_NUM_ENTRIES_PER_CHUNK,numEntriesPerChunk);
+  final int nChunksTotal=(int)Math.ceil((float)numRecords / numEntriesPerChunk);
+  int nChunksOpenAtOnce=Math.min(N_CHUNKS_OPEN_AT_ONCE_DEFAULT,nChunksTotal);
+  Path listingPath=getListingFilePath(configuration);
+  SequenceFile.Reader reader=new SequenceFile.Reader(configuration,SequenceFile.Reader.file(listingPath));
+  List<DynamicInputChunk> openChunks=new ArrayList<DynamicInputChunk>();
+  List<DynamicInputChunk> chunksFinal=new ArrayList<DynamicInputChunk>();
+  FileStatus fileStatus=new FileStatus();
+  Text relPath=new Text();
+  int recordCounter=0;
+  int chunkCount=0;
+  try {
+    while (reader.next(relPath,fileStatus)) {
+      if (recordCounter % (nChunksOpenAtOnce * numEntriesPerChunk) == 0) {
+        closeAll(openChunks);
+        chunksFinal.addAll(openChunks);
+        openChunks=createChunks(configuration,chunkCount,nChunksTotal,nChunksOpenAtOnce);
+        chunkCount+=openChunks.size();
+        nChunksOpenAtOnce=openChunks.size();
+        recordCounter=0;
+      }
+      openChunks.get(recordCounter % nChunksOpenAtOnce).write(relPath,fileStatus);
+      ++recordCounter;
+    }
+  }
+  finally {
+    closeAll(openChunks);
+    chunksFinal.addAll(openChunks);
+    IOUtils.closeStream(reader);
+  }
+  LOG.info("Number of dynamic-chunk-files created: " + chunksFinal.size());
+  return chunksFinal;
+}

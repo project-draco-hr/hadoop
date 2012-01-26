@@ -1,0 +1,37 @@
+{
+  try {
+    deleteState();
+    createSourceData();
+    FileSystem fs=cluster.getFileSystem();
+    CopyMapper copyMapper=new CopyMapper();
+    StubContext stubContext=new StubContext(getConfiguration(),null,0);
+    Mapper<Text,FileStatus,Text,Text>.Context context=stubContext.getContext();
+    Configuration configuration=context.getConfiguration();
+    EnumSet<DistCpOptions.FileAttribute> fileAttributes=EnumSet.noneOf(DistCpOptions.FileAttribute.class);
+    if (preserve) {
+      fileAttributes.add(DistCpOptions.FileAttribute.BLOCKSIZE);
+      fileAttributes.add(DistCpOptions.FileAttribute.REPLICATION);
+    }
+    configuration.set(DistCpOptionSwitch.PRESERVE_STATUS.getConfigLabel(),DistCpUtils.packAttributes(fileAttributes));
+    copyMapper.setup(context);
+    for (    Path path : pathList) {
+      final FileStatus fileStatus=fs.getFileStatus(path);
+      copyMapper.map(new Text(DistCpUtils.getRelativePath(new Path(SOURCE_PATH),path)),fileStatus,context);
+    }
+    for (    Path path : pathList) {
+      final Path targetPath=new Path(path.toString().replaceAll(SOURCE_PATH,TARGET_PATH));
+      final FileStatus source=fs.getFileStatus(path);
+      final FileStatus target=fs.getFileStatus(targetPath);
+      if (!source.isDirectory()) {
+        Assert.assertTrue(preserve || source.getBlockSize() != target.getBlockSize());
+        Assert.assertTrue(preserve || source.getReplication() != target.getReplication());
+        Assert.assertTrue(!preserve || source.getBlockSize() == target.getBlockSize());
+        Assert.assertTrue(!preserve || source.getReplication() == target.getReplication());
+      }
+    }
+  }
+ catch (  Exception e) {
+    Assert.assertTrue("Unexpected exception: " + e.getMessage(),false);
+    e.printStackTrace();
+  }
+}

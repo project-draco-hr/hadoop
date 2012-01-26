@@ -1,0 +1,42 @@
+{
+  try {
+    deleteState();
+    createSourceData();
+    changeUserGroup("Michael","Corleone");
+    FileSystem fs=cluster.getFileSystem();
+    CopyMapper copyMapper=new CopyMapper();
+    StubContext stubContext=new StubContext(getConfiguration(),null,0);
+    Mapper<Text,FileStatus,Text,Text>.Context context=stubContext.getContext();
+    Configuration configuration=context.getConfiguration();
+    EnumSet<DistCpOptions.FileAttribute> fileAttributes=EnumSet.noneOf(DistCpOptions.FileAttribute.class);
+    if (preserve) {
+      fileAttributes.add(DistCpOptions.FileAttribute.USER);
+      fileAttributes.add(DistCpOptions.FileAttribute.GROUP);
+      fileAttributes.add(DistCpOptions.FileAttribute.PERMISSION);
+    }
+    configuration.set(DistCpOptionSwitch.PRESERVE_STATUS.getConfigLabel(),DistCpUtils.packAttributes(fileAttributes));
+    copyMapper.setup(context);
+    for (    Path path : pathList) {
+      final FileStatus fileStatus=fs.getFileStatus(path);
+      copyMapper.map(new Text(DistCpUtils.getRelativePath(new Path(SOURCE_PATH),path)),fileStatus,context);
+    }
+    for (    Path path : pathList) {
+      final Path targetPath=new Path(path.toString().replaceAll(SOURCE_PATH,TARGET_PATH));
+      final FileStatus source=fs.getFileStatus(path);
+      final FileStatus target=fs.getFileStatus(targetPath);
+      if (!source.isDirectory()) {
+        Assert.assertTrue(!preserve || source.getOwner().equals(target.getOwner()));
+        Assert.assertTrue(!preserve || source.getGroup().equals(target.getGroup()));
+        Assert.assertTrue(!preserve || source.getPermission().equals(target.getPermission()));
+        Assert.assertTrue(preserve || !source.getOwner().equals(target.getOwner()));
+        Assert.assertTrue(preserve || !source.getGroup().equals(target.getGroup()));
+        Assert.assertTrue(preserve || !source.getPermission().equals(target.getPermission()));
+        Assert.assertTrue(source.isDirectory() || source.getReplication() != target.getReplication());
+      }
+    }
+  }
+ catch (  Exception e) {
+    Assert.assertTrue("Unexpected exception: " + e.getMessage(),false);
+    e.printStackTrace();
+  }
+}

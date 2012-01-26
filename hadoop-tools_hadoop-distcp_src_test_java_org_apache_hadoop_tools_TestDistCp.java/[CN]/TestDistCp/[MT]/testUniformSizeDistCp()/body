@@ -1,0 +1,30 @@
+{
+  try {
+    clearState();
+    final FileSystem fileSystem=cluster.getFileSystem();
+    Path sourcePath=new Path(SOURCE_PATH).makeQualified(fileSystem.getUri(),fileSystem.getWorkingDirectory());
+    List<Path> sources=new ArrayList<Path>();
+    sources.add(sourcePath);
+    Path targetPath=new Path(TARGET_PATH).makeQualified(fileSystem.getUri(),fileSystem.getWorkingDirectory());
+    DistCpOptions options=new DistCpOptions(sources,targetPath);
+    options.setAtomicCommit(true);
+    options.setBlocking(false);
+    Job job=new DistCp(configuration,options).execute();
+    Path workDir=CopyOutputFormat.getWorkingDirectory(job);
+    Path finalDir=CopyOutputFormat.getCommitDirectory(job);
+    while (!job.isComplete()) {
+      if (cluster.getFileSystem().exists(workDir)) {
+        break;
+      }
+    }
+    job.waitForCompletion(true);
+    Assert.assertFalse(cluster.getFileSystem().exists(workDir));
+    Assert.assertTrue(cluster.getFileSystem().exists(finalDir));
+    Assert.assertFalse(cluster.getFileSystem().exists(new Path(job.getConfiguration().get(DistCpConstants.CONF_LABEL_META_FOLDER))));
+    verifyResults();
+  }
+ catch (  Exception e) {
+    LOG.error("Exception encountered",e);
+    Assert.fail("Unexpected exception: " + e.getMessage());
+  }
+}

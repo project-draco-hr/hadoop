@@ -1,0 +1,28 @@
+{
+  String attrSymbols=conf.get(DistCpConstants.CONF_LABEL_PRESERVE_STATUS);
+  LOG.info("About to preserve attributes: " + attrSymbols);
+  EnumSet<FileAttribute> attributes=DistCpUtils.unpackAttributes(attrSymbols);
+  Path sourceListing=new Path(conf.get(DistCpConstants.CONF_LABEL_LISTING_FILE_PATH));
+  FileSystem clusterFS=sourceListing.getFileSystem(conf);
+  SequenceFile.Reader sourceReader=new SequenceFile.Reader(conf,SequenceFile.Reader.file(sourceListing));
+  long totalLen=clusterFS.getFileStatus(sourceListing).getLen();
+  Path targetRoot=new Path(conf.get(DistCpConstants.CONF_LABEL_TARGET_WORK_PATH));
+  long preservedEntries=0;
+  try {
+    FileStatus srcFileStatus=new FileStatus();
+    Text srcRelPath=new Text();
+    while (sourceReader.next(srcRelPath,srcFileStatus)) {
+      if (!srcFileStatus.isDirectory())       continue;
+      Path targetFile=new Path(targetRoot.toString() + "/" + srcRelPath);
+      if (targetRoot.equals(targetFile))       continue;
+      FileSystem targetFS=targetFile.getFileSystem(conf);
+      DistCpUtils.preserve(targetFS,targetFile,srcFileStatus,attributes);
+      taskAttemptContext.progress();
+      taskAttemptContext.setStatus("Preserving status on directory entries. [" + sourceReader.getPosition() * 100 / totalLen + "%]");
+    }
+  }
+  finally {
+    IOUtils.closeStream(sourceReader);
+  }
+  LOG.info("Preserved status on " + preservedEntries + " dir entries on target");
+}

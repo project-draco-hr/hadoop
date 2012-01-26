@@ -1,0 +1,29 @@
+{
+  Path targetPath=options.getTargetPath();
+  FileSystem targetFS=targetPath.getFileSystem(getConf());
+  boolean targetIsFile=targetFS.isFile(targetPath);
+  if (targetIsFile) {
+    if (options.getSourcePaths().size() > 1) {
+      throw new InvalidInputException("Multiple source being copied to a file: " + targetPath);
+    }
+    Path srcPath=options.getSourcePaths().get(0);
+    FileSystem sourceFS=srcPath.getFileSystem(getConf());
+    if (!sourceFS.isFile(srcPath)) {
+      throw new InvalidInputException("Cannot copy " + srcPath + ", which is not a file to "+ targetPath);
+    }
+  }
+  if (options.shouldAtomicCommit() && targetFS.exists(targetPath)) {
+    throw new InvalidInputException("Target path for atomic-commit already exists: " + targetPath + ". Cannot atomic-commit to pre-existing target-path.");
+  }
+  for (  Path path : options.getSourcePaths()) {
+    FileSystem fs=path.getFileSystem(getConf());
+    if (!fs.exists(path)) {
+      throw new InvalidInputException(path + " doesn't exist");
+    }
+  }
+  Credentials credentials=getCredentials();
+  if (credentials != null) {
+    Path[] inputPaths=options.getSourcePaths().toArray(new Path[1]);
+    TokenCache.obtainTokensForNamenodes(credentials,inputPaths,getConf());
+  }
+}

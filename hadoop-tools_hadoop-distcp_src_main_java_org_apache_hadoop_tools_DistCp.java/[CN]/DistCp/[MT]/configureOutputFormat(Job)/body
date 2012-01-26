@@ -1,0 +1,30 @@
+{
+  final Configuration configuration=job.getConfiguration();
+  Path targetPath=inputOptions.getTargetPath();
+  FileSystem targetFS=targetPath.getFileSystem(configuration);
+  targetPath=targetPath.makeQualified(targetFS.getUri(),targetFS.getWorkingDirectory());
+  if (inputOptions.shouldAtomicCommit()) {
+    Path workDir=inputOptions.getAtomicWorkPath();
+    if (workDir == null) {
+      workDir=targetPath.getParent();
+    }
+    workDir=new Path(workDir,WIP_PREFIX + targetPath.getName() + rand.nextInt());
+    FileSystem workFS=workDir.getFileSystem(configuration);
+    if (!DistCpUtils.compareFs(targetFS,workFS)) {
+      throw new IllegalArgumentException("Work path " + workDir + " and target path "+ targetPath+ " are in different file system");
+    }
+    CopyOutputFormat.setWorkingDirectory(job,workDir);
+  }
+ else {
+    CopyOutputFormat.setWorkingDirectory(job,targetPath);
+  }
+  CopyOutputFormat.setCommitDirectory(job,targetPath);
+  Path logPath=inputOptions.getLogPath();
+  if (logPath == null) {
+    logPath=new Path(metaFolder,"_logs");
+  }
+ else {
+    LOG.info("DistCp job log path: " + logPath);
+  }
+  CopyOutputFormat.setOutputPath(job,logPath);
+}
