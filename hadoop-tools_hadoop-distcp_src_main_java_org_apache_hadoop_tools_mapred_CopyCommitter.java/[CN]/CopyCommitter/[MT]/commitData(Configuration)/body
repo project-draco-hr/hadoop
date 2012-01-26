@@ -1,0 +1,23 @@
+{
+  Path workDir=new Path(conf.get(DistCpConstants.CONF_LABEL_TARGET_WORK_PATH));
+  Path finalDir=new Path(conf.get(DistCpConstants.CONF_LABEL_TARGET_FINAL_PATH));
+  FileSystem targetFS=workDir.getFileSystem(conf);
+  LOG.info("Atomic commit enabled. Moving " + workDir + " to "+ finalDir);
+  if (targetFS.exists(finalDir) && targetFS.exists(workDir)) {
+    LOG.error("Pre-existing final-path found at: " + finalDir);
+    throw new IOException("Target-path can't be committed to because it " + "exists at " + finalDir + ". Copied data is in temp-dir: "+ workDir+ ". ");
+  }
+  boolean result=targetFS.rename(workDir,finalDir);
+  if (!result) {
+    LOG.warn("Rename failed. Perhaps data already moved. Verifying...");
+    result=targetFS.exists(finalDir) && !targetFS.exists(workDir);
+  }
+  if (result) {
+    LOG.info("Data committed successfully to " + finalDir);
+    taskAttemptContext.setStatus("Data committed successfully to " + finalDir);
+  }
+ else {
+    LOG.error("Unable to commit data to " + finalDir);
+    throw new IOException("Atomic commit failed. Temporary data in " + workDir + ", Unable to move to "+ finalDir);
+  }
+}

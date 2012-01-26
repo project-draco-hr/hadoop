@@ -1,0 +1,41 @@
+{
+  List<InputSplit> splits=new ArrayList<InputSplit>(numSplits);
+  long nBytesPerSplit=(long)Math.ceil(totalSizeBytes * 1.0 / numSplits);
+  FileStatus srcFileStatus=new FileStatus();
+  Text srcRelPath=new Text();
+  long currentSplitSize=0;
+  long lastSplitStart=0;
+  long lastPosition=0;
+  final Path listingFilePath=getListingFilePath(configuration);
+  if (LOG.isDebugEnabled()) {
+    LOG.debug("Average bytes per map: " + nBytesPerSplit + ", Number of maps: "+ numSplits+ ", total size: "+ totalSizeBytes);
+  }
+  SequenceFile.Reader reader=null;
+  try {
+    reader=getListingFileReader(configuration);
+    while (reader.next(srcRelPath,srcFileStatus)) {
+      if (currentSplitSize + srcFileStatus.getLen() > nBytesPerSplit && lastPosition != 0) {
+        FileSplit split=new FileSplit(listingFilePath,lastSplitStart,lastPosition - lastSplitStart,null);
+        if (LOG.isDebugEnabled()) {
+          LOG.debug("Creating split : " + split + ", bytes in split: "+ currentSplitSize);
+        }
+        splits.add(split);
+        lastSplitStart=lastPosition;
+        currentSplitSize=0;
+      }
+      currentSplitSize+=srcFileStatus.getLen();
+      lastPosition=reader.getPosition();
+    }
+    if (lastPosition > lastSplitStart) {
+      FileSplit split=new FileSplit(listingFilePath,lastSplitStart,lastPosition - lastSplitStart,null);
+      if (LOG.isDebugEnabled()) {
+        LOG.info("Creating split : " + split + ", bytes in split: "+ currentSplitSize);
+      }
+      splits.add(split);
+    }
+  }
+  finally {
+    IOUtils.closeStream(reader);
+  }
+  return splits;
+}
