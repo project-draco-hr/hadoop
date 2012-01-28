@@ -1,0 +1,39 @@
+{
+  final CountDownLatch brFinished=new CountDownLatch(1);
+  DelayAnswer delayer=new GenericTestUtils.DelayAnswer(LOG){
+    @Override protected Object passThrough(    InvocationOnMock invocation) throws Throwable {
+      try {
+        return super.passThrough(invocation);
+      }
+  finally {
+        brFinished.countDown();
+      }
+    }
+  }
+;
+  final String METHOD_NAME=GenericTestUtils.getMethodName();
+  Path filePath=new Path("/" + METHOD_NAME + ".dat");
+  REPL_FACTOR=2;
+  startDNandWait(null,false);
+  NameNode nn=cluster.getNameNode();
+  FSDataOutputStream out=fs.create(filePath,REPL_FACTOR);
+  try {
+    AppendTestUtil.write(out,0,10);
+    out.hflush();
+    DataNode dn=cluster.getDataNodes().get(0);
+    DatanodeProtocolClientSideTranslatorPB spy=DataNodeAdapter.spyOnBposToNN(dn,nn);
+    Mockito.doAnswer(delayer).when(spy).blockReport(Mockito.<DatanodeRegistration>anyObject(),Mockito.anyString(),Mockito.<long[]>anyObject());
+    dn.scheduleAllBlockReport(0);
+    delayer.waitForCall();
+  }
+  finally {
+    IOUtils.closeStream(out);
+  }
+  delayer.proceed();
+  brFinished.await();
+  BlockManagerTestUtil.updateState(nn.getNamesystem().getBlockManager());
+  assertEquals(0,nn.getNamesystem().getCorruptReplicaBlocks());
+  DFSTestUtil.readFile(fs,filePath);
+  cluster.stopDataNode(1);
+  DFSTestUtil.readFile(fs,filePath);
+}
