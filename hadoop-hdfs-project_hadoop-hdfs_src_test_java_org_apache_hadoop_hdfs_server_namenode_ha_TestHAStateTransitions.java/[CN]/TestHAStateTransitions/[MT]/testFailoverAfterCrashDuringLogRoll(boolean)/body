@@ -1,0 +1,18 @@
+{
+  Configuration conf=new Configuration();
+  conf.setInt(DFSConfigKeys.DFS_HA_TAILEDITS_PERIOD_KEY,Integer.MAX_VALUE);
+  MiniDFSCluster cluster=new MiniDFSCluster.Builder(conf).nnTopology(MiniDFSNNTopology.simpleHATopology()).numDataNodes(0).build();
+  FileSystem fs=HATestUtil.configureFailoverFs(cluster,conf);
+  try {
+    cluster.transitionToActive(0);
+    NameNode nn0=cluster.getNameNode(0);
+    nn0.getRpcServer().rollEditLog();
+    cluster.shutdownNameNode(0);
+    createEmptyInProgressEditLog(cluster,nn0,writeHeader);
+    cluster.transitionToActive(1);
+  }
+  finally {
+    IOUtils.cleanup(LOG,fs);
+    cluster.shutdown();
+  }
+}
