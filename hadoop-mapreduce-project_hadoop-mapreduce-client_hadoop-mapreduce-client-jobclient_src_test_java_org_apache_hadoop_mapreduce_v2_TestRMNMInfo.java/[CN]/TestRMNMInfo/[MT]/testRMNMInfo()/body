@@ -1,0 +1,28 @@
+{
+  if (!(new File(MiniMRYarnCluster.APPJAR)).exists()) {
+    LOG.info("MRAppJar " + MiniMRYarnCluster.APPJAR + " not found. Not running test.");
+    return;
+  }
+  RMContext rmc=mrCluster.getResourceManager().getRMContext();
+  ResourceScheduler rms=mrCluster.getResourceManager().getResourceScheduler();
+  RMNMInfo rmInfo=new RMNMInfo(rmc,rms);
+  String liveNMs=rmInfo.getLiveNodeManagers();
+  ObjectMapper mapper=new ObjectMapper();
+  JsonNode jn=mapper.readTree(liveNMs);
+  Assert.assertEquals("Unexpected number of live nodes:",NUMNODEMANAGERS,jn.size());
+  Iterator<JsonNode> it=jn.iterator();
+  while (it.hasNext()) {
+    JsonNode n=it.next();
+    Assert.assertNotNull(n.get("HostName"));
+    Assert.assertNotNull(n.get("Rack"));
+    Assert.assertTrue("Node " + n.get("NodeId") + " should be RUNNING",n.get("State").getValueAsText().contains("RUNNING"));
+    Assert.assertNotNull(n.get("NodeHTTPAddress"));
+    Assert.assertTrue("Node " + n.get("NodeId") + " should be Healthy",n.get("HealthStatus").getValueAsText().contains("Healthy"));
+    Assert.assertNotNull(n.get("LastHealthUpdate"));
+    Assert.assertNotNull(n.get("HealthReport"));
+    Assert.assertNotNull(n.get("NumContainersMB"));
+    Assert.assertEquals(n.get("NodeId") + ": Unexpected number of used containers",0,n.get("NumContainersMB").getValueAsInt());
+    Assert.assertEquals(n.get("NodeId") + ": Unexpected amount of used memory",0,n.get("UsedMemoryMB").getValueAsInt());
+    Assert.assertNotNull(n.get("AvailableMemoryMB"));
+  }
+}
