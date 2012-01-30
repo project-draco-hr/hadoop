@@ -6,26 +6,36 @@
     }
     LOG.info("START STRESS @ " + System.currentTimeMillis());
     while (!Thread.currentThread().isInterrupted()) {
-      lock.lock();
       try {
         while (loadStatus.overloaded()) {
+          if (LOG.isDebugEnabled()) {
+            LOG.debug("Cluster overloaded in run! Sleeping...");
+          }
           try {
-            condUnderloaded.await();
+            Thread.sleep(1000);
           }
  catch (          InterruptedException ie) {
             return;
           }
         }
         while (!loadStatus.overloaded()) {
+          if (LOG.isDebugEnabled()) {
+            LOG.debug("Cluster underloaded in run! Stressing...");
+          }
           try {
             final JobStory job=getNextJobFiltered();
             if (null == job) {
               return;
             }
+            if (LOG.isDebugEnabled()) {
+              LOG.debug("Job Selected: " + job.getJobID());
+            }
             submitter.add(jobCreator.createGridmixJob(conf,0L,job,scratch,userResolver.getTargetUgi(UserGroupInformation.createRemoteUser(job.getUser())),sequence.getAndIncrement()));
-            loadStatus.mapSlotsBackfill-=calcEffectiveIncompleteMapTasks(loadStatus.mapSlotCapacity,job.getNumberMaps(),0.0f);
-            loadStatus.reduceSlotsBackfill-=calcEffectiveIncompleteReduceTasks(loadStatus.reduceSlotCapacity,job.getNumberReduces(),0.0f);
-            --loadStatus.numJobsBackfill;
+            int incompleteMapTasks=(int)calcEffectiveIncompleteMapTasks(loadStatus.getMapCapacity(),job.getNumberMaps(),0.0f);
+            loadStatus.decrementMapLoad(incompleteMapTasks);
+            int incompleteReduceTasks=(int)calcEffectiveIncompleteReduceTasks(loadStatus.getReduceCapacity(),job.getNumberReduces(),0.0f);
+            loadStatus.decrementReduceLoad(incompleteReduceTasks);
+            loadStatus.decrementJobLoad(1);
           }
  catch (          IOException e) {
             LOG.error("Error while submitting the job ",e);
@@ -35,7 +45,6 @@
         }
       }
   finally {
-        lock.unlock();
       }
     }
   }
