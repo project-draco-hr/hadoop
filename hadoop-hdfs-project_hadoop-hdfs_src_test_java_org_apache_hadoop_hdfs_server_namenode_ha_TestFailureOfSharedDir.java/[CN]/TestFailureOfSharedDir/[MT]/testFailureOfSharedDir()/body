@@ -1,0 +1,29 @@
+{
+  Configuration conf=new Configuration();
+  URI sharedEditsUri=MiniDFSCluster.formatSharedEditsDir(new File(MiniDFSCluster.getBaseDirectory()),0,1);
+  conf.set(DFSConfigKeys.DFS_NAMENODE_EDITS_DIR_REQUIRED_KEY,sharedEditsUri.toString());
+  MiniDFSCluster cluster=null;
+  try {
+    cluster=new MiniDFSCluster.Builder(conf).nnTopology(MiniDFSNNTopology.simpleHATopology()).numDataNodes(0).build();
+    assertEquals(sharedEditsUri,cluster.getSharedEditsDir(0,1));
+    cluster.waitActive();
+    cluster.transitionToActive(0);
+    FileSystem fs=HATestUtil.configureFailoverFs(cluster,conf);
+    assertTrue(fs.mkdirs(new Path("/test1")));
+    FileUtil.fullyDelete(new File(sharedEditsUri));
+    NameNode nn0=cluster.getNameNode(0);
+    try {
+      nn0.getRpcServer().rollEditLog();
+      fail("Succeeded in rolling edit log despite shared dir being deleted");
+    }
+ catch (    IOException ioe) {
+      GenericTestUtils.assertExceptionContains("Unable to start log segment 4: too few journals successfully started",ioe);
+      LOG.info("Got expected exception",ioe);
+    }
+  }
+  finally {
+    if (cluster != null) {
+      cluster.shutdown();
+    }
+  }
+}
