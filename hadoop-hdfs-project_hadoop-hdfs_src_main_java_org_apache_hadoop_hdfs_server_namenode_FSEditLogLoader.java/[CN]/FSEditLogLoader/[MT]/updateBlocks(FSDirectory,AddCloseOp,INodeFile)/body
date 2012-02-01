@@ -11,9 +11,14 @@
       throw new IOException("Mismatched block IDs or generation stamps, " + "attempting to replace block " + oldBlock + " with "+ newBlock+ " as block # "+ i+ "/"+ addCloseOp.blocks.length+ " of "+ addCloseOp.path);
     }
     oldBlock.setNumBytes(newBlock.getNumBytes());
+    boolean changeMade=oldBlock.getGenerationStamp() != newBlock.getGenerationStamp();
     oldBlock.setGenerationStamp(newBlock.getGenerationStamp());
     if (oldBlock instanceof BlockInfoUnderConstruction && (!isLastBlock || addCloseOp.opCode == FSEditLogOpCodes.OP_CLOSE)) {
+      changeMade=true;
       fsNamesys.getBlockManager().forceCompleteBlock((INodeFileUnderConstruction)file,(BlockInfoUnderConstruction)oldBlock);
+    }
+    if (changeMade) {
+      fsNamesys.getBlockManager().processQueuedMessagesForBlock(newBlock);
     }
   }
   if (addCloseOp.blocks.length < oldBlocks.length) {
@@ -37,9 +42,7 @@
       }
       fsNamesys.getBlockManager().addINode(newBI,file);
       file.addBlock(newBI);
+      fsNamesys.getBlockManager().processQueuedMessagesForBlock(newBlock);
     }
-  }
-  for (  Block b : addCloseOp.blocks) {
-    maxGenStamp=Math.max(maxGenStamp,b.getGenerationStamp());
   }
 }

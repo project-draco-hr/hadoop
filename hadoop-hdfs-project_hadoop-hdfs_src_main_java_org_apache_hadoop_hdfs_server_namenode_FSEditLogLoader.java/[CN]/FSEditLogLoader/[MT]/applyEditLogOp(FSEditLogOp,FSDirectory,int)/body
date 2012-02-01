@@ -3,6 +3,9 @@ switch (op.opCode) {
 case OP_ADD:
 {
       AddCloseOp addCloseOp=(AddCloseOp)op;
+      if (FSNamesystem.LOG.isDebugEnabled()) {
+        FSNamesystem.LOG.debug(op.opCode + ": " + addCloseOp.path+ " numblocks : "+ addCloseOp.blocks.length+ " clientHolder "+ addCloseOp.clientName+ " clientMachine "+ addCloseOp.clientMachine);
+      }
       INodeFile oldFile=getINodeFile(fsDir,addCloseOp.path);
       if (oldFile == null) {
         final short replication=fsNamesys.getBlockManager().adjustReplication(addCloseOp.replication);
@@ -11,9 +14,6 @@ case OP_ADD:
           permissions=addCloseOp.permissions;
         }
         long blockSize=addCloseOp.blockSize;
-        if (FSNamesystem.LOG.isDebugEnabled()) {
-          FSNamesystem.LOG.debug(op.opCode + ": " + addCloseOp.path+ " numblocks : "+ addCloseOp.blocks.length+ " clientHolder "+ addCloseOp.clientName+ " clientMachine "+ addCloseOp.clientMachine);
-        }
         if (-8 <= logVersion && blockSize == 0) {
           if (addCloseOp.blocks.length > 1) {
             blockSize=addCloseOp.blocks[0].getNumBytes();
@@ -24,11 +24,14 @@ case OP_ADD:
           }
         }
         INodeFile node=(INodeFile)fsDir.unprotectedAddFile(addCloseOp.path,permissions,replication,addCloseOp.mtime,addCloseOp.atime,blockSize);
-        fsNamesys.prepareFileForWrite(addCloseOp.path,node,addCloseOp.clientName,addCloseOp.clientMachine,null);
+        fsNamesys.prepareFileForWrite(addCloseOp.path,node,addCloseOp.clientName,addCloseOp.clientMachine,null,false);
       }
  else {
         if (!oldFile.isUnderConstruction()) {
-          fsNamesys.prepareFileForWrite(addCloseOp.path,oldFile,addCloseOp.clientName,addCloseOp.clientMachine,null);
+          if (FSNamesystem.LOG.isDebugEnabled()) {
+            FSNamesystem.LOG.debug("Reopening an already-closed file " + "for append");
+          }
+          fsNamesys.prepareFileForWrite(addCloseOp.path,oldFile,addCloseOp.clientName,addCloseOp.clientMachine,null,false);
           oldFile=getINodeFile(fsDir,addCloseOp.path);
         }
         updateBlocks(fsDir,addCloseOp,oldFile);
@@ -38,6 +41,9 @@ case OP_ADD:
 case OP_CLOSE:
 {
     AddCloseOp addCloseOp=(AddCloseOp)op;
+    if (FSNamesystem.LOG.isDebugEnabled()) {
+      FSNamesystem.LOG.debug(op.opCode + ": " + addCloseOp.path+ " numblocks : "+ addCloseOp.blocks.length+ " clientHolder "+ addCloseOp.clientName+ " clientMachine "+ addCloseOp.clientMachine);
+    }
     INodeFile oldFile=getINodeFile(fsDir,addCloseOp.path);
     if (oldFile == null) {
       throw new IOException("Operation trying to close non-existent file " + addCloseOp.path);

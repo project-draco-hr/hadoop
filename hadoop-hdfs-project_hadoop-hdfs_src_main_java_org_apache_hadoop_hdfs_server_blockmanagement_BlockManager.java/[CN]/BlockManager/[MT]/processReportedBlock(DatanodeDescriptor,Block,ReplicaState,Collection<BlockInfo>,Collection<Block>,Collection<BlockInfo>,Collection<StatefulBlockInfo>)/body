@@ -2,6 +2,10 @@
   if (LOG.isDebugEnabled()) {
     LOG.debug("Reported block " + block + " on "+ dn.getName()+ " size "+ block.getNumBytes()+ " replicaState = "+ reportedState);
   }
+  if (namesystem.isInStandbyState() && namesystem.isGenStampInFuture(block.getGenerationStamp())) {
+    queueReportedBlock(dn,block,reportedState,QUEUE_REASON_FUTURE_GENSTAMP);
+    return null;
+  }
   BlockInfo storedBlock=blocksMap.getStoredBlock(block);
   if (storedBlock == null) {
     toInvalidate.add(new Block(block));
@@ -15,7 +19,12 @@
     return storedBlock;
   }
   if (isReplicaCorrupt(block,reportedState,storedBlock,ucState,dn)) {
-    toCorrupt.add(storedBlock);
+    if (namesystem.isInStandbyState()) {
+      queueReportedBlock(dn,storedBlock,reportedState,QUEUE_REASON_CORRUPT_STATE);
+    }
+ else {
+      toCorrupt.add(storedBlock);
+    }
     return storedBlock;
   }
   if (isBlockUnderConstruction(storedBlock,ucState,reportedState)) {

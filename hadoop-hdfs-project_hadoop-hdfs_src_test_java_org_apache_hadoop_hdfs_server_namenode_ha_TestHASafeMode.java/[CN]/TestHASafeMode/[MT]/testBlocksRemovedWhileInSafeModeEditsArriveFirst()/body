@@ -1,0 +1,19 @@
+{
+  banner("Starting with NN0 active and NN1 standby, creating some blocks");
+  DFSTestUtil.createFile(fs,new Path("/test"),10 * BLOCK_SIZE,(short)3,1L);
+  nn0.getRpcServer().rollEditLog();
+  banner("Restarting standby");
+  restartStandby();
+  String status=nn1.getNamesystem().getSafemode();
+  assertTrue("Bad safemode status: '" + status + "'",status.startsWith("Safe mode is ON." + "The reported blocks 10 has reached the threshold 0.9990 of " + "total blocks 10. Safe mode will be turned off automatically"));
+  banner("Removing the blocks without rolling the edit log");
+  fs.delete(new Path("/test"),true);
+  HATestUtil.waitForStandbyToCatchUp(nn0,nn1);
+  assertSafeMode(nn1,0,0);
+  banner("Triggering sending deletions to DNs and Deletion Reports");
+  BlockManagerTestUtil.computeAllPendingWork(nn0.getNamesystem().getBlockManager());
+  cluster.triggerHeartbeats();
+  HATestUtil.waitForDNDeletions(cluster);
+  cluster.triggerDeletionReports();
+  assertSafeMode(nn1,0,0);
+}

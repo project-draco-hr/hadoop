@@ -3,14 +3,24 @@
   assert(namesystem.hasWriteLock());
   assert(node.numBlocks() == 0);
   BlockReportIterator itBR=report.getBlockReportIterator();
+  boolean isStandby=namesystem.isInStandbyState();
   while (itBR.hasNext()) {
     Block iblk=itBR.next();
     ReplicaState reportedState=itBR.getCurrentReplicaState();
+    if (isStandby && namesystem.isGenStampInFuture(iblk.getGenerationStamp())) {
+      queueReportedBlock(node,iblk,reportedState,QUEUE_REASON_FUTURE_GENSTAMP);
+      continue;
+    }
     BlockInfo storedBlock=blocksMap.getStoredBlock(iblk);
     if (storedBlock == null)     continue;
     BlockUCState ucState=storedBlock.getBlockUCState();
     if (isReplicaCorrupt(iblk,reportedState,storedBlock,ucState,node)) {
-      markBlockAsCorrupt(storedBlock,node);
+      if (namesystem.isInStandbyState()) {
+        queueReportedBlock(node,iblk,reportedState,QUEUE_REASON_CORRUPT_STATE);
+      }
+ else {
+        markBlockAsCorrupt(storedBlock,node);
+      }
       continue;
     }
     if (isBlockUnderConstruction(storedBlock,ucState,reportedState)) {
