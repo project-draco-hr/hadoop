@@ -1,18 +1,21 @@
 {
   DummyService svc1=new DummyService(HAServiceState.ACTIVE);
   DummyService svc2=new DummyService(HAServiceState.STANDBY){
-    @Override public void monitorHealth() throws HealthCheckFailedException {
-      throw new HealthCheckFailedException("Failed!");
+    @Override public boolean readyToBecomeActive() throws ServiceFailedException, IOException {
+      return false;
     }
   }
 ;
   NodeFencer fencer=setupFencer(AlwaysSucceedFencer.class.getName());
   try {
     FailoverController.failover(svc1,svc1Addr,svc2,svc2Addr,fencer,false,false);
-    fail("Failover to unhealthy service");
+    fail("Can't failover to a service that's not ready");
   }
  catch (  FailoverFailedException ffe) {
   }
   assertEquals(HAServiceState.ACTIVE,svc1.getServiceState());
   assertEquals(HAServiceState.STANDBY,svc2.getServiceState());
+  FailoverController.failover(svc1,svc1Addr,svc2,svc2Addr,fencer,false,true);
+  assertEquals(HAServiceState.STANDBY,svc1.getServiceState());
+  assertEquals(HAServiceState.ACTIVE,svc2.getServiceState());
 }
