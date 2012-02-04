@@ -1,18 +1,17 @@
 {
-  if (outputPath != null) {
-    Path tmpDir=new Path(outputPath,getJobAttemptBaseDirName(context) + Path.SEPARATOR + FileOutputCommitter.TEMP_DIR_NAME);
-    FileSystem fileSys=tmpDir.getFileSystem(context.getConfiguration());
-    if (fileSys.exists(tmpDir)) {
-      fileSys.delete(tmpDir,true);
+  if (hasOutputPath()) {
+    Path finalOutput=getOutputPath();
+    FileSystem fs=finalOutput.getFileSystem(context.getConfiguration());
+    for (    FileStatus stat : getAllCommittedTaskPaths(context)) {
+      mergePaths(fs,stat,finalOutput);
     }
- else {
-      LOG.warn("Task temp dir could not be deleted " + tmpDir);
-    }
-    Path jobOutputPath=new Path(outputPath,getJobAttemptBaseDirName(context));
-    moveJobOutputs(outputFileSystem,jobOutputPath,outputPath,jobOutputPath);
     cleanupJob(context);
-    if (shouldMarkOutputDir(context.getConfiguration())) {
-      markOutputDirSuccessful(context);
+    if (context.getConfiguration().getBoolean(SUCCESSFUL_JOB_OUTPUT_DIR_MARKER,true)) {
+      Path markerPath=new Path(outputPath,SUCCEEDED_FILE_NAME);
+      fs.create(markerPath).close();
     }
+  }
+ else {
+    LOG.warn("Output Path is null in commitJob()");
   }
 }
