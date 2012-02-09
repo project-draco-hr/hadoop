@@ -1,6 +1,8 @@
 {
   Configuration conf=new Configuration();
   MiniDFSCluster cluster=null;
+  int chmodSucceeded=-1;
+  File sharedEditsDir=null;
   try {
     cluster=new MiniDFSCluster.Builder(conf).nnTopology(MiniDFSNNTopology.simpleHATopology()).numDataNodes(0).build();
     cluster.waitActive();
@@ -8,7 +10,11 @@
     FileSystem fs=HATestUtil.configureFailoverFs(cluster,conf);
     assertTrue(fs.mkdirs(new Path("/test1")));
     URI sharedEditsUri=cluster.getSharedEditsDir(0,1);
-    FileUtil.fullyDelete(new File(sharedEditsUri));
+    sharedEditsDir=new File(sharedEditsUri);
+    chmodSucceeded=FileUtil.chmod(sharedEditsDir.getAbsolutePath(),"-w",true);
+    if (chmodSucceeded != 0) {
+      LOG.error("Failed to remove write permissions on shared edits dir:" + sharedEditsDir.getAbsolutePath());
+    }
     NameNode nn0=cluster.getNameNode(0);
     try {
       nn0.getRpcServer().rollEditLog();
@@ -28,6 +34,9 @@
     }
   }
   finally {
+    if (chmodSucceeded == 0) {
+      FileUtil.chmod(sharedEditsDir.getAbsolutePath(),"+w",true);
+    }
     if (cluster != null) {
       cluster.shutdown();
     }
