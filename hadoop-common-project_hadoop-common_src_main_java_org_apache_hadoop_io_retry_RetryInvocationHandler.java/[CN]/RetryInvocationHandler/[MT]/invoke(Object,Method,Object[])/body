@@ -11,7 +11,9 @@ synchronized (proxyProvider) {
       invocationAttemptFailoverCount=proxyProviderFailoverCount;
     }
     try {
-      return invokeMethod(method,args);
+      Object ret=invokeMethod(method,args);
+      hasMadeASuccessfulCall=true;
+      return ret;
     }
  catch (    Exception e) {
       boolean isMethodIdempotent=proxyProvider.getInterface().getMethod(method.getName(),method.getParameterTypes()).isAnnotationPresent(Idempotent.class);
@@ -24,8 +26,14 @@ synchronized (proxyProvider) {
         return null;
       }
  else {
-        if (action.action == RetryAction.RetryDecision.FAILOVER_AND_RETRY) {
-          String msg="Exception while invoking " + method.getName() + " of "+ currentProxy.getClass()+ " after "+ invocationFailoverCount+ " fail over attempts."+ " Trying to fail over "+ formatSleepMessage(action.delayMillis);
+        boolean worthLogging=!(invocationFailoverCount == 0 && !hasMadeASuccessfulCall);
+        worthLogging|=LOG.isDebugEnabled();
+        if (action.action == RetryAction.RetryDecision.FAILOVER_AND_RETRY && worthLogging) {
+          String msg="Exception while invoking " + method.getName() + " of class "+ currentProxy.getClass().getSimpleName();
+          if (invocationFailoverCount > 0) {
+            msg+=" after " + invocationFailoverCount + " fail over attempts";
+          }
+          msg+=". Trying to fail over " + formatSleepMessage(action.delayMillis);
           if (LOG.isDebugEnabled()) {
             LOG.debug(msg,e);
           }
@@ -35,7 +43,7 @@ synchronized (proxyProvider) {
         }
  else {
           if (LOG.isDebugEnabled()) {
-            LOG.debug("Exception while invoking " + method.getName() + " of "+ currentProxy.getClass()+ ". Retrying "+ formatSleepMessage(action.delayMillis),e);
+            LOG.debug("Exception while invoking " + method.getName() + " of class "+ currentProxy.getClass().getSimpleName()+ ". Retrying "+ formatSleepMessage(action.delayMillis),e);
           }
         }
         if (action.delayMillis > 0) {
