@@ -7,6 +7,7 @@ case OP_ADD:
         FSNamesystem.LOG.debug(op.opCode + ": " + addCloseOp.path+ " numblocks : "+ addCloseOp.blocks.length+ " clientHolder "+ addCloseOp.clientName+ " clientMachine "+ addCloseOp.clientMachine);
       }
       INodeFile oldFile=getINodeFile(fsDir,addCloseOp.path);
+      INodeFile newFile=oldFile;
       if (oldFile == null) {
         final short replication=fsNamesys.getBlockManager().adjustReplication(addCloseOp.replication);
         PermissionStatus permissions=fsNamesys.getUpgradePermission();
@@ -23,8 +24,8 @@ case OP_ADD:
             blockSize=Math.max(fsNamesys.getDefaultBlockSize(),first);
           }
         }
-        INodeFile node=(INodeFile)fsDir.unprotectedAddFile(addCloseOp.path,permissions,replication,addCloseOp.mtime,addCloseOp.atime,blockSize);
-        fsNamesys.prepareFileForWrite(addCloseOp.path,node,addCloseOp.clientName,addCloseOp.clientMachine,null,false);
+        newFile=(INodeFile)fsDir.unprotectedAddFile(addCloseOp.path,permissions,replication,addCloseOp.mtime,addCloseOp.atime,blockSize,true,addCloseOp.clientName,addCloseOp.clientMachine);
+        fsNamesys.leaseManager.addLease(addCloseOp.clientName,addCloseOp.path);
       }
  else {
         if (!oldFile.isUnderConstruction()) {
@@ -32,10 +33,10 @@ case OP_ADD:
             FSNamesystem.LOG.debug("Reopening an already-closed file " + "for append");
           }
           fsNamesys.prepareFileForWrite(addCloseOp.path,oldFile,addCloseOp.clientName,addCloseOp.clientMachine,null,false);
-          oldFile=getINodeFile(fsDir,addCloseOp.path);
+          newFile=getINodeFile(fsDir,addCloseOp.path);
         }
-        updateBlocks(fsDir,addCloseOp,oldFile);
       }
+      updateBlocks(fsDir,addCloseOp,newFile);
       break;
     }
 case OP_CLOSE:

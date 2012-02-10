@@ -11,9 +11,12 @@
   TextOutputFormat theOutputFormat=new TextOutputFormat();
   RecordWriter theRecordWriter=theOutputFormat.getRecordWriter(null,conf,partFile,null);
   writeOutput(theRecordWriter,tContext);
-  committer.commitTask(tContext);
-  Path jobTempDir1=new Path(outDir,FileOutputCommitter.getJobAttemptBaseDirName(conf.getInt(MRConstants.APPLICATION_ATTEMPT_ID,0)));
-  assertTrue((new File(jobTempDir1.toString()).exists()));
+  if (committer.needsTaskCommit(tContext)) {
+    committer.commitTask(tContext);
+  }
+  Path jobTempDir1=committer.getCommittedTaskPath(tContext);
+  File jtd1=new File(jobTempDir1.toUri().getPath());
+  assertTrue(jtd1.exists());
   validateContent(jobTempDir1);
   JobConf conf2=new JobConf(conf);
   conf2.set(JobContext.TASK_ATTEMPT_ID,attempt);
@@ -21,11 +24,11 @@
   JobContext jContext2=new JobContextImpl(conf2,taskID.getJobID());
   TaskAttemptContext tContext2=new TaskAttemptContextImpl(conf2,taskID);
   FileOutputCommitter committer2=new FileOutputCommitter();
-  committer.setupJob(jContext2);
-  Path jobTempDir2=new Path(outDir,FileOutputCommitter.getJobAttemptBaseDirName(conf2.getInt(MRConstants.APPLICATION_ATTEMPT_ID,0)));
-  assertTrue((new File(jobTempDir2.toString()).exists()));
-  tContext2.getConfiguration().setInt(MRConstants.APPLICATION_ATTEMPT_ID,2);
+  committer2.setupJob(jContext2);
+  Path jobTempDir2=committer2.getCommittedTaskPath(tContext2);
   committer2.recoverTask(tContext2);
+  File jtd2=new File(jobTempDir2.toUri().getPath());
+  assertTrue(jtd2.exists());
   validateContent(jobTempDir2);
   committer2.commitJob(jContext2);
   validateContent(outDir);

@@ -1,14 +1,33 @@
 {
-  context.progress();
-  Path jobOutputPath=new Path(outputPath,getJobAttemptBaseDirName(context));
-  int previousAttempt=context.getConfiguration().getInt(MRJobConfig.APPLICATION_ATTEMPT_ID,0) - 1;
-  if (previousAttempt < 0) {
-    throw new IOException("Cannot recover task output for first attempt...");
+  if (hasOutputPath()) {
+    context.progress();
+    TaskAttemptID attemptId=context.getTaskAttemptID();
+    int previousAttempt=getAppAttemptId(context) - 1;
+    if (previousAttempt < 0) {
+      throw new IOException("Cannot recover task output for first attempt...");
+    }
+    Path committedTaskPath=getCommittedTaskPath(context);
+    Path previousCommittedTaskPath=getCommittedTaskPath(previousAttempt,context);
+    FileSystem fs=committedTaskPath.getFileSystem(context.getConfiguration());
+    LOG.debug("Trying to recover task from " + previousCommittedTaskPath + " into "+ committedTaskPath);
+    if (fs.exists(previousCommittedTaskPath)) {
+      if (fs.exists(committedTaskPath)) {
+        if (!fs.delete(committedTaskPath,true)) {
+          throw new IOException("Could not delete " + committedTaskPath);
+        }
+      }
+      Path committedParent=committedTaskPath.getParent();
+      fs.mkdirs(committedParent);
+      if (!fs.rename(previousCommittedTaskPath,committedTaskPath)) {
+        throw new IOException("Could not rename " + previousCommittedTaskPath + " to "+ committedTaskPath);
+      }
+      LOG.info("Saved output of " + attemptId + " to "+ committedTaskPath);
+    }
+ else {
+      LOG.warn(attemptId + " had no output to recover.");
+    }
   }
-  Path pathToRecover=new Path(outputPath,getJobAttemptBaseDirName(previousAttempt));
-  LOG.debug("Trying to recover task from " + pathToRecover + " into "+ jobOutputPath);
-  if (outputFileSystem.exists(pathToRecover)) {
-    moveJobOutputs(outputFileSystem,pathToRecover,jobOutputPath,pathToRecover);
-    LOG.info("Saved output of job to " + jobOutputPath);
+ else {
+    LOG.warn("Output Path is null in recoverTask()");
   }
 }
