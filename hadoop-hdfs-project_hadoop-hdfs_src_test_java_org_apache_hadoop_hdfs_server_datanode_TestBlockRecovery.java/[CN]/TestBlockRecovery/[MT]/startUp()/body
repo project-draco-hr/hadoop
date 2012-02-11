@@ -1,0 +1,39 @@
+{
+  conf=new HdfsConfiguration();
+  conf.set(DFSConfigKeys.DFS_DATANODE_DATA_DIR_KEY,DATA_DIR);
+  conf.set(DFSConfigKeys.DFS_DATANODE_ADDRESS_KEY,"0.0.0.0:0");
+  conf.set(DFSConfigKeys.DFS_DATANODE_HTTP_ADDRESS_KEY,"0.0.0.0:0");
+  conf.set(DFSConfigKeys.DFS_DATANODE_IPC_ADDRESS_KEY,"0.0.0.0:0");
+  conf.setInt(CommonConfigurationKeys.IPC_CLIENT_CONNECT_MAX_RETRIES_KEY,0);
+  FileSystem.setDefaultUri(conf,"hdfs://" + NN_ADDR.getHostName() + ":"+ NN_ADDR.getPort());
+  ArrayList<File> dirs=new ArrayList<File>();
+  File dataDir=new File(DATA_DIR);
+  FileUtil.fullyDelete(dataDir);
+  dataDir.mkdirs();
+  dirs.add(dataDir);
+  final DatanodeProtocolClientSideTranslatorPB namenode=mock(DatanodeProtocolClientSideTranslatorPB.class);
+  Mockito.doAnswer(new Answer<DatanodeRegistration>(){
+    @Override public DatanodeRegistration answer(    InvocationOnMock invocation) throws Throwable {
+      return (DatanodeRegistration)invocation.getArguments()[0];
+    }
+  }
+).when(namenode).registerDatanode(Mockito.any(DatanodeRegistration.class),Mockito.any(DatanodeStorage[].class));
+  when(namenode.versionRequest()).thenReturn(new NamespaceInfo(1,CLUSTER_ID,POOL_ID,1L,1));
+  when(namenode.sendHeartbeat(Mockito.any(DatanodeRegistration.class),Mockito.any(StorageReport[].class),Mockito.anyInt(),Mockito.anyInt(),Mockito.anyInt())).thenReturn(new DatanodeCommand[0]);
+  dn=new DataNode(conf,dirs,null){
+    @Override DatanodeProtocolClientSideTranslatorPB connectToNN(    InetSocketAddress nnAddr) throws IOException {
+      Assert.assertEquals(NN_ADDR,nnAddr);
+      return namenode;
+    }
+  }
+;
+  dn.runDatanodeDaemon();
+  while (!dn.isDatanodeFullyStarted()) {
+    try {
+      Thread.sleep(50);
+    }
+ catch (    InterruptedException e) {
+      fail("Interrupted starting DN");
+    }
+  }
+}
