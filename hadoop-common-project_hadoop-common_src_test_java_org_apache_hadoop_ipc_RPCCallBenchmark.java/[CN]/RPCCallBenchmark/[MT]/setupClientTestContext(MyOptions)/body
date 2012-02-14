@@ -1,0 +1,32 @@
+{
+  if (opts.clientThreads <= 0) {
+    return null;
+  }
+  int numProxies=opts.clientThreads;
+  final RpcServiceWrapper proxies[]=new RpcServiceWrapper[numProxies];
+  for (int i=0; i < numProxies; i++) {
+    proxies[i]=UserGroupInformation.createUserForTesting("proxy-" + i,new String[]{}).doAs(new PrivilegedExceptionAction<RpcServiceWrapper>(){
+      @Override public RpcServiceWrapper run() throws Exception {
+        return createRpcClient(opts);
+      }
+    }
+);
+  }
+  final StringBuilder msgBuilder=new StringBuilder(opts.msgSize);
+  for (int c=0; c < opts.msgSize; c++) {
+    msgBuilder.append('x');
+  }
+  final String echoMessage=msgBuilder.toString();
+  TestContext ctx=new TestContext();
+  for (int i=0; i < opts.clientThreads; i++) {
+    final RpcServiceWrapper proxy=proxies[i % numProxies];
+    ctx.addThread(new MultithreadedTestUtil.RepeatingTestThread(ctx){
+      @Override public void doAnAction() throws Exception {
+        proxy.doEcho(echoMessage);
+        callCount.incrementAndGet();
+      }
+    }
+);
+  }
+  return ctx;
+}

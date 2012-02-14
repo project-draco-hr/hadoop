@@ -1,0 +1,57 @@
+{
+  MyOptions opts=new MyOptions(args);
+  if (opts.failed) {
+    return -1;
+  }
+  RPC.setProtocolEngine(conf,TestRpcService.class,opts.rpcEngine);
+  Server server=startServer(opts);
+  try {
+    TestContext ctx=setupClientTestContext(opts);
+    if (ctx != null) {
+      long totalCalls=0;
+      ctx.startThreads();
+      long veryStart=System.nanoTime();
+      for (int i=0; i < opts.secondsToRun; i++) {
+        long st=System.nanoTime();
+        ctx.waitFor(1000);
+        long et=System.nanoTime();
+        long ct=callCount.getAndSet(0);
+        totalCalls+=ct;
+        double callsPerSec=(ct * 1000000000) / (et - st);
+        System.out.println("Calls per second: " + callsPerSec);
+      }
+      if (totalCalls > 0) {
+        long veryEnd=System.nanoTime();
+        double callsPerSec=(totalCalls * 1000000000) / (veryEnd - veryStart);
+        long cpuNanosClient=getTotalCpuTime(ctx.getTestThreads());
+        long cpuNanosServer=-1;
+        if (server != null) {
+          cpuNanosServer=getTotalCpuTime(server.getHandlers());
+          ;
+        }
+        System.out.println("====== Results ======");
+        System.out.println("Options:\n" + opts);
+        System.out.println("Total calls per second: " + callsPerSec);
+        System.out.println("CPU time per call on client: " + (cpuNanosClient / totalCalls) + " ns");
+        if (server != null) {
+          System.out.println("CPU time per call on server: " + (cpuNanosServer / totalCalls) + " ns");
+        }
+      }
+ else {
+        System.out.println("No calls!");
+      }
+      ctx.stop();
+    }
+ else {
+      while (true) {
+        Thread.sleep(10000);
+      }
+    }
+  }
+  finally {
+    if (server != null) {
+      server.stop();
+    }
+  }
+  return 0;
+}
