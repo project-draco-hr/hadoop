@@ -24,26 +24,43 @@
   Assert.assertEquals("Reduce Task state not correct",TaskState.RUNNING,reduceTask.getReport().getTaskState());
   app.getContext().getEventHandler().handle(new TaskAttemptEvent(task1Attempt1.getID(),TaskAttemptEventType.TA_FAILMSG));
   app.waitForState(task1Attempt1,TaskAttemptState.FAILED);
-  while (mapTask1.getAttempts().size() != 2) {
+  int timeOut=0;
+  while (mapTask1.getAttempts().size() != 2 && timeOut++ < 10) {
     Thread.sleep(2000);
     LOG.info("Waiting for next attempt to start");
   }
+  Assert.assertEquals(2,mapTask1.getAttempts().size());
   Iterator<TaskAttempt> itr=mapTask1.getAttempts().values().iterator();
   itr.next();
   TaskAttempt task1Attempt2=itr.next();
-  app.waitForState(task1Attempt2,TaskAttemptState.RUNNING);
-  app.getContext().getEventHandler().handle(new TaskAttemptEvent(task1Attempt2.getID(),TaskAttemptEventType.TA_KILL));
-  app.waitForState(task1Attempt2,TaskAttemptState.KILLED);
-  while (mapTask1.getAttempts().size() != 3) {
+  app.getContext().getEventHandler().handle(new TaskAttemptEvent(task1Attempt2.getID(),TaskAttemptEventType.TA_CONTAINER_LAUNCH_FAILED));
+  app.waitForState(task1Attempt2,TaskAttemptState.FAILED);
+  timeOut=0;
+  while (mapTask1.getAttempts().size() != 3 && timeOut++ < 10) {
     Thread.sleep(2000);
     LOG.info("Waiting for next attempt to start");
   }
+  Assert.assertEquals(3,mapTask1.getAttempts().size());
   itr=mapTask1.getAttempts().values().iterator();
   itr.next();
   itr.next();
   TaskAttempt task1Attempt3=itr.next();
   app.waitForState(task1Attempt3,TaskAttemptState.RUNNING);
-  app.getContext().getEventHandler().handle(new TaskAttemptEvent(task1Attempt3.getID(),TaskAttemptEventType.TA_DONE));
+  app.getContext().getEventHandler().handle(new TaskAttemptEvent(task1Attempt3.getID(),TaskAttemptEventType.TA_KILL));
+  app.waitForState(task1Attempt3,TaskAttemptState.KILLED);
+  timeOut=0;
+  while (mapTask1.getAttempts().size() != 4 && timeOut++ < 10) {
+    Thread.sleep(2000);
+    LOG.info("Waiting for next attempt to start");
+  }
+  Assert.assertEquals(4,mapTask1.getAttempts().size());
+  itr=mapTask1.getAttempts().values().iterator();
+  itr.next();
+  itr.next();
+  itr.next();
+  TaskAttempt task1Attempt4=itr.next();
+  app.waitForState(task1Attempt4,TaskAttemptState.RUNNING);
+  app.getContext().getEventHandler().handle(new TaskAttemptEvent(task1Attempt4.getID(),TaskAttemptEventType.TA_DONE));
   app.waitForState(mapTask1,TaskState.SUCCEEDED);
   long task1StartTime=mapTask1.getReport().getStartTime();
   long task1FinishTime=mapTask1.getReport().getFinishTime();
