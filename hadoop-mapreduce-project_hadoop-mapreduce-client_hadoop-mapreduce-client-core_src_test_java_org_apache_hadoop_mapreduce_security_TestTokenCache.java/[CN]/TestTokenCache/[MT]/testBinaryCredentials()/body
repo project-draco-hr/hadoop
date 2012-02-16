@@ -1,0 +1,34 @@
+{
+  Configuration conf=new Configuration();
+  conf.set(YarnConfiguration.RM_PRINCIPAL,"mapred/host@REALM");
+  String renewer=Master.getMasterPrincipal(conf);
+  Path TEST_ROOT_DIR=new Path(System.getProperty("test.build.data","test/build/data"));
+  String binaryTokenFile=FileSystem.getLocal(conf).makeQualified(new Path(TEST_ROOT_DIR,"tokenFile")).toUri().getPath();
+  FileSystem fs1=createFileSystemForService("service1");
+  FileSystem fs2=createFileSystemForService("service2");
+  FileSystem fs3=createFileSystemForService("service3");
+  Credentials creds=new Credentials();
+  Token<?> token1=fs1.getDelegationToken(renewer);
+  Token<?> token2=fs2.getDelegationToken(renewer);
+  creds.addToken(token1.getService(),token1);
+  creds.addToken(token2.getService(),token2);
+  conf.set(MRJobConfig.MAPREDUCE_JOB_CREDENTIALS_BINARY,binaryTokenFile);
+  creds.writeTokenStorageFile(new Path(binaryTokenFile),conf);
+  creds=new Credentials();
+  Token<?> newerToken1=fs1.getDelegationToken(renewer);
+  assertFalse(newerToken1.equals(token1));
+  creds.addToken(newerToken1.getService(),newerToken1);
+  checkToken(creds,newerToken1);
+  TokenCache.obtainTokensForNamenodesInternal(fs1,creds,conf);
+  checkToken(creds,newerToken1,token2);
+  TokenCache.obtainTokensForNamenodesInternal(fs2,creds,conf);
+  checkToken(creds,newerToken1,token2);
+  TokenCache.obtainTokensForNamenodesInternal(fs3,creds,conf);
+  Token<?> token3=creds.getToken(new Text(fs3.getCanonicalServiceName()));
+  assertTrue(token3 != null);
+  checkToken(creds,newerToken1,token2,token3);
+  TokenCache.obtainTokensForNamenodesInternal(fs1,creds,conf);
+  TokenCache.obtainTokensForNamenodesInternal(fs2,creds,conf);
+  TokenCache.obtainTokensForNamenodesInternal(fs3,creds,conf);
+  checkToken(creds,newerToken1,token2,token3);
+}
