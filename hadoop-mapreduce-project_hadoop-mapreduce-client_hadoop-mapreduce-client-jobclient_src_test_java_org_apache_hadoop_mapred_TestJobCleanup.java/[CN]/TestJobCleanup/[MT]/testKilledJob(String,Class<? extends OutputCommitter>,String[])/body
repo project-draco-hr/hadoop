@@ -1,0 +1,29 @@
+{
+  JobConf jc=mr.createJobConf();
+  Path outDir=getNewOutputDir();
+  configureJob(jc,"kill job with abort()",1,0,outDir);
+  jc.setMapperClass(UtilsForTests.KillMapper.class);
+  jc.setOutputCommitter(committer);
+  JobClient jobClient=new JobClient(jc);
+  RunningJob job=jobClient.submitJob(jc);
+  JobID id=job.getID();
+  Counters counters=job.getCounters();
+  while (true) {
+    if (counters.getCounter(JobCounter.TOTAL_LAUNCHED_MAPS) == 1) {
+      break;
+    }
+    LOG.info("Waiting for a map task to be launched");
+    UtilsForTests.waitFor(100);
+    counters=job.getCounters();
+  }
+  job.killJob();
+  job.waitForCompletion();
+  if (fileName != null) {
+    Path testFile=new Path(outDir,fileName);
+    assertTrue("File " + testFile + " missing for job "+ id,fileSys.exists(testFile));
+  }
+  for (  String ex : exclude) {
+    Path file=new Path(outDir,ex);
+    assertFalse("File " + file + " should not be present for killed job "+ id,fileSys.exists(file));
+  }
+}

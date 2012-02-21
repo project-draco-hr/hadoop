@@ -3,8 +3,6 @@
   ApplicationAttemptId appAttemptId=BuilderUtils.newApplicationAttemptId(appId,3);
   JobId jobId=MRBuilderUtils.newJobId(appId,8);
   TaskId taskId=MRBuilderUtils.newTaskId(jobId,9,TaskType.MAP);
-  TaskAttemptId taskAttemptId=MRBuilderUtils.newTaskAttemptId(taskId,0);
-  ContainerId containerId=BuilderUtils.newContainerId(appAttemptId,10);
   AppContext context=mock(AppContext.class);
   CustomContainerLauncher containerLauncher=new CustomContainerLauncher(context);
   containerLauncher.init(new Configuration());
@@ -15,25 +13,36 @@
   Assert.assertNull(containerLauncher.foundErrors);
   containerLauncher.expectedCorePoolSize=ContainerLauncherImpl.INITIAL_POOL_SIZE;
   for (int i=0; i < 10; i++) {
+    ContainerId containerId=BuilderUtils.newContainerId(appAttemptId,i);
+    TaskAttemptId taskAttemptId=MRBuilderUtils.newTaskAttemptId(taskId,i);
     containerLauncher.handle(new ContainerLauncherEvent(taskAttemptId,containerId,"host" + i + ":1234",null,ContainerLauncher.EventType.CONTAINER_REMOTE_LAUNCH));
   }
   waitForEvents(containerLauncher,10);
   Assert.assertEquals(10,threadPool.getPoolSize());
   Assert.assertNull(containerLauncher.foundErrors);
-  containerLauncher.expectedCorePoolSize=ContainerLauncherImpl.INITIAL_POOL_SIZE;
   containerLauncher.finishEventHandling=true;
+  int timeOut=0;
+  while (containerLauncher.numEventsProcessed.get() < 10 && timeOut++ < 200) {
+    LOG.info("Waiting for number of events processed to become " + 10 + ". It is now "+ containerLauncher.numEventsProcessed.get()+ ". Timeout is "+ timeOut);
+    Thread.sleep(1000);
+  }
+  Assert.assertEquals(10,containerLauncher.numEventsProcessed.get());
+  containerLauncher.finishEventHandling=false;
   for (int i=0; i < 10; i++) {
+    ContainerId containerId=BuilderUtils.newContainerId(appAttemptId,i + 10);
+    TaskAttemptId taskAttemptId=MRBuilderUtils.newTaskAttemptId(taskId,i + 10);
     containerLauncher.handle(new ContainerLauncherEvent(taskAttemptId,containerId,"host" + i + ":1234",null,ContainerLauncher.EventType.CONTAINER_REMOTE_LAUNCH));
   }
   waitForEvents(containerLauncher,20);
   Assert.assertEquals(10,threadPool.getPoolSize());
   Assert.assertNull(containerLauncher.foundErrors);
-  containerLauncher.expectedCorePoolSize=12 + ContainerLauncherImpl.INITIAL_POOL_SIZE;
-  for (int i=1; i <= 2; i++) {
-    containerLauncher.handle(new ContainerLauncherEvent(taskAttemptId,containerId,"host1" + i + ":1234",null,ContainerLauncher.EventType.CONTAINER_REMOTE_LAUNCH));
-  }
-  waitForEvents(containerLauncher,22);
-  Assert.assertEquals(12,threadPool.getPoolSize());
+  containerLauncher.expectedCorePoolSize=11 + ContainerLauncherImpl.INITIAL_POOL_SIZE;
+  containerLauncher.finishEventHandling=false;
+  ContainerId containerId=BuilderUtils.newContainerId(appAttemptId,21);
+  TaskAttemptId taskAttemptId=MRBuilderUtils.newTaskAttemptId(taskId,21);
+  containerLauncher.handle(new ContainerLauncherEvent(taskAttemptId,containerId,"host11:1234",null,ContainerLauncher.EventType.CONTAINER_REMOTE_LAUNCH));
+  waitForEvents(containerLauncher,21);
+  Assert.assertEquals(11,threadPool.getPoolSize());
   Assert.assertNull(containerLauncher.foundErrors);
   containerLauncher.stop();
 }
