@@ -1,21 +1,30 @@
 {
   ReceivedDeletedBlockInfo[] receivedAndDeletedBlockArray=null;
-  int currentReceivedRequestsCounter;
-synchronized (receivedAndDeletedBlockList) {
-    currentReceivedRequestsCounter=pendingReceivedRequests;
-    int numBlocks=receivedAndDeletedBlockList.size();
+synchronized (pendingIncrementalBR) {
+    int numBlocks=pendingIncrementalBR.size();
     if (numBlocks > 0) {
-      receivedAndDeletedBlockArray=receivedAndDeletedBlockList.toArray(new ReceivedDeletedBlockInfo[numBlocks]);
+      receivedAndDeletedBlockArray=pendingIncrementalBR.values().toArray(new ReceivedDeletedBlockInfo[numBlocks]);
     }
+    pendingIncrementalBR.clear();
   }
   if (receivedAndDeletedBlockArray != null) {
     StorageReceivedDeletedBlocks[] report={new StorageReceivedDeletedBlocks(bpRegistration.getStorageID(),receivedAndDeletedBlockArray)};
-    bpNamenode.blockReceivedAndDeleted(bpRegistration,bpos.getBlockPoolId(),report);
-synchronized (receivedAndDeletedBlockList) {
-      for (int i=0; i < receivedAndDeletedBlockArray.length; i++) {
-        receivedAndDeletedBlockList.remove(receivedAndDeletedBlockArray[i]);
+    boolean success=false;
+    try {
+      bpNamenode.blockReceivedAndDeleted(bpRegistration,bpos.getBlockPoolId(),report);
+      success=true;
+    }
+  finally {
+synchronized (pendingIncrementalBR) {
+        if (!success) {
+          for (          ReceivedDeletedBlockInfo rdbi : receivedAndDeletedBlockArray) {
+            if (!pendingIncrementalBR.containsKey(rdbi.getBlock().getBlockId())) {
+              pendingIncrementalBR.put(rdbi.getBlock().getBlockId(),rdbi);
+            }
+          }
+        }
+        pendingReceivedRequests=pendingIncrementalBR.size();
       }
-      pendingReceivedRequests-=currentReceivedRequestsCounter;
     }
   }
 }
