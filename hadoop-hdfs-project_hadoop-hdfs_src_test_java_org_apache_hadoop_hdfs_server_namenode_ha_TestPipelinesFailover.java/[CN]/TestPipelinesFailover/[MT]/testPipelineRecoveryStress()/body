@@ -1,28 +1,24 @@
 {
   HAStressTestHarness harness=new HAStressTestHarness();
-  harness.conf.setInt(DFSConfigKeys.DFS_BLOCKREPORT_INTERVAL_MSEC_KEY,1000);
+  harness.conf.setBoolean(DFSConfigKeys.DFS_PERMISSIONS_ENABLED_KEY,false);
   final MiniDFSCluster cluster=harness.startCluster();
   try {
     cluster.waitActive();
     cluster.transitionToActive(0);
     FileSystem fs=harness.getFailoverFs();
-    TestContext togglers=new TestContext();
-    for (int i=0; i < NUM_THREADS; i++) {
+    DistributedFileSystem fsAsOtherUser=createFsAsOtherUser(cluster,harness.conf);
+    TestContext testers=new TestContext();
+    for (int i=0; i < STRESS_NUM_THREADS; i++) {
       Path p=new Path("/test-" + i);
-      DFSTestUtil.createFile(fs,p,BLOCK_SIZE * 10,(short)3,(long)i);
-      togglers.addThread(new ReplicationToggler(togglers,fs,p));
+      testers.addThread(new PipelineTestThread(testers,fs,fsAsOtherUser,p));
     }
     harness.addReplicationTriggerThread(500);
     harness.addFailoverThread(5000);
     harness.startThreads();
-    togglers.startThreads();
-    togglers.waitFor(RUNTIME);
-    togglers.stop();
+    testers.startThreads();
+    testers.waitFor(STRESS_RUNTIME);
+    testers.stop();
     harness.stopThreads();
-    for (int i=0; i < NUM_THREADS; i++) {
-      Path p=new Path("/test-" + i);
-      DFSTestUtil.readFile(fs,p);
-    }
   }
   finally {
     System.err.println("===========================\n\n\n\n");
