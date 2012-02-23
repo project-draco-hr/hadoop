@@ -3,34 +3,62 @@
   boolean shutdown;
   while (true) {
     try {
+synchronized (runningJobs) {
 synchronized (mJobs) {
-        graceful=JobMonitor.this.graceful;
-        shutdown=JobMonitor.this.shutdown;
-        runningJobs.drainTo(mJobs);
+          graceful=JobMonitor.this.graceful;
+          shutdown=JobMonitor.this.shutdown;
+          runningJobs.drainTo(mJobs);
+        }
       }
       if (shutdown) {
         if (!graceful) {
-          while (!runningJobs.isEmpty()) {
+synchronized (runningJobs) {
+            while (!runningJobs.isEmpty()) {
 synchronized (mJobs) {
-              runningJobs.drainTo(mJobs);
+                runningJobs.drainTo(mJobs);
+              }
             }
           }
           break;
         }
- else         if (mJobs.isEmpty()) {
-          break;
+synchronized (mJobs) {
+          if (graceful && mJobs.isEmpty()) {
+            break;
+          }
         }
       }
-      while (!mJobs.isEmpty()) {
-        Job job;
+      JobStats jobStats=null;
 synchronized (mJobs) {
-          job=mJobs.poll();
-        }
+        jobStats=mJobs.poll();
+      }
+      while (jobStats != null) {
+        Job job=jobStats.getJob();
         try {
-          if (job.isComplete()) {
-            process(job);
-            statistics.add(job);
-            continue;
+          long start=System.currentTimeMillis();
+          JobStatus status=job.getStatus();
+          long end=System.currentTimeMillis();
+          if (LOG.isDebugEnabled()) {
+            LOG.debug("Status polling for job " + job.getJobID() + " took "+ (end - start)+ "ms.");
+          }
+          jobStats.updateJobStatus(status);
+          if (status.isJobComplete()) {
+            if (status.getState() == JobStatus.State.SUCCEEDED) {
+              onSuccess(job);
+            }
+ else {
+              onFailure(job);
+            }
+synchronized (statistics) {
+              statistics.add(jobStats);
+            }
+          }
+ else {
+synchronized (mJobs) {
+              if (!mJobs.offer(jobStats)) {
+                LOG.error("Lost job " + (null == job.getJobName() ? "<unknown>" : job.getJobName()));
+              }
+            }
+            break;
           }
         }
  catch (        IOException e) {
@@ -39,15 +67,14 @@ synchronized (mJobs) {
           }
  else {
             LOG.warn("Lost job " + (null == job.getJobName() ? "<unknown>" : job.getJobName()),e);
-            continue;
+synchronized (statistics) {
+              statistics.add(jobStats);
+            }
           }
         }
 synchronized (mJobs) {
-          if (!mJobs.offer(job)) {
-            LOG.error("Lost job " + (null == job.getJobName() ? "<unknown>" : job.getJobName()));
-          }
+          jobStats=mJobs.poll();
         }
-        break;
       }
       try {
         TimeUnit.MILLISECONDS.sleep(pollDelayMillis);
