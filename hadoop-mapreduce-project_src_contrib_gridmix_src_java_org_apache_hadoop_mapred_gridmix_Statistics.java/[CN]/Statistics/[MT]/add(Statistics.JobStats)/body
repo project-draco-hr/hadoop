@@ -1,0 +1,29 @@
+{
+  if (!statistics.isAlive()) {
+    return;
+  }
+  JobStats stat=submittedJobsMap.remove(GridmixJob.getJobSeqId(job.getJob()));
+  if (stat == null) {
+    LOG.error("[Statistics] Missing entry for job " + job.getJob().getJobID());
+    return;
+  }
+  numMapsSubmitted-=stat.getNoOfMaps();
+  numReducesSubmitted-=stat.getNoOfReds();
+  completedJobsInCurrentInterval++;
+  if (completedJobsInCurrentInterval >= maxJobCompletedInInterval) {
+    if (LOG.isDebugEnabled()) {
+      LOG.debug(" Reached maximum limit of jobs in a polling interval " + completedJobsInCurrentInterval);
+    }
+    completedJobsInCurrentInterval=0;
+    lock.lock();
+    try {
+      for (      StatListener<JobStats> l : jobStatListeners) {
+        l.update(stat);
+      }
+      this.jobCompleted.signalAll();
+    }
+  finally {
+      lock.unlock();
+    }
+  }
+}

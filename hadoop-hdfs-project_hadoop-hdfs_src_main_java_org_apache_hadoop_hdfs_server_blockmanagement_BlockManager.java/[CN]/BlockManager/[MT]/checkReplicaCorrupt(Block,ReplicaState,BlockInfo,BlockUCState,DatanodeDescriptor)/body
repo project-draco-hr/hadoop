@@ -1,0 +1,43 @@
+{
+switch (reportedState) {
+case FINALIZED:
+switch (ucState) {
+case COMPLETE:
+case COMMITTED:
+      if (storedBlock.getGenerationStamp() != iblk.getGenerationStamp()) {
+        return new BlockToMarkCorrupt(storedBlock,"block is " + ucState + " and reported genstamp "+ iblk.getGenerationStamp()+ " does not match "+ "genstamp in block map "+ storedBlock.getGenerationStamp());
+      }
+ else       if (storedBlock.getNumBytes() != iblk.getNumBytes()) {
+        return new BlockToMarkCorrupt(storedBlock,"block is " + ucState + " and reported length "+ iblk.getNumBytes()+ " does not match "+ "length in block map "+ storedBlock.getNumBytes());
+      }
+ else {
+        return null;
+      }
+default :
+    return null;
+}
+case RBW:
+case RWR:
+if (!storedBlock.isComplete()) {
+return null;
+}
+ else if (storedBlock.getGenerationStamp() != iblk.getGenerationStamp()) {
+return new BlockToMarkCorrupt(storedBlock,"reported " + reportedState + " replica with genstamp "+ iblk.getGenerationStamp()+ " does not match COMPLETE block's "+ "genstamp in block map "+ storedBlock.getGenerationStamp());
+}
+ else {
+if (reportedState == ReplicaState.RBW) {
+  LOG.info("Received an RBW replica for block " + storedBlock + " on "+ dn.getName()+ ": ignoring it, since the block is "+ "complete with the same generation stamp.");
+  return null;
+}
+ else {
+  return new BlockToMarkCorrupt(storedBlock,"reported replica has invalid state " + reportedState);
+}
+}
+case RUR:
+case TEMPORARY:
+default :
+String msg="Unexpected replica state " + reportedState + " for block: "+ storedBlock+ " on "+ dn.getName()+ " size "+ storedBlock.getNumBytes();
+LOG.warn(msg);
+return new BlockToMarkCorrupt(storedBlock,msg);
+}
+}

@@ -2,6 +2,7 @@
   try {
     startFlag.await();
     if (Thread.currentThread().isInterrupted()) {
+      LOG.warn("[STRESS] Interrupted before start!. Exiting..");
       return;
     }
     LOG.info("START STRESS @ " + System.currentTimeMillis());
@@ -9,28 +10,45 @@
       try {
         while (loadStatus.overloaded()) {
           if (LOG.isDebugEnabled()) {
-            LOG.debug("Cluster overloaded in run! Sleeping...");
+            LOG.debug("Updating the overload status.");
           }
           try {
-            Thread.sleep(1000);
+            checkLoadAndGetSlotsToBackfill();
           }
- catch (          InterruptedException ie) {
+ catch (          IOException ioe) {
+            LOG.warn("[STRESS] Check failed!",ioe);
             return;
+          }
+          if (loadStatus.overloaded()) {
+            if (LOG.isDebugEnabled()) {
+              LOG.debug("[STRESS] Cluster overloaded in run! Sleeping...");
+            }
+            try {
+              Thread.sleep(1000);
+            }
+ catch (            InterruptedException ie) {
+              LOG.warn("[STRESS] Interrupted while sleeping! Exiting.",ie);
+              return;
+            }
           }
         }
         while (!loadStatus.overloaded()) {
           if (LOG.isDebugEnabled()) {
-            LOG.debug("Cluster underloaded in run! Stressing...");
+            LOG.debug("[STRESS] Cluster underloaded in run! Stressing...");
           }
           try {
             final JobStory job=getNextJobFiltered();
             if (null == job) {
+              LOG.warn("[STRESS] Finished consuming the input trace. " + "Exiting..");
               return;
             }
             if (LOG.isDebugEnabled()) {
               LOG.debug("Job Selected: " + job.getJobID());
             }
-            submitter.add(jobCreator.createGridmixJob(conf,0L,job,scratch,userResolver.getTargetUgi(UserGroupInformation.createRemoteUser(job.getUser())),sequence.getAndIncrement()));
+            UserGroupInformation ugi=UserGroupInformation.createRemoteUser(job.getUser());
+            UserGroupInformation tgtUgi=userResolver.getTargetUgi(ugi);
+            GridmixJob tJob=jobCreator.createGridmixJob(conf,0L,job,scratch,tgtUgi,sequence.getAndIncrement());
+            submitter.add(tJob);
             int incompleteMapTasks=(int)calcEffectiveIncompleteMapTasks(loadStatus.getMapCapacity(),job.getNumberMaps(),0.0f);
             loadStatus.decrementMapLoad(incompleteMapTasks);
             int incompleteReduceTasks=(int)calcEffectiveIncompleteReduceTasks(loadStatus.getReduceCapacity(),job.getNumberReduces(),0.0f);
@@ -38,7 +56,7 @@
             loadStatus.decrementJobLoad(1);
           }
  catch (          IOException e) {
-            LOG.error("Error while submitting the job ",e);
+            LOG.error("[STRESS] Error while submitting the job ",e);
             error=e;
             return;
           }
@@ -49,6 +67,7 @@
     }
   }
  catch (  InterruptedException e) {
+    LOG.error("[STRESS] Interrupted in the main block!",e);
     return;
   }
  finally {

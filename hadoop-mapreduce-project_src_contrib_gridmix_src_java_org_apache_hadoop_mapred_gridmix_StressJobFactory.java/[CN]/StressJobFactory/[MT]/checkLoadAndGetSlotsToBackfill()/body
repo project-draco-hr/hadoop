@@ -1,0 +1,101 @@
+{
+  if (loadStatus.getJobLoad() <= 0) {
+    if (LOG.isDebugEnabled()) {
+      LOG.debug(System.currentTimeMillis() + " [JobLoad] Overloaded is " + Boolean.TRUE.toString()+ " NumJobsBackfill is "+ loadStatus.getJobLoad());
+    }
+    return;
+  }
+  int mapCapacity=loadStatus.getMapCapacity();
+  int reduceCapacity=loadStatus.getReduceCapacity();
+  if (mapCapacity < 0 || reduceCapacity < 0) {
+    return;
+  }
+  int maxMapLoad=(int)(overloadMapTaskMapSlotRatio * mapCapacity);
+  int maxReduceLoad=(int)(overloadReduceTaskReduceSlotRatio * reduceCapacity);
+  int totalMapTasks=ClusterStats.getSubmittedMapTasks();
+  int totalReduceTasks=ClusterStats.getSubmittedReduceTasks();
+  if (LOG.isDebugEnabled()) {
+    LOG.debug("Total submitted map tasks: " + totalMapTasks);
+    LOG.debug("Total submitted reduce tasks: " + totalReduceTasks);
+    LOG.debug("Max map load: " + maxMapLoad);
+    LOG.debug("Max reduce load: " + maxReduceLoad);
+  }
+  int mapSlotsBackFill=(int)(maxMapLoad - totalMapTasks);
+  int reduceSlotsBackFill=(int)(maxReduceLoad - totalReduceTasks);
+  Set<JobID> seenJobIDs=new HashSet<JobID>();
+  if (totalMapTasks > maxMapLoad || totalReduceTasks > maxReduceLoad) {
+    float incompleteMapTasks=0;
+    float incompleteReduceTasks=0;
+    for (    JobStats job : ClusterStats.getRunningJobStats()) {
+      JobID id=job.getJob().getJobID();
+      seenJobIDs.add(id);
+      if (blacklistedJobs.contains(id)) {
+        LOG.warn("Ignoring blacklisted job: " + id);
+        continue;
+      }
+      int noOfMaps=job.getNoOfMaps();
+      int noOfReduces=job.getNoOfReds();
+      if (noOfMaps > 0 || noOfReduces > 0) {
+        JobStatus status=job.getJobStatus();
+        if (status != null && status.isJobComplete()) {
+          LOG.warn("Blacklisting completed job: " + id);
+          blacklistedJobs.add(id);
+          continue;
+        }
+        float mapProgress=0f;
+        float reduceProgress=0f;
+        if (status != null) {
+          mapProgress=status.getMapProgress();
+          reduceProgress=status.getReduceProgress();
+        }
+        incompleteMapTasks+=calcEffectiveIncompleteMapTasks(mapCapacity,noOfMaps,mapProgress);
+        int currentMapSlotsBackFill=(int)(maxMapLoad - incompleteMapTasks);
+        if (currentMapSlotsBackFill <= 0) {
+          incompleteReduceTasks=totalReduceTasks;
+          if (LOG.isDebugEnabled()) {
+            LOG.debug("Terminating overload check due to high map load.");
+          }
+          break;
+        }
+        if (noOfReduces > 0) {
+          incompleteReduceTasks+=calcEffectiveIncompleteReduceTasks(reduceCapacity,noOfReduces,reduceProgress);
+        }
+        int currentReduceSlotsBackFill=(int)(maxReduceLoad - incompleteReduceTasks);
+        if (currentReduceSlotsBackFill <= 0) {
+          incompleteMapTasks=totalMapTasks;
+          if (LOG.isDebugEnabled()) {
+            LOG.debug("Terminating overload check due to high reduce load.");
+          }
+          break;
+        }
+      }
+ else {
+        LOG.warn("Blacklisting empty job: " + id);
+        blacklistedJobs.add(id);
+      }
+    }
+    mapSlotsBackFill=(int)(maxMapLoad - incompleteMapTasks);
+    reduceSlotsBackFill=(int)(maxReduceLoad - incompleteReduceTasks);
+    blacklistedJobs.retainAll(seenJobIDs);
+    if (LOG.isDebugEnabled() && blacklistedJobs.size() > 0) {
+      LOG.debug("Blacklisted jobs count: " + blacklistedJobs.size());
+    }
+  }
+  loadStatus.updateMapLoad(mapSlotsBackFill);
+  loadStatus.updateReduceLoad(reduceSlotsBackFill);
+  if (loadStatus.getMapLoad() <= 0) {
+    if (LOG.isDebugEnabled()) {
+      LOG.debug(System.currentTimeMillis() + " [MAP-LOAD] Overloaded is " + Boolean.TRUE.toString()+ " MapSlotsBackfill is "+ loadStatus.getMapLoad());
+    }
+    return;
+  }
+  if (loadStatus.getReduceLoad() <= 0) {
+    if (LOG.isDebugEnabled()) {
+      LOG.debug(System.currentTimeMillis() + " [REDUCE-LOAD] Overloaded is " + Boolean.TRUE.toString()+ " ReduceSlotsBackfill is "+ loadStatus.getReduceLoad());
+    }
+    return;
+  }
+  if (LOG.isDebugEnabled()) {
+    LOG.debug(System.currentTimeMillis() + " [OVERALL] Overloaded is " + Boolean.FALSE.toString()+ "Current load Status is "+ loadStatus);
+  }
+}
