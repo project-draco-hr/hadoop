@@ -10,21 +10,16 @@
   this.leaserenewer=LeaseRenewer.getInstance(authority,ugi,this);
   this.clientName=leaserenewer.getClientName(dfsClientConf.taskId);
   this.socketCache=new SocketCache(dfsClientConf.socketCacheCapacity);
-  ClientProtocol failoverNNProxy=(ClientProtocol)HAUtil.createFailoverProxy(conf,nameNodeUri,ClientProtocol.class);
-  if (nameNodeUri != null && failoverNNProxy != null) {
-    this.namenode=failoverNNProxy;
-    nnAddress=null;
-  }
- else   if (nameNodeUri != null && rpcNamenode == null) {
-    this.namenode=DFSUtil.createNamenode(NameNode.getAddress(nameNodeUri),conf);
-    nnAddress=NameNode.getAddress(nameNodeUri);
-  }
- else   if (nameNodeUri == null && rpcNamenode != null) {
+  if (rpcNamenode != null) {
+    Preconditions.checkArgument(nameNodeUri == null);
     this.namenode=rpcNamenode;
-    nnAddress=null;
+    dtService=null;
   }
  else {
-    throw new IllegalArgumentException("Expecting exactly one of nameNodeUri and rpcNamenode being null: " + "nameNodeUri=" + nameNodeUri + ", rpcNamenode="+ rpcNamenode);
+    Preconditions.checkArgument(nameNodeUri != null,"null URI");
+    ProxyAndInfo<ClientProtocol> proxyInfo=HAUtil.createProxy(conf,nameNodeUri,ClientProtocol.class);
+    this.dtService=proxyInfo.getDelegationTokenService();
+    this.namenode=proxyInfo.getProxy();
   }
   this.shortCircuitLocalReads=conf.getBoolean(DFSConfigKeys.DFS_CLIENT_READ_SHORTCIRCUIT_KEY,DFSConfigKeys.DFS_CLIENT_READ_SHORTCIRCUIT_DEFAULT);
   if (LOG.isDebugEnabled()) {
