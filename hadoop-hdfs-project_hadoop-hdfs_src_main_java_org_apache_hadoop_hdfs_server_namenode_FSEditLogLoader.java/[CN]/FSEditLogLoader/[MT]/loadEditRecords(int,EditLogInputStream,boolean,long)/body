@@ -6,8 +6,8 @@
   fsDir.writeLock();
   long recentOpcodeOffsets[]=new long[4];
   Arrays.fill(recentOpcodeOffsets,-1);
+  long txId=expectedStartingTxId - 1;
   try {
-    long txId=expectedStartingTxId - 1;
     try {
       while (true) {
         FSEditLogOp op;
@@ -17,24 +17,25 @@
           }
         }
  catch (        IOException ioe) {
-          String errorMessage=formatEditLogReplayError(in,recentOpcodeOffsets);
+          long badTxId=txId + 1;
+          String errorMessage=formatEditLogReplayError(in,recentOpcodeOffsets,badTxId);
           FSImage.LOG.error(errorMessage);
           throw new EditLogInputException(errorMessage,ioe,numEdits);
         }
         recentOpcodeOffsets[(int)(numEdits % recentOpcodeOffsets.length)]=in.getPosition();
         if (LayoutVersion.supports(Feature.STORED_TXIDS,logVersion)) {
-          long thisTxId=op.txid;
-          if (thisTxId != txId + 1) {
-            throw new IOException("Expected transaction ID " + (txId + 1) + " but got "+ thisTxId);
+          long expectedTxId=txId + 1;
+          txId=op.txid;
+          if (txId != expectedTxId) {
+            throw new IOException("Expected transaction ID " + expectedTxId + " but got "+ txId);
           }
-          txId=thisTxId;
         }
         incrOpCount(op.opCode,opCounts);
         try {
           applyEditLogOp(op,fsDir,logVersion);
         }
  catch (        Throwable t) {
-          String errorMessage=formatEditLogReplayError(in,recentOpcodeOffsets);
+          String errorMessage=formatEditLogReplayError(in,recentOpcodeOffsets,txId);
           FSImage.LOG.error(errorMessage);
           throw new IOException(errorMessage,t);
         }
