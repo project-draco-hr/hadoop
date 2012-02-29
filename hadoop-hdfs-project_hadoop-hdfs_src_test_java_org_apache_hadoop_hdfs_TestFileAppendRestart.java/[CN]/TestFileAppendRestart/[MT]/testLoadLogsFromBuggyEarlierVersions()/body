@@ -1,0 +1,22 @@
+{
+  final Configuration conf=new HdfsConfiguration();
+  String tarFile=System.getProperty("test.cache.data","build/test/cache") + "/" + HADOOP_23_BROKEN_APPEND_TGZ;
+  String testDir=System.getProperty("test.build.data","build/test/data");
+  File dfsDir=new File(testDir,"image-with-buggy-append");
+  if (dfsDir.exists() && !FileUtil.fullyDelete(dfsDir)) {
+    throw new IOException("Could not delete dfs directory '" + dfsDir + "'");
+  }
+  FileUtil.unTar(new File(tarFile),new File(testDir));
+  File nameDir=new File(dfsDir,"name");
+  GenericTestUtils.assertExists(nameDir);
+  conf.set(DFSConfigKeys.DFS_NAMENODE_NAME_DIR_KEY,nameDir.getAbsolutePath());
+  MiniDFSCluster cluster=new MiniDFSCluster.Builder(conf).numDataNodes(0).format(false).manageDataDfsDirs(false).manageNameDfsDirs(false).numDataNodes(0).waitSafeMode(false).startupOption(StartupOption.UPGRADE).build();
+  try {
+    FileSystem fs=cluster.getFileSystem();
+    Path testPath=new Path("/tmp/io_data/test_io_0");
+    assertEquals(2 * 1024 * 1024,fs.getFileStatus(testPath).getLen());
+  }
+  finally {
+    cluster.shutdown();
+  }
+}
