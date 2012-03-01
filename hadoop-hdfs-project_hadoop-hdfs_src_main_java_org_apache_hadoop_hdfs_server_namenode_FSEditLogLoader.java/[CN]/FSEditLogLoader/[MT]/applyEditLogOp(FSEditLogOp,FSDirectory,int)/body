@@ -36,6 +36,8 @@ case OP_ADD:
           newFile=getINodeFile(fsDir,addCloseOp.path);
         }
       }
+      newFile.setAccessTime(addCloseOp.atime);
+      newFile.setModificationTimeForce(addCloseOp.mtime);
       updateBlocks(fsDir,addCloseOp,newFile);
       break;
     }
@@ -61,12 +63,25 @@ case OP_CLOSE:
     }
     break;
   }
+case OP_UPDATE_BLOCKS:
+{
+  UpdateBlocksOp updateOp=(UpdateBlocksOp)op;
+  if (FSNamesystem.LOG.isDebugEnabled()) {
+    FSNamesystem.LOG.debug(op.opCode + ": " + updateOp.path+ " numblocks : "+ updateOp.blocks.length);
+  }
+  INodeFile oldFile=getINodeFile(fsDir,updateOp.path);
+  if (oldFile == null) {
+    throw new IOException("Operation trying to update blocks in non-existent file " + updateOp.path);
+  }
+  updateBlocks(fsDir,updateOp,oldFile);
+  break;
+}
 case OP_SET_REPLICATION:
 {
-  SetReplicationOp setReplicationOp=(SetReplicationOp)op;
-  short replication=fsNamesys.getBlockManager().adjustReplication(setReplicationOp.replication);
-  fsDir.unprotectedSetReplication(setReplicationOp.path,replication,null);
-  break;
+SetReplicationOp setReplicationOp=(SetReplicationOp)op;
+short replication=fsNamesys.getBlockManager().adjustReplication(setReplicationOp.replication);
+fsDir.unprotectedSetReplication(setReplicationOp.path,replication,null);
+break;
 }
 case OP_CONCAT_DELETE:
 {
