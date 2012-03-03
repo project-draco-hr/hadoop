@@ -1,0 +1,33 @@
+{
+  JournalManager bestjm=null;
+  long bestjmNumTxns=0;
+  CorruptionException corruption=null;
+  for (  JournalAndStream jas : journals) {
+    if (jas.isDisabled())     continue;
+    JournalManager candidate=jas.getManager();
+    long candidateNumTxns=0;
+    try {
+      candidateNumTxns=candidate.getNumberOfTransactions(fromTxnId,inProgressOk);
+    }
+ catch (    CorruptionException ce) {
+      corruption=ce;
+    }
+catch (    IOException ioe) {
+      LOG.warn("Unable to read input streams from JournalManager " + candidate,ioe);
+      continue;
+    }
+    if (candidateNumTxns > bestjmNumTxns) {
+      bestjm=candidate;
+      bestjmNumTxns=candidateNumTxns;
+    }
+  }
+  if (bestjm == null) {
+    if (corruption != null) {
+      throw new IOException("No non-corrupt logs for txid " + fromTxnId,corruption);
+    }
+ else {
+      return null;
+    }
+  }
+  return bestjm.getInputStream(fromTxnId,inProgressOk);
+}

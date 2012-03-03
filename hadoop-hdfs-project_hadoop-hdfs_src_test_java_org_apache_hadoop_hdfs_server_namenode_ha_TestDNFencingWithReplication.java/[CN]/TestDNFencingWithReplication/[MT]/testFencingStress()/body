@@ -1,0 +1,31 @@
+{
+  HAStressTestHarness harness=new HAStressTestHarness();
+  harness.conf.setInt(DFSConfigKeys.DFS_BLOCKREPORT_INTERVAL_MSEC_KEY,1000);
+  final MiniDFSCluster cluster=harness.startCluster();
+  try {
+    cluster.waitActive();
+    cluster.transitionToActive(0);
+    FileSystem fs=harness.getFailoverFs();
+    TestContext togglers=new TestContext();
+    for (int i=0; i < NUM_THREADS; i++) {
+      Path p=new Path("/test-" + i);
+      DFSTestUtil.createFile(fs,p,BLOCK_SIZE * 10,(short)3,(long)i);
+      togglers.addThread(new ReplicationToggler(togglers,fs,p));
+    }
+    harness.addReplicationTriggerThread(500);
+    harness.addFailoverThread(5000);
+    harness.startThreads();
+    togglers.startThreads();
+    togglers.waitFor(RUNTIME);
+    togglers.stop();
+    harness.stopThreads();
+    for (int i=0; i < NUM_THREADS; i++) {
+      Path p=new Path("/test-" + i);
+      DFSTestUtil.readFile(fs,p);
+    }
+  }
+  finally {
+    System.err.println("===========================\n\n\n\n");
+    harness.shutdown();
+  }
+}

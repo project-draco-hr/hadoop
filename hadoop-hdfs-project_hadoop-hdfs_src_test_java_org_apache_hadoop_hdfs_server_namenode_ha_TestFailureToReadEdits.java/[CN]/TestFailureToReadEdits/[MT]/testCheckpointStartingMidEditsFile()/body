@@ -1,0 +1,30 @@
+{
+  assertTrue(fs.mkdirs(new Path(TEST_DIR1)));
+  HATestUtil.waitForStandbyToCatchUp(nn0,nn1);
+  HATestUtil.waitForCheckpoint(cluster,1,ImmutableList.of(0,3));
+  HATestUtil.waitForCheckpoint(cluster,0,ImmutableList.of(0,3));
+  causeFailureOnEditLogRead();
+  assertTrue(fs.mkdirs(new Path(TEST_DIR2)));
+  assertTrue(fs.mkdirs(new Path(TEST_DIR3)));
+  try {
+    HATestUtil.waitForStandbyToCatchUp(nn0,nn1);
+    fail("Standby fully caught up, but should not have been able to");
+  }
+ catch (  HATestUtil.CouldNotCatchUpException e) {
+    verify(mockRuntime,times(0)).exit(anyInt());
+  }
+  HATestUtil.waitForCheckpoint(cluster,1,ImmutableList.of(0,3,5));
+  HATestUtil.waitForCheckpoint(cluster,0,ImmutableList.of(0,3,5));
+  cluster.restartNameNode(0);
+  HATestUtil.waitForCheckpoint(cluster,0,ImmutableList.of(0,3,5));
+  FileSystem fs0=null;
+  try {
+    fs0=FileSystem.get(NameNode.getUri(nn0.getNameNodeAddress()),conf);
+    assertTrue(fs0.exists(new Path(TEST_DIR1)));
+    assertTrue(fs0.exists(new Path(TEST_DIR2)));
+    assertTrue(fs0.exists(new Path(TEST_DIR3)));
+  }
+  finally {
+    if (fs0 != null)     fs0.close();
+  }
+}

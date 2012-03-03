@@ -1,0 +1,40 @@
+{
+  Configuration conf=new HdfsConfiguration();
+  MiniDFSCluster cluster=null;
+  cluster=new MiniDFSCluster.Builder(conf).numDataNodes(NUM_DATA_NODES).build();
+  cluster.shutdown();
+  Collection<URI> editsDirs=cluster.getNameEditsDirs(0);
+  for (  URI uri : editsDirs) {
+    File dir=new File(uri.getPath());
+    File currentDir=new File(dir,"current");
+    GenericTestUtils.assertGlobEquals(currentDir,"edits_.*",NNStorage.getFinalizedEditsFileName(1,2));
+    File log=new File(currentDir,NNStorage.getInProgressEditsFileName(3));
+    new EditLogFileOutputStream(log,1024).create();
+    if (!inBothDirs) {
+      break;
+    }
+    NNStorage storage=new NNStorage(conf,Collections.<URI>emptyList(),Lists.newArrayList(uri));
+    if (updateTransactionIdFile) {
+      storage.writeTransactionIdFileToStorage(3);
+    }
+    storage.close();
+  }
+  try {
+    cluster=new MiniDFSCluster.Builder(conf).numDataNodes(NUM_DATA_NODES).format(false).build();
+    if (!shouldSucceed) {
+      fail("Should not have succeeded in startin cluster");
+    }
+  }
+ catch (  IOException ioe) {
+    if (shouldSucceed) {
+      LOG.info("Should have succeeded in starting cluster, but failed",ioe);
+      throw ioe;
+    }
+ else {
+      GenericTestUtils.assertExceptionContains("No non-corrupt logs for txid 3",ioe);
+    }
+  }
+ finally {
+    cluster.shutdown();
+  }
+}

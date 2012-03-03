@@ -1,0 +1,38 @@
+{
+  long numTxns=0L;
+  for (  EditLogFile elf : getLogFiles(fromTxId)) {
+    if (LOG.isTraceEnabled()) {
+      LOG.trace("Counting " + elf);
+    }
+    if (elf.getFirstTxId() > fromTxId) {
+      LOG.warn("Gap in transactions in " + sd.getRoot() + ". Gap is "+ fromTxId+ " - "+ (elf.getFirstTxId() - 1));
+      break;
+    }
+ else     if (elf.containsTxId(fromTxId)) {
+      if (!inProgressOk && elf.isInProgress()) {
+        break;
+      }
+      if (elf.isInProgress()) {
+        elf.validateLog();
+      }
+      if (elf.hasCorruptHeader()) {
+        break;
+      }
+      numTxns+=elf.getLastTxId() + 1 - fromTxId;
+      fromTxId=elf.getLastTxId() + 1;
+      if (elf.isInProgress()) {
+        break;
+      }
+    }
+  }
+  if (LOG.isDebugEnabled()) {
+    LOG.debug("Journal " + this + " has "+ numTxns+ " txns from "+ fromTxId);
+  }
+  long max=findMaxTransaction(inProgressOk);
+  if (numTxns == 0 && fromTxId <= max) {
+    String error=String.format("Gap in transactions, max txnid is %d" + ", 0 txns from %d",max,fromTxId);
+    LOG.error(error);
+    throw new CorruptionException(error);
+  }
+  return numTxns;
+}

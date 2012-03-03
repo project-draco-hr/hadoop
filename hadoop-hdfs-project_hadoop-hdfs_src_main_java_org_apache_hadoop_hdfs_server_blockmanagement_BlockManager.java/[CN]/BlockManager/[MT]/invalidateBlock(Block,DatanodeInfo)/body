@@ -4,8 +4,12 @@
   if (node == null) {
     throw new IOException("Cannot invalidate block " + blk + " because datanode "+ dn.getName()+ " does not exist.");
   }
-  int count=countNodes(blk).liveReplicas();
-  if (count >= 1) {
+  NumberReplicas nr=countNodes(blk);
+  if (nr.replicasOnStaleNodes() > 0) {
+    NameNode.stateChangeLog.info("BLOCK* invalidateBlocks: postponing " + "invalidation of block " + blk + " on "+ dn+ " because "+ nr.replicasOnStaleNodes()+ " replica(s) are located on nodes "+ "with potentially out-of-date block reports.");
+    postponeBlock(blk);
+  }
+ else   if (nr.liveReplicas() >= 1) {
     addToInvalidates(blk,dn);
     removeStoredBlock(blk,node);
     if (NameNode.stateChangeLog.isDebugEnabled()) {

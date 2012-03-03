@@ -1,2 +1,60 @@
 {
+  FSDirectory fsDir=fsNamesys.dir;
+  long numEdits=0;
+  EnumMap<FSEditLogOpCodes,Holder<Integer>> opCounts=new EnumMap<FSEditLogOpCodes,Holder<Integer>>(FSEditLogOpCodes.class);
+  fsNamesys.writeLock();
+  fsDir.writeLock();
+  long recentOpcodeOffsets[]=new long[4];
+  Arrays.fill(recentOpcodeOffsets,-1);
+  long txId=expectedStartingTxId - 1;
+  try {
+    try {
+      while (true) {
+        FSEditLogOp op;
+        try {
+          if ((op=in.readOp()) == null) {
+            break;
+          }
+        }
+ catch (        IOException ioe) {
+          long badTxId=txId + 1;
+          String errorMessage=formatEditLogReplayError(in,recentOpcodeOffsets,badTxId);
+          FSImage.LOG.error(errorMessage);
+          throw new EditLogInputException(errorMessage,ioe,numEdits);
+        }
+        recentOpcodeOffsets[(int)(numEdits % recentOpcodeOffsets.length)]=in.getPosition();
+        if (LayoutVersion.supports(Feature.STORED_TXIDS,logVersion)) {
+          long expectedTxId=txId + 1;
+          txId=op.txid;
+          if (txId != expectedTxId) {
+            throw new IOException("Expected transaction ID " + expectedTxId + " but got "+ txId);
+          }
+        }
+        incrOpCount(op.opCode,opCounts);
+        try {
+          applyEditLogOp(op,fsDir,logVersion);
+        }
+ catch (        Throwable t) {
+          String errorMessage=formatEditLogReplayError(in,recentOpcodeOffsets,txId);
+          FSImage.LOG.error(errorMessage);
+          throw new IOException(errorMessage,t);
+        }
+        numEdits++;
+      }
+    }
+ catch (    IOException ex) {
+      check203UpgradeFailure(logVersion,ex);
+    }
+ finally {
+      if (closeOnExit)       in.close();
+    }
+  }
+  finally {
+    fsDir.writeUnlock();
+    fsNamesys.writeUnlock();
+    if (FSImage.LOG.isDebugEnabled()) {
+      dumpOpCounts(opCounts);
+    }
+  }
+  return numEdits;
 }

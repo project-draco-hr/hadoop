@@ -1,0 +1,17 @@
+{
+  Configuration conf=new Configuration();
+  MiniDFSCluster cluster=new MiniDFSCluster.Builder(conf).nnTopology(MiniDFSNNTopology.simpleHATopology()).numDataNodes(0).build();
+  try {
+    URI sharedUri=cluster.getSharedEditsDir(0,1);
+    File sharedDir=new File(sharedUri.getPath(),"current");
+    FSImageTestUtil.createAbortedLogWithMkdirs(sharedDir,NUM_DIRS_IN_LOG,1);
+    assertEditFiles(Collections.singletonList(sharedUri),NNStorage.getInProgressEditsFileName(1));
+    cluster.getNameNode(0).getRpcServer().transitionToActive();
+    String testPath="/dir" + NUM_DIRS_IN_LOG;
+    assertNotNull(cluster.getNameNode(0).getRpcServer().getFileInfo(testPath));
+    assertEditFiles(Collections.singletonList(sharedUri),NNStorage.getFinalizedEditsFileName(1,NUM_DIRS_IN_LOG + 1),NNStorage.getInProgressEditsFileName(NUM_DIRS_IN_LOG + 2));
+  }
+  finally {
+    cluster.shutdown();
+  }
+}

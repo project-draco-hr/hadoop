@@ -9,17 +9,14 @@
   shouldRun=true;
   nameNodeAddr=NameNode.getServiceAddress(conf,true);
   this.conf=conf;
-  this.namenode=new NamenodeProtocolTranslatorPB(nameNodeAddr,conf,UserGroupInformation.getCurrentUser());
+  this.namenode=NameNodeProxies.createNonHAProxy(conf,nameNodeAddr,NamenodeProtocol.class,UserGroupInformation.getCurrentUser(),true).getProxy();
   fsName=getInfoServer();
   checkpointDirs=FSImage.getCheckpointDirs(conf,"/tmp/hadoop/dfs/namesecondary");
   checkpointEditsDirs=FSImage.getCheckpointEditsDirs(conf,"/tmp/hadoop/dfs/namesecondary");
   checkpointImage=new CheckpointStorage(conf,checkpointDirs,checkpointEditsDirs);
   checkpointImage.recoverCreate(commandLineOpts.shouldFormat());
   namesystem=new FSNamesystem(conf,checkpointImage);
-  checkpointCheckPeriod=conf.getLong(DFS_NAMENODE_CHECKPOINT_CHECK_PERIOD_KEY,DFS_NAMENODE_CHECKPOINT_CHECK_PERIOD_DEFAULT);
-  checkpointPeriod=conf.getLong(DFS_NAMENODE_CHECKPOINT_PERIOD_KEY,DFS_NAMENODE_CHECKPOINT_PERIOD_DEFAULT);
-  checkpointTxnCount=conf.getLong(DFS_NAMENODE_CHECKPOINT_TXNS_KEY,DFS_NAMENODE_CHECKPOINT_TXNS_DEFAULT);
-  warnForDeprecatedConfigs(conf);
+  checkpointConf=new CheckpointConf(conf);
   UserGroupInformation httpUGI=UserGroupInformation.loginUserFromKeytabAndReturnUGI(SecurityUtil.getServerPrincipal(conf.get(DFS_SECONDARY_NAMENODE_KRB_HTTPS_USER_NAME_KEY),infoBindAddress),conf.get(DFS_SECONDARY_NAMENODE_KEYTAB_FILE_KEY));
   try {
     infoServer=httpUGI.doAs(new PrivilegedExceptionAction<HttpServer>(){
@@ -54,6 +51,6 @@
   conf.set(DFS_NAMENODE_SECONDARY_HTTP_ADDRESS_KEY,infoBindAddress + ":" + infoPort);
   LOG.info("Secondary Web-server up at: " + infoBindAddress + ":"+ infoPort);
   LOG.info("Secondary image servlet up at: " + infoBindAddress + ":"+ imagePort);
-  LOG.info("Checkpoint Period   :" + checkpointPeriod + " secs "+ "("+ checkpointPeriod / 60 + " min)");
-  LOG.info("Log Size Trigger    :" + checkpointTxnCount + " txns");
+  LOG.info("Checkpoint Period   :" + checkpointConf.getPeriod() + " secs "+ "("+ checkpointConf.getPeriod() / 60 + " min)");
+  LOG.info("Log Size Trigger    :" + checkpointConf.getTxnCount() + " txns");
 }

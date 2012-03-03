@@ -1,0 +1,36 @@
+{
+  final CountDownLatch brFinished=new CountDownLatch(1);
+  DelayAnswer delayer=new GenericTestUtils.DelayAnswer(LOG){
+    @Override protected Object passThrough(    InvocationOnMock invocation) throws Throwable {
+      try {
+        return super.passThrough(invocation);
+      }
+  finally {
+        brFinished.countDown();
+      }
+    }
+  }
+;
+  FSDataOutputStream out=fs.create(TEST_FILE_PATH);
+  try {
+    AppendTestUtil.write(out,0,10);
+    out.hflush();
+    DataNode dn=cluster.getDataNodes().get(0);
+    DatanodeProtocolClientSideTranslatorPB spy=DataNodeAdapter.spyOnBposToNN(dn,nn2);
+    Mockito.doAnswer(delayer).when(spy).blockReport(Mockito.<DatanodeRegistration>anyObject(),Mockito.anyString(),Mockito.<StorageBlockReport[]>anyObject());
+    dn.scheduleAllBlockReport(0);
+    delayer.waitForCall();
+  }
+  finally {
+    IOUtils.closeStream(out);
+  }
+  cluster.transitionToStandby(0);
+  cluster.transitionToActive(1);
+  delayer.proceed();
+  brFinished.await();
+  BlockManagerTestUtil.updateState(nn1.getNamesystem().getBlockManager());
+  BlockManagerTestUtil.updateState(nn2.getNamesystem().getBlockManager());
+  assertEquals(0,nn1.getNamesystem().getCorruptReplicaBlocks());
+  assertEquals(0,nn2.getNamesystem().getCorruptReplicaBlocks());
+  DFSTestUtil.readFile(fs,TEST_FILE_PATH);
+}

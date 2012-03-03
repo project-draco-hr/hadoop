@@ -1,15 +1,29 @@
 {
   File currentDir=sd.getCurrentDir();
-  List<EditLogFile> allLogFiles=matchEditLogs(currentDir.listFiles());
-  findMaxTransaction();
+  LOG.info("Recovering unfinalized segments in " + currentDir);
+  List<EditLogFile> allLogFiles=matchEditLogs(currentDir);
   for (  EditLogFile elf : allLogFiles) {
     if (elf.getFile().equals(currentInProgress)) {
       continue;
     }
     if (elf.isInProgress()) {
+      if (elf.getFile().length() == 0) {
+        LOG.info("Deleting zero-length edit log file " + elf);
+        if (!elf.getFile().delete()) {
+          throw new IOException("Unable to delete file " + elf.getFile());
+        }
+        continue;
+      }
       elf.validateLog();
-      if (elf.isCorrupt()) {
+      if (elf.hasCorruptHeader()) {
         elf.moveAsideCorruptFile();
+        throw new CorruptionException("In-progress edit log file is corrupt: " + elf);
+      }
+      if (elf.getNumTransactions() == 0) {
+        LOG.info("Deleting edit log file with zero transactions " + elf);
+        if (!elf.getFile().delete()) {
+          throw new IOException("Unable to delete " + elf.getFile());
+        }
         continue;
       }
       finalizeLogSegment(elf.getFirstTxId(),elf.getLastTxId());

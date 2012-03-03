@@ -1,0 +1,41 @@
+{
+  namesystem.writeLockInterruptibly();
+  try {
+    FSImage image=namesystem.getFSImage();
+    long lastTxnId=image.getLastAppliedTxId();
+    if (LOG.isDebugEnabled()) {
+      LOG.debug("lastTxnId: " + lastTxnId);
+    }
+    Collection<EditLogInputStream> streams;
+    try {
+      streams=editLog.selectInputStreams(lastTxnId + 1,0,false);
+    }
+ catch (    IOException ioe) {
+      LOG.warn("Edits tailer failed to find any streams. Will try again " + "later.",ioe);
+      return;
+    }
+    if (LOG.isDebugEnabled()) {
+      LOG.debug("edit streams to load from: " + streams.size());
+    }
+    long editsLoaded=0;
+    try {
+      editsLoaded=image.loadEdits(streams,namesystem);
+    }
+ catch (    EditLogInputException elie) {
+      editsLoaded=elie.getNumEditsLoaded();
+      throw elie;
+    }
+ finally {
+      if (editsLoaded > 0 || LOG.isDebugEnabled()) {
+        LOG.info(String.format("Loaded %d edits starting from txid %d ",editsLoaded,lastTxnId));
+      }
+    }
+    if (editsLoaded > 0) {
+      lastLoadTimestamp=now();
+    }
+    lastLoadedTxnId=image.getLastAppliedTxId();
+  }
+  finally {
+    namesystem.writeUnlock();
+  }
+}

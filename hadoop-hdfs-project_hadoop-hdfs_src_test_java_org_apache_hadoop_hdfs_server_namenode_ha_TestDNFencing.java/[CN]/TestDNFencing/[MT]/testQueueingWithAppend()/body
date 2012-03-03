@@ -1,0 +1,35 @@
+{
+  int numQueued=0;
+  int numDN=cluster.getDataNodes().size();
+  FSDataOutputStream out=fs.create(TEST_FILE_PATH);
+  try {
+    AppendTestUtil.write(out,0,10);
+    out.hflush();
+    numQueued+=numDN;
+  }
+  finally {
+    IOUtils.closeStream(out);
+    numQueued+=numDN;
+  }
+  cluster.triggerBlockReports();
+  numQueued+=numDN;
+  try {
+    out=fs.append(TEST_FILE_PATH);
+    AppendTestUtil.write(out,10,10);
+    numQueued+=numDN;
+  }
+  finally {
+    IOUtils.closeStream(out);
+    numQueued+=numDN;
+  }
+  cluster.triggerBlockReports();
+  numQueued+=numDN;
+  assertEquals(numQueued,cluster.getNameNode(1).getNamesystem().getPendingDataNodeMessageCount());
+  cluster.transitionToStandby(0);
+  cluster.transitionToActive(1);
+  BlockManagerTestUtil.updateState(nn1.getNamesystem().getBlockManager());
+  BlockManagerTestUtil.updateState(nn2.getNamesystem().getBlockManager());
+  assertEquals(0,nn1.getNamesystem().getCorruptReplicaBlocks());
+  assertEquals(0,nn2.getNamesystem().getCorruptReplicaBlocks());
+  AppendTestUtil.check(fs,TEST_FILE_PATH,20);
+}

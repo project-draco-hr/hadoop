@@ -1,0 +1,31 @@
+{
+  LOG.debug("CreateNode result: " + rc + " for path: "+ path+ " connectionState: "+ zkConnectionState);
+  if (zkClient == null) {
+    return;
+  }
+  Code code=Code.get(rc);
+  if (operationSuccess(code)) {
+    becomeActive();
+    monitorActiveStatus();
+    return;
+  }
+  if (operationNodeExists(code)) {
+    if (createRetryCount == 0) {
+      becomeStandby();
+    }
+    monitorActiveStatus();
+    return;
+  }
+  String errorMessage="Received create error from Zookeeper. code:" + code.toString();
+  LOG.debug(errorMessage);
+  if (operationRetry(code)) {
+    if (createRetryCount < NUM_RETRIES) {
+      LOG.debug("Retrying createNode createRetryCount: " + createRetryCount);
+      ++createRetryCount;
+      createNode();
+      return;
+    }
+    errorMessage=errorMessage + ". Not retrying further znode create connection errors.";
+  }
+  fatalError(errorMessage);
+}

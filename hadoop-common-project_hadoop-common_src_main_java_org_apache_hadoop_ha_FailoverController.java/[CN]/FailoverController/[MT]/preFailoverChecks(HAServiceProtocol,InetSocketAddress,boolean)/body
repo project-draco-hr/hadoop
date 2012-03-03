@@ -1,0 +1,33 @@
+{
+  HAServiceState toSvcState;
+  try {
+    toSvcState=toSvc.getServiceState();
+  }
+ catch (  IOException e) {
+    String msg="Unable to get service state for " + toSvcAddr;
+    LOG.error(msg,e);
+    throw new FailoverFailedException(msg,e);
+  }
+  if (!toSvcState.equals(HAServiceState.STANDBY)) {
+    throw new FailoverFailedException("Can't failover to an active service");
+  }
+  try {
+    HAServiceProtocolHelper.monitorHealth(toSvc);
+  }
+ catch (  HealthCheckFailedException hce) {
+    throw new FailoverFailedException("Can't failover to an unhealthy service",hce);
+  }
+catch (  IOException e) {
+    throw new FailoverFailedException("Got an IO exception",e);
+  }
+  try {
+    if (!toSvc.readyToBecomeActive()) {
+      if (!forceActive) {
+        throw new FailoverFailedException(toSvcAddr + " is not ready to become active");
+      }
+    }
+  }
+ catch (  IOException e) {
+    throw new FailoverFailedException("Got an IO exception",e);
+  }
+}

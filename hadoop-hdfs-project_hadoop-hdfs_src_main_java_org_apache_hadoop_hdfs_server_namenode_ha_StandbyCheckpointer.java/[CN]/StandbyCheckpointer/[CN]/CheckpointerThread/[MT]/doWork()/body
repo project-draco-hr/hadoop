@@ -1,0 +1,48 @@
+{
+  lastCheckpointTime=now();
+  while (shouldRun) {
+    try {
+      Thread.sleep(1000 * checkpointConf.getCheckPeriod());
+    }
+ catch (    InterruptedException ie) {
+    }
+    if (!shouldRun) {
+      break;
+    }
+    try {
+      if (UserGroupInformation.isSecurityEnabled()) {
+        UserGroupInformation.getCurrentUser().reloginFromKeytab();
+      }
+      long now=now();
+      long uncheckpointed=countUncheckpointedTxns();
+      long secsSinceLast=(now - lastCheckpointTime) / 1000;
+      boolean needCheckpoint=false;
+      if (uncheckpointed >= checkpointConf.getTxnCount()) {
+        LOG.info("Triggering checkpoint because there have been " + uncheckpointed + " txns since the last checkpoint, which "+ "exceeds the configured threshold "+ checkpointConf.getTxnCount());
+        needCheckpoint=true;
+      }
+ else       if (secsSinceLast >= checkpointConf.getPeriod()) {
+        LOG.info("Triggering checkpoint because it has been " + secsSinceLast + " seconds since the last checkpoint, which "+ "exceeds the configured interval "+ checkpointConf.getPeriod());
+        needCheckpoint=true;
+      }
+      if (needCheckpoint && now < preventCheckpointsUntil) {
+        LOG.info("But skipping this checkpoint since we are about to failover!");
+        canceledCount++;
+      }
+ else       if (needCheckpoint) {
+        doCheckpoint();
+        lastCheckpointTime=now;
+      }
+    }
+ catch (    SaveNamespaceCancelledException ce) {
+      LOG.info("Checkpoint was cancelled: " + ce.getMessage());
+      canceledCount++;
+    }
+catch (    InterruptedException ie) {
+      continue;
+    }
+catch (    Throwable t) {
+      LOG.error("Exception in doCheckpoint",t);
+    }
+  }
+}

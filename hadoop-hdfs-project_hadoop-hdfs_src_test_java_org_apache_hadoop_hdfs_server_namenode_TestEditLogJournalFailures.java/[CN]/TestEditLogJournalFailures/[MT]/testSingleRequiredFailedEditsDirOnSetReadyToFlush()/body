@@ -2,13 +2,18 @@
   String[] editsDirs=cluster.getConfiguration(0).getTrimmedStrings(DFSConfigKeys.DFS_NAMENODE_NAME_DIR_KEY);
   shutDownMiniCluster();
   Configuration conf=new HdfsConfiguration();
-  conf.set(DFSConfigKeys.DFS_NAMENODE_EDITS_DIR_REQUIRED_KEY,editsDirs[1]);
+  conf.set(DFSConfigKeys.DFS_NAMENODE_EDITS_DIR_REQUIRED_KEY,editsDirs[0]);
   conf.setInt(DFSConfigKeys.DFS_NAMENODE_EDITS_DIR_MINIMUM_KEY,0);
   conf.setInt(DFSConfigKeys.DFS_NAMENODE_CHECKED_VOLUMES_MINIMUM_KEY,0);
   setUpMiniCluster(conf,true);
   assertTrue(doAnEdit());
-  invalidateEditsDirAtIndex(1,false,false);
+  invalidateEditsDirAtIndex(0,false,false);
+  JournalAndStream nonRequiredJas=getJournalAndStream(1);
+  EditLogFileOutputStream nonRequiredSpy=spyOnStream(nonRequiredJas);
   assertExitInvocations(0);
+  assertTrue(nonRequiredJas.isActive());
   doAnEdit();
+  Mockito.verify(nonRequiredSpy,Mockito.never()).setReadyToFlush();
+  assertFalse(nonRequiredJas.isActive());
   assertExitInvocations(atLeast(1));
 }
