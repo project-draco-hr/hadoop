@@ -24,6 +24,19 @@ synchronized (lock) {
     LOG.info("In stop, writing event " + ev.getType());
     handleEvent(ev);
   }
+  Iterator<JobId> jobIt=fileMap.keySet().iterator();
+  if (isSignalled) {
+    while (jobIt.hasNext()) {
+      JobId toClose=jobIt.next();
+      MetaInfo mi=fileMap.get(toClose);
+      if (mi != null && mi.isWriterActive()) {
+        LOG.warn("Found jobId " + toClose + " to have not been closed. Will close");
+        JobUnsuccessfulCompletionEvent jucEvent=new JobUnsuccessfulCompletionEvent(TypeConverter.fromYarn(toClose),System.currentTimeMillis(),context.getJob(toClose).getCompletedMaps(),context.getJob(toClose).getCompletedReduces(),JobState.KILLED.toString());
+        JobHistoryEvent jfEvent=new JobHistoryEvent(toClose,jucEvent);
+        handleEvent(jfEvent);
+      }
+    }
+  }
   for (  MetaInfo mi : fileMap.values()) {
     try {
       mi.closeWriter();
