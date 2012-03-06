@@ -1,0 +1,50 @@
+{
+  MiniDFSCluster cluster=new MiniDFSCluster.Builder(conf).numDataNodes(2).build();
+  try {
+    cluster.waitActive();
+    NamenodeProtocols preSpyNN=cluster.getNameNodeRpc();
+    NamenodeProtocols spyNN=spy(preSpyNN);
+    DFSClient dfs=new DFSClient(null,spyNN,conf,null);
+    byte[] buf=new byte[1024];
+    FSDataOutputStream c_out=createFsOut(dfs,dirString + "c");
+    c_out.write(buf,0,1024);
+    c_out.close();
+    DFSInputStream c_in=dfs.open(dirString + "c");
+    FSDataOutputStream d_out=createFsOut(dfs,dirString + "d");
+    doThrow(new RemoteException(InvalidToken.class.getName(),"Your token is worthless")).when(spyNN).renewLease(anyString());
+    dfs.lastLeaseRenewal=System.currentTimeMillis() - 300000;
+    dfs.renewLease();
+    try {
+      d_out.write(buf,0,1024);
+      d_out.close();
+      Assert.fail("Write did not fail even after the fatal lease renewal failure");
+    }
+ catch (    IOException e) {
+      LOG.info("Write failed as expected. ",e);
+    }
+    doNothing().when(spyNN).renewLease(anyString());
+    try {
+      int num=c_in.read(buf,0,1);
+      if (num != 1) {
+        Assert.fail("Failed to read 1 byte");
+      }
+      c_in.close();
+    }
+ catch (    IOException e) {
+      LOG.error("Read failed with ",e);
+      Assert.fail("Read after lease renewal failure failed");
+    }
+    try {
+      c_out=createFsOut(dfs,dirString + "c");
+      c_out.write(buf,0,1024);
+      c_out.close();
+    }
+ catch (    IOException e) {
+      LOG.error("Write failed with ",e);
+      Assert.fail("Write failed");
+    }
+  }
+  finally {
+    cluster.shutdown();
+  }
+}
