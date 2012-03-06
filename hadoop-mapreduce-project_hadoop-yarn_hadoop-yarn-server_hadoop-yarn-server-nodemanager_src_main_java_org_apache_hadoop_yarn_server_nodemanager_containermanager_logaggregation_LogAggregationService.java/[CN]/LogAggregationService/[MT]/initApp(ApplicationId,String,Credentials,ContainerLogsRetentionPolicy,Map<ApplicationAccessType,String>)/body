@@ -6,9 +6,20 @@
     }
   }
   createAppDir(user,appId,userUgi);
-  AppLogAggregator appLogAggregator=new AppLogAggregatorImpl(this.dispatcher,this.deletionService,getConfig(),appId,userUgi,dirsHandler,getRemoteNodeLogFileForApp(appId,user),logRetentionPolicy,appAcls);
+  final AppLogAggregator appLogAggregator=new AppLogAggregatorImpl(this.dispatcher,this.deletionService,getConfig(),appId,userUgi,dirsHandler,getRemoteNodeLogFileForApp(appId,user),logRetentionPolicy,appAcls);
   if (this.appLogAggregators.putIfAbsent(appId,appLogAggregator) != null) {
     throw new YarnException("Duplicate initApp for " + appId);
   }
-  this.threadPool.execute(appLogAggregator);
+  Runnable aggregatorWrapper=new Runnable(){
+    public void run(){
+      try {
+        appLogAggregator.run();
+      }
+  finally {
+        appLogAggregators.remove(appId);
+      }
+    }
+  }
+;
+  this.threadPool.execute(aggregatorWrapper);
 }
