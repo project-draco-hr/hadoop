@@ -4,35 +4,20 @@
     waitForInit(currentBpId);
 synchronized (this) {
       if (getBlockPoolSetSize() > 0) {
-        long lastScanTime=-1;
-        Iterator<String> bpidIterator=blockPoolScannerMap.keySet().iterator();
-        while (bpidIterator.hasNext()) {
-          String bpid=bpidIterator.next();
-          for (          FSDatasetInterface.FSVolumeInterface vol : dataset.getVolumes()) {
-            try {
-              File currFile=BlockPoolSliceScanner.getCurrentFile(vol,bpid);
-              if (currFile.exists()) {
-                long lastModified=currFile.lastModified();
-                if (lastScanTime < lastModified) {
-                  lastScanTime=lastModified;
-                  nextBpId=bpid;
-                }
-              }
-            }
- catch (            IOException e) {
-              LOG.warn("Received exception: ",e);
+        long lastScanTime=0;
+        for (        String bpid : blockPoolScannerMap.keySet()) {
+          final long t=getBPScanner(bpid).getLastScanTime();
+          if (t != 0L) {
+            if (bpid == null || t < lastScanTime) {
+              lastScanTime=t;
+              nextBpId=bpid;
             }
           }
         }
         if (nextBpId == null) {
-          if ("".equals(currentBpId)) {
+          nextBpId=blockPoolScannerMap.higherKey(currentBpId);
+          if (nextBpId == null) {
             nextBpId=blockPoolScannerMap.firstKey();
-          }
- else {
-            nextBpId=blockPoolScannerMap.higherKey(currentBpId);
-            if (nextBpId == null) {
-              nextBpId=blockPoolScannerMap.firstKey();
-            }
           }
         }
         if (nextBpId != null) {
