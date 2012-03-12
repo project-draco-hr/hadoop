@@ -1,0 +1,19 @@
+{
+  removeStandbyNameDirs();
+  CheckpointSignature sig=nn0.getRpcServer().rollEditLog();
+  assertEquals(3,sig.getCurSegmentTxId());
+  URI editsUri=cluster.getSharedEditsDir(0,1);
+  File editsDir=new File(editsUri);
+  File editsSegment=new File(new File(editsDir,"current"),NNStorage.getFinalizedEditsFileName(1,2));
+  GenericTestUtils.assertExists(editsSegment);
+  assertTrue(editsSegment.delete());
+  LogCapturer logs=GenericTestUtils.LogCapturer.captureLogs(LogFactory.getLog(BootstrapStandby.class));
+  try {
+    int rc=BootstrapStandby.run(new String[]{"-force"},cluster.getConfiguration(1));
+    assertEquals(1,rc);
+  }
+  finally {
+    logs.stopCapturing();
+  }
+  GenericTestUtils.assertMatches(logs.getOutput(),"FATAL.*Unable to read transaction ids 1-4 from the configured shared");
+}
