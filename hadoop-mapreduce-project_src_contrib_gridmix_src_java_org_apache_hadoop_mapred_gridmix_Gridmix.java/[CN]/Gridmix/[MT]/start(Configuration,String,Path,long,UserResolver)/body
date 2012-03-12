@@ -1,7 +1,7 @@
 {
   DataStatistics stats=null;
   InputStream trace=null;
-  ioPath=ioPath.makeQualified(ioPath.getFileSystem(conf));
+  int exitCode=0;
   try {
     Path scratchDir=new Path(ioPath,conf.get(GRIDMIX_OUT_DIR,"gridmix"));
     Runtime.getRuntime().addShutdownHook(sdh);
@@ -9,12 +9,14 @@
     try {
       startThreads(conf,traceIn,ioPath,scratchDir,startFlag,userResolver);
       Path inputDir=getGridmixInputDataPath(ioPath);
-      if (genbytes > 0) {
-        writeInputData(genbytes,inputDir);
+      exitCode=writeInputData(genbytes,inputDir);
+      if (exitCode != 0) {
+        return exitCode;
       }
       stats=GenerateData.publishDataStatistics(inputDir,genbytes,conf);
       submitter.refreshFilePool();
-      int exitCode=setupEmulation(conf,traceIn,scratchDir,ioPath,generate);
+      boolean shouldGenerate=(genbytes > 0);
+      exitCode=setupEmulation(conf,traceIn,scratchDir,ioPath,shouldGenerate);
       if (exitCode != 0) {
         return exitCode;
       }
@@ -23,8 +25,12 @@
       statistics.start();
     }
  catch (    Throwable e) {
-      LOG.error("Startup failed",e);
+      LOG.error("Startup failed. " + e.toString() + "\n");
+      if (LOG.isDebugEnabled()) {
+        e.printStackTrace();
+      }
       if (factory != null)       factory.abort();
+      exitCode=STARTUP_FAILED_ERROR;
     }
  finally {
       startFlag.countDown();
@@ -50,5 +56,5 @@
     }
     IOUtils.cleanup(LOG,trace);
   }
-  return 0;
+  return exitCode;
 }

@@ -1,26 +1,30 @@
 {
   if (argv.length < 2) {
+    LOG.error("Too few arguments to Gridmix.\n");
     printUsage(System.err);
-    return 1;
+    return ARGS_ERROR;
   }
-  boolean generate=false;
   long genbytes=-1L;
   String traceIn=null;
   Path ioPath=null;
   URI userRsrc=null;
-  userResolver=ReflectionUtils.newInstance(conf.getClass(GRIDMIX_USR_RSV,SubmitterUserResolver.class,UserResolver.class),conf);
   try {
+    userResolver=ReflectionUtils.newInstance(conf.getClass(GRIDMIX_USR_RSV,SubmitterUserResolver.class,UserResolver.class),conf);
     for (int i=0; i < argv.length - 2; ++i) {
       if ("-generate".equals(argv[i])) {
         genbytes=StringUtils.TraditionalBinaryPrefix.string2long(argv[++i]);
-        generate=true;
+        if (genbytes <= 0) {
+          LOG.error("size of input data to be generated specified using " + "-generate option should be nonnegative.\n");
+          return ARGS_ERROR;
+        }
       }
  else       if ("-users".equals(argv[i])) {
         userRsrc=new URI(argv[++i]);
       }
  else {
+        LOG.error("Unknown option " + argv[i] + " specified.\n");
         printUsage(System.err);
-        return 1;
+        return ARGS_ERROR;
       }
     }
     if (userResolver.needsTargetUsersList()) {
@@ -30,9 +34,9 @@
         }
       }
  else {
-        System.err.println("\n\n" + userResolver.getClass() + " needs target user list. Use -users option."+ "\n\n");
+        LOG.error(userResolver.getClass() + " needs target user list. Use -users option.\n");
         printUsage(System.err);
-        return 1;
+        return ARGS_ERROR;
       }
     }
  else     if (userRsrc != null) {
@@ -42,9 +46,26 @@
     traceIn=argv[argv.length - 1];
   }
  catch (  Exception e) {
-    e.printStackTrace();
+    LOG.error(e.toString() + "\n");
+    if (LOG.isDebugEnabled()) {
+      e.printStackTrace();
+    }
     printUsage(System.err);
-    return 1;
+    return ARGS_ERROR;
   }
-  return start(conf,traceIn,ioPath,genbytes,userResolver,generate);
+  final FileSystem inputFs=ioPath.getFileSystem(conf);
+  ioPath=ioPath.makeQualified(inputFs);
+  boolean succeeded=false;
+  try {
+    succeeded=FileSystem.mkdirs(inputFs,ioPath,new FsPermission((short)0777));
+  }
+ catch (  IOException e) {
+  }
+ finally {
+    if (!succeeded) {
+      LOG.error("Failed creation of <ioPath> directory " + ioPath + "\n");
+      return STARTUP_FAILED_ERROR;
+    }
+  }
+  return start(conf,traceIn,ioPath,genbytes,userResolver);
 }
