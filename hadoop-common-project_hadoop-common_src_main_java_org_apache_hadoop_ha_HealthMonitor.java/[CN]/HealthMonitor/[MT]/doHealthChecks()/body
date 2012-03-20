@@ -1,0 +1,30 @@
+{
+  while (shouldRun) {
+    HAServiceState state=null;
+    boolean healthy=false;
+    try {
+      state=proxy.getServiceState();
+      proxy.monitorHealth();
+      healthy=true;
+    }
+ catch (    HealthCheckFailedException e) {
+      LOG.warn("Service health check failed: " + e.getMessage());
+      enterState(State.SERVICE_UNHEALTHY);
+    }
+catch (    Throwable t) {
+      LOG.warn("Transport-level exception trying to monitor health of " + addrToMonitor + ": "+ t.getLocalizedMessage());
+      RPC.stopProxy(proxy);
+      proxy=null;
+      enterState(State.SERVICE_NOT_RESPONDING);
+      Thread.sleep(sleepAfterDisconnectMillis);
+      return;
+    }
+    if (state != null) {
+      setLastServiceState(state);
+    }
+    if (healthy) {
+      enterState(State.SERVICE_HEALTHY);
+    }
+    Thread.sleep(checkIntervalMillis);
+  }
+}

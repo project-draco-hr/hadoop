@@ -1,0 +1,21 @@
+{
+  LOG.info("Mocking bad health check, waiting for UNHEALTHY");
+  Mockito.doThrow(new HealthCheckFailedException("Fake health check failure")).when(mockProxy).monitorHealth();
+  waitForState(hm,HealthMonitor.State.SERVICE_UNHEALTHY);
+  LOG.info("Returning to healthy state, waiting for HEALTHY");
+  Mockito.doNothing().when(mockProxy).monitorHealth();
+  waitForState(hm,HealthMonitor.State.SERVICE_HEALTHY);
+  LOG.info("Returning an IOException, as if node went down");
+  createProxyLatch=new CountDownLatch(3);
+  shouldThrowOnCreateProxy=true;
+  Mockito.doThrow(new IOException("Connection lost (fake)")).when(mockProxy).monitorHealth();
+  waitForState(hm,HealthMonitor.State.SERVICE_NOT_RESPONDING);
+  assertTrue("Monitor should retry if createProxy throws an IOE",createProxyLatch.await(1000,TimeUnit.MILLISECONDS));
+  LOG.info("Returning to healthy state, waiting for HEALTHY");
+  shouldThrowOnCreateProxy=false;
+  Mockito.doNothing().when(mockProxy).monitorHealth();
+  waitForState(hm,HealthMonitor.State.SERVICE_HEALTHY);
+  hm.shutdown();
+  hm.join();
+  assertFalse(hm.isAlive());
+}
