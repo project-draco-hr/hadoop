@@ -2,11 +2,20 @@
   FSDirectory fsDir=fsNamesys.dir;
   long numEdits=0;
   EnumMap<FSEditLogOpCodes,Holder<Integer>> opCounts=new EnumMap<FSEditLogOpCodes,Holder<Integer>>(FSEditLogOpCodes.class);
+  if (LOG.isTraceEnabled()) {
+    LOG.trace("Acquiring write lock to replay edit log");
+  }
   fsNamesys.writeLock();
   fsDir.writeLock();
   long recentOpcodeOffsets[]=new long[4];
   Arrays.fill(recentOpcodeOffsets,-1);
   long txId=expectedStartingTxId - 1;
+  long lastTxId=in.getLastTxId();
+  long numTxns=(lastTxId - expectedStartingTxId) + 1;
+  long lastLogTime=now();
+  if (LOG.isDebugEnabled()) {
+    LOG.debug("edit log length: " + in.length() + ", start txid: "+ expectedStartingTxId+ ", last txid: "+ lastTxId);
+  }
   try {
     try {
       while (true) {
@@ -39,6 +48,11 @@
           FSImage.LOG.error(errorMessage);
           throw new IOException(errorMessage,t);
         }
+        if (now() - lastLogTime > REPLAY_TRANSACTION_LOG_INTERVAL) {
+          int percent=Math.round((float)txId / numTxns * 100);
+          LOG.info("replaying edit log: " + txId + "/"+ numTxns+ " transactions completed. ("+ percent+ "%)");
+          lastLogTime=now();
+        }
         numEdits++;
       }
     }
@@ -52,6 +66,9 @@
   finally {
     fsDir.writeUnlock();
     fsNamesys.writeUnlock();
+    if (LOG.isTraceEnabled()) {
+      LOG.trace("replaying edit log finished");
+    }
     if (FSImage.LOG.isDebugEnabled()) {
       dumpOpCounts(opCounts);
     }
