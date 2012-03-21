@@ -1,0 +1,49 @@
+{
+  int nRead=0;
+  if (verifyChecksum) {
+    if (slowReadBuff.hasRemaining()) {
+      int fromSlowReadBuff=Math.min(buf.remaining(),slowReadBuff.remaining());
+      writeSlice(slowReadBuff,buf,fromSlowReadBuff);
+      nRead+=fromSlowReadBuff;
+    }
+    if (buf.remaining() >= bytesPerChecksum && offsetFromChunkBoundary == 0) {
+      int len=buf.remaining() - (buf.remaining() % bytesPerChecksum);
+      len=Math.min(len,slowReadBuff.capacity());
+      int oldlimit=buf.limit();
+      buf.limit(buf.position() + len);
+      int readResult=0;
+      try {
+        readResult=doByteBufferRead(buf);
+      }
+  finally {
+        buf.limit(oldlimit);
+      }
+      if (readResult == -1) {
+        return nRead;
+      }
+ else {
+        nRead+=readResult;
+        buf.position(buf.position() + readResult);
+      }
+    }
+    if ((buf.remaining() > 0 && buf.remaining() < bytesPerChecksum) || offsetFromChunkBoundary > 0) {
+      int toRead=Math.min(buf.remaining(),bytesPerChecksum - offsetFromChunkBoundary);
+      int readResult=fillSlowReadBuffer(toRead);
+      if (readResult == -1) {
+        return nRead;
+      }
+ else {
+        int fromSlowReadBuff=Math.min(readResult,buf.remaining());
+        writeSlice(slowReadBuff,buf,fromSlowReadBuff);
+        nRead+=fromSlowReadBuff;
+      }
+    }
+  }
+ else {
+    nRead=doByteBufferRead(buf);
+    if (nRead > 0) {
+      buf.position(buf.position() + nRead);
+    }
+  }
+  return nRead;
+}

@@ -8,26 +8,37 @@
   this.dataIn=dataIn;
   this.checksumIn=checksumIn;
   this.offsetFromChunkBoundary=(int)(startOffset - firstChunkOffset);
-  dataBuff=bufferPool.getBuffer(bytesPerChecksum * 64);
-  checksumBuff=bufferPool.getBuffer(checksumSize * 64);
-  dataBuff.flip();
+  int chunksPerChecksumRead=getSlowReadBufferNumChunks(conf,bytesPerChecksum);
+  slowReadBuff=bufferPool.getBuffer(bytesPerChecksum * chunksPerChecksumRead);
+  checksumBuff=bufferPool.getBuffer(checksumSize * chunksPerChecksumRead);
+  slowReadBuff.flip();
   checksumBuff.flip();
-  long toSkip=firstChunkOffset;
-  while (toSkip > 0) {
-    long skipped=dataIn.skip(toSkip);
-    if (skipped == 0) {
-      throw new IOException("Couldn't initialize input stream");
-    }
-    toSkip-=skipped;
-  }
-  if (checksumIn != null) {
-    long checkSumOffset=(firstChunkOffset / bytesPerChecksum) * checksumSize;
-    while (checkSumOffset > 0) {
-      long skipped=checksumIn.skip(checkSumOffset);
+  boolean success=false;
+  try {
+    long toSkip=firstChunkOffset;
+    while (toSkip > 0) {
+      long skipped=dataIn.skip(toSkip);
       if (skipped == 0) {
-        throw new IOException("Couldn't initialize checksum input stream");
+        throw new IOException("Couldn't initialize input stream");
       }
-      checkSumOffset-=skipped;
+      toSkip-=skipped;
+    }
+    if (checksumIn != null) {
+      long checkSumOffset=(firstChunkOffset / bytesPerChecksum) * checksumSize;
+      while (checkSumOffset > 0) {
+        long skipped=checksumIn.skip(checkSumOffset);
+        if (skipped == 0) {
+          throw new IOException("Couldn't initialize checksum input stream");
+        }
+        checkSumOffset-=skipped;
+      }
+    }
+    success=true;
+  }
+  finally {
+    if (!success) {
+      bufferPool.returnBuffer(slowReadBuff);
+      bufferPool.returnBuffer(checksumBuff);
     }
   }
 }
