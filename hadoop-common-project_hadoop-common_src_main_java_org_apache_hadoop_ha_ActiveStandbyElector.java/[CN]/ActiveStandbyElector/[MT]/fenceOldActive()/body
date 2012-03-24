@@ -1,0 +1,28 @@
+{
+  final Stat stat=new Stat();
+  byte[] data;
+  LOG.info("Checking for any old active which needs to be fenced...");
+  try {
+    data=zkDoWithRetries(new ZKAction<byte[]>(){
+      @Override public byte[] run() throws KeeperException, InterruptedException {
+        return zkClient.getData(zkBreadCrumbPath,false,stat);
+      }
+    }
+);
+  }
+ catch (  KeeperException ke) {
+    if (isNodeDoesNotExist(ke.code())) {
+      LOG.info("No old node to fence");
+      return null;
+    }
+    throw ke;
+  }
+  LOG.info("Old node exists: " + StringUtils.byteToHexString(data));
+  if (Arrays.equals(data,appData)) {
+    LOG.info("But old node has our own data, so don't need to fence it.");
+  }
+ else {
+    appClient.fenceOldActive(data);
+  }
+  return stat;
+}
