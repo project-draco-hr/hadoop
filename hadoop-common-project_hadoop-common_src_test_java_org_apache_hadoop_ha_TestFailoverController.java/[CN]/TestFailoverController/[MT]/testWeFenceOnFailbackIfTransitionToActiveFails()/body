@@ -1,16 +1,20 @@
 {
-  DummyHAService svc1=new DummyHAService(HAServiceState.ACTIVE,svc1Addr);
-  DummyHAService svc2=new DummyHAService(HAServiceState.STANDBY,svc2Addr);
-  Mockito.doThrow(new ServiceFailedException("Failed!")).when(svc2.proxy).transitionToActive();
-  svc1.fencer=svc2.fencer=setupFencer(AlwaysSucceedFencer.class.getName());
+  DummyService svc1=new DummyService(HAServiceState.ACTIVE);
+  DummyService svc2=new DummyService(HAServiceState.STANDBY){
+    @Override public void transitionToActive() throws ServiceFailedException, IOException {
+      throw new IOException("Failed!");
+    }
+  }
+;
+  NodeFencer fencer=setupFencer(AlwaysSucceedFencer.class.getName());
   AlwaysSucceedFencer.fenceCalled=0;
   try {
-    FailoverController.failover(svc1,svc2,false,false);
+    FailoverController.failover(svc1,svc1Addr,svc2,svc2Addr,fencer,false,false);
     fail("Failed over to service that won't transition to active");
   }
  catch (  FailoverFailedException ffe) {
   }
-  assertEquals(HAServiceState.ACTIVE,svc1.state);
+  assertEquals(HAServiceState.ACTIVE,svc1.getServiceState());
   assertEquals(1,AlwaysSucceedFencer.fenceCalled);
-  assertSame(svc2,AlwaysSucceedFencer.fencedSvc);
+  assertEquals("svc2:5678",AlwaysSucceedFencer.fencedSvc);
 }
