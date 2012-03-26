@@ -4,24 +4,19 @@
   conf.setInt(CommonConfigurationKeys.HA_HM_CHECK_INTERVAL_KEY,50);
   conf.setInt(CommonConfigurationKeys.HA_HM_CONNECT_RETRY_INTERVAL_KEY,50);
   conf.setInt(CommonConfigurationKeys.HA_HM_SLEEP_AFTER_DISCONNECT_KEY,50);
-  mockProxy=Mockito.mock(HAServiceProtocol.class);
-  Mockito.doReturn(new HAServiceStatus(HAServiceState.ACTIVE)).when(mockProxy).getServiceStatus();
-  hm=new HealthMonitor(conf,BOGUS_ADDR){
+  svc=new DummyHAService(HAServiceState.ACTIVE,null);
+  hm=new HealthMonitor(conf,svc){
     @Override protected HAServiceProtocol createProxy() throws IOException {
-      createProxyLatch.countDown();
-      if (shouldThrowOnCreateProxy) {
-        throw new IOException("can't connect");
+      createProxyCount.incrementAndGet();
+      if (throwOOMEOnCreate) {
+        throw new OutOfMemoryError("oome");
       }
-      return mockProxy;
+      return super.createProxy();
     }
   }
 ;
-  createProxyLatch=new CountDownLatch(1);
   LOG.info("Starting health monitor");
   hm.start();
-  LOG.info("Waiting for proxy to be created");
-  assertTrue(createProxyLatch.await(2000,TimeUnit.MILLISECONDS));
-  createProxyLatch=null;
   LOG.info("Waiting for HEALTHY signal");
   waitForState(hm,HealthMonitor.State.SERVICE_HEALTHY);
 }
