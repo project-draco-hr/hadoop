@@ -17,6 +17,22 @@
  else {
     throw new IOException(CONTENT_LENGTH + " header is not provided " + "by the namenode when trying to fetch "+ str);
   }
+  if (localPaths != null) {
+    String fsImageName=connection.getHeaderField(GetImageServlet.HADOOP_IMAGE_EDITS_HEADER);
+    List<File> newLocalPaths=new ArrayList<File>();
+    for (    File localPath : localPaths) {
+      if (localPath.isDirectory()) {
+        if (fsImageName == null) {
+          throw new IOException("No filename header provided by server");
+        }
+        newLocalPaths.add(new File(localPath,fsImageName));
+      }
+ else {
+        newLocalPaths.add(localPath);
+      }
+    }
+    localPaths=newLocalPaths;
+  }
   MD5Hash advertisedDigest=parseMD5Header(connection);
   long received=0;
   InputStream stream=connection.getInputStream();
@@ -38,7 +54,9 @@
         }
  catch (        IOException ioe) {
           LOG.warn("Unable to download file " + f,ioe);
-          dstStorage.reportErrorOnFile(f);
+          if (dstStorage != null) {
+            dstStorage.reportErrorOnFile(f);
+          }
         }
       }
       if (outputStreams.isEmpty()) {

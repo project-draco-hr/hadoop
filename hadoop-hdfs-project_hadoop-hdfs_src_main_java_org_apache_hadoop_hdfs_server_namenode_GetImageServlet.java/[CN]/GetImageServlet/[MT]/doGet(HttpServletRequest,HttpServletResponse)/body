@@ -20,10 +20,19 @@
       @Override public Void run() throws Exception {
         if (parsedParams.isGetImage()) {
           long txid=parsedParams.getTxId();
-          File imageFile=nnImage.getStorage().getFsImageName(txid);
-          if (imageFile == null) {
-            throw new IOException("Could not find image with txid " + txid);
+          File imageFile=null;
+          String errorMessage="Could not find image";
+          if (parsedParams.shouldFetchLatest()) {
+            imageFile=nnImage.getStorage().getHighestFsImageName();
           }
+ else {
+            errorMessage+=" with txid " + txid;
+            imageFile=nnImage.getStorage().getFsImageName(txid);
+          }
+          if (imageFile == null) {
+            throw new IOException(errorMessage);
+          }
+          setFileNameHeaders(response,imageFile);
           setVerificationHeaders(response,imageFile);
           TransferFsImage.getFileServer(response.getOutputStream(),imageFile,getThrottler(conf));
         }
@@ -32,6 +41,7 @@
           long endTxId=parsedParams.getEndTxId();
           File editFile=nnImage.getStorage().findFinalizedEditsFile(startTxId,endTxId);
           setVerificationHeaders(response,editFile);
+          setFileNameHeaders(response,editFile);
           TransferFsImage.getFileServer(response.getOutputStream(),editFile,getThrottler(conf));
         }
  else         if (parsedParams.isPutImage()) {
