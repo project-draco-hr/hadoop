@@ -1,20 +1,16 @@
 {
-  DummyService svc1=spy(new DummyService(HAServiceState.ACTIVE));
-  DummyService svc2=new DummyService(HAServiceState.STANDBY){
-    @Override public void transitionToActive() throws ServiceFailedException {
-      throw new ServiceFailedException("Failed!");
-    }
-  }
-;
-  NodeFencer fencer=setupFencer(AlwaysSucceedFencer.class.getName());
+  DummyHAService svc1=spy(new DummyHAService(HAServiceState.ACTIVE,svc1Addr));
+  DummyHAService svc2=new DummyHAService(HAServiceState.STANDBY,svc2Addr);
+  Mockito.doThrow(new ServiceFailedException("Failed!")).when(svc2.proxy).transitionToActive();
+  svc1.fencer=svc2.fencer=setupFencer(AlwaysSucceedFencer.class.getName());
   try {
-    FailoverController.failover(svc1,svc1Addr,svc2,svc2Addr,fencer,false,false);
+    FailoverController.failover(svc1,svc2,false,false);
     fail("Failover to already active service");
   }
  catch (  FailoverFailedException ffe) {
   }
-  verify(svc1).transitionToStandby();
-  verify(svc1).transitionToActive();
-  assertEquals(HAServiceState.ACTIVE,svc1.getServiceState());
-  assertEquals(HAServiceState.STANDBY,svc2.getServiceState());
+  verify(svc1.proxy).transitionToStandby();
+  verify(svc1.proxy).transitionToActive();
+  assertEquals(HAServiceState.ACTIVE,svc1.state);
+  assertEquals(HAServiceState.STANDBY,svc2.state);
 }

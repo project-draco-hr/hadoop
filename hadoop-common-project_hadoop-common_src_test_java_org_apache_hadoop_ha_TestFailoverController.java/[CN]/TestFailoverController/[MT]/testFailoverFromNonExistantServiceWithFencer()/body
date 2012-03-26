@@ -1,12 +1,14 @@
 {
-  HAServiceProtocol svc1=getProtocol("localhost:1234");
-  DummyService svc2=new DummyService(HAServiceState.STANDBY);
-  NodeFencer fencer=setupFencer(AlwaysSucceedFencer.class.getName());
+  DummyHAService svc1=spy(new DummyHAService(null,svc1Addr));
+  HAServiceProtocol errorThrowingProxy=Mockito.mock(HAServiceProtocol.class,new ThrowsException(new IOException("Could not connect to host")));
+  Mockito.doReturn(errorThrowingProxy).when(svc1).getProxy();
+  DummyHAService svc2=new DummyHAService(HAServiceState.STANDBY,svc2Addr);
+  svc1.fencer=svc2.fencer=setupFencer(AlwaysSucceedFencer.class.getName());
   try {
-    FailoverController.failover(svc1,svc1Addr,svc2,svc2Addr,fencer,false,false);
+    FailoverController.failover(svc1,svc2,false,false);
   }
  catch (  FailoverFailedException ffe) {
     fail("Non-existant active prevented failover");
   }
-  assertEquals(HAServiceState.ACTIVE,svc2.getServiceState());
+  assertEquals(HAServiceState.ACTIVE,svc2.state);
 }
