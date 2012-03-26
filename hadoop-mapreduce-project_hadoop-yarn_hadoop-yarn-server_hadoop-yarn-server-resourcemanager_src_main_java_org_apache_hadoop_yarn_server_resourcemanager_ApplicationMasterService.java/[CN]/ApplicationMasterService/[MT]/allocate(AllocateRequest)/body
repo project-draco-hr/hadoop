@@ -26,6 +26,22 @@ synchronized (lastResponse) {
     RMApp app=this.rmContext.getRMApps().get(appAttemptId.getApplicationId());
     RMAppAttempt appAttempt=app.getRMAppAttempt(appAttemptId);
     AMResponse response=recordFactory.newRecordInstance(AMResponse.class);
+    List<RMNode> updatedNodes=new ArrayList<RMNode>();
+    if (app.pullRMNodeUpdates(updatedNodes) > 0) {
+      List<NodeReport> updatedNodeReports=new ArrayList<NodeReport>();
+      for (      RMNode rmNode : updatedNodes) {
+        SchedulerNodeReport schedulerNodeReport=rScheduler.getNodeReport(rmNode.getNodeID());
+        Resource used=BuilderUtils.newResource(0);
+        int numContainers=0;
+        if (schedulerNodeReport != null) {
+          used=schedulerNodeReport.getUsedResource();
+          numContainers=schedulerNodeReport.getNumContainers();
+        }
+        NodeReport report=BuilderUtils.newNodeReport(rmNode.getNodeID(),RMNodeState.toNodeState(rmNode.getState()),rmNode.getHttpAddress(),rmNode.getRackName(),used,rmNode.getTotalCapability(),numContainers,rmNode.getNodeHealthStatus());
+        updatedNodeReports.add(report);
+      }
+      response.setUpdatedNodes(updatedNodeReports);
+    }
     response.setAllocatedContainers(allocation.getContainers());
     response.setCompletedContainersStatuses(appAttempt.pullJustFinishedContainers());
     response.setResponseId(lastResponse.getResponseId() + 1);
