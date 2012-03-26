@@ -1,0 +1,28 @@
+{
+  try {
+    setupFCs();
+    long session1=thr1.zkfc.getElectorForTests().getZKSessionIdForTests();
+    long session2=thr2.zkfc.getElectorForTests().getZKSessionIdForTests();
+    LOG.info("====== Stopping ZK server");
+    stopServer();
+    waitForServerDown(hostPort,CONNECTION_TIMEOUT);
+    LOG.info("====== Waiting for services to enter NEUTRAL mode");
+    ActiveStandbyElectorTestUtil.waitForElectorState(ctx,thr1.zkfc.getElectorForTests(),ActiveStandbyElector.State.NEUTRAL);
+    ActiveStandbyElectorTestUtil.waitForElectorState(ctx,thr2.zkfc.getElectorForTests(),ActiveStandbyElector.State.NEUTRAL);
+    LOG.info("====== Checking that the services didn't change HA state");
+    assertEquals(HAServiceState.ACTIVE,svc1.state);
+    assertEquals(HAServiceState.STANDBY,svc2.state);
+    LOG.info("====== Restarting server");
+    startServer();
+    waitForServerUp(hostPort,CONNECTION_TIMEOUT);
+    ActiveStandbyElectorTestUtil.waitForElectorState(ctx,thr1.zkfc.getElectorForTests(),ActiveStandbyElector.State.ACTIVE);
+    ActiveStandbyElectorTestUtil.waitForElectorState(ctx,thr2.zkfc.getElectorForTests(),ActiveStandbyElector.State.STANDBY);
+    ActiveStandbyElectorTestUtil.waitForElectorState(ctx,thr1.zkfc.getElectorForTests(),ActiveStandbyElector.State.ACTIVE);
+    ActiveStandbyElectorTestUtil.waitForElectorState(ctx,thr2.zkfc.getElectorForTests(),ActiveStandbyElector.State.STANDBY);
+    assertEquals(session1,thr1.zkfc.getElectorForTests().getZKSessionIdForTests());
+    assertEquals(session2,thr2.zkfc.getElectorForTests().getZKSessionIdForTests());
+  }
+  finally {
+    stopFCs();
+  }
+}

@@ -1,0 +1,22 @@
+{
+  try {
+    setupFCs();
+    LOG.info("Making svc2 fail to become active");
+    svc2.failToBecomeActive=true;
+    LOG.info("Faking svc1 unhealthy, should NOT successfully " + "failover to svc2");
+    svc1.isHealthy=false;
+    waitForHealthState(thr1.zkfc,State.SERVICE_UNHEALTHY);
+    waitForActiveLockHolder(null);
+    Mockito.verify(svc2.proxy).transitionToActive();
+    waitForHAState(svc1,HAServiceState.STANDBY);
+    waitForHAState(svc2,HAServiceState.STANDBY);
+    LOG.info("Faking svc1 healthy again, should go back to svc1");
+    svc1.isHealthy=true;
+    waitForHAState(svc1,HAServiceState.ACTIVE);
+    waitForHAState(svc2,HAServiceState.STANDBY);
+    waitForActiveLockHolder(svc1);
+  }
+  finally {
+    stopFCs();
+  }
+}
