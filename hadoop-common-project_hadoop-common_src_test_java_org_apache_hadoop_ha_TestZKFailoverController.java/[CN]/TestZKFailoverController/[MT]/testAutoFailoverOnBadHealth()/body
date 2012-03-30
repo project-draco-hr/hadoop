@@ -1,19 +1,19 @@
 {
   try {
-    setupFCs();
-    LOG.info("Faking svc1 unhealthy, should failover to svc2");
-    svc1.isHealthy=false;
-    LOG.info("Waiting for svc1 to enter standby state");
-    waitForHAState(svc1,HAServiceState.STANDBY);
-    waitForHAState(svc2,HAServiceState.ACTIVE);
-    LOG.info("Allowing svc1 to be healthy again, making svc2 unreachable " + "and fail to gracefully go to standby");
-    svc1.isHealthy=true;
-    svc2.actUnreachable=true;
-    Mockito.doReturn(true).when(svc2.fencer).fence(Mockito.same(svc2));
-    waitForHAState(svc1,HAServiceState.ACTIVE);
-    Mockito.verify(svc2.fencer).fence(Mockito.same(svc2));
+    cluster.start();
+    DummyHAService svc1=cluster.getService(1);
+    LOG.info("Faking svc0 unhealthy, should failover to svc1");
+    cluster.setHealthy(0,false);
+    LOG.info("Waiting for svc0 to enter standby state");
+    cluster.waitForHAState(0,HAServiceState.STANDBY);
+    cluster.waitForHAState(1,HAServiceState.ACTIVE);
+    LOG.info("Allowing svc0 to be healthy again, making svc1 unreachable " + "and fail to gracefully go to standby");
+    cluster.setUnreachable(1,true);
+    cluster.setHealthy(0,true);
+    cluster.waitForHAState(0,HAServiceState.ACTIVE);
+    Mockito.verify(svc1.fencer).fence(Mockito.same(svc1));
   }
   finally {
-    stopFCs();
+    cluster.stop();
   }
 }

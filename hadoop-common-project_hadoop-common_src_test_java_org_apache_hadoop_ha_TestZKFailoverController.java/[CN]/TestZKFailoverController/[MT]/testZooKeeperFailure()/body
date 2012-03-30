@@ -1,28 +1,28 @@
 {
   try {
-    setupFCs();
-    long session1=thr1.zkfc.getElectorForTests().getZKSessionIdForTests();
-    long session2=thr2.zkfc.getElectorForTests().getZKSessionIdForTests();
+    cluster.start();
+    long session0=cluster.getElector(0).getZKSessionIdForTests();
+    long session1=cluster.getElector(1).getZKSessionIdForTests();
     LOG.info("====== Stopping ZK server");
     stopServer();
     waitForServerDown(hostPort,CONNECTION_TIMEOUT);
     LOG.info("====== Waiting for services to enter NEUTRAL mode");
-    ActiveStandbyElectorTestUtil.waitForElectorState(ctx,thr1.zkfc.getElectorForTests(),ActiveStandbyElector.State.NEUTRAL);
-    ActiveStandbyElectorTestUtil.waitForElectorState(ctx,thr2.zkfc.getElectorForTests(),ActiveStandbyElector.State.NEUTRAL);
+    cluster.waitForElectorState(0,ActiveStandbyElector.State.NEUTRAL);
+    cluster.waitForElectorState(1,ActiveStandbyElector.State.NEUTRAL);
     LOG.info("====== Checking that the services didn't change HA state");
-    assertEquals(HAServiceState.ACTIVE,svc1.state);
-    assertEquals(HAServiceState.STANDBY,svc2.state);
+    assertEquals(HAServiceState.ACTIVE,cluster.getService(0).state);
+    assertEquals(HAServiceState.STANDBY,cluster.getService(1).state);
     LOG.info("====== Restarting server");
     startServer();
     waitForServerUp(hostPort,CONNECTION_TIMEOUT);
-    ActiveStandbyElectorTestUtil.waitForElectorState(ctx,thr1.zkfc.getElectorForTests(),ActiveStandbyElector.State.ACTIVE);
-    ActiveStandbyElectorTestUtil.waitForElectorState(ctx,thr2.zkfc.getElectorForTests(),ActiveStandbyElector.State.STANDBY);
-    ActiveStandbyElectorTestUtil.waitForElectorState(ctx,thr1.zkfc.getElectorForTests(),ActiveStandbyElector.State.ACTIVE);
-    ActiveStandbyElectorTestUtil.waitForElectorState(ctx,thr2.zkfc.getElectorForTests(),ActiveStandbyElector.State.STANDBY);
-    assertEquals(session1,thr1.zkfc.getElectorForTests().getZKSessionIdForTests());
-    assertEquals(session2,thr2.zkfc.getElectorForTests().getZKSessionIdForTests());
+    cluster.waitForElectorState(0,ActiveStandbyElector.State.ACTIVE);
+    cluster.waitForElectorState(1,ActiveStandbyElector.State.STANDBY);
+    cluster.waitForHAState(0,HAServiceState.ACTIVE);
+    cluster.waitForHAState(1,HAServiceState.STANDBY);
+    assertEquals(session0,cluster.getElector(0).getZKSessionIdForTests());
+    assertEquals(session1,cluster.getElector(1).getZKSessionIdForTests());
   }
   finally {
-    stopFCs();
+    cluster.stop();
   }
 }
