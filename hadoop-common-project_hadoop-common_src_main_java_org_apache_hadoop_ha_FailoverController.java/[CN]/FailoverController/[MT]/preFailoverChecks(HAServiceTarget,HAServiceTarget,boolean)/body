@@ -1,0 +1,37 @@
+{
+  HAServiceStatus toSvcStatus;
+  HAServiceProtocol toSvc;
+  if (from.getAddress().equals(target.getAddress())) {
+    throw new FailoverFailedException("Can't failover a service to itself");
+  }
+  try {
+    toSvc=target.getProxy(conf,rpcTimeoutToNewActive);
+    toSvcStatus=toSvc.getServiceStatus();
+  }
+ catch (  IOException e) {
+    String msg="Unable to get service state for " + target;
+    LOG.error(msg,e);
+    throw new FailoverFailedException(msg,e);
+  }
+  if (!toSvcStatus.getState().equals(HAServiceState.STANDBY)) {
+    throw new FailoverFailedException("Can't failover to an active service");
+  }
+  if (!toSvcStatus.isReadyToBecomeActive()) {
+    String notReadyReason=toSvcStatus.getNotReadyReason();
+    if (!forceActive) {
+      throw new FailoverFailedException(target + " is not ready to become active: " + notReadyReason);
+    }
+ else {
+      LOG.warn("Service is not ready to become active, but forcing: " + notReadyReason);
+    }
+  }
+  try {
+    HAServiceProtocolHelper.monitorHealth(toSvc);
+  }
+ catch (  HealthCheckFailedException hce) {
+    throw new FailoverFailedException("Can't failover to an unhealthy service",hce);
+  }
+catch (  IOException e) {
+    throw new FailoverFailedException("Got an IO exception",e);
+  }
+}
