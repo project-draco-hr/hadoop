@@ -1,0 +1,81 @@
+{
+  Block corruptBlock=null;
+  ReplicaInfo memBlockInfo;
+synchronized (this) {
+    memBlockInfo=volumeMap.get(bpid,blockId);
+    if (memBlockInfo != null && memBlockInfo.getState() != ReplicaState.FINALIZED) {
+      return;
+    }
+    final long diskGS=diskMetaFile != null && diskMetaFile.exists() ? Block.getGenerationStamp(diskMetaFile.getName()) : GenerationStamp.GRANDFATHER_GENERATION_STAMP;
+    if (diskFile == null || !diskFile.exists()) {
+      if (memBlockInfo == null) {
+        if (diskMetaFile != null && diskMetaFile.exists() && diskMetaFile.delete()) {
+          LOG.warn("Deleted a metadata file without a block " + diskMetaFile.getAbsolutePath());
+        }
+        return;
+      }
+      if (!memBlockInfo.getBlockFile().exists()) {
+        volumeMap.remove(bpid,blockId);
+        final DataBlockScanner blockScanner=datanode.getBlockScanner();
+        if (blockScanner != null) {
+          blockScanner.deleteBlock(bpid,new Block(blockId));
+        }
+        LOG.warn("Removed block " + blockId + " from memory with missing block file on the disk");
+        if (diskMetaFile != null && diskMetaFile.exists() && diskMetaFile.delete()) {
+          LOG.warn("Deleted a metadata file for the deleted block " + diskMetaFile.getAbsolutePath());
+        }
+      }
+      return;
+    }
+    if (memBlockInfo == null) {
+      ReplicaInfo diskBlockInfo=new FinalizedReplica(blockId,diskFile.length(),diskGS,vol,diskFile.getParentFile());
+      volumeMap.add(bpid,diskBlockInfo);
+      final DataBlockScanner blockScanner=datanode.getBlockScanner();
+      if (blockScanner != null) {
+        blockScanner.addBlock(new ExtendedBlock(bpid,diskBlockInfo));
+      }
+      LOG.warn("Added missing block to memory " + diskBlockInfo);
+      return;
+    }
+    File memFile=memBlockInfo.getBlockFile();
+    if (memFile.exists()) {
+      if (memFile.compareTo(diskFile) != 0) {
+        LOG.warn("Block file " + memFile.getAbsolutePath() + " does not match file found by scan "+ diskFile.getAbsolutePath());
+      }
+    }
+ else {
+      LOG.warn("Block file in volumeMap " + memFile.getAbsolutePath() + " does not exist. Updating it to the file found during scan "+ diskFile.getAbsolutePath());
+      memBlockInfo.setDir(diskFile.getParentFile());
+      memFile=diskFile;
+      LOG.warn("Updating generation stamp for block " + blockId + " from "+ memBlockInfo.getGenerationStamp()+ " to "+ diskGS);
+      memBlockInfo.setGenerationStamp(diskGS);
+    }
+    if (memBlockInfo.getGenerationStamp() != diskGS) {
+      File memMetaFile=FsDatasetUtil.getMetaFile(diskFile,memBlockInfo.getGenerationStamp());
+      if (memMetaFile.exists()) {
+        if (memMetaFile.compareTo(diskMetaFile) != 0) {
+          LOG.warn("Metadata file in memory " + memMetaFile.getAbsolutePath() + " does not match file found by scan "+ (diskMetaFile == null ? null : diskMetaFile.getAbsolutePath()));
+        }
+      }
+ else {
+        long gs=diskMetaFile != null && diskMetaFile.exists() && diskMetaFile.getParent().equals(memFile.getParent()) ? diskGS : GenerationStamp.GRANDFATHER_GENERATION_STAMP;
+        LOG.warn("Updating generation stamp for block " + blockId + " from "+ memBlockInfo.getGenerationStamp()+ " to "+ gs);
+        memBlockInfo.setGenerationStamp(gs);
+      }
+    }
+    if (memBlockInfo.getNumBytes() != memFile.length()) {
+      corruptBlock=new Block(memBlockInfo);
+      LOG.warn("Updating size of block " + blockId + " from "+ memBlockInfo.getNumBytes()+ " to "+ memFile.length());
+      memBlockInfo.setNumBytes(memFile.length());
+    }
+  }
+  if (corruptBlock != null) {
+    LOG.warn("Reporting the block " + corruptBlock + " as corrupt due to length mismatch");
+    try {
+      datanode.reportBadBlocks(new ExtendedBlock(bpid,corruptBlock));
+    }
+ catch (    IOException e) {
+      LOG.warn("Failed to repot bad block " + corruptBlock,e);
+    }
+  }
+}
