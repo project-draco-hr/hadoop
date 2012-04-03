@@ -1,0 +1,40 @@
+{
+  Configuration conf=new Configuration();
+  conf.setInt("yarn.rpc.nm-command-timeout",3000);
+  conf.set(YarnConfiguration.IPC_RPC_IMPL,rpcClass);
+  YarnRPC rpc=YarnRPC.create(conf);
+  String bindAddr="localhost:0";
+  InetSocketAddress addr=NetUtils.createSocketAddr(bindAddr);
+  Server server=rpc.getServer(ContainerManager.class,new DummyContainerManager(),addr,conf,null,1);
+  server.start();
+  try {
+    ContainerManager proxy=(ContainerManager)rpc.getProxy(ContainerManager.class,NetUtils.createSocketAddr("localhost:" + server.getPort()),conf);
+    ContainerLaunchContext containerLaunchContext=recordFactory.newRecordInstance(ContainerLaunchContext.class);
+    containerLaunchContext.setUser("dummy-user");
+    ContainerId containerId=recordFactory.newRecordInstance(ContainerId.class);
+    ApplicationId applicationId=recordFactory.newRecordInstance(ApplicationId.class);
+    ApplicationAttemptId applicationAttemptId=recordFactory.newRecordInstance(ApplicationAttemptId.class);
+    applicationId.setClusterTimestamp(0);
+    applicationId.setId(0);
+    applicationAttemptId.setApplicationId(applicationId);
+    applicationAttemptId.setAttemptId(0);
+    containerId.setApplicationAttemptId(applicationAttemptId);
+    containerId.setId(100);
+    containerLaunchContext.setContainerId(containerId);
+    containerLaunchContext.setResource(recordFactory.newRecordInstance(Resource.class));
+    StartContainerRequest scRequest=recordFactory.newRecordInstance(StartContainerRequest.class);
+    scRequest.setContainerLaunchContext(containerLaunchContext);
+    try {
+      proxy.startContainer(scRequest);
+    }
+ catch (    Exception e) {
+      LOG.info(StringUtils.stringifyException(e));
+      Assert.assertTrue("Error, exception does not contain: " + EXCEPTION_CAUSE,e.getCause().getMessage().contains(EXCEPTION_CAUSE));
+      return;
+    }
+  }
+  finally {
+    server.stop();
+  }
+  Assert.fail("timeout exception should have occurred!");
+}
