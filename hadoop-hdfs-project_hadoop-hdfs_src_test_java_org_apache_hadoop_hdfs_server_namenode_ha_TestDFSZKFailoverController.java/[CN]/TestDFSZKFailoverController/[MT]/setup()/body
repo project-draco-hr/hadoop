@@ -1,0 +1,16 @@
+{
+  conf=new Configuration();
+  conf.set(ZKFailoverController.ZK_QUORUM_KEY,hostPort);
+  conf.set(NodeFencer.CONF_METHODS_KEY,AlwaysSucceedFencer.class.getName());
+  MiniDFSNNTopology topology=new MiniDFSNNTopology().addNameservice(new MiniDFSNNTopology.NSConf("ns1").addNN(new MiniDFSNNTopology.NNConf("nn1").setIpcPort(10001)).addNN(new MiniDFSNNTopology.NNConf("nn2").setIpcPort(10002)));
+  cluster=new MiniDFSCluster.Builder(conf).nnTopology(topology).numDataNodes(0).build();
+  cluster.waitActive();
+  ctx=new TestContext();
+  ctx.addThread(thr1=new ZKFCThread(ctx,0));
+  assertEquals(0,thr1.zkfc.run(new String[]{"-formatZK"}));
+  thr1.start();
+  waitForHAState(0,HAServiceState.ACTIVE);
+  ctx.addThread(thr2=new ZKFCThread(ctx,1));
+  thr2.start();
+  fs=HATestUtil.configureFailoverFs(cluster,conf);
+}
