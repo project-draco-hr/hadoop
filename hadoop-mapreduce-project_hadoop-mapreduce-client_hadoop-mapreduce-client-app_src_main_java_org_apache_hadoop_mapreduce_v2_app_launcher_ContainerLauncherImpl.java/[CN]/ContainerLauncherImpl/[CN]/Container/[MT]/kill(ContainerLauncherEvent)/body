@@ -3,39 +3,24 @@
     this.state=ContainerState.KILLED_BEFORE_LAUNCH;
   }
  else {
-    CommandTimerTask timerTask=new CommandTimerTask(Thread.currentThread(),event);
     final String containerManagerBindAddr=event.getContainerMgrAddress();
     ContainerId containerID=event.getContainerID();
     ContainerToken containerToken=event.getContainerToken();
     TaskAttemptId taskAttemptID=event.getTaskAttemptID();
     LOG.info("KILLING " + taskAttemptID);
-    commandTimer.schedule(timerTask,nmTimeOut);
     ContainerManager proxy=null;
     try {
       proxy=getCMProxy(containerID,containerManagerBindAddr,containerToken);
-      if (Thread.interrupted()) {
-        LOG.info("Stop-container for " + event.getContainerID() + " got interrupted.");
-      }
- else {
-        StopContainerRequest stopRequest=Records.newRecord(StopContainerRequest.class);
-        stopRequest.setContainerId(event.getContainerID());
-        proxy.stopContainer(stopRequest);
-      }
+      StopContainerRequest stopRequest=Records.newRecord(StopContainerRequest.class);
+      stopRequest.setContainerId(event.getContainerID());
+      proxy.stopContainer(stopRequest);
     }
  catch (    Throwable t) {
-      if (Thread.interrupted()) {
-        LOG.info("Stop-container for " + event.getContainerID() + " got interrupted.");
-      }
       String message="cleanup failed for container " + event.getContainerID() + " : "+ StringUtils.stringifyException(t);
       context.getEventHandler().handle(new TaskAttemptDiagnosticsUpdateEvent(taskAttemptID,message));
       LOG.warn(message);
     }
  finally {
-      timerTask.cancel();
-      if (Thread.interrupted()) {
-        LOG.info("Stop-container for " + event.getContainerID() + " got interrupted.");
-        context.getEventHandler().handle(new TaskAttemptDiagnosticsUpdateEvent(taskAttemptID,"cleanup failed for container " + event.getContainerID()));
-      }
       if (proxy != null) {
         ContainerLauncherImpl.this.rpc.stopProxy(proxy,getConfig());
       }
