@@ -39,27 +39,41 @@
     }
     URI trackingUri=ProxyUriUtils.getUriFromAMUrl(applicationReport.getOriginalTrackingUrl());
     if (applicationReport.getOriginalTrackingUrl().equals("N/A")) {
-      notFound(resp,"The MRAppMaster died before writing anything.");
-      return;
-    }
-    String runningUser=applicationReport.getUser();
-    if (checkUser && !runningUser.equals(remoteUser)) {
-      LOG.info("Asking " + remoteUser + " if they want to connect to the "+ "app master GUI of "+ appId+ " owned by "+ runningUser);
-      warnUserPage(resp,ProxyUriUtils.getPathAndQuery(id,rest,req.getQueryString(),true),runningUser,id);
-      return;
-    }
-    URI toFetch=new URI(req.getScheme(),trackingUri.getAuthority(),StringHelper.ujoin(trackingUri.getPath(),rest),req.getQueryString(),null);
-    LOG.info(req.getRemoteUser() + " is accessing unchecked " + toFetch+ " which is the app master GUI of "+ appId+ " owned by "+ runningUser);
+      String message;
+switch (applicationReport.getFinalApplicationStatus()) {
+case FAILED:
+case KILLED:
+case SUCCEEDED:
+        message="The requested application exited before setting a tracking URL.";
+      break;
+case UNDEFINED:
+    message="The requested application does not appear to be running " + "yet, and has not set a tracking URL.";
+  break;
+default :
+message="The requested application has not set a tracking URL.";
+break;
+}
+notFound(resp,message);
+return;
+}
+String runningUser=applicationReport.getUser();
+if (checkUser && !runningUser.equals(remoteUser)) {
+LOG.info("Asking " + remoteUser + " if they want to connect to the "+ "app master GUI of "+ appId+ " owned by "+ runningUser);
+warnUserPage(resp,ProxyUriUtils.getPathAndQuery(id,rest,req.getQueryString(),true),runningUser,id);
+return;
+}
+URI toFetch=new URI(req.getScheme(),trackingUri.getAuthority(),StringHelper.ujoin(trackingUri.getPath(),rest),req.getQueryString(),null);
+LOG.info(req.getRemoteUser() + " is accessing unchecked " + toFetch+ " which is the app master GUI of "+ appId+ " owned by "+ runningUser);
 switch (applicationReport.getYarnApplicationState()) {
 case KILLED:
 case FINISHED:
 case FAILED:
-      resp.sendRedirect(resp.encodeRedirectURL(toFetch.toString()));
-    return;
+resp.sendRedirect(resp.encodeRedirectURL(toFetch.toString()));
+return;
 }
 Cookie c=null;
 if (userWasWarned && userApproved) {
-  c=makeCheckCookie(id,true);
+c=makeCheckCookie(id,true);
 }
 proxyLink(req,resp,toFetch,c,getProxyHost());
 }
