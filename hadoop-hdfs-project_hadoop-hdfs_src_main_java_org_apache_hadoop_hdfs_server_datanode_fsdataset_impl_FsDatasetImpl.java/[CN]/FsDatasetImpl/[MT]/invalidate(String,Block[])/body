@@ -1,0 +1,47 @@
+{
+  boolean error=false;
+  for (int i=0; i < invalidBlks.length; i++) {
+    final File f;
+    final FsVolumeImpl v;
+synchronized (this) {
+      f=getFile(bpid,invalidBlks[i].getBlockId());
+      ReplicaInfo info=volumeMap.get(bpid,invalidBlks[i]);
+      if (info == null) {
+        LOG.warn("Failed to delete replica " + invalidBlks[i] + ": ReplicaInfo not found.");
+        error=true;
+        continue;
+      }
+      if (info.getGenerationStamp() != invalidBlks[i].getGenerationStamp()) {
+        LOG.warn("Failed to delete replica " + invalidBlks[i] + ": GenerationStamp not matched, info="+ info);
+        error=true;
+        continue;
+      }
+      v=(FsVolumeImpl)info.getVolume();
+      if (f == null) {
+        LOG.warn("Failed to delete replica " + invalidBlks[i] + ": File not found, volume="+ v);
+        error=true;
+        continue;
+      }
+      if (v == null) {
+        LOG.warn("Failed to delete replica " + invalidBlks[i] + ". No volume for this replica, file="+ f+ ".");
+        error=true;
+        continue;
+      }
+      File parent=f.getParentFile();
+      if (parent == null) {
+        LOG.warn("Failed to delete replica " + invalidBlks[i] + ". Parent not found for file "+ f+ ".");
+        error=true;
+        continue;
+      }
+      ReplicaState replicaState=info.getState();
+      if (replicaState == ReplicaState.FINALIZED || (replicaState == ReplicaState.RUR && ((ReplicaUnderRecovery)info).getOriginalReplica().getState() == ReplicaState.FINALIZED)) {
+        v.clearPath(bpid,parent);
+      }
+      volumeMap.remove(bpid,invalidBlks[i]);
+    }
+    asyncDiskService.deleteAsync(v,f,FsDatasetUtil.getMetaFile(f,invalidBlks[i].getGenerationStamp()),new ExtendedBlock(bpid,invalidBlks[i]));
+  }
+  if (error) {
+    throw new IOException("Error in deleting blocks.");
+  }
+}
