@@ -1,0 +1,29 @@
+{
+  NNStorage existingStorage=null;
+  try {
+    FSNamesystem fsns=FSNamesystem.loadFromDisk(conf,FSNamesystem.getNamespaceDirs(conf),FSNamesystem.getNamespaceEditsDirs(conf,false));
+    existingStorage=fsns.getFSImage().getStorage();
+    Collection<URI> sharedEditsDirs=FSNamesystem.getSharedEditsDirs(conf);
+    if (!confirmFormat(sharedEditsDirs,force,interactive)) {
+      return true;
+    }
+    NNStorage newSharedStorage=new NNStorage(conf,Lists.<URI>newArrayList(),sharedEditsDirs);
+    newSharedStorage.format(new NamespaceInfo(existingStorage.getNamespaceID(),existingStorage.getClusterID(),existingStorage.getBlockPoolID(),existingStorage.getCTime(),existingStorage.getDistributedUpgradeVersion()));
+  }
+ catch (  Exception e) {
+    LOG.error("Could not format shared edits dir",e);
+    return true;
+  }
+ finally {
+    if (existingStorage != null) {
+      try {
+        existingStorage.unlockAll();
+      }
+ catch (      IOException ioe) {
+        LOG.warn("Could not unlock storage directories",ioe);
+        return true;
+      }
+    }
+  }
+  return false;
+}
