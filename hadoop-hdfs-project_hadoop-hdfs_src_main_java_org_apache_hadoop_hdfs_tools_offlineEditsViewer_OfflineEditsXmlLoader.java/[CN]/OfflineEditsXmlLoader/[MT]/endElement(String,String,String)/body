@@ -1,0 +1,81 @@
+{
+  String str=cbuf.toString().trim();
+  cbuf=new StringBuffer();
+switch (state) {
+case EXPECT_EDITS_TAG:
+    throw new InvalidXmlException("expected <EDITS/>");
+case EXPECT_VERSION:
+  if (!name.equals("EDITS_VERSION")) {
+    throw new InvalidXmlException("expected </EDITS_VERSION>");
+  }
+try {
+  int version=Integer.parseInt(str);
+  visitor.start(version);
+}
+ catch (IOException e) {
+  throw new RuntimeException(e);
+}
+state=ParseState.EXPECT_RECORD;
+break;
+case EXPECT_RECORD:
+if (name.equals("EDITS")) {
+state=ParseState.EXPECT_END;
+}
+ else if (!name.equals("RECORD")) {
+throw new InvalidXmlException("expected </EDITS> or </RECORD>");
+}
+break;
+case EXPECT_OPCODE:
+if (!name.equals("OPCODE")) {
+throw new InvalidXmlException("expected </OPCODE>");
+}
+opCode=FSEditLogOpCodes.valueOf(str);
+state=ParseState.EXPECT_DATA;
+break;
+case EXPECT_DATA:
+throw new InvalidXmlException("expected <DATA/>");
+case HANDLE_DATA:
+stanza.setValue(str);
+if (stanzaStack.empty()) {
+if (!name.equals("DATA")) {
+throw new InvalidXmlException("expected </DATA>");
+}
+state=ParseState.EXPECT_RECORD;
+FSEditLogOp op=FSEditLogOp.getOpInstance(opCode);
+opCode=null;
+try {
+op.decodeXml(stanza);
+stanza=null;
+}
+  finally {
+if (stanza != null) {
+System.err.println("fromXml error decoding opcode " + opCode + "\n"+ stanza.toString());
+stanza=null;
+}
+}
+if (fixTxIds) {
+if (nextTxId <= 0) {
+nextTxId=op.getTransactionId();
+if (nextTxId <= 0) {
+nextTxId=1;
+}
+}
+op.setTransactionId(nextTxId);
+nextTxId++;
+}
+try {
+visitor.visitOp(op);
+}
+ catch (IOException e) {
+throw new RuntimeException(e);
+}
+state=ParseState.EXPECT_RECORD;
+}
+ else {
+stanza=stanzaStack.pop();
+}
+break;
+case EXPECT_END:
+throw new InvalidXmlException("not expecting anything after </EDITS>");
+}
+}
