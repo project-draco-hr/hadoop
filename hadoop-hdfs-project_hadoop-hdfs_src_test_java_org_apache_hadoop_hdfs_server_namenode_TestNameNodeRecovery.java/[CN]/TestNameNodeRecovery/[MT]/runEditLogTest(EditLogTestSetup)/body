@@ -1,0 +1,68 @@
+{
+  final String TEST_LOG_NAME="test_edit_log";
+  final OpInstanceCache cache=new OpInstanceCache();
+  EditLogFileOutputStream elfos=null;
+  File file=null;
+  EditLogFileInputStream elfis=null;
+  try {
+    file=new File(TEST_LOG_NAME);
+    elfos=new EditLogFileOutputStream(file,0);
+    elfos.create();
+    elts.addTransactionsToLog(elfos,cache);
+    elfos.setReadyToFlush();
+    elfos.flushAndSync();
+    elfos.close();
+    elfos=null;
+    file=new File(TEST_LOG_NAME);
+    elfis=new EditLogFileInputStream(file);
+    Set<Long> validTxIds=elts.getValidTxIds();
+    FSEditLogOp op=null;
+    long prevTxId=0;
+    try {
+      while (true) {
+        op=elfis.nextOp();
+        if (op == null) {
+          break;
+        }
+        LOG.debug("read txid " + op.txid);
+        if (!validTxIds.contains(op.getTransactionId())) {
+          fail("read txid " + op.getTransactionId() + ", which we did not expect to find.");
+        }
+        validTxIds.remove(op.getTransactionId());
+        prevTxId=op.getTransactionId();
+      }
+      if (elts.getLastValidTxId() != -1) {
+        fail("failed to throw IoException as expected");
+      }
+    }
+ catch (    IOException e) {
+      if (elts.getLastValidTxId() == -1) {
+        fail("expected all transactions to be valid, but got exception " + "on txid " + prevTxId);
+      }
+ else {
+        assertEquals(prevTxId,elts.getLastValidTxId());
+      }
+    }
+    if (elts.getLastValidTxId() != -1) {
+      op=null;
+      prevTxId=0;
+      try {
+        while (true) {
+          op=elfis.nextValidOp();
+          if (op == null) {
+            break;
+          }
+          prevTxId=op.getTransactionId();
+          assertTrue(validTxIds.remove(op.getTransactionId()));
+        }
+      }
+ catch (      Throwable e) {
+        fail("caught IOException while trying to skip over bad " + "transaction.  message was " + e.getMessage() + "\nstack trace\n"+ StringUtils.stringifyException(e));
+      }
+    }
+    assertTrue(validTxIds.isEmpty());
+  }
+  finally {
+    IOUtils.cleanup(LOG,elfos,elfis);
+  }
+}
