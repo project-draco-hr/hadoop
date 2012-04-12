@@ -1,0 +1,32 @@
+{
+  for (  JournalAndStream jas : fsns.getFSImage().getEditLog().getJournals()) {
+    FileJournalManager fjm=null;
+    if (!(jas.getManager() instanceof FileJournalManager)) {
+      LOG.error("Cannot populate shared edits dir from non-file " + "journal manager: " + jas.getManager());
+      return true;
+    }
+ else {
+      fjm=(FileJournalManager)jas.getManager();
+    }
+    for (    EditLogFile elf : fjm.getLogFiles(fsns.getFSImage().getMostRecentCheckpointTxId())) {
+      File editLogSegment=elf.getFile();
+      for (      URI sharedEditsUri : sharedEditsDirs) {
+        StorageDirectory sharedEditsDir=newSharedStorage.getStorageDirectory(sharedEditsUri);
+        File targetFile=new File(sharedEditsDir.getCurrentDir(),editLogSegment.getName());
+        if (!targetFile.exists()) {
+          InputStream in=null;
+          OutputStream out=null;
+          try {
+            in=new FileInputStream(editLogSegment);
+            out=new AtomicFileOutputStream(targetFile);
+            IOUtils.copyBytes(in,out,conf);
+          }
+  finally {
+            IOUtils.cleanup(LOG,in,out);
+          }
+        }
+      }
+    }
+  }
+  return false;
+}
