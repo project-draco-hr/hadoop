@@ -1,0 +1,37 @@
+{
+  JobId jobId=fileInfo.getJobIndexInfo().getJobId();
+  if (LOG.isDebugEnabled()) {
+    LOG.debug("Adding " + jobId + " to job list cache with "+ fileInfo.getJobIndexInfo());
+  }
+  HistoryFileInfo old=cache.putIfAbsent(jobId,fileInfo);
+  if (cache.size() > maxSize) {
+    Iterator<JobId> keys=cache.navigableKeySet().iterator();
+    long cutoff=System.currentTimeMillis() - maxAge;
+    while (cache.size() > maxSize && keys.hasNext()) {
+      JobId key=keys.next();
+      HistoryFileInfo firstValue=cache.get(key);
+      if (firstValue != null) {
+synchronized (firstValue) {
+          if (firstValue.isMovePending()) {
+            if (firstValue.didMoveFail() && firstValue.jobIndexInfo.getFinishTime() <= cutoff) {
+              cache.remove(key);
+              try {
+                firstValue.delete();
+              }
+ catch (              IOException e) {
+                LOG.error("Error while trying to delete history files" + " that could not be moved to done.",e);
+              }
+            }
+ else {
+              LOG.warn("Waiting to remove " + key + " from JobListCache because it is not in done yet.");
+            }
+          }
+ else {
+            cache.remove(key);
+          }
+        }
+      }
+    }
+  }
+  return old;
+}
