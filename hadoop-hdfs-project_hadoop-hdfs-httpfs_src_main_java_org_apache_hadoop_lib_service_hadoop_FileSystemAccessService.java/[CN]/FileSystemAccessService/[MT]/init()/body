@@ -33,19 +33,24 @@
  else {
     throw new ServiceException(FileSystemAccessException.ERROR.H09,security);
   }
-  serviceHadoopConf=new Configuration(false);
-  for (  Map.Entry entry : getServiceConfig()) {
-    String name=(String)entry.getKey();
-    if (name.startsWith(HADOOP_CONF_PREFIX)) {
-      name=name.substring(HADOOP_CONF_PREFIX.length());
-      String value=(String)entry.getValue();
-      serviceHadoopConf.set(name,value);
-    }
+  String hadoopConfDirProp=getServiceConfig().get(HADOOP_CONF_DIR,getServer().getConfigDir());
+  File hadoopConfDir=new File(hadoopConfDirProp).getAbsoluteFile();
+  if (hadoopConfDir == null) {
+    hadoopConfDir=new File(getServer().getConfigDir()).getAbsoluteFile();
   }
-  setRequiredServiceHadoopConf(serviceHadoopConf);
-  LOG.debug("FileSystemAccess default configuration:");
+  if (!hadoopConfDir.exists()) {
+    throw new ServiceException(FileSystemAccessException.ERROR.H10,hadoopConfDir);
+  }
+  try {
+    serviceHadoopConf=loadHadoopConf(hadoopConfDir);
+  }
+ catch (  IOException ex) {
+    throw new ServiceException(FileSystemAccessException.ERROR.H11,ex.toString(),ex);
+  }
+  LOG.debug("FileSystemAccess FileSystem configuration:");
   for (  Map.Entry entry : serviceHadoopConf) {
     LOG.debug("  {} = {}",entry.getKey(),entry.getValue());
   }
+  setRequiredServiceHadoopConf(serviceHadoopConf);
   nameNodeWhitelist=toLowerCase(getServiceConfig().getTrimmedStringCollection(NAME_NODE_WHITELIST));
 }
