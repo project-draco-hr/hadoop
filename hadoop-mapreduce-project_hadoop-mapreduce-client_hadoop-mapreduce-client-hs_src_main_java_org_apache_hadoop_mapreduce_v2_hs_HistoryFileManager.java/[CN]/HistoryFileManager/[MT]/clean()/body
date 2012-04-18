@@ -1,0 +1,33 @@
+{
+  long cutoff=System.currentTimeMillis() - maxHistoryAge;
+  boolean halted=false;
+  List<FileStatus> serialDirList=findTimestampedDirectories();
+  Collections.sort(serialDirList);
+  for (  FileStatus serialDir : serialDirList) {
+    List<FileStatus> historyFileList=scanDirectoryForHistoryFiles(serialDir.getPath(),doneDirFc);
+    for (    FileStatus historyFile : historyFileList) {
+      JobIndexInfo jobIndexInfo=FileNameIndexUtils.getIndexInfo(historyFile.getPath().getName());
+      long effectiveTimestamp=getEffectiveTimestamp(jobIndexInfo.getFinishTime(),historyFile);
+      if (effectiveTimestamp <= cutoff) {
+        HistoryFileInfo fileInfo=this.jobListCache.get(jobIndexInfo.getJobId());
+        if (fileInfo == null) {
+          String confFileName=JobHistoryUtils.getIntermediateConfFileName(jobIndexInfo.getJobId());
+          fileInfo=new HistoryFileInfo(historyFile.getPath(),new Path(historyFile.getPath().getParent(),confFileName),null,jobIndexInfo,true);
+        }
+        deleteJobFromDone(fileInfo);
+      }
+ else {
+        halted=true;
+        break;
+      }
+    }
+    if (!halted) {
+      doneDirFc.delete(doneDirFc.makeQualified(serialDir.getPath()),true);
+      removeDirectoryFromSerialNumberIndex(serialDir.getPath());
+      existingDoneSubdirs.remove(serialDir.getPath());
+    }
+ else {
+      break;
+    }
+  }
+}

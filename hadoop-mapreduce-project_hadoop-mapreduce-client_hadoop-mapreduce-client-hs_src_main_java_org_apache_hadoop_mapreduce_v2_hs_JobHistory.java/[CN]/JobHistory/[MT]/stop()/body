@@ -1,23 +1,11 @@
 {
   LOG.info("Stopping JobHistory");
-  if (moveIntermediateToDoneThread != null) {
-    LOG.info("Stopping move thread");
-    moveIntermediateToDoneRunnable.stop();
-    moveIntermediateToDoneThread.interrupt();
-    try {
-      LOG.info("Joining on move thread");
-      moveIntermediateToDoneThread.join();
-    }
- catch (    InterruptedException e) {
-      LOG.info("Interrupted while stopping move thread");
-    }
-  }
-  if (cleanerScheduledExecutor != null) {
-    LOG.info("Stopping History Cleaner");
-    cleanerScheduledExecutor.shutdown();
+  if (scheduledExecutor != null) {
+    LOG.info("Stopping History Cleaner/Move To Done");
+    scheduledExecutor.shutdown();
     boolean interrupted=false;
     long currentTime=System.currentTimeMillis();
-    while (!cleanerScheduledExecutor.isShutdown() && System.currentTimeMillis() > currentTime + 1000l && !interrupted) {
+    while (!scheduledExecutor.isShutdown() && System.currentTimeMillis() > currentTime + 1000l && !interrupted) {
       try {
         Thread.sleep(20);
       }
@@ -25,8 +13,9 @@
         interrupted=true;
       }
     }
-    if (!cleanerScheduledExecutor.isShutdown()) {
-      LOG.warn("HistoryCleanerService shutdown may not have succeeded");
+    if (!scheduledExecutor.isShutdown()) {
+      LOG.warn("HistoryCleanerService/move to done shutdown may not have " + "succeeded, Forcing a shutdown");
+      scheduledExecutor.shutdownNow();
     }
   }
   if (storage instanceof Service) {

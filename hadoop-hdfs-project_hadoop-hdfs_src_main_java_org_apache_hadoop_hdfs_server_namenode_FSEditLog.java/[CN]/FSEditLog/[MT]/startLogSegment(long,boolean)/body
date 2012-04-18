@@ -1,21 +1,20 @@
 {
-  LOG.info("Starting log segment at " + segmentTxId);
-  Preconditions.checkArgument(segmentTxId > 0,"Bad txid: %s",segmentTxId);
-  Preconditions.checkState(state == State.BETWEEN_LOG_SEGMENTS,"Bad state: %s",state);
-  Preconditions.checkState(segmentTxId > curSegmentTxId,"Cannot start writing to log segment " + segmentTxId + " when previous log segment started at "+ curSegmentTxId);
-  Preconditions.checkArgument(segmentTxId == txid + 1,"Cannot start log segment at txid %s when next expected " + "txid is %s",segmentTxId,txid + 1);
-  numTransactions=totalTimeTransactions=numTransactionsBatchedInSync=0;
-  storage.attemptRestoreRemovedStorage();
-  try {
-    editLogStream=journalSet.startLogSegment(segmentTxId);
+  LOG.info("Namenode started a new log segment at txid " + txid);
+  if (isSegmentOpen()) {
+    if (getLastWrittenTxId() == txid - 1) {
+      endCurrentLogSegment(false);
+    }
+ else {
+      final String mess="Cannot start a new log segment at txid " + txid + " since only up to txid "+ getLastWrittenTxId()+ " have been written in the log segment starting at "+ getCurSegmentTxId()+ ".";
+      if (abortCurrentLogSegment) {
+        LOG.warn(mess);
+        abortCurrentLogSegment();
+      }
+ else {
+        throw new IOException(mess);
+      }
+    }
   }
- catch (  IOException ex) {
-    throw new IOException("Unable to start log segment " + segmentTxId + ": too few journals successfully started.",ex);
-  }
-  curSegmentTxId=segmentTxId;
-  state=State.IN_SEGMENT;
-  if (writeHeaderTxn) {
-    logEdit(LogSegmentOp.getInstance(cache.get(),FSEditLogOpCodes.OP_START_LOG_SEGMENT));
-    logSync();
-  }
+  setNextTxId(txid);
+  startLogSegment(txid);
 }

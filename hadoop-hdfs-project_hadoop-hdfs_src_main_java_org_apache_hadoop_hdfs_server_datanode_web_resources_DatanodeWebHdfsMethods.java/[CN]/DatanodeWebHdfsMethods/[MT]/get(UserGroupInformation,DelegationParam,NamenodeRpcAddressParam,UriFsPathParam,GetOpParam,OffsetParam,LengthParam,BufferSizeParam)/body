@@ -3,70 +3,8 @@
   init(ugi,delegation,nnRpcAddr,path,op,offset,length,bufferSize);
   return ugi.doAs(new PrivilegedExceptionAction<Response>(){
     @Override public Response run() throws IOException {
-      final String fullpath=path.getAbsolutePath();
-      final DataNode datanode=(DataNode)context.getAttribute("datanode");
-      final Configuration conf=new Configuration(datanode.getConf());
-switch (op.getValue()) {
-case OPEN:
-{
-          final int b=bufferSize.getValue(conf);
-          final DFSClient dfsclient=new DFSClient(nnRpcAddr,conf);
-          DFSDataInputStream in=null;
-          try {
-            in=new DFSClient.DFSDataInputStream(dfsclient.open(fullpath,b,true));
-            in.seek(offset.getValue());
-          }
- catch (          IOException ioe) {
-            IOUtils.cleanup(LOG,in);
-            IOUtils.cleanup(LOG,dfsclient);
-            throw ioe;
-          }
-          final DFSDataInputStream dis=in;
-          final StreamingOutput streaming=new StreamingOutput(){
-            @Override public void write(            final OutputStream out) throws IOException {
-              final Long n=length.getValue();
-              DFSDataInputStream dfsin=dis;
-              DFSClient client=dfsclient;
-              try {
-                if (n == null) {
-                  IOUtils.copyBytes(dfsin,out,b);
-                }
- else {
-                  IOUtils.copyBytes(dfsin,out,n,false);
-                }
-                dfsin.close();
-                dfsin=null;
-                dfsclient.close();
-                client=null;
-              }
-  finally {
-                IOUtils.cleanup(LOG,dfsin);
-                IOUtils.cleanup(LOG,client);
-              }
-            }
-          }
-;
-          return Response.ok(streaming).type(MediaType.APPLICATION_OCTET_STREAM).build();
-        }
-case GETFILECHECKSUM:
-{
-        MD5MD5CRC32FileChecksum checksum=null;
-        DFSClient dfsclient=new DFSClient(nnRpcAddr,conf);
-        try {
-          checksum=dfsclient.getFileChecksum(fullpath);
-          dfsclient.close();
-          dfsclient=null;
-        }
-  finally {
-          IOUtils.cleanup(LOG,dfsclient);
-        }
-        final String js=JsonUtil.toJsonString(checksum);
-        return Response.ok(js).type(MediaType.APPLICATION_JSON).build();
-      }
-default :
-    throw new UnsupportedOperationException(op + " is not supported");
-}
-}
-}
+      return get(ugi,delegation,nnRpcAddr,path.getAbsolutePath(),op,offset,length,bufferSize);
+    }
+  }
 );
 }

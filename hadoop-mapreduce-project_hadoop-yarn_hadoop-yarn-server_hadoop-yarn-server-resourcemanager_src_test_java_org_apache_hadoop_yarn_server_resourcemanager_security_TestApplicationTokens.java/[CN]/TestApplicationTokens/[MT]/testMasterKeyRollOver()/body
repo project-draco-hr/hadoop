@@ -1,0 +1,47 @@
+{
+  Configuration config=new Configuration();
+  MyContainerManager containerManager=new MyContainerManager();
+  final MockRM rm=new MockRMWithAMS(config,containerManager);
+  rm.start();
+  try {
+    MockNM nm1=rm.registerNode("localhost:1234",5120);
+    RMApp app=rm.submitApp(1024);
+    nm1.nodeHeartbeat(true);
+    int waitCount=0;
+    while (containerManager.amContainerEnv == null && waitCount++ < 20) {
+      LOG.info("Waiting for AM Launch to happen..");
+      Thread.sleep(1000);
+    }
+    Assert.assertNotNull(containerManager.amContainerEnv);
+    RMAppAttempt attempt=app.getCurrentAppAttempt();
+    ApplicationAttemptId applicationAttemptId=attempt.getAppAttemptId();
+    final Configuration conf=rm.getConfig();
+    final YarnRPC rpc=YarnRPC.create(conf);
+    UserGroupInformation currentUser=UserGroupInformation.createRemoteUser(applicationAttemptId.toString());
+    String tokenURLEncodedStr=containerManager.amContainerEnv.get(ApplicationConstants.APPLICATION_MASTER_TOKEN_ENV_NAME);
+    LOG.info("AppMasterToken is " + tokenURLEncodedStr);
+    Token<? extends TokenIdentifier> token=new Token<TokenIdentifier>();
+    token.decodeFromUrlString(tokenURLEncodedStr);
+    currentUser.addToken(token);
+    AMRMProtocol rmClient=createRMClient(rm,conf,rpc,currentUser);
+    RegisterApplicationMasterRequest request=Records.newRecord(RegisterApplicationMasterRequest.class);
+    request.setApplicationAttemptId(applicationAttemptId);
+    rmClient.registerApplicationMaster(request);
+    AllocateRequest allocateRequest=Records.newRecord(AllocateRequest.class);
+    allocateRequest.setApplicationAttemptId(applicationAttemptId);
+    Assert.assertFalse(rmClient.allocate(allocateRequest).getAMResponse().getReboot());
+    ApplicationTokenSecretManager appTokenSecretManager=rm.getRMContext().getApplicationTokenSecretManager();
+    SecretKey oldKey=appTokenSecretManager.getMasterKey();
+    appTokenSecretManager.rollMasterKey();
+    SecretKey newKey=appTokenSecretManager.getMasterKey();
+    Assert.assertFalse("Master key should have changed!",oldKey.equals(newKey));
+    rpc.stopProxy(rmClient,conf);
+    rmClient=createRMClient(rm,conf,rpc,currentUser);
+    allocateRequest=Records.newRecord(AllocateRequest.class);
+    allocateRequest.setApplicationAttemptId(applicationAttemptId);
+    Assert.assertFalse(rmClient.allocate(allocateRequest).getAMResponse().getReboot());
+  }
+  finally {
+    rm.stop();
+  }
+}

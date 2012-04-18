@@ -4,9 +4,32 @@
     JobIndexInfo jobIndexInfo=FileNameIndexUtils.getIndexInfo(fs.getPath().getName());
     String confFileName=JobHistoryUtils.getIntermediateConfFileName(jobIndexInfo.getJobId());
     String summaryFileName=JobHistoryUtils.getIntermediateSummaryFileName(jobIndexInfo.getJobId());
-    MetaInfo metaInfo=new MetaInfo(fs.getPath(),new Path(fs.getPath().getParent(),confFileName),new Path(fs.getPath().getParent(),summaryFileName),jobIndexInfo);
-    if (!intermediateListCache.containsKey(jobIndexInfo.getJobId())) {
-      intermediateListCache.put(jobIndexInfo.getJobId(),metaInfo);
+    HistoryFileInfo fileInfo=new HistoryFileInfo(fs.getPath(),new Path(fs.getPath().getParent(),confFileName),new Path(fs.getPath().getParent(),summaryFileName),jobIndexInfo,false);
+    final HistoryFileInfo old=jobListCache.addIfAbsent(fileInfo);
+    if (old == null || old.didMoveFail()) {
+      final HistoryFileInfo found=(old == null) ? fileInfo : old;
+      long cutoff=System.currentTimeMillis() - maxHistoryAge;
+      if (found.getJobIndexInfo().getFinishTime() <= cutoff) {
+        try {
+          found.delete();
+        }
+ catch (        IOException e) {
+          LOG.warn("Error cleaning up a HistoryFile that is out of date.",e);
+        }
+      }
+ else {
+        moveToDoneExecutor.execute(new Runnable(){
+          @Override public void run(){
+            try {
+              found.moveToDone();
+            }
+ catch (            IOException e) {
+              LOG.info("Failed to process fileInfo for job: " + found.getJobId(),e);
+            }
+          }
+        }
+);
+      }
     }
   }
 }
