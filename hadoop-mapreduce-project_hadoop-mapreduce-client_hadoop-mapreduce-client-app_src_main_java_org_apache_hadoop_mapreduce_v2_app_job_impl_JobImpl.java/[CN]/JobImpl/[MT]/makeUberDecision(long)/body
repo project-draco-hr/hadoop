@@ -1,6 +1,7 @@
 {
   int sysMaxMaps=conf.getInt(MRJobConfig.JOB_UBERTASK_MAXMAPS,9);
-  int sysMaxReduces=1;
+  int sysMaxReduces=conf.getInt(MRJobConfig.JOB_UBERTASK_MAXREDUCES,1);
+  boolean isValidUberMaxReduces=(sysMaxReduces == 0) || (sysMaxReduces == 1);
   long sysMaxBytes=conf.getLong(MRJobConfig.JOB_UBERTASK_MAXBYTES,fs.getDefaultBlockSize());
   long sysMemSizeForUberSlot=conf.getInt(MRJobConfig.MR_AM_VMEM_MB,MRJobConfig.DEFAULT_MR_AM_VMEM_MB);
   boolean uberEnabled=conf.getBoolean(MRJobConfig.JOB_UBERTASK_ENABLE,false);
@@ -9,7 +10,7 @@
   boolean smallInput=(dataInputLength <= sysMaxBytes);
   boolean smallMemory=((Math.max(conf.getLong(MRJobConfig.MAP_MEMORY_MB,0),conf.getLong(MRJobConfig.REDUCE_MEMORY_MB,0)) <= sysMemSizeForUberSlot) || (sysMemSizeForUberSlot == JobConf.DISABLED_MEMORY_LIMIT));
   boolean notChainJob=!isChainJob(conf);
-  isUber=uberEnabled && smallNumMapTasks && smallNumReduceTasks&& smallInput&& smallMemory&& notChainJob;
+  isUber=uberEnabled && smallNumMapTasks && smallNumReduceTasks&& smallInput&& smallMemory&& notChainJob&& isValidUberMaxReduces;
   if (isUber) {
     LOG.info("Uberizing job " + jobId + ": "+ numMapTasks+ "m+"+ numReduceTasks+ "r tasks ("+ dataInputLength+ " input bytes) will run sequentially on single node.");
     conf.setFloat(MRJobConfig.COMPLETED_MAPS_FOR_REDUCE_SLOWSTART,1.0f);
@@ -26,7 +27,8 @@
     if (!smallNumReduceTasks)     msg.append(" too many reduces;");
     if (!smallInput)     msg.append(" too much input;");
     if (!smallMemory)     msg.append(" too much RAM;");
-    if (!notChainJob)     msg.append(" chainjob");
+    if (!notChainJob)     msg.append(" chainjob;");
+    if (!isValidUberMaxReduces)     msg.append(" not supported uber max reduces");
     LOG.info(msg.toString());
   }
 }
