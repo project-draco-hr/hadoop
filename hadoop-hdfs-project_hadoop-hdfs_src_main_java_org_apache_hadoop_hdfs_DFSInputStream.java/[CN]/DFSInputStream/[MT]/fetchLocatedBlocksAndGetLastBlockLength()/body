@@ -1,0 +1,33 @@
+{
+  LocatedBlocks newInfo=DFSClient.callGetBlockLocations(dfsClient.namenode,src,0,prefetchSize);
+  if (DFSClient.LOG.isDebugEnabled()) {
+    DFSClient.LOG.debug("newInfo = " + newInfo);
+  }
+  if (newInfo == null) {
+    throw new IOException("Cannot open filename " + src);
+  }
+  if (locatedBlocks != null) {
+    Iterator<LocatedBlock> oldIter=locatedBlocks.getLocatedBlocks().iterator();
+    Iterator<LocatedBlock> newIter=newInfo.getLocatedBlocks().iterator();
+    while (oldIter.hasNext() && newIter.hasNext()) {
+      if (!oldIter.next().getBlock().equals(newIter.next().getBlock())) {
+        throw new IOException("Blocklist for " + src + " has changed!");
+      }
+    }
+  }
+  locatedBlocks=newInfo;
+  long lastBlockBeingWrittenLength=0;
+  if (!locatedBlocks.isLastBlockComplete()) {
+    final LocatedBlock last=locatedBlocks.getLastLocatedBlock();
+    if (last != null) {
+      if (last.getLocations().length == 0) {
+        return -1;
+      }
+      final long len=readBlockLength(last);
+      last.getBlock().setNumBytes(len);
+      lastBlockBeingWrittenLength=len;
+    }
+  }
+  currentNode=null;
+  return lastBlockBeingWrittenLength;
+}
