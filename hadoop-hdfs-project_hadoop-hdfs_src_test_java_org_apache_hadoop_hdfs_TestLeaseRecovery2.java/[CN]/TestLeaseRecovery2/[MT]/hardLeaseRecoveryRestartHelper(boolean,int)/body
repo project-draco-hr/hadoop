@@ -1,16 +1,21 @@
 {
+  if (size < 0) {
+    size=AppendTestUtil.nextInt(FILE_SIZE + 1);
+  }
   String fileStr="/hardLeaseRecovery";
   AppendTestUtil.LOG.info("filestr=" + fileStr);
   Path filePath=new Path(fileStr);
   FSDataOutputStream stm=dfs.create(filePath,true,BUF_SIZE,REPLICATION_NUM,BLOCK_SIZE);
   assertTrue(dfs.dfs.exists(fileStr));
-  int size=AppendTestUtil.nextInt(FILE_SIZE);
   AppendTestUtil.LOG.info("size=" + size);
   stm.write(buffer,0,size);
   String originalLeaseHolder=NameNodeAdapter.getLeaseHolderForPath(cluster.getNameNode(),fileStr);
   assertFalse("original lease holder should not be the NN",originalLeaseHolder.equals(HdfsServerConstants.NAMENODE_LEASE_HOLDER));
   AppendTestUtil.LOG.info("hflush");
   stm.hflush();
+  final HdfsDataInputStream in=(HdfsDataInputStream)dfs.open(filePath);
+  Assert.assertEquals(size,in.getVisibleLength());
+  in.close();
   if (doRename) {
     fileStr+=".renamed";
     Path renamedPath=new Path(fileStr);
@@ -24,9 +29,9 @@
   }
   cluster.setLeasePeriod(LONG_LEASE_PERIOD,SHORT_LEASE_PERIOD);
   Thread.sleep(HdfsServerConstants.NAMENODE_LEASE_RECHECK_INTERVAL * 2);
-  assertEquals("lease holder should now be the NN",HdfsServerConstants.NAMENODE_LEASE_HOLDER,NameNodeAdapter.getLeaseHolderForPath(cluster.getNameNode(),fileStr));
+  checkLease(fileStr,size);
   cluster.restartNameNode(false);
-  assertEquals("lease holder should still be the NN after restart",HdfsServerConstants.NAMENODE_LEASE_HOLDER,NameNodeAdapter.getLeaseHolderForPath(cluster.getNameNode(),fileStr));
+  checkLease(fileStr,size);
   for (  DataNode dn : cluster.getDataNodes()) {
     DataNodeTestUtils.setHeartbeatsDisabledForTests(dn,false);
   }
@@ -39,13 +44,13 @@
   }
  while (locatedBlocks.isUnderConstruction());
   assertEquals(size,locatedBlocks.getFileLength());
-  stm.write('b');
   try {
+    stm.write('b');
     stm.hflush();
     fail("Should not be able to flush after we've lost the lease");
   }
  catch (  IOException e) {
-    LOG.info("Expceted exception on hflush",e);
+    LOG.info("Expceted exception on write/hflush",e);
   }
   try {
     stm.close();
