@@ -1,0 +1,64 @@
+{
+  Constructor<?> constructor=serviceCache.get(protocol);
+  if (constructor == null) {
+    Class<?> pbServiceImplClazz=null;
+    try {
+      pbServiceImplClazz=localConf.getClassByName(getPbServiceImplClassName(protocol));
+    }
+ catch (    ClassNotFoundException e) {
+      throw new YarnException("Failed to load class: [" + getPbServiceImplClassName(protocol) + "]",e);
+    }
+    try {
+      constructor=pbServiceImplClazz.getConstructor(protocol);
+      constructor.setAccessible(true);
+      serviceCache.putIfAbsent(protocol,constructor);
+    }
+ catch (    NoSuchMethodException e) {
+      throw new YarnException("Could not find constructor with params: " + Long.TYPE + ", "+ InetSocketAddress.class+ ", "+ Configuration.class,e);
+    }
+  }
+  Object service=null;
+  try {
+    service=constructor.newInstance(instance);
+  }
+ catch (  InvocationTargetException e) {
+    throw new YarnException(e);
+  }
+catch (  IllegalAccessException e) {
+    throw new YarnException(e);
+  }
+catch (  InstantiationException e) {
+    throw new YarnException(e);
+  }
+  Class<?> pbProtocol=service.getClass().getInterfaces()[0];
+  Method method=protoCache.get(protocol);
+  if (method == null) {
+    Class<?> protoClazz=null;
+    try {
+      protoClazz=localConf.getClassByName(getProtoClassName(protocol));
+    }
+ catch (    ClassNotFoundException e) {
+      throw new YarnException("Failed to load class: [" + getProtoClassName(protocol) + "]",e);
+    }
+    try {
+      method=protoClazz.getMethod("newReflectiveBlockingService",pbProtocol.getInterfaces()[0]);
+      method.setAccessible(true);
+      protoCache.putIfAbsent(protocol,method);
+    }
+ catch (    NoSuchMethodException e) {
+      throw new YarnException(e);
+    }
+  }
+  try {
+    return createServer(pbProtocol,addr,conf,secretManager,numHandlers,(BlockingService)method.invoke(null,service),portRangeConfig);
+  }
+ catch (  InvocationTargetException e) {
+    throw new YarnException(e);
+  }
+catch (  IllegalAccessException e) {
+    throw new YarnException(e);
+  }
+catch (  IOException e) {
+    throw new YarnException(e);
+  }
+}

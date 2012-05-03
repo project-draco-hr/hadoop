@@ -1,0 +1,64 @@
+{
+  if (size < 0) {
+    size=AppendTestUtil.nextInt(FILE_SIZE + 1);
+  }
+  String fileStr="/hardLeaseRecovery";
+  AppendTestUtil.LOG.info("filestr=" + fileStr);
+  Path filePath=new Path(fileStr);
+  FSDataOutputStream stm=dfs.create(filePath,true,BUF_SIZE,REPLICATION_NUM,BLOCK_SIZE);
+  assertTrue(dfs.dfs.exists(fileStr));
+  AppendTestUtil.LOG.info("size=" + size);
+  stm.write(buffer,0,size);
+  String originalLeaseHolder=NameNodeAdapter.getLeaseHolderForPath(cluster.getNameNode(),fileStr);
+  assertFalse("original lease holder should not be the NN",originalLeaseHolder.equals(HdfsServerConstants.NAMENODE_LEASE_HOLDER));
+  AppendTestUtil.LOG.info("hflush");
+  stm.hflush();
+  final HdfsDataInputStream in=(HdfsDataInputStream)dfs.open(filePath);
+  Assert.assertEquals(size,in.getVisibleLength());
+  in.close();
+  if (doRename) {
+    fileStr+=".renamed";
+    Path renamedPath=new Path(fileStr);
+    assertTrue(dfs.rename(filePath,renamedPath));
+    filePath=renamedPath;
+  }
+  AppendTestUtil.LOG.info("leasechecker.interruptAndJoin()");
+  dfs.dfs.leaserenewer.interruptAndJoin();
+  for (  DataNode dn : cluster.getDataNodes()) {
+    DataNodeTestUtils.setHeartbeatsDisabledForTests(dn,true);
+  }
+  cluster.setLeasePeriod(LONG_LEASE_PERIOD,SHORT_LEASE_PERIOD);
+  Thread.sleep(HdfsServerConstants.NAMENODE_LEASE_RECHECK_INTERVAL * 2);
+  checkLease(fileStr,size);
+  cluster.restartNameNode(false);
+  checkLease(fileStr,size);
+  for (  DataNode dn : cluster.getDataNodes()) {
+    DataNodeTestUtils.setHeartbeatsDisabledForTests(dn,false);
+  }
+  cluster.waitActive();
+  cluster.setLeasePeriod(LONG_LEASE_PERIOD,SHORT_LEASE_PERIOD);
+  LocatedBlocks locatedBlocks;
+  do {
+    Thread.sleep(SHORT_LEASE_PERIOD);
+    locatedBlocks=DFSClient.callGetBlockLocations(dfs.dfs.namenode,fileStr,0L,size);
+  }
+ while (locatedBlocks.isUnderConstruction());
+  assertEquals(size,locatedBlocks.getFileLength());
+  try {
+    stm.write('b');
+    stm.hflush();
+    fail("Should not be able to flush after we've lost the lease");
+  }
+ catch (  IOException e) {
+    LOG.info("Expceted exception on write/hflush",e);
+  }
+  try {
+    stm.close();
+    fail("Should not be able to close after we've lost the lease");
+  }
+ catch (  IOException e) {
+    LOG.info("Expected exception on close",e);
+  }
+  AppendTestUtil.LOG.info("File size is good. Now validating sizes from datanodes...");
+  AppendTestUtil.checkFullFile(dfs,filePath,size,buffer,fileStr);
+}

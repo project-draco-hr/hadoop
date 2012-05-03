@@ -1,0 +1,34 @@
+{
+  final Configuration conf=new HdfsConfiguration();
+  conf.setInt(DFSConfigKeys.DFS_BLOCK_SIZE_KEY,512);
+  final MiniDFSCluster cluster=new MiniDFSCluster.Builder(conf).numDataNodes(2).build();
+  HdfsDataInputStream in=null;
+  try {
+    Path path=new Path(MiniDFSCluster.getBaseDirectory(),"test");
+    DistributedFileSystem dfs=(DistributedFileSystem)cluster.getFileSystem();
+    FSDataOutputStream out=dfs.create(path);
+    int fileLength=1030;
+    out.write(new byte[fileLength]);
+    out.hsync();
+    cluster.restartNameNode();
+    cluster.waitActive();
+    in=(HdfsDataInputStream)dfs.open(path,1024);
+    Assert.assertEquals(fileLength,in.getVisibleLength());
+    cluster.shutdownDataNodes();
+    cluster.restartNameNode(false);
+    verifyNNIsInSafeMode(dfs);
+    try {
+      in=(HdfsDataInputStream)dfs.open(path);
+      Assert.fail("Expected IOException");
+    }
+ catch (    IOException e) {
+      Assert.assertEquals("Could not obtain the last block locations.",e.getLocalizedMessage());
+    }
+  }
+  finally {
+    if (null != in) {
+      in.close();
+    }
+    cluster.shutdown();
+  }
+}

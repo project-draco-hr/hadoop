@@ -9,7 +9,9 @@
 catch (  NoSuchMethodException e) {
     throw new YarnException("Method name mismatch",e);
   }
-  while (true) {
+  int maxRetries=this.conf.getInt(MRJobConfig.MR_CLIENT_MAX_RETRIES,MRJobConfig.DEFAULT_MR_CLIENT_MAX_RETRIES);
+  IOException lastException=null;
+  while (maxRetries > 0) {
     try {
       return methodOb.invoke(getProxy(),args);
     }
@@ -25,10 +27,15 @@ catch (    InvocationTargetException e) {
       }
       LOG.debug("Failed to contact AM/History for job " + jobId + " retrying..",e.getTargetException());
       realProxy=null;
+      maxRetries--;
+      lastException=new IOException(e.getMessage());
     }
 catch (    Exception e) {
       LOG.debug("Failed to contact AM/History for job " + jobId + "  Will retry..",e);
       realProxy=null;
+      maxRetries--;
+      lastException=new IOException(e.getMessage());
     }
   }
+  throw lastException;
 }
