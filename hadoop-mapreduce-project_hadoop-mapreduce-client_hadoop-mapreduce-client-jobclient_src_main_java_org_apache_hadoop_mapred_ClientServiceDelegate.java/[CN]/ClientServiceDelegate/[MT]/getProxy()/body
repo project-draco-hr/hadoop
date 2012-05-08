@@ -6,7 +6,7 @@
   if (application != null) {
     trackingUrl=application.getTrackingUrl();
   }
-  String serviceAddr=null;
+  InetSocketAddress serviceAddr=null;
   while (application == null || YarnApplicationState.RUNNING == application.getYarnApplicationState()) {
     if (application == null) {
       LOG.info("Could not get Job info from RM for job " + jobId + ". Redirecting to job history server.");
@@ -29,20 +29,19 @@
       }
       if (!conf.getBoolean(MRJobConfig.JOB_AM_ACCESS_DISABLED,false)) {
         UserGroupInformation newUgi=UserGroupInformation.createRemoteUser(UserGroupInformation.getCurrentUser().getUserName());
-        serviceAddr=application.getHost() + ":" + application.getRpcPort();
+        serviceAddr=NetUtils.createSocketAddrForHost(application.getHost(),application.getRpcPort());
         if (UserGroupInformation.isSecurityEnabled()) {
           String clientTokenEncoded=application.getClientToken();
           Token<ApplicationTokenIdentifier> clientToken=new Token<ApplicationTokenIdentifier>();
           clientToken.decodeFromUrlString(clientTokenEncoded);
-          InetSocketAddress addr=NetUtils.createSocketAddr(application.getHost(),application.getRpcPort());
-          clientToken.setService(new Text(addr.getAddress().getHostAddress() + ":" + addr.getPort()));
+          SecurityUtil.setTokenService(clientToken,serviceAddr);
           newUgi.addToken(clientToken);
         }
         LOG.debug("Connecting to " + serviceAddr);
-        final String tempStr=serviceAddr;
+        final InetSocketAddress finalServiceAddr=serviceAddr;
         realProxy=newUgi.doAs(new PrivilegedExceptionAction<MRClientProtocol>(){
           @Override public MRClientProtocol run() throws IOException {
-            return instantiateAMProxy(tempStr);
+            return instantiateAMProxy(finalServiceAddr);
           }
         }
 );
