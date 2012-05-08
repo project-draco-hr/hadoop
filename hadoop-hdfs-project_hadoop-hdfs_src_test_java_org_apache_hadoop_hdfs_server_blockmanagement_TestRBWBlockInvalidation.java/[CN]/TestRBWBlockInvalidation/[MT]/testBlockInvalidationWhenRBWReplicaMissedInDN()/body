@@ -1,0 +1,35 @@
+{
+  Configuration conf=new HdfsConfiguration();
+  conf.setLong(DFSConfigKeys.DFS_BLOCKREPORT_INTERVAL_MSEC_KEY,300);
+  conf.setInt(DFSConfigKeys.DFS_NAMENODE_REPLICATION_INTERVAL_KEY,1);
+  conf.setLong(DFSConfigKeys.DFS_HEARTBEAT_INTERVAL_KEY,1);
+  MiniDFSCluster cluster=new MiniDFSCluster.Builder(conf).numDataNodes(3).build();
+  FSDataOutputStream out=null;
+  try {
+    final FSNamesystem namesystem=cluster.getNamesystem();
+    FileSystem fs=cluster.getFileSystem();
+    Path testPath=new Path(MiniDFSCluster.getBaseDirectory(),"foo1");
+    out=fs.create(testPath,(short)3);
+    out.writeBytes("HDFS-3157: " + testPath);
+    out.hsync();
+    String bpid=namesystem.getBlockPoolId();
+    ExtendedBlock blk=DFSTestUtil.getFirstBlock(fs,testPath);
+    Block block=blk.getLocalBlock();
+    DataNode dn=cluster.getDataNodes().get(0);
+    File blockFile=DataNodeTestUtils.getBlockFile(dn,bpid,block);
+    File metaFile=DataNodeTestUtils.getMetaFile(dn,bpid,block);
+    assertTrue("Could not delete the block file from the RBW folder",blockFile.delete());
+    assertTrue("Could not delete the block meta file from the RBW folder",metaFile.delete());
+    out.close();
+    assertEquals("The corrupt replica could not be invalidated",0,countReplicas(namesystem,blk).corruptReplicas());
+    Thread.sleep(3000);
+    blk=DFSTestUtil.getFirstBlock(fs,testPath);
+    assertEquals("There should be three live replicas",3,countReplicas(namesystem,blk).liveReplicas());
+  }
+  finally {
+    if (out != null) {
+      out.close();
+    }
+    cluster.shutdown();
+  }
+}
