@@ -1,0 +1,30 @@
+{
+  responseBuf.reset();
+  DataOutputStream out=new DataOutputStream(responseBuf);
+  RpcResponseHeaderProto.Builder response=RpcResponseHeaderProto.newBuilder();
+  response.setCallId(call.callId);
+  response.setStatus(status);
+  if (status == RpcStatusProto.SUCCESS) {
+    try {
+      response.build().writeDelimitedTo(out);
+      rv.write(out);
+    }
+ catch (    Throwable t) {
+      LOG.warn("Error serializing call response for call " + call,t);
+      setupResponse(responseBuf,call,RpcStatusProto.ERROR,null,t.getClass().getName(),StringUtils.stringifyException(t));
+      return;
+    }
+  }
+ else {
+    if (status == RpcStatusProto.FATAL) {
+      response.setServerIpcVersionNum(Server.CURRENT_VERSION);
+    }
+    response.build().writeDelimitedTo(out);
+    WritableUtils.writeString(out,errorClass);
+    WritableUtils.writeString(out,error);
+  }
+  if (call.connection.useWrap) {
+    wrapWithSasl(responseBuf,call);
+  }
+  call.setResponse(ByteBuffer.wrap(responseBuf.toByteArray()));
+}
