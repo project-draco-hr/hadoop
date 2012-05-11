@@ -1,0 +1,26 @@
+{
+  MiniDFSCluster cluster=null;
+  try {
+    Configuration conf=new Configuration();
+    conf.setLong(CommonConfigurationKeys.FS_TRASH_INTERVAL_KEY,-1);
+    cluster=new MiniDFSCluster.Builder(conf).nnTopology(MiniDFSNNTopology.simpleHATopology()).numDataNodes(0).build();
+    cluster.waitActive();
+    Runtime mockRuntime=mock(Runtime.class);
+    cluster.getNameNode(0).setRuntimeForTesting(mockRuntime);
+    verify(mockRuntime,times(0)).exit(anyInt());
+    try {
+      cluster.transitionToActive(0);
+      fail("Transitioned to active but should not have been able to.");
+    }
+ catch (    ServiceFailedException sfe) {
+      assertExceptionContains("Error encountered requiring NN shutdown. " + "Shutting down immediately.",sfe);
+      LOG.info("got expected exception",sfe);
+    }
+    verify(mockRuntime,times(1)).exit(anyInt());
+  }
+  finally {
+    if (cluster != null) {
+      cluster.shutdown();
+    }
+  }
+}
