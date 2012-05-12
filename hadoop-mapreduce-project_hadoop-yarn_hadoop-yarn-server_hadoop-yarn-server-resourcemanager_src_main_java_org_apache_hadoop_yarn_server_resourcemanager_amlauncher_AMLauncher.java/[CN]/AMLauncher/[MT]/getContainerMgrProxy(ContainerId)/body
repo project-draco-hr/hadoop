@@ -1,16 +1,16 @@
 {
   Container container=application.getMasterContainer();
-  final String containerManagerBindAddress=container.getNodeId().toString();
+  final NodeId node=container.getNodeId();
+  final InetSocketAddress containerManagerBindAddress=NetUtils.createSocketAddrForHost(node.getHost(),node.getPort());
   final YarnRPC rpc=YarnRPC.create(conf);
   UserGroupInformation currentUser=UserGroupInformation.createRemoteUser(containerId.toString());
   if (UserGroupInformation.isSecurityEnabled()) {
-    ContainerToken containerToken=container.getContainerToken();
-    Token<ContainerTokenIdentifier> token=new Token<ContainerTokenIdentifier>(containerToken.getIdentifier().array(),containerToken.getPassword().array(),new Text(containerToken.getKind()),new Text(containerToken.getService()));
+    Token<ContainerTokenIdentifier> token=ProtoUtils.convertFromProtoFormat(container.getContainerToken(),containerManagerBindAddress);
     currentUser.addToken(token);
   }
   return currentUser.doAs(new PrivilegedAction<ContainerManager>(){
     @Override public ContainerManager run(){
-      return (ContainerManager)rpc.getProxy(ContainerManager.class,NetUtils.createSocketAddr(containerManagerBindAddress),conf);
+      return (ContainerManager)rpc.getProxy(ContainerManager.class,containerManagerBindAddress,conf);
     }
   }
 );

@@ -4,9 +4,9 @@
     final FSImage nnImage=NameNodeHttpServer.getFsImageFromContext(context);
     final GetImageParams parsedParams=new GetImageParams(request,response);
     final Configuration conf=(Configuration)getServletContext().getAttribute(JspHelper.CURRENT_CONF);
-    if (UserGroupInformation.isSecurityEnabled() && !isValidRequestor(request.getRemoteUser(),conf)) {
+    if (UserGroupInformation.isSecurityEnabled() && !isValidRequestor(request.getUserPrincipal().getName(),conf)) {
       response.sendError(HttpServletResponse.SC_FORBIDDEN,"Only Namenode and Secondary Namenode may access this servlet");
-      LOG.warn("Received non-NN/SNN request for image or edits from " + request.getRemoteHost());
+      LOG.warn("Received non-NN/SNN request for image or edits from " + request.getUserPrincipal().getName() + " at "+ request.getRemoteHost());
       return;
     }
     String myStorageInfoString=nnImage.getStorage().toColonSeparatedString();
@@ -56,12 +56,7 @@
               response.sendError(HttpServletResponse.SC_CONFLICT,"Another checkpointer already uploaded an checkpoint " + "for txid " + txid);
               return null;
             }
-            MD5Hash downloadImageDigest=reloginIfNecessary().doAs(new PrivilegedExceptionAction<MD5Hash>(){
-              @Override public MD5Hash run() throws Exception {
-                return TransferFsImage.downloadImageToStorage(parsedParams.getInfoServer(),txid,nnImage.getStorage(),true);
-              }
-            }
-);
+            MD5Hash downloadImageDigest=TransferFsImage.downloadImageToStorage(parsedParams.getInfoServer(),txid,nnImage.getStorage(),true);
             nnImage.saveDigestAndRenameCheckpointImage(txid,downloadImageDigest);
             nnImage.purgeOldStorage();
           }
@@ -70,9 +65,6 @@
           }
         }
         return null;
-      }
-      private UserGroupInformation reloginIfNecessary() throws IOException {
-        return UserGroupInformation.loginUserFromKeytabAndReturnUGI(SecurityUtil.getServerPrincipal(conf.get(DFSConfigKeys.DFS_NAMENODE_KRB_HTTPS_USER_NAME_KEY),NameNode.getAddress(conf).getHostName()),conf.get(DFSConfigKeys.DFS_NAMENODE_KEYTAB_FILE_KEY));
       }
     }
 );
