@@ -1,5 +1,6 @@
 {
   checkBlock(previous);
+  Block previousBlock=ExtendedBlock.getLocalBlock(previous);
   long fileLength, blockSize;
   int replication;
   DatanodeDescriptor clientNode=null;
@@ -15,7 +16,27 @@
     }
     checkFsObjectLimit();
     INodeFileUnderConstruction pendingFile=checkLease(src,clientName);
-    commitOrCompleteLastBlock(pendingFile,ExtendedBlock.getLocalBlock(previous));
+    BlockInfo lastBlockInFile=pendingFile.getLastBlock();
+    if (!Block.matchingIdAndGenStamp(previousBlock,lastBlockInFile)) {
+      BlockInfo penultimateBlock=pendingFile.getPenultimateBlock();
+      if (previous == null && lastBlockInFile != null && lastBlockInFile.getNumBytes() == pendingFile.getPreferredBlockSize() && lastBlockInFile.isComplete()) {
+        if (NameNode.stateChangeLog.isDebugEnabled()) {
+          NameNode.stateChangeLog.debug("BLOCK* NameSystem.allocateBlock: handling block allocation" + " writing to a file with a complete previous block: src=" + src + " lastBlock="+ lastBlockInFile);
+        }
+      }
+ else       if (Block.matchingIdAndGenStamp(penultimateBlock,previousBlock)) {
+        if (lastBlockInFile.getNumBytes() != 0) {
+          throw new IOException("Request looked like a retry to allocate block " + lastBlockInFile + " but it already contains "+ lastBlockInFile.getNumBytes()+ " bytes");
+        }
+        NameNode.stateChangeLog.info("BLOCK* NameSystem.allocateBlock: " + "caught retry for allocation of a new block in " + src + ". Abandoning old block "+ lastBlockInFile);
+        dir.removeBlock(src,pendingFile,lastBlockInFile);
+        dir.persistBlocks(src,pendingFile);
+      }
+ else {
+        throw new IOException("Cannot allocate block in " + src + ": "+ "passed 'previous' block "+ previous+ " does not match actual "+ "last block in file "+ lastBlockInFile);
+      }
+    }
+    commitOrCompleteLastBlock(pendingFile,previousBlock);
     if (!checkFileProgress(pendingFile,false)) {
       throw new NotReplicatedYetException("Not replicated yet:" + src);
     }

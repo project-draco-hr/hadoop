@@ -1,9 +1,8 @@
 {
   Configuration conf=new Configuration();
   conf.setInt(DFSConfigKeys.DFS_BLOCK_SIZE_KEY,BLOCK_SIZE);
-  conf.setInt(DFSConfigKeys.DFS_NAMENODE_REPLICATION_INTERVAL_KEY,1000);
   FSDataOutputStream stm=null;
-  MiniDFSCluster cluster=new MiniDFSCluster.Builder(conf).nnTopology(MiniDFSNNTopology.simpleHATopology()).numDataNodes(3).build();
+  MiniDFSCluster cluster=new MiniDFSCluster.Builder(conf).nnTopology(MiniDFSNNTopology.simpleHATopology()).numDataNodes(5).build();
   try {
     cluster.waitActive();
     cluster.transitionToActive(0);
@@ -14,18 +13,20 @@
     AppendTestUtil.write(stm,0,BLOCK_AND_A_HALF);
     stm.hflush();
     LOG.info("Failing over to NN 1");
-    cluster.transitionToStandby(0);
-    cluster.transitionToActive(1);
+    scenario.run(cluster);
     assertTrue(fs.exists(TEST_PATH));
-    FSNamesystem ns1=cluster.getNameNode(1).getNamesystem();
-    BlockManagerTestUtil.updateState(ns1.getBlockManager());
-    assertEquals(0,ns1.getPendingReplicationBlocks());
-    assertEquals(0,ns1.getCorruptReplicaBlocks());
-    assertEquals(0,ns1.getMissingBlocksCount());
+    cluster.stopDataNode(0);
     AppendTestUtil.write(stm,BLOCK_AND_A_HALF,BLOCK_AND_A_HALF);
+    stm.hflush();
+    LOG.info("Failing back to NN 0");
+    cluster.transitionToStandby(1);
+    cluster.transitionToActive(0);
+    cluster.stopDataNode(1);
+    AppendTestUtil.write(stm,BLOCK_AND_A_HALF * 2,BLOCK_AND_A_HALF);
+    stm.hflush();
     stm.close();
     stm=null;
-    AppendTestUtil.check(fs,TEST_PATH,BLOCK_SIZE * 3);
+    AppendTestUtil.check(fs,TEST_PATH,BLOCK_AND_A_HALF * 3);
   }
   finally {
     IOUtils.closeStream(stm);
