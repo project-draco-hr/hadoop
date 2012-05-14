@@ -1,5 +1,6 @@
 {
   Set<URI> ret=new HashSet<URI>();
+  Set<URI> nonPreferredUris=new HashSet<URI>();
   for (  String nsId : getNameServiceIds(conf)) {
     if (HAUtil.isHAEnabled(conf,nsId)) {
       try {
@@ -10,21 +11,39 @@
       }
     }
  else {
+      boolean uriFound=false;
       for (      String key : keys) {
         String addr=conf.get(concatSuffixes(key,nsId));
         if (addr != null) {
-          ret.add(createUri(HdfsConstants.HDFS_URI_SCHEME,NetUtils.createSocketAddr(addr)));
-          break;
+          URI uri=createUri(HdfsConstants.HDFS_URI_SCHEME,NetUtils.createSocketAddr(addr));
+          if (!uriFound) {
+            uriFound=true;
+            ret.add(uri);
+          }
+ else {
+            nonPreferredUris.add(uri);
+          }
         }
       }
     }
   }
+  boolean uriFound=false;
   for (  String key : keys) {
     String addr=conf.get(key);
     if (addr != null) {
-      ret.add(createUri("hdfs",NetUtils.createSocketAddr(addr)));
-      break;
+      URI uri=createUri("hdfs",NetUtils.createSocketAddr(addr));
+      if (!uriFound) {
+        uriFound=true;
+        ret.add(uri);
+      }
+ else {
+        nonPreferredUris.add(uri);
+      }
     }
+  }
+  URI defaultUri=FileSystem.getDefaultUri(conf);
+  if (defaultUri != null && HdfsConstants.HDFS_URI_SCHEME.equals(defaultUri.getScheme()) && !nonPreferredUris.contains(defaultUri)) {
+    ret.add(defaultUri);
   }
   return ret;
 }
