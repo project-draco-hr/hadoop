@@ -1,25 +1,40 @@
 {
-  FSEditLogOp op=null;
   while (true) {
     try {
-      in.mark(in.available());
-      try {
-        op=decodeOp();
-      }
-  finally {
-        if (op == null) {
-          in.reset();
-        }
-      }
-      return op;
+      in.mark(MAX_OP_SIZE);
+      return decodeOp();
     }
- catch (    IOException e) {
+ catch (    GarbageAfterTerminatorException e) {
+      in.reset();
       if (!skipBrokenEdits) {
         throw e;
       }
-      if (in.skip(1) < 1) {
+      long numSkip=e.getNumAfterTerminator();
+      if (in.skip(numSkip) < numSkip) {
+        FSImage.LOG.error("Failed to skip " + numSkip + " bytes of "+ "garbage after an OP_INVALID.  Unexpected early EOF.");
         return null;
       }
+    }
+catch (    IOException e) {
+      in.reset();
+      if (!skipBrokenEdits) {
+        throw e;
+      }
+    }
+catch (    RuntimeException e) {
+      in.reset();
+      if (!skipBrokenEdits) {
+        throw e;
+      }
+    }
+catch (    Throwable e) {
+      in.reset();
+      if (!skipBrokenEdits) {
+        throw new IOException("got unexpected exception " + e.getMessage(),e);
+      }
+    }
+    if (in.skip(1) < 1) {
+      return null;
     }
   }
 }

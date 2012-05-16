@@ -1,0 +1,37 @@
+{
+  Configuration conf=new Configuration();
+  conf.setInt(DFSConfigKeys.DFS_BLOCK_SIZE_KEY,BLOCK_SIZE);
+  conf.setInt(DFSConfigKeys.DFS_NAMENODE_REPLICATION_INTERVAL_KEY,1000);
+  FSDataOutputStream stm=null;
+  MiniDFSCluster cluster=new MiniDFSCluster.Builder(conf).nnTopology(MiniDFSNNTopology.simpleHATopology()).numDataNodes(3).build();
+  try {
+    int sizeWritten=0;
+    cluster.waitActive();
+    cluster.transitionToActive(0);
+    Thread.sleep(500);
+    LOG.info("Starting with NN 0 active");
+    FileSystem fs=HATestUtil.configureFailoverFs(cluster,conf);
+    stm=fs.create(TEST_PATH);
+    AppendTestUtil.write(stm,0,BLOCK_AND_A_HALF);
+    sizeWritten+=BLOCK_AND_A_HALF;
+    stm.hflush();
+    LOG.info("Failing over to NN 1");
+    scenario.run(cluster);
+    FSNamesystem ns1=cluster.getNameNode(1).getNamesystem();
+    BlockManagerTestUtil.updateState(ns1.getBlockManager());
+    assertEquals(0,ns1.getPendingReplicationBlocks());
+    assertEquals(0,ns1.getCorruptReplicaBlocks());
+    assertEquals(0,ns1.getMissingBlocksCount());
+    if (methodToTest == MethodToTestIdempotence.ALLOCATE_BLOCK) {
+      AppendTestUtil.write(stm,sizeWritten,BLOCK_AND_A_HALF);
+      sizeWritten+=BLOCK_AND_A_HALF;
+    }
+    stm.close();
+    stm=null;
+    AppendTestUtil.check(fs,TEST_PATH,sizeWritten);
+  }
+  finally {
+    IOUtils.closeStream(stm);
+    cluster.shutdown();
+  }
+}
