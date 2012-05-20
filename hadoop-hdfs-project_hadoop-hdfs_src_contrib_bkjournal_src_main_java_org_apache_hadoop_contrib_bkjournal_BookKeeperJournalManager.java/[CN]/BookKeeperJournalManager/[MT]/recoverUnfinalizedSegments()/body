@@ -2,15 +2,28 @@
   wl.acquire();
 synchronized (this) {
     try {
-      EditLogLedgerMetadata l=EditLogLedgerMetadata.read(zkc,inprogressZNode());
-      long endTxId=recoverLastTxId(l);
-      if (endTxId == HdfsConstants.INVALID_TXID) {
-        LOG.error("Unrecoverable corruption has occurred in segment " + l.toString() + " at path "+ inprogressZNode()+ ". Unable to continue recovery.");
-        throw new IOException("Unrecoverable corruption, please check logs.");
+      List<String> children=zkc.getChildren(ledgerPath,false);
+      for (      String child : children) {
+        if (!child.startsWith("inprogress_")) {
+          continue;
+        }
+        String znode=ledgerPath + "/" + child;
+        EditLogLedgerMetadata l=EditLogLedgerMetadata.read(zkc,znode);
+        long endTxId=recoverLastTxId(l);
+        if (endTxId == HdfsConstants.INVALID_TXID) {
+          LOG.error("Unrecoverable corruption has occurred in segment " + l.toString() + " at path "+ znode+ ". Unable to continue recovery.");
+          throw new IOException("Unrecoverable corruption," + " please check logs.");
+        }
+        finalizeLogSegment(l.getFirstTxId(),endTxId);
       }
-      finalizeLogSegment(l.getFirstTxId(),endTxId);
     }
  catch (    KeeperException.NoNodeException nne) {
+    }
+catch (    KeeperException ke) {
+      throw new IOException("Couldn't get list of inprogress segments",ke);
+    }
+catch (    InterruptedException ie) {
+      throw new IOException("Interrupted getting list of inprogress segments",ie);
     }
  finally {
       if (wl.haveLock()) {
