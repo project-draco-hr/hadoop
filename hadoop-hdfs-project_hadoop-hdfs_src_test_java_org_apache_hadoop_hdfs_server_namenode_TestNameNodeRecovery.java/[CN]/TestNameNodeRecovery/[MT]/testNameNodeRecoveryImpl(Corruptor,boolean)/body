@@ -1,6 +1,6 @@
 {
   final String TEST_PATH="/test/path/dir";
-  final int NUM_TEST_MKDIRS=10;
+  final String TEST_PATH2="/second/dir";
   final boolean needRecovery=corruptor.needRecovery(finalize);
   Configuration conf=new HdfsConfiguration();
   MiniDFSCluster cluster=null;
@@ -17,9 +17,8 @@
     fileSys=cluster.getFileSystem();
     final FSNamesystem namesystem=cluster.getNamesystem();
     FSImage fsimage=namesystem.getFSImage();
-    for (int i=0; i < NUM_TEST_MKDIRS; i++) {
-      fileSys.mkdirs(new Path(TEST_PATH));
-    }
+    fileSys.mkdirs(new Path(TEST_PATH));
+    fileSys.mkdirs(new Path(TEST_PATH2));
     sd=fsimage.getStorage().dirIterator(NameNodeDirType.EDITS).next();
   }
   finally {
@@ -29,6 +28,7 @@
   }
   File editFile=FSImageTestUtil.findLatestEditsLog(sd).getFile();
   assertTrue("Should exist: " + editFile,editFile.exists());
+  LOG.info("corrupting edit log file '" + editFile + "'");
   corruptor.corrupt(editFile);
   cluster=null;
   try {
@@ -69,6 +69,7 @@
     LOG.debug("starting cluster normally after recovery...");
     cluster=new MiniDFSCluster.Builder(conf).numDataNodes(0).format(false).build();
     LOG.debug("successfully recovered the " + corruptor.getName() + " corrupted edit log");
+    cluster.waitActive();
     assertTrue(cluster.getFileSystem().exists(new Path(TEST_PATH)));
   }
  catch (  IOException e) {

@@ -1,30 +1,23 @@
 {
   long lastPos=0;
-  long firstTxId=HdfsConstants.INVALID_TXID;
   long lastTxId=HdfsConstants.INVALID_TXID;
   long numValid=0;
-  try {
-    FSEditLogOp op=null;
-    while (true) {
-      lastPos=in.getPosition();
+  FSEditLogOp op=null;
+  while (true) {
+    lastPos=in.getPosition();
+    try {
       if ((op=in.readOp()) == null) {
         break;
       }
-      if (firstTxId == HdfsConstants.INVALID_TXID) {
-        firstTxId=op.getTransactionId();
-      }
-      if (lastTxId == HdfsConstants.INVALID_TXID || op.getTransactionId() == lastTxId + 1) {
-        lastTxId=op.getTransactionId();
-      }
- else {
-        FSImage.LOG.error("Out of order txid found. Found " + op.getTransactionId() + ", expected "+ (lastTxId + 1));
-        break;
-      }
-      numValid++;
     }
+ catch (    Throwable t) {
+      FSImage.LOG.warn("Caught exception after reading " + numValid + " ops from "+ in+ " while determining its valid length."+ "Position was "+ lastPos,t);
+      break;
+    }
+    if (lastTxId == HdfsConstants.INVALID_TXID || op.getTransactionId() > lastTxId) {
+      lastTxId=op.getTransactionId();
+    }
+    numValid++;
   }
- catch (  Throwable t) {
-    FSImage.LOG.debug("Caught exception after reading " + numValid + " ops from "+ in+ " while determining its valid length.",t);
-  }
-  return new EditLogValidation(lastPos,firstTxId,lastTxId,false);
+  return new EditLogValidation(lastPos,lastTxId,false);
 }

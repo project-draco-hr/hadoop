@@ -1,0 +1,24 @@
+{
+  final TreeMultiset<EditLogInputStream> allStreams=TreeMultiset.create(JournalSet.EDIT_LOG_INPUT_STREAM_COMPARATOR);
+  jm.selectInputStreams(allStreams,txId,inProgressOk);
+  try {
+    for (Iterator<EditLogInputStream> iter=allStreams.iterator(); iter.hasNext(); ) {
+      EditLogInputStream elis=iter.next();
+      if (elis.getFirstTxId() > txId) {
+        break;
+      }
+      if (elis.getLastTxId() < txId) {
+        iter.remove();
+        elis.close();
+        continue;
+      }
+      elis.skipUntil(txId);
+      iter.remove();
+      return elis;
+    }
+  }
+  finally {
+    IOUtils.cleanup(LOG,allStreams.toArray(new EditLogInputStream[0]));
+  }
+  return null;
+}

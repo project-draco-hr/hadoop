@@ -1,0 +1,26 @@
+{
+  long numTransactions=0, txId=fromTxId;
+  final TreeMultiset<EditLogInputStream> allStreams=TreeMultiset.create(JournalSet.EDIT_LOG_INPUT_STREAM_COMPARATOR);
+  jm.selectInputStreams(allStreams,fromTxId,inProgressOk);
+  try {
+    for (    EditLogInputStream elis : allStreams) {
+      elis.skipUntil(txId);
+      while (true) {
+        FSEditLogOp op=elis.readOp();
+        if (op == null) {
+          break;
+        }
+        if (abortOnGap && (op.getTransactionId() != txId)) {
+          LOG.info("getNumberOfTransactions: detected gap at txId " + fromTxId);
+          return numTransactions;
+        }
+        txId=op.getTransactionId() + 1;
+        numTransactions++;
+      }
+    }
+  }
+  finally {
+    IOUtils.cleanup(LOG,allStreams.toArray(new EditLogInputStream[0]));
+  }
+  return numTransactions;
+}

@@ -1,0 +1,34 @@
+{
+  final TreeMultiset<EditLogInputStream> allStreams=TreeMultiset.create(EDIT_LOG_INPUT_STREAM_COMPARATOR);
+  for (  JournalAndStream jas : journals) {
+    if (jas.isDisabled()) {
+      LOG.info("Skipping jas " + jas + " since it's disabled");
+      continue;
+    }
+    jas.getManager().selectInputStreams(allStreams,fromTxId,inProgressOk);
+  }
+  LinkedList<EditLogInputStream> acc=new LinkedList<EditLogInputStream>();
+  for (  EditLogInputStream elis : allStreams) {
+    if (acc.isEmpty()) {
+      acc.add(elis);
+    }
+ else {
+      long accFirstTxId=acc.get(0).getFirstTxId();
+      if (accFirstTxId == elis.getFirstTxId()) {
+        acc.add(elis);
+      }
+ else       if (accFirstTxId < elis.getFirstTxId()) {
+        streams.add(acc.get(0));
+        acc.clear();
+        acc.add(elis);
+      }
+ else       if (accFirstTxId > elis.getFirstTxId()) {
+        throw new RuntimeException("sorted set invariants violated!  " + "Got stream with first txid " + elis.getFirstTxId() + ", but the last firstTxId was "+ accFirstTxId);
+      }
+    }
+  }
+  if (!acc.isEmpty()) {
+    streams.add(acc.get(0));
+    acc.clear();
+  }
+}

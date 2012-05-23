@@ -1,0 +1,33 @@
+{
+  List<EditLogFile> elfs;
+  try {
+    elfs=matchEditLogs(sd.getCurrentDir());
+  }
+ catch (  IOException e) {
+    LOG.error("error listing files in " + this + ". "+ "Skipping all edit logs in this directory.",e);
+    return;
+  }
+  LOG.debug(this + ": selecting input streams starting at " + fromTxId+ (inProgressOk ? " (inProgress ok) " : " (excluding inProgress) ")+ "from among "+ elfs.size()+ " candidate file(s)");
+  for (  EditLogFile elf : elfs) {
+    if (elf.lastTxId < fromTxId) {
+      LOG.debug("passing over " + elf + " because it ends at "+ elf.lastTxId+ ", but we only care about transactions "+ "as new as "+ fromTxId);
+      continue;
+    }
+    if (elf.isInProgress()) {
+      if (!inProgressOk) {
+        LOG.debug("passing over " + elf + " because it is in progress "+ "and we are ignoring in-progress logs.");
+        continue;
+      }
+      try {
+        elf.validateLog();
+      }
+ catch (      IOException e) {
+        LOG.error("got IOException while trying to validate header of " + elf + ".  Skipping.",e);
+        continue;
+      }
+    }
+    EditLogFileInputStream elfis=new EditLogFileInputStream(elf.getFile(),elf.getFirstTxId(),elf.getLastTxId(),elf.isInProgress());
+    LOG.debug("selecting edit log stream " + elf);
+    streams.add(elfis);
+  }
+}
