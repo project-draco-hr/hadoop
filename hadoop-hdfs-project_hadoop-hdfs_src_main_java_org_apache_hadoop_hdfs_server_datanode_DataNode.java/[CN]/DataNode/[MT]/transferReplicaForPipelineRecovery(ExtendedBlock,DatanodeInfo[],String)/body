@@ -3,6 +3,15 @@
   final long visible;
   final BlockConstructionStage stage;
 synchronized (data) {
+    Block storedBlock=data.getStoredBlock(b.getBlockPoolId(),b.getBlockId());
+    if (null == storedBlock) {
+      throw new IOException(b + " not found in datanode.");
+    }
+    storedGS=storedBlock.getGenerationStamp();
+    if (storedGS < b.getGenerationStamp()) {
+      throw new IOException(storedGS + " = storedGS < b.getGenerationStamp(), b=" + b);
+    }
+    b.setGenerationStamp(storedGS);
     if (data.isValidRbw(b)) {
       stage=BlockConstructionStage.TRANSFER_RBW;
     }
@@ -13,13 +22,8 @@ synchronized (data) {
       final String r=data.getReplicaString(b.getBlockPoolId(),b.getBlockId());
       throw new IOException(b + " is neither a RBW nor a Finalized, r=" + r);
     }
-    storedGS=data.getStoredBlock(b.getBlockPoolId(),b.getBlockId()).getGenerationStamp();
-    if (storedGS < b.getGenerationStamp()) {
-      throw new IOException(storedGS + " = storedGS < b.getGenerationStamp(), b=" + b);
-    }
     visible=data.getReplicaVisibleLength(b);
   }
-  b.setGenerationStamp(storedGS);
   b.setNumBytes(visible);
   if (targets.length > 0) {
     new DataTransfer(targets,b,stage,client).run();
