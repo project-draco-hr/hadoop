@@ -1,0 +1,32 @@
+{
+  int timeout=FailoverController.getGracefulFenceTimeout(conf) * 2;
+  checkEligibleForFailover();
+  HAServiceTarget oldActive=getCurrentActive();
+  if (oldActive == null) {
+    throw new ServiceFailedException("No other node is currently active.");
+  }
+  if (oldActive.getAddress().equals(localTarget.getAddress())) {
+    LOG.info("Local node " + localTarget + " is already active. "+ "No need to failover. Returning success.");
+    return;
+  }
+  LOG.info("Asking " + oldActive + " to cede its active state for "+ timeout+ "ms");
+  ZKFCProtocol oldZkfc=oldActive.getZKFCProxy(conf,timeout);
+  oldZkfc.cedeActive(timeout);
+  ActiveAttemptRecord attempt=waitForActiveAttempt(timeout + 60000);
+  if (attempt == null) {
+synchronized (this) {
+      if (lastHealthState != State.SERVICE_HEALTHY) {
+        throw new ServiceFailedException("Unable to become active. " + "Service became unhealthy while trying to failover.");
+      }
+    }
+    throw new ServiceFailedException("Unable to become active. " + "Local node did not get an opportunity to do so from ZooKeeper, " + "or the local node took too long to transition to active.");
+  }
+  oldZkfc.cedeActive(-1);
+  if (attempt.succeeded) {
+    LOG.info("Successfully became active. " + attempt.status);
+  }
+ else {
+    String msg="Failed to become active. " + attempt.status;
+    throw new ServiceFailedException(msg);
+  }
+}

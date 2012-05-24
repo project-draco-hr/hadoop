@@ -1,11 +1,20 @@
 {
   LOG.info("Trying to make " + localTarget + " active...");
   try {
-    HAServiceProtocolHelper.transitionToActive(localTarget.getProxy(conf,FailoverController.getRpcTimeoutToNewActive(conf)));
-    LOG.info("Successfully transitioned " + localTarget + " to active state");
+    HAServiceProtocolHelper.transitionToActive(localTarget.getProxy(conf,FailoverController.getRpcTimeoutToNewActive(conf)),createReqInfo());
+    String msg="Successfully transitioned " + localTarget + " to active state";
+    LOG.info(msg);
+    recordActiveAttempt(new ActiveAttemptRecord(true,msg));
   }
  catch (  Throwable t) {
-    LOG.fatal("Couldn't make " + localTarget + " active",t);
-    elector.quitElection(true);
+    String msg="Couldn't make " + localTarget + " active";
+    LOG.fatal(msg,t);
+    recordActiveAttempt(new ActiveAttemptRecord(false,msg + "\n" + StringUtils.stringifyException(t)));
+    if (t instanceof ServiceFailedException) {
+      throw (ServiceFailedException)t;
+    }
+ else {
+      throw new ServiceFailedException("Couldn't transition to active",t);
+    }
   }
 }
