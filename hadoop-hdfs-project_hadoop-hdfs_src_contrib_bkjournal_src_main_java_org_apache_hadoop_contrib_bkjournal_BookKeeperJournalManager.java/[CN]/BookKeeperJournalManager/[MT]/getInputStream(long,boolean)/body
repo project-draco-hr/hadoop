@@ -1,12 +1,27 @@
 {
   for (  EditLogLedgerMetadata l : getLedgerList()) {
-    if (l.getFirstTxId() == fromTxnId) {
+    long lastTxId=l.getLastTxId();
+    if (l.isInProgress()) {
+      if (!inProgressOk) {
+        continue;
+      }
+      lastTxId=recoverLastTxId(l,false);
+    }
+    if (fromTxId >= l.getFirstTxId() && fromTxId <= lastTxId) {
       try {
-        LedgerHandle h=bkc.openLedger(l.getLedgerId(),BookKeeper.DigestType.MAC,digestpw.getBytes());
-        return new BookKeeperEditLogInputStream(h,l);
+        LedgerHandle h;
+        if (l.isInProgress()) {
+          h=bkc.openLedgerNoRecovery(l.getLedgerId(),BookKeeper.DigestType.MAC,digestpw.getBytes());
+        }
+ else {
+          h=bkc.openLedger(l.getLedgerId(),BookKeeper.DigestType.MAC,digestpw.getBytes());
+        }
+        BookKeeperEditLogInputStream s=new BookKeeperEditLogInputStream(h,l);
+        s.skipTo(fromTxId);
+        return s;
       }
  catch (      Exception e) {
-        throw new IOException("Could not open ledger for " + fromTxnId,e);
+        throw new IOException("Could not open ledger for " + fromTxId,e);
       }
     }
   }
