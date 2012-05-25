@@ -1,0 +1,25 @@
+{
+  try {
+    LedgerHandle lh=null;
+    if (fence) {
+      lh=bkc.openLedger(l.getLedgerId(),BookKeeper.DigestType.MAC,digestpw.getBytes());
+    }
+ else {
+      lh=bkc.openLedgerNoRecovery(l.getLedgerId(),BookKeeper.DigestType.MAC,digestpw.getBytes());
+    }
+    long lastAddConfirmed=lh.getLastAddConfirmed();
+    BookKeeperEditLogInputStream in=new BookKeeperEditLogInputStream(lh,l,lastAddConfirmed);
+    long endTxId=HdfsConstants.INVALID_TXID;
+    FSEditLogOp op=in.readOp();
+    while (op != null) {
+      if (endTxId == HdfsConstants.INVALID_TXID || op.getTransactionId() == endTxId + 1) {
+        endTxId=op.getTransactionId();
+      }
+      op=in.readOp();
+    }
+    return endTxId;
+  }
+ catch (  Exception e) {
+    throw new IOException("Exception retreiving last tx id for ledger " + l,e);
+  }
+}
