@@ -3,6 +3,7 @@
   if (array.length != 0) {
     SerializationFactory factory=new SerializationFactory(conf);
     int i=0;
+    int maxBlockLocations=conf.getInt(MRConfig.MAX_BLOCK_LOCATIONS_KEY,MRConfig.MAX_BLOCK_LOCATIONS_DEFAULT);
     long offset=out.getPos();
     for (    T split : array) {
       long prevCount=out.getPos();
@@ -11,7 +12,11 @@
       serializer.open(out);
       serializer.serialize(split);
       long currCount=out.getPos();
-      info[i++]=new JobSplit.SplitMetaInfo(split.getLocations(),offset,split.getLength());
+      String[] locations=split.getLocations();
+      if (locations.length > maxBlockLocations) {
+        throw new IOException("Max block location exceeded for split: " + split + " splitsize: "+ locations.length+ " maxsize: "+ maxBlockLocations);
+      }
+      info[i++]=new JobSplit.SplitMetaInfo(locations,offset,split.getLength());
       offset+=currCount - prevCount;
     }
   }
