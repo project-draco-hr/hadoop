@@ -1,9 +1,12 @@
 {
-  wl.acquire();
   if (txId <= maxTxId.get()) {
     throw new IOException("We've already seen " + txId + ". A new stream cannot be created with it");
   }
   try {
+    String existingInprogressNode=ci.read();
+    if (null != existingInprogressNode && zkc.exists(existingInprogressNode,false) != null) {
+      throw new IOException("Inprogress node already exists");
+    }
     if (currentLedger != null) {
       currentLedger.close();
     }
@@ -12,7 +15,8 @@
     EditLogLedgerMetadata l=new EditLogLedgerMetadata(znodePath,HdfsConstants.LAYOUT_VERSION,currentLedger.getId(),txId);
     l.write(zkc,znodePath);
     maxTxId.store(txId);
-    return new BookKeeperEditLogOutputStream(conf,currentLedger,wl);
+    ci.update(znodePath);
+    return new BookKeeperEditLogOutputStream(conf,currentLedger);
   }
  catch (  Exception e) {
     if (currentLedger != null) {
