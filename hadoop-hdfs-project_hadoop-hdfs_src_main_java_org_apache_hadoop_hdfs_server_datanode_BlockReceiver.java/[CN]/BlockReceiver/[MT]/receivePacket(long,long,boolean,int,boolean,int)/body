@@ -1,7 +1,8 @@
 {
   if (LOG.isDebugEnabled()) {
-    LOG.debug("Receiving one packet for block " + block + " of length "+ len+ " seqno "+ seqno+ " offsetInBlock "+ offsetInBlock+ " lastPacketInBlock "+ lastPacketInBlock);
+    LOG.debug("Receiving one packet for block " + block + " of length "+ len+ " seqno "+ seqno+ " offsetInBlock "+ offsetInBlock+ " syncBlock "+ syncBlock+ " lastPacketInBlock "+ lastPacketInBlock);
   }
+  this.syncOnClose|=syncBlock && lastPacketInBlock;
   long firstByteInBlock=offsetInBlock;
   offsetInBlock+=len;
   if (replicaInfo.getNumBytes() < offsetInBlock) {
@@ -23,6 +24,9 @@
   if (lastPacketInBlock || len == 0) {
     if (LOG.isDebugEnabled()) {
       LOG.debug("Receiving an empty packet or the end of the block " + block);
+    }
+    if (syncBlock && !lastPacketInBlock) {
+      flushOrSync(true);
     }
   }
  else {
@@ -72,7 +76,7 @@
           lastChunkChecksum=Arrays.copyOfRange(pktBuf,checksumOff + checksumLen - checksumSize,checksumOff + checksumLen);
           checksumOut.write(pktBuf,checksumOff,checksumLen);
         }
-        flush();
+        flushOrSync(syncBlock && !lastPacketInBlock);
         replicaInfo.setLastChecksumAndDataLen(offsetInBlock,lastChunkChecksum);
         datanode.metrics.incrBytesWritten(len);
         dropOsCacheBehindWriter(offsetInBlock);
