@@ -1,0 +1,30 @@
+{
+  if (isCompletelyDone()) {
+    return;
+  }
+  if (this.state == ContainerState.PREP) {
+    this.state=ContainerState.KILLED_BEFORE_LAUNCH;
+  }
+ else {
+    LOG.info("KILLING " + taskAttemptID);
+    ContainerManager proxy=null;
+    try {
+      proxy=getCMProxy(this.containerID,this.containerMgrAddress,this.containerToken);
+      StopContainerRequest stopRequest=Records.newRecord(StopContainerRequest.class);
+      stopRequest.setContainerId(this.containerID);
+      proxy.stopContainer(stopRequest);
+    }
+ catch (    Throwable t) {
+      String message="cleanup failed for container " + this.containerID + " : "+ StringUtils.stringifyException(t);
+      context.getEventHandler().handle(new TaskAttemptDiagnosticsUpdateEvent(this.taskAttemptID,message));
+      LOG.warn(message);
+    }
+ finally {
+      if (proxy != null) {
+        ContainerLauncherImpl.this.rpc.stopProxy(proxy,getConfig());
+      }
+    }
+    this.state=ContainerState.DONE;
+  }
+  context.getEventHandler().handle(new TaskAttemptEvent(this.taskAttemptID,TaskAttemptEventType.TA_CONTAINER_CLEANED));
+}
