@@ -1,0 +1,17 @@
+{
+  URI uri=BKJMUtil.createJournalURI("/hdfsjournal-editlogfile");
+  BookKeeperJournalManager bkjm=new BookKeeperJournalManager(conf,uri);
+  try {
+    String zkpath1=startAndFinalizeLogSegment(bkjm,1,50);
+    String zkpath2=startAndFinalizeLogSegment(bkjm,51,100);
+    ZooKeeper zkspy=spy(BKJMUtil.connectZooKeeper());
+    bkjm.setZooKeeper(zkspy);
+    Mockito.doThrow(new KeeperException.NoNodeException(zkpath2 + " doesn't exists")).when(zkspy).getData(zkpath2,false,null);
+    List<EditLogLedgerMetadata> ledgerList=bkjm.getLedgerList(false);
+    assertEquals("List contains the metadata of non exists path.",1,ledgerList.size());
+    assertEquals("LogLedgerMetadata contains wrong zk paths.",zkpath1,ledgerList.get(0).getZkPath());
+  }
+  finally {
+    bkjm.close();
+  }
+}
