@@ -1,0 +1,26 @@
+{
+  URI uri=BKJMUtil.createJournalURI("/hdfsjournal-refinalizeInprogressLedger");
+  BookKeeperJournalManager bkjm=new BookKeeperJournalManager(conf,uri);
+  EditLogOutputStream out=bkjm.startLogSegment(1);
+  for (long i=1; i <= 100; i++) {
+    FSEditLogOp op=FSEditLogTestUtil.getNoOpInstance();
+    op.setTransactionId(i);
+    out.write(op);
+  }
+  out.close();
+  bkjm.close();
+  String inprogressZNode=bkjm.inprogressZNode(1);
+  String finalizedZNode=bkjm.finalizedLedgerZNode(1,100);
+  assertNotNull("inprogress znode doesn't exist",zkc.exists(inprogressZNode,null));
+  assertNull("finalized znode exists",zkc.exists(finalizedZNode,null));
+  byte[] inprogressData=zkc.getData(inprogressZNode,false,null);
+  bkjm=new BookKeeperJournalManager(conf,uri);
+  bkjm.recoverUnfinalizedSegments();
+  bkjm.close();
+  assertNull("inprogress znode exists",zkc.exists(inprogressZNode,null));
+  assertNotNull("finalized znode doesn't exist",zkc.exists(finalizedZNode,null));
+  zkc.create(inprogressZNode,inprogressData,Ids.OPEN_ACL_UNSAFE,CreateMode.PERSISTENT);
+  bkjm=new BookKeeperJournalManager(conf,uri);
+  bkjm.recoverUnfinalizedSegments();
+  bkjm.close();
+}

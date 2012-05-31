@@ -1,14 +1,26 @@
 {
+  LedgerHandle lh=null;
   try {
-    LedgerHandle lh=null;
     if (fence) {
       lh=bkc.openLedger(l.getLedgerId(),BookKeeper.DigestType.MAC,digestpw.getBytes());
     }
  else {
       lh=bkc.openLedgerNoRecovery(l.getLedgerId(),BookKeeper.DigestType.MAC,digestpw.getBytes());
     }
+  }
+ catch (  BKException bke) {
+    throw new IOException("Exception opening ledger for " + l,bke);
+  }
+catch (  InterruptedException ie) {
+    throw new IOException("Interrupted opening ledger for " + l,ie);
+  }
+  BookKeeperEditLogInputStream in=null;
+  try {
     long lastAddConfirmed=lh.getLastAddConfirmed();
-    BookKeeperEditLogInputStream in=new BookKeeperEditLogInputStream(lh,l,lastAddConfirmed);
+    if (lastAddConfirmed == -1) {
+      throw new SegmentEmptyException();
+    }
+    in=new BookKeeperEditLogInputStream(lh,l,lastAddConfirmed);
     long endTxId=HdfsConstants.INVALID_TXID;
     FSEditLogOp op=in.readOp();
     while (op != null) {
@@ -19,10 +31,9 @@
     }
     return endTxId;
   }
- catch (  BKException e) {
-    throw new IOException("Exception retreiving last tx id for ledger " + l,e);
-  }
-catch (  InterruptedException ie) {
-    throw new IOException("Interrupted while retreiving last tx id " + "for ledger " + l,ie);
+  finally {
+    if (in != null) {
+      in.close();
+    }
   }
 }

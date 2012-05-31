@@ -1,0 +1,28 @@
+{
+  URI uri=BKJMUtil.createJournalURI("/hdfsjournal-emptyInprogress");
+  BookKeeperJournalManager bkjm=new BookKeeperJournalManager(conf,uri);
+  EditLogOutputStream out=bkjm.startLogSegment(1);
+  for (long i=1; i <= 100; i++) {
+    FSEditLogOp op=FSEditLogTestUtil.getNoOpInstance();
+    op.setTransactionId(i);
+    out.write(op);
+  }
+  out.close();
+  bkjm.finalizeLogSegment(1,100);
+  out=bkjm.startLogSegment(101);
+  out.close();
+  bkjm.close();
+  String inprogressZNode=bkjm.inprogressZNode(101);
+  zkc.setData(inprogressZNode,new byte[0],-1);
+  bkjm=new BookKeeperJournalManager(conf,uri);
+  try {
+    bkjm.recoverUnfinalizedSegments();
+    fail("Should have failed. There should be no way of creating" + " an empty inprogess znode");
+  }
+ catch (  IOException e) {
+    assertTrue("Exception different than expected",e.getMessage().contains("Invalid ledger entry,"));
+  }
+ finally {
+    bkjm.close();
+  }
+}

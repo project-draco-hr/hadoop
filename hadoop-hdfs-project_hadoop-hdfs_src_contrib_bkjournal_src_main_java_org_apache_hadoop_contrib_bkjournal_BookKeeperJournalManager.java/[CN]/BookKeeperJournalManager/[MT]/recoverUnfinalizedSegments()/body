@@ -8,12 +8,21 @@ synchronized (this) {
         }
         String znode=ledgerPath + "/" + child;
         EditLogLedgerMetadata l=EditLogLedgerMetadata.read(zkc,znode);
-        long endTxId=recoverLastTxId(l,true);
-        if (endTxId == HdfsConstants.INVALID_TXID) {
-          LOG.error("Unrecoverable corruption has occurred in segment " + l.toString() + " at path "+ znode+ ". Unable to continue recovery.");
-          throw new IOException("Unrecoverable corruption," + " please check logs.");
+        try {
+          long endTxId=recoverLastTxId(l,true);
+          if (endTxId == HdfsConstants.INVALID_TXID) {
+            LOG.error("Unrecoverable corruption has occurred in segment " + l.toString() + " at path "+ znode+ ". Unable to continue recovery.");
+            throw new IOException("Unrecoverable corruption," + " please check logs.");
+          }
+          finalizeLogSegment(l.getFirstTxId(),endTxId);
         }
-        finalizeLogSegment(l.getFirstTxId(),endTxId);
+ catch (        SegmentEmptyException see) {
+          LOG.warn("Inprogress znode " + child + " refers to a ledger which is empty. This occurs when the NN"+ " crashes after opening a segment, but before writing the"+ " OP_START_LOG_SEGMENT op. It is safe to delete."+ " MetaData ["+ l.toString()+ "]");
+          if (maxTxId.get() == l.getFirstTxId()) {
+            maxTxId.reset(maxTxId.get() - 1);
+          }
+          zkc.delete(znode,-1);
+        }
       }
     }
  catch (    KeeperException.NoNodeException nne) {
