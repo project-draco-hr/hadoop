@@ -31,6 +31,9 @@
   File app3LogDir=new File(localLogDir,ConverterUtils.toString(application3));
   app3LogDir.mkdir();
   logAggregationService.handle(new LogHandlerAppStartedEvent(application3,this.user,null,ContainerLogsRetentionPolicy.AM_AND_FAILED_CONTAINERS_ONLY,this.acls));
+  ApplicationEvent expectedInitEvents[]=new ApplicationEvent[]{new ApplicationEvent(application1,ApplicationEventType.APPLICATION_LOG_HANDLING_INITED),new ApplicationEvent(application2,ApplicationEventType.APPLICATION_LOG_HANDLING_INITED),new ApplicationEvent(application3,ApplicationEventType.APPLICATION_LOG_HANDLING_INITED)};
+  checkEvents(appEventHandler,expectedInitEvents,false,"getType","getApplicationID");
+  reset(appEventHandler);
   ContainerId container31=BuilderUtils.newContainerId(appAttemptId3,1);
   writeContainerLogs(app3LogDir,container31);
   logAggregationService.handle(new LogHandlerContainerFinishedEvent(container31,0));
@@ -51,15 +54,7 @@
   verifyContainerLogs(logAggregationService,application2,new ContainerId[]{container21});
   verifyContainerLogs(logAggregationService,application3,new ContainerId[]{container31,container32});
   dispatcher.await();
-  ArgumentCaptor<ApplicationEvent> eventCaptor=ArgumentCaptor.forClass(ApplicationEvent.class);
-  verify(appEventHandler,times(3)).handle(eventCaptor.capture());
-  List<ApplicationEvent> capturedEvents=eventCaptor.getAllValues();
-  Set<ApplicationId> appIds=new HashSet<ApplicationId>();
-  for (  ApplicationEvent cap : capturedEvents) {
-    assertEquals(ApplicationEventType.APPLICATION_LOG_HANDLING_FINISHED,eventCaptor.getValue().getType());
-    appIds.add(cap.getApplicationID());
-  }
-  assertTrue(appIds.contains(application1));
-  assertTrue(appIds.contains(application2));
-  assertTrue(appIds.contains(application3));
+  ApplicationEvent[] expectedFinishedEvents=new ApplicationEvent[]{new ApplicationEvent(application1,ApplicationEventType.APPLICATION_LOG_HANDLING_FINISHED),new ApplicationEvent(application2,ApplicationEventType.APPLICATION_LOG_HANDLING_FINISHED),new ApplicationEvent(application3,ApplicationEventType.APPLICATION_LOG_HANDLING_FINISHED)};
+  checkEvents(appEventHandler,expectedFinishedEvents,false,"getType","getApplicationID");
+  dispatcher.stop();
 }

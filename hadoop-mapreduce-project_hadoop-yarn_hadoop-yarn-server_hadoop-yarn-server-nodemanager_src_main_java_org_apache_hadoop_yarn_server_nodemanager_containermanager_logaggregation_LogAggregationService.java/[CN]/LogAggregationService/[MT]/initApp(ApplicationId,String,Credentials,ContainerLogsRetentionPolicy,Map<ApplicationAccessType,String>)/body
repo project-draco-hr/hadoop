@@ -1,25 +1,11 @@
 {
-  UserGroupInformation userUgi=UserGroupInformation.createRemoteUser(user);
-  if (credentials != null) {
-    for (    Token<? extends TokenIdentifier> token : credentials.getAllTokens()) {
-      userUgi.addToken(token);
-    }
+  ApplicationEvent eventResponse;
+  try {
+    initAppAggregator(appId,user,credentials,logRetentionPolicy,appAcls);
+    eventResponse=new ApplicationEvent(appId,ApplicationEventType.APPLICATION_LOG_HANDLING_INITED);
   }
-  createAppDir(user,appId,userUgi);
-  final AppLogAggregator appLogAggregator=new AppLogAggregatorImpl(this.dispatcher,this.deletionService,getConfig(),appId,userUgi,dirsHandler,getRemoteNodeLogFileForApp(appId,user),logRetentionPolicy,appAcls);
-  if (this.appLogAggregators.putIfAbsent(appId,appLogAggregator) != null) {
-    throw new YarnException("Duplicate initApp for " + appId);
+ catch (  YarnException e) {
+    eventResponse=new ApplicationFinishEvent(appId,"Application failed to init aggregation: " + e.getMessage());
   }
-  Runnable aggregatorWrapper=new Runnable(){
-    public void run(){
-      try {
-        appLogAggregator.run();
-      }
-  finally {
-        appLogAggregators.remove(appId);
-      }
-    }
-  }
-;
-  this.threadPool.execute(aggregatorWrapper);
+  this.dispatcher.getEventHandler().handle(eventResponse);
 }

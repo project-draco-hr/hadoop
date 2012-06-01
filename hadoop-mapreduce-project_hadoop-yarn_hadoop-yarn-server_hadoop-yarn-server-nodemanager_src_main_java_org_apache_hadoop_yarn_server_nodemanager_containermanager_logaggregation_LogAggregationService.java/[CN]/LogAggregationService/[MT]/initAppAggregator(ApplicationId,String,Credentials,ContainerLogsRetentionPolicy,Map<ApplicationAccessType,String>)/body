@@ -1,0 +1,25 @@
+{
+  UserGroupInformation userUgi=UserGroupInformation.createRemoteUser(user);
+  if (credentials != null) {
+    for (    Token<? extends TokenIdentifier> token : credentials.getAllTokens()) {
+      userUgi.addToken(token);
+    }
+  }
+  createAppDir(user,appId,userUgi);
+  final AppLogAggregator appLogAggregator=new AppLogAggregatorImpl(this.dispatcher,this.deletionService,getConfig(),appId,userUgi,dirsHandler,getRemoteNodeLogFileForApp(appId,user),logRetentionPolicy,appAcls);
+  if (this.appLogAggregators.putIfAbsent(appId,appLogAggregator) != null) {
+    throw new YarnException("Duplicate initApp for " + appId);
+  }
+  Runnable aggregatorWrapper=new Runnable(){
+    public void run(){
+      try {
+        appLogAggregator.run();
+      }
+  finally {
+        appLogAggregators.remove(appId);
+      }
+    }
+  }
+;
+  this.threadPool.execute(aggregatorWrapper);
+}
