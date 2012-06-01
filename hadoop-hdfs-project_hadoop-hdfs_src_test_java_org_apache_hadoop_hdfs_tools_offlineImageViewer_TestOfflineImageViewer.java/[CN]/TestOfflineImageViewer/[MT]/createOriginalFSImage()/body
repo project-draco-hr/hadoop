@@ -1,9 +1,13 @@
 {
   MiniDFSCluster cluster=null;
-  File orig=null;
   try {
     Configuration conf=new HdfsConfiguration();
+    conf.setLong(DFSConfigKeys.DFS_NAMENODE_DELEGATION_TOKEN_MAX_LIFETIME_KEY,10000);
+    conf.setLong(DFSConfigKeys.DFS_NAMENODE_DELEGATION_TOKEN_RENEW_INTERVAL_KEY,5000);
+    conf.setBoolean(DFSConfigKeys.DFS_NAMENODE_DELEGATION_TOKEN_ALWAYS_USE_KEY,true);
+    conf.set("hadoop.security.auth_to_local","RULE:[2:$1@$0](JobTracker@.*FOO.COM)s/@.*//" + "DEFAULT");
     cluster=new MiniDFSCluster.Builder(conf).numDataNodes(4).build();
+    cluster.waitActive();
     FileSystem hdfs=cluster.getFileSystem();
     int filesize=256;
     for (int i=0; i < NUM_DIRS; i++) {
@@ -18,15 +22,19 @@
         writtenFiles.put(file.toString(),pathToFileEntry(hdfs,file.toString()));
       }
     }
+    List<Token<?>> delegationTokens=hdfs.getDelegationTokens(TEST_RENEWER);
+    for (    Token<?> t : delegationTokens) {
+      LOG.debug("got token " + t);
+    }
     cluster.getNameNodeRpc().setSafeMode(SafeModeAction.SAFEMODE_ENTER);
     cluster.getNameNodeRpc().saveNamespace();
-    orig=FSImageTestUtil.findLatestImageFile(FSImageTestUtil.getFSImage(cluster.getNameNode()).getStorage().getStorageDir(0));
-    if (orig == null) {
-      fail("Didn't generate or can't find fsimage");
+    originalFsimage=FSImageTestUtil.findLatestImageFile(FSImageTestUtil.getFSImage(cluster.getNameNode()).getStorage().getStorageDir(0));
+    if (originalFsimage == null) {
+      throw new RuntimeException("Didn't generate or can't find fsimage");
     }
+    LOG.debug("original FS image file is " + originalFsimage);
   }
   finally {
     if (cluster != null)     cluster.shutdown();
   }
-  return orig;
 }
