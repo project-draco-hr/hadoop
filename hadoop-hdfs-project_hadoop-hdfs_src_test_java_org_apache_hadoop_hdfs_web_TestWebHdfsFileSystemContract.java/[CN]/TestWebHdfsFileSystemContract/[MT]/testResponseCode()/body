@@ -57,4 +57,25 @@
 {
     AppendTestUtil.testAppend(fs,new Path(dir,"append"));
   }
+{
+    final HttpOpParam.Op op=PutOpParam.Op.CREATE;
+    final URL url=webhdfs.toUrl(op,dir);
+    HttpURLConnection conn=(HttpURLConnection)url.openConnection();
+    conn.setRequestMethod(op.getType().toString());
+    conn.setDoOutput(false);
+    conn.setInstanceFollowRedirects(false);
+    conn.connect();
+    final String redirect=conn.getHeaderField("Location");
+    conn.disconnect();
+    WebHdfsFileSystem.LOG.info("redirect = " + redirect);
+    final int i=redirect.indexOf(NamenodeRpcAddressParam.NAME);
+    final int j=redirect.indexOf("&",i);
+    String modified=redirect.substring(0,i - 1) + redirect.substring(j);
+    WebHdfsFileSystem.LOG.info("modified = " + modified);
+    conn=(HttpURLConnection)new URL(modified).openConnection();
+    conn.setRequestMethod(op.getType().toString());
+    conn.setDoOutput(op.getDoOutput());
+    conn.connect();
+    assertEquals(HttpServletResponse.SC_BAD_REQUEST,conn.getResponseCode());
+  }
 }
