@@ -2,12 +2,24 @@
   TaskAttemptCompletionEvent tce=((JobTaskAttemptCompletedEvent)event).getCompletionEvent();
   tce.setEventId(job.taskAttemptCompletionEvents.size());
   job.taskAttemptCompletionEvents.add(tce);
-  Object successEventNo=job.successAttemptCompletionEventNoMap.remove(tce.getAttemptId().getTaskId());
+  TaskAttemptId attemptId=tce.getAttemptId();
+  TaskId taskId=attemptId.getTaskId();
+  Object successEventNo=job.successAttemptCompletionEventNoMap.remove(taskId);
   if (successEventNo != null) {
     TaskAttemptCompletionEvent successEvent=job.taskAttemptCompletionEvents.get((Integer)successEventNo);
     successEvent.setStatus(TaskAttemptCompletionEventStatus.OBSOLETE);
   }
   if (TaskAttemptCompletionEventStatus.SUCCEEDED.equals(tce.getStatus())) {
-    job.successAttemptCompletionEventNoMap.put(tce.getAttemptId().getTaskId(),tce.getEventId());
+    job.successAttemptCompletionEventNoMap.put(taskId,tce.getEventId());
+    Task task=job.tasks.get(taskId);
+    TaskAttempt attempt=task.getAttempt(attemptId);
+    NodeId nodeId=attempt.getNodeId();
+    assert(nodeId != null);
+    List<TaskAttemptId> taskAttemptIdList=job.nodesToSucceededTaskAttempts.get(nodeId);
+    if (taskAttemptIdList == null) {
+      taskAttemptIdList=new ArrayList<TaskAttemptId>();
+      job.nodesToSucceededTaskAttempts.put(nodeId,taskAttemptIdList);
+    }
+    taskAttemptIdList.add(attempt.getID());
   }
 }

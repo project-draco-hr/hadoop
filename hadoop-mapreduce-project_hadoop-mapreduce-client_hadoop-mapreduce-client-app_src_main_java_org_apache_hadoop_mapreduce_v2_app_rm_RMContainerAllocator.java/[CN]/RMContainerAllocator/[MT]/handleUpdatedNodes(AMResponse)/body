@@ -1,0 +1,24 @@
+{
+  List<NodeReport> updatedNodes=response.getUpdatedNodes();
+  if (!updatedNodes.isEmpty()) {
+    eventHandler.handle(new JobUpdatedNodesEvent(getJob().getID(),updatedNodes));
+    HashSet<NodeId> unusableNodes=new HashSet<NodeId>();
+    for (    NodeReport nr : updatedNodes) {
+      NodeState nodeState=nr.getNodeState();
+      if (nodeState.isUnusable()) {
+        unusableNodes.add(nr.getNodeId());
+      }
+    }
+    for (int i=0; i < 2; ++i) {
+      HashMap<TaskAttemptId,Container> taskSet=i == 0 ? assignedRequests.maps : assignedRequests.reduces;
+      for (      Map.Entry<TaskAttemptId,Container> entry : taskSet.entrySet()) {
+        TaskAttemptId tid=entry.getKey();
+        NodeId taskAttemptNodeId=entry.getValue().getNodeId();
+        if (unusableNodes.contains(taskAttemptNodeId)) {
+          LOG.info("Killing taskAttempt:" + tid + " because it is running on unusable node:"+ taskAttemptNodeId);
+          eventHandler.handle(new TaskAttemptKillEvent(tid,"TaskAttempt killed because it ran on unusable node" + taskAttemptNodeId));
+        }
+      }
+    }
+  }
+}
