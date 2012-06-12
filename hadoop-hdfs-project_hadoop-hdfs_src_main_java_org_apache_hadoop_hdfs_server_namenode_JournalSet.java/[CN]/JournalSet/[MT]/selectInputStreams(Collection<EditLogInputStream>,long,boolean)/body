@@ -1,5 +1,5 @@
 {
-  final TreeMultiset<EditLogInputStream> allStreams=TreeMultiset.create(EDIT_LOG_INPUT_STREAM_COMPARATOR);
+  final PriorityQueue<EditLogInputStream> allStreams=new PriorityQueue<EditLogInputStream>(64,EDIT_LOG_INPUT_STREAM_COMPARATOR);
   for (  JournalAndStream jas : journals) {
     if (jas.isDisabled()) {
       LOG.info("Skipping jas " + jas + " since it's disabled");
@@ -8,7 +8,8 @@
     jas.getManager().selectInputStreams(allStreams,fromTxId,inProgressOk);
   }
   LinkedList<EditLogInputStream> acc=new LinkedList<EditLogInputStream>();
-  for (  EditLogInputStream elis : allStreams) {
+  EditLogInputStream elis;
+  while ((elis=allStreams.poll()) != null) {
     if (acc.isEmpty()) {
       acc.add(elis);
     }
@@ -18,7 +19,7 @@
         acc.add(elis);
       }
  else       if (accFirstTxId < elis.getFirstTxId()) {
-        streams.add(acc.get(0));
+        streams.add(new RedundantEditLogInputStream(acc,fromTxId));
         acc.clear();
         acc.add(elis);
       }
@@ -28,7 +29,7 @@
     }
   }
   if (!acc.isEmpty()) {
-    streams.add(acc.get(0));
+    streams.add(new RedundantEditLogInputStream(acc,fromTxId));
     acc.clear();
   }
 }

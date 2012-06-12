@@ -1,24 +1,25 @@
 {
-  final TreeMultiset<EditLogInputStream> allStreams=TreeMultiset.create(JournalSet.EDIT_LOG_INPUT_STREAM_COMPARATOR);
+  final PriorityQueue<EditLogInputStream> allStreams=new PriorityQueue<EditLogInputStream>(64,JournalSet.EDIT_LOG_INPUT_STREAM_COMPARATOR);
   jm.selectInputStreams(allStreams,txId,inProgressOk);
+  EditLogInputStream elis=null, ret;
   try {
-    for (Iterator<EditLogInputStream> iter=allStreams.iterator(); iter.hasNext(); ) {
-      EditLogInputStream elis=iter.next();
+    while ((elis=allStreams.poll()) != null) {
       if (elis.getFirstTxId() > txId) {
         break;
       }
       if (elis.getLastTxId() < txId) {
-        iter.remove();
         elis.close();
         continue;
       }
       elis.skipUntil(txId);
-      iter.remove();
-      return elis;
+      ret=elis;
+      elis=null;
+      return ret;
     }
   }
   finally {
     IOUtils.cleanup(LOG,allStreams.toArray(new EditLogInputStream[0]));
+    IOUtils.cleanup(LOG,elis);
   }
   return null;
 }

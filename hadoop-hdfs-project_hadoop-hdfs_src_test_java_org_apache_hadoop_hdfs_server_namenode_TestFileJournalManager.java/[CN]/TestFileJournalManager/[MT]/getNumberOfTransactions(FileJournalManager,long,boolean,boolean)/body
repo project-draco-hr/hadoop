@@ -1,9 +1,10 @@
 {
   long numTransactions=0, txId=fromTxId;
-  final TreeMultiset<EditLogInputStream> allStreams=TreeMultiset.create(JournalSet.EDIT_LOG_INPUT_STREAM_COMPARATOR);
+  final PriorityQueue<EditLogInputStream> allStreams=new PriorityQueue<EditLogInputStream>(64,JournalSet.EDIT_LOG_INPUT_STREAM_COMPARATOR);
   jm.selectInputStreams(allStreams,fromTxId,inProgressOk);
+  EditLogInputStream elis=null;
   try {
-    for (    EditLogInputStream elis : allStreams) {
+    while ((elis=allStreams.poll()) != null) {
       elis.skipUntil(txId);
       while (true) {
         FSEditLogOp op=elis.readOp();
@@ -21,6 +22,7 @@
   }
   finally {
     IOUtils.cleanup(LOG,allStreams.toArray(new EditLogInputStream[0]));
+    IOUtils.cleanup(LOG,elis);
   }
   return numTransactions;
 }
