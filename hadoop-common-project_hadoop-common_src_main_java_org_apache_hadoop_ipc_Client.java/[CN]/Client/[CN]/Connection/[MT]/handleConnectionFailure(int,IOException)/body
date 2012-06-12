@@ -1,0 +1,23 @@
+{
+  closeConnection();
+  final RetryAction action;
+  try {
+    action=connectionRetryPolicy.shouldRetry(ioe,curRetries,0,true);
+  }
+ catch (  Exception e) {
+    throw e instanceof IOException ? (IOException)e : new IOException(e);
+  }
+  if (action.action == RetryAction.RetryDecision.FAIL) {
+    if (action.reason != null) {
+      LOG.warn("Failed to connect to server: " + server + ": "+ action.reason,ioe);
+    }
+    throw ioe;
+  }
+  try {
+    Thread.sleep(action.delayMillis);
+  }
+ catch (  InterruptedException e) {
+    throw (IOException)new InterruptedIOException("Interrupted: action=" + action + ", retry policy="+ connectionRetryPolicy).initCause(e);
+  }
+  LOG.info("Retrying connect to server: " + server + ". Already tried "+ curRetries+ " time(s); retry policy is "+ connectionRetryPolicy);
+}
