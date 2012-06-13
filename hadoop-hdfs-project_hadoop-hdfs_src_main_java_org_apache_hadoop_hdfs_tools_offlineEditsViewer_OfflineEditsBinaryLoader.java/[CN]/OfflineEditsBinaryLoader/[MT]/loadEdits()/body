@@ -1,7 +1,7 @@
 {
-  try {
-    visitor.start(inputStream.getVersion());
-    while (true) {
+  visitor.start(inputStream.getVersion());
+  while (true) {
+    try {
       FSEditLogOp op=inputStream.readOp();
       if (op == null)       break;
       if (fixTxIds) {
@@ -16,10 +16,22 @@
       }
       visitor.visitOp(op);
     }
-    visitor.close(null);
+ catch (    IOException e) {
+      if (!recoveryMode) {
+        visitor.close(e);
+        throw e;
+      }
+      LOG.error("Got IOException while reading stream!  Resyncing.",e);
+      inputStream.resync();
+    }
+catch (    RuntimeException e) {
+      if (!recoveryMode) {
+        visitor.close(e);
+        throw e;
+      }
+      LOG.error("Got RuntimeException while reading stream!  Resyncing.",e);
+      inputStream.resync();
+    }
   }
- catch (  IOException e) {
-    visitor.close(e);
-    throw e;
-  }
+  visitor.close(null);
 }
