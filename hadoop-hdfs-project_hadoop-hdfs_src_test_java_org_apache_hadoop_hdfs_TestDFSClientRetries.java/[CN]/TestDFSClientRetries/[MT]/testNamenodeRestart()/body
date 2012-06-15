@@ -9,12 +9,16 @@
   try {
     cluster.waitActive();
     final DistributedFileSystem dfs=cluster.getFileSystem();
+    final URI uri=dfs.getUri();
+    assertTrue(HdfsUtils.isHealthy(uri));
     final long length=1L << 20;
     final Path file1=new Path(dir,"foo");
     DFSTestUtil.createFile(dfs,file1,length,numDatanodes,20120406L);
     final FileStatus s1=dfs.getFileStatus(file1);
     assertEquals(length,s1.getLen());
+    assertTrue(HdfsUtils.isHealthy(uri));
     cluster.shutdownNameNode(0);
+    assertFalse(HdfsUtils.isHealthy(uri));
     final Path file3=new Path(dir,"file");
     final Thread thread=new Thread(new Runnable(){
       @Override public void run(){
@@ -33,8 +37,10 @@
       @Override public void run(){
         try {
           TimeUnit.SECONDS.sleep(30);
+          assertFalse(HdfsUtils.isHealthy(uri));
           cluster.restartNameNode(0,false);
           cluster.waitActive();
+          assertTrue(HdfsUtils.isHealthy(uri));
         }
  catch (        Exception e) {
           exceptions.add(e);
@@ -46,12 +52,16 @@
     assertEquals(s1,s2);
     thread.join();
     assertEquals(dfs.getFileChecksum(file1),dfs.getFileChecksum(file3));
+    assertTrue(HdfsUtils.isHealthy(uri));
     dfs.setSafeMode(SafeModeAction.SAFEMODE_ENTER);
+    assertFalse(HdfsUtils.isHealthy(uri));
     new Thread(new Runnable(){
       @Override public void run(){
         try {
           TimeUnit.SECONDS.sleep(30);
+          assertFalse(HdfsUtils.isHealthy(uri));
           dfs.setSafeMode(SafeModeAction.SAFEMODE_LEAVE);
+          assertTrue(HdfsUtils.isHealthy(uri));
         }
  catch (        Exception e) {
           exceptions.add(e);
@@ -62,6 +72,7 @@
     final Path file2=new Path(dir,"bar");
     DFSTestUtil.createFile(dfs,file2,length,numDatanodes,20120406L);
     assertEquals(dfs.getFileChecksum(file1),dfs.getFileChecksum(file2));
+    assertTrue(HdfsUtils.isHealthy(uri));
     final Path nonExisting=new Path(dir,"nonExisting");
     LOG.info("setPermission: " + nonExisting);
     try {
