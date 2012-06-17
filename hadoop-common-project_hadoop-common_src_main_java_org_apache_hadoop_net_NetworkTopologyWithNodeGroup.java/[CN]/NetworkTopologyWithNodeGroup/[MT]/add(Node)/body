@@ -1,0 +1,33 @@
+{
+  if (node == null)   return;
+  if (node instanceof InnerNode) {
+    throw new IllegalArgumentException("Not allow to add an inner node: " + NodeBase.getPath(node));
+  }
+  netlock.writeLock().lock();
+  try {
+    Node rack=null;
+    if (NetworkTopology.DEFAULT_RACK.equals(node.getNetworkLocation())) {
+      node.setNetworkLocation(node.getNetworkLocation() + NetworkTopologyWithNodeGroup.DEFAULT_NODEGROUP);
+    }
+    Node nodeGroup=getNode(node.getNetworkLocation());
+    if (nodeGroup == null) {
+      nodeGroup=new InnerNodeWithNodeGroup(node.getNetworkLocation());
+    }
+    rack=getNode(nodeGroup.getNetworkLocation());
+    if (rack != null && !(rack instanceof InnerNode)) {
+      throw new IllegalArgumentException("Unexpected data node " + node.toString() + " at an illegal network location");
+    }
+    if (clusterMap.add(node)) {
+      LOG.info("Adding a new node: " + NodeBase.getPath(node));
+      if (rack == null) {
+        numOfRacks++;
+      }
+    }
+    if (LOG.isDebugEnabled()) {
+      LOG.debug("NetworkTopology became:\n" + this.toString());
+    }
+  }
+  finally {
+    netlock.writeLock().unlock();
+  }
+}
