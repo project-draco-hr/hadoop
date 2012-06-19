@@ -1,0 +1,47 @@
+{
+  new File(TEST_DIR).mkdirs();
+  conf=new Configuration();
+  conf.set("raid.config.file",CONFIG_FILE);
+  conf.set(RaidNode.RAID_LOCATION_KEY,"/destraid");
+  conf.setBoolean("raid.config.reload",true);
+  conf.setLong("raid.config.reload.interval",RELOAD_INTERVAL);
+  conf.setBoolean("dfs.permissions.enabled",true);
+  conf.setLong(JobMonitor.JOBMONITOR_INTERVAL_KEY,20000);
+  conf.setLong(RaidNode.TRIGGER_MONITOR_SLEEP_TIME_KEY,3000L);
+  conf.setLong("raid.policy.rescan.interval",5000);
+  conf.set("fs.shell.delete.classname","org.apache.hadoop.hdfs.DFSClient");
+  if (local) {
+    conf.set("raid.classname","org.apache.hadoop.raid.LocalRaidNode");
+  }
+ else {
+    conf.set("raid.classname","org.apache.hadoop.raid.DistRaidNode");
+  }
+  conf.set("raid.server.address","localhost:0");
+  MiniDFSCluster.Builder builder=new MiniDFSCluster.Builder(conf);
+  builder.numDataNodes(6);
+  builder.format(true);
+  dfs=builder.build();
+  dfs.waitActive();
+  fileSys=dfs.getFileSystem();
+  namenode=fileSys.getUri().toString();
+  final int taskTrackers=4;
+  mr=new MiniMRCluster(taskTrackers,namenode,3);
+  JobConf jobConf=mr.createJobConf();
+  jobTrackerName="localhost:" + jobConf.get(JTConfig.JT_IPC_ADDRESS);
+  hftp="hftp://localhost.localdomain:" + dfs.getNameNodePort();
+  FileSystem.setDefaultUri(conf,namenode);
+  conf.set("mapred.job.tracker",jobTrackerName);
+  conf.set("mapreduce.framework.name","yarn");
+  String rmAdress=jobConf.get("yarn.resourcemanager.address");
+  if (rmAdress != null) {
+    conf.set("yarn.resourcemanager.address",rmAdress);
+  }
+  String schedulerAdress=jobConf.get("yarn.resourcemanager.scheduler.address");
+  if (schedulerAdress != null) {
+    conf.set("yarn.resourcemanager.scheduler.address",schedulerAdress);
+  }
+  String jobHistoryAddress=jobConf.get("mapreduce.jobhistory.address");
+  if (jobHistoryAddress != null) {
+    conf.set("mapreduce.jobhistory.address",jobHistoryAddress);
+  }
+}

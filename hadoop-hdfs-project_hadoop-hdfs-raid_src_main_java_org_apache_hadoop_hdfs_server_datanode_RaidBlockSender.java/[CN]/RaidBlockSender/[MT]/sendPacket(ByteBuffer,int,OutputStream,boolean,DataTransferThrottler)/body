@@ -1,0 +1,49 @@
+{
+  int dataLen=(int)Math.min(endOffset - offset,(chunkSize * (long)maxChunks));
+  int numChunks=numberOfChunks(dataLen);
+  int checksumDataLen=numChunks * checksumSize;
+  int packetLen=dataLen + checksumDataLen + 4;
+  boolean lastDataPacket=offset + dataLen == endOffset && dataLen > 0;
+  writePacketHeader(pkt,dataLen,packetLen);
+  int checksumOff=pkt.position();
+  byte[] buf=pkt.array();
+  if (checksumSize > 0 && checksumIn != null) {
+    readChecksum(buf,checksumOff,checksumDataLen);
+    if (lastDataPacket && lastChunkChecksum != null) {
+      int start=checksumOff + checksumDataLen - checksumSize;
+      byte[] updatedChecksum=lastChunkChecksum.getChecksum();
+      if (updatedChecksum != null) {
+        System.arraycopy(updatedChecksum,0,buf,start,checksumSize);
+      }
+    }
+  }
+  int dataOff=checksumOff + checksumDataLen;
+  if (!transferTo) {
+    IOUtils.readFully(blockIn,buf,dataOff,dataLen);
+    if (verifyChecksum) {
+      verifyChecksum(buf,dataOff,dataLen,numChunks,checksumOff);
+    }
+  }
+  try {
+    if (transferTo) {
+      SocketOutputStream sockOut=(SocketOutputStream)out;
+      sockOut.write(buf,0,dataOff);
+      sockOut.transferToFully(((FileInputStream)blockIn).getChannel(),blockInPosition,dataLen);
+      blockInPosition+=dataLen;
+    }
+ else {
+      out.write(buf,0,dataOff + dataLen);
+    }
+  }
+ catch (  IOException e) {
+    String ioem=e.getMessage();
+    if (!ioem.startsWith("Broken pipe") && !ioem.startsWith("Connection reset")) {
+      LOG.error("BlockSender.sendChunks() exception: ",e);
+    }
+    throw ioeToSocketException(e);
+  }
+  if (throttler != null) {
+    throttler.throttle(packetLen);
+  }
+  return dataLen;
+}

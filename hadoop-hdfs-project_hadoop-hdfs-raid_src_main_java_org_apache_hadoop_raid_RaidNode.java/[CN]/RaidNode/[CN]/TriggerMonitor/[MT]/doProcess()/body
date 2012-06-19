@@ -1,0 +1,49 @@
+{
+  ArrayList<PolicyInfo> allPolicies=new ArrayList<PolicyInfo>();
+  for (  PolicyList category : configMgr.getAllPolicies()) {
+    for (    PolicyInfo info : category.getAll()) {
+      allPolicies.add(info);
+    }
+  }
+  while (running) {
+    Thread.sleep(RaidNode.triggerMonitorSleepTime);
+    boolean reloaded=configMgr.reloadConfigsIfNecessary();
+    if (reloaded) {
+      allPolicies.clear();
+      for (      PolicyList category : configMgr.getAllPolicies()) {
+        for (        PolicyInfo info : category.getAll()) {
+          allPolicies.add(info);
+        }
+      }
+    }
+    for (    PolicyInfo info : allPolicies) {
+      if (!scanStateMap.containsKey(info.getName())) {
+        scanStateMap.put(info.getName(),new ScanState());
+      }
+      if (!shouldSelectFiles(info)) {
+        continue;
+      }
+      LOG.info("Triggering Policy Filter " + info.getName() + " "+ info.getSrcPath());
+      List<FileStatus> filteredPaths=null;
+      try {
+        filteredPaths=selectFiles(info,allPolicies);
+      }
+ catch (      Exception e) {
+        LOG.error("Exception while invoking filter on policy " + info.getName() + " srcPath "+ info.getSrcPath()+ " exception "+ StringUtils.stringifyException(e));
+        continue;
+      }
+      if (filteredPaths == null || filteredPaths.size() == 0) {
+        LOG.info("No filtered paths for policy " + info.getName());
+        continue;
+      }
+      LOG.info("Triggering Policy Action " + info.getName() + " "+ info.getSrcPath()+ " raid "+ filteredPaths.size()+ " files");
+      try {
+        raidFiles(info,filteredPaths);
+      }
+ catch (      Exception e) {
+        LOG.error("Exception while invoking action on policy " + info.getName() + " srcPath "+ info.getSrcPath()+ " exception "+ StringUtils.stringifyException(e));
+        continue;
+      }
+    }
+  }
+}
