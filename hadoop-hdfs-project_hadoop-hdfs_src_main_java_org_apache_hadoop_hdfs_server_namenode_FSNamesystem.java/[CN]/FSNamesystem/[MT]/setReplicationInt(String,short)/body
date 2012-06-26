@@ -1,0 +1,28 @@
+{
+  blockManager.verifyReplication(src,replication,null);
+  final boolean isFile;
+  writeLock();
+  try {
+    checkOperation(OperationCategory.WRITE);
+    if (isInSafeMode()) {
+      throw new SafeModeException("Cannot set replication for " + src,safeMode);
+    }
+    if (isPermissionEnabled) {
+      checkPathAccess(src,FsAction.WRITE);
+    }
+    final short[] oldReplication=new short[1];
+    final Block[] blocks=dir.setReplication(src,replication,oldReplication);
+    isFile=blocks != null;
+    if (isFile) {
+      blockManager.setReplication(oldReplication[0],replication,src,blocks);
+    }
+  }
+  finally {
+    writeUnlock();
+  }
+  getEditLog().logSync();
+  if (isFile && auditLog.isInfoEnabled() && isExternalInvocation()) {
+    logAuditEvent(UserGroupInformation.getCurrentUser(),Server.getRemoteIp(),"setReplication",src,null,null);
+  }
+  return isFile;
+}

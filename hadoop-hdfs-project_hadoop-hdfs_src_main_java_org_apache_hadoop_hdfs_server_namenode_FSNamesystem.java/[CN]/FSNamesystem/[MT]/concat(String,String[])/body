@@ -1,37 +1,11 @@
 {
-  if (FSNamesystem.LOG.isDebugEnabled()) {
-    FSNamesystem.LOG.debug("concat " + Arrays.toString(srcs) + " to "+ target);
-  }
-  if (target.isEmpty()) {
-    throw new IllegalArgumentException("Target file name is empty");
-  }
-  if (srcs == null || srcs.length == 0) {
-    throw new IllegalArgumentException("No sources given");
-  }
-  String trgParent=target.substring(0,target.lastIndexOf(Path.SEPARATOR_CHAR));
-  for (  String s : srcs) {
-    String srcParent=s.substring(0,s.lastIndexOf(Path.SEPARATOR_CHAR));
-    if (!srcParent.equals(trgParent)) {
-      throw new IllegalArgumentException("Sources and target are not in the same directory");
-    }
-  }
-  HdfsFileStatus resultingStat=null;
-  writeLock();
   try {
-    checkOperation(OperationCategory.WRITE);
-    if (isInSafeMode()) {
-      throw new SafeModeException("Cannot concat " + target,safeMode);
-    }
-    concatInternal(target,srcs);
+    concatInt(target,srcs);
+  }
+ catch (  AccessControlException e) {
     if (auditLog.isInfoEnabled() && isExternalInvocation()) {
-      resultingStat=dir.getFileInfo(target,false);
+      logAuditEvent(false,UserGroupInformation.getLoginUser(),Server.getRemoteIp(),"concat",Arrays.toString(srcs),target,null);
     }
-  }
-  finally {
-    writeUnlock();
-  }
-  getEditLog().logSync();
-  if (auditLog.isInfoEnabled() && isExternalInvocation()) {
-    logAuditEvent(UserGroupInformation.getLoginUser(),Server.getRemoteIp(),"concat",Arrays.toString(srcs),target,resultingStat);
+    throw e;
   }
 }
