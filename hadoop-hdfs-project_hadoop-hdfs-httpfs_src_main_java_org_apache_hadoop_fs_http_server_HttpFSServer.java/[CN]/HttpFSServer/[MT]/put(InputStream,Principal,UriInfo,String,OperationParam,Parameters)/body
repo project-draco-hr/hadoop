@@ -1,0 +1,87 @@
+{
+  Response response;
+  path=makeAbsolute(path);
+  MDC.put(HttpFSFileSystem.OP_PARAM,op.value().name());
+  String doAs=params.get(DoAsParam.NAME,DoAsParam.class);
+switch (op.value()) {
+case CREATE:
+{
+      boolean hasData=params.get(DataParam.NAME,DataParam.class);
+      if (!hasData) {
+        response=Response.temporaryRedirect(createUploadRedirectionURL(uriInfo,HttpFSFileSystem.Operation.CREATE)).build();
+      }
+ else {
+        String permission=params.get(PermissionParam.NAME,PermissionParam.class);
+        boolean override=params.get(OverwriteParam.NAME,OverwriteParam.class);
+        short replication=params.get(ReplicationParam.NAME,ReplicationParam.class);
+        long blockSize=params.get(BlockSizeParam.NAME,BlockSizeParam.class);
+        FSOperations.FSCreate command=new FSOperations.FSCreate(is,path,permission,override,replication,blockSize);
+        fsExecute(user,doAs,command);
+        AUDIT_LOG.info("[{}] permission [{}] override [{}] replication [{}] blockSize [{}]",new Object[]{path,permission,override,replication,blockSize});
+        response=Response.status(Response.Status.CREATED).build();
+      }
+      break;
+    }
+case MKDIRS:
+{
+    String permission=params.get(PermissionParam.NAME,PermissionParam.class);
+    FSOperations.FSMkdirs command=new FSOperations.FSMkdirs(path,permission);
+    JSONObject json=fsExecute(user,doAs,command);
+    AUDIT_LOG.info("[{}] permission [{}]",path,permission);
+    response=Response.ok(json).type(MediaType.APPLICATION_JSON).build();
+    break;
+  }
+case RENAME:
+{
+  String toPath=params.get(DestinationParam.NAME,DestinationParam.class);
+  FSOperations.FSRename command=new FSOperations.FSRename(path,toPath);
+  JSONObject json=fsExecute(user,doAs,command);
+  AUDIT_LOG.info("[{}] to [{}]",path,toPath);
+  response=Response.ok(json).type(MediaType.APPLICATION_JSON).build();
+  break;
+}
+case SETOWNER:
+{
+String owner=params.get(OwnerParam.NAME,OwnerParam.class);
+String group=params.get(GroupParam.NAME,GroupParam.class);
+FSOperations.FSSetOwner command=new FSOperations.FSSetOwner(path,owner,group);
+fsExecute(user,doAs,command);
+AUDIT_LOG.info("[{}] to (O/G)[{}]",path,owner + ":" + group);
+response=Response.ok().build();
+break;
+}
+case SETPERMISSION:
+{
+String permission=params.get(PermissionParam.NAME,PermissionParam.class);
+FSOperations.FSSetPermission command=new FSOperations.FSSetPermission(path,permission);
+fsExecute(user,doAs,command);
+AUDIT_LOG.info("[{}] to [{}]",path,permission);
+response=Response.ok().build();
+break;
+}
+case SETREPLICATION:
+{
+short replication=params.get(ReplicationParam.NAME,ReplicationParam.class);
+FSOperations.FSSetReplication command=new FSOperations.FSSetReplication(path,replication);
+JSONObject json=fsExecute(user,doAs,command);
+AUDIT_LOG.info("[{}] to [{}]",path,replication);
+response=Response.ok(json).build();
+break;
+}
+case SETTIMES:
+{
+long modifiedTime=params.get(ModifiedTimeParam.NAME,ModifiedTimeParam.class);
+long accessTime=params.get(AccessTimeParam.NAME,AccessTimeParam.class);
+FSOperations.FSSetTimes command=new FSOperations.FSSetTimes(path,modifiedTime,accessTime);
+fsExecute(user,doAs,command);
+AUDIT_LOG.info("[{}] to (M/A)[{}]",path,modifiedTime + ":" + accessTime);
+response=Response.ok().build();
+break;
+}
+default :
+{
+throw new IOException(MessageFormat.format("Invalid HTTP PUT operation [{0}]",op.value()));
+}
+}
+return response;
+}
