@@ -1,14 +1,28 @@
 {
-  long off=0;
   byte[] buf=new byte[4096];
+  limiter.clearLimit();
+  int numRead=-1, idx=0;
   while (true) {
-    int numRead=in.read(buf);
-    if (numRead == -1) {
-      return;
+    try {
+      numRead=-1;
+      idx=0;
+      numRead=in.read(buf);
+      if (numRead == -1) {
+        return;
+      }
+      while (idx < numRead) {
+        if ((buf[idx] != (byte)0) && (buf[idx] != (byte)-1)) {
+          throw new IOException("Read extra bytes after " + "the terminator!");
+        }
+        idx++;
+      }
     }
-    for (int i=0; i < numRead; i++, off++) {
-      if ((buf[i] != (byte)0) && (buf[i] != (byte)-1)) {
-        throw new GarbageAfterTerminatorException("Read garbage after " + "the terminator!",off);
+  finally {
+      if (numRead != -1) {
+        in.reset();
+        IOUtils.skipFully(in,idx);
+        in.mark(buf.length + 1);
+        IOUtils.skipFully(in,1);
       }
     }
   }
