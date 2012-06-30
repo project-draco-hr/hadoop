@@ -5,6 +5,7 @@
     fs.mkdirs(root);
     OutputStream zout=new GZIPOutputStream(fs.create(new Path(root,"file.gz")));
     Random r=new Random();
+    bak=System.out;
     ByteArrayOutputStream file=new ByteArrayOutputStream();
     for (int i=0; i < 1024; ++i) {
       char c=Character.forDigit(r.nextInt(26) + 10,36);
@@ -12,7 +13,6 @@
       zout.write(c);
     }
     zout.close();
-    bak=System.out;
     ByteArrayOutputStream out=new ByteArrayOutputStream();
     System.setOut(new PrintStream(out));
     String[] argv=new String[2];
@@ -20,9 +20,19 @@
     argv[1]=new Path(root,"file.gz").toString();
     int ret=ToolRunner.run(new FsShell(conf),argv);
     assertEquals("'-text " + argv[1] + " returned "+ ret,0,ret);
-    file.reset();
-    out.reset();
     assertTrue("Output doesn't match input",Arrays.equals(file.toByteArray(),out.toByteArray()));
+    SequenceFile.Writer writer=SequenceFile.createWriter(conf,SequenceFile.Writer.file(new Path(root,"file.gz")),SequenceFile.Writer.keyClass(Text.class),SequenceFile.Writer.valueClass(Text.class));
+    writer.append(new Text("Foo"),new Text("Bar"));
+    writer.close();
+    out=new ByteArrayOutputStream();
+    System.setOut(new PrintStream(out));
+    argv=new String[2];
+    argv[0]="-text";
+    argv[1]=new Path(root,"file.gz").toString();
+    ret=ToolRunner.run(new FsShell(conf),argv);
+    assertEquals("'-text " + argv[1] + " returned "+ ret,0,ret);
+    assertTrue("Output doesn't match input",Arrays.equals("Foo\tBar\n".getBytes(),out.toByteArray()));
+    out.reset();
   }
   finally {
     if (null != bak) {
