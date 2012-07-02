@@ -1,0 +1,20 @@
+{
+  DatanodeDescriptor node=getDatanodeManager().getDatanode(dn);
+  if (node == null) {
+    throw new IOException("Cannot mark " + b + " as corrupt because datanode "+ dn+ " does not exist");
+  }
+  BlockCollection bc=b.corrupted.getBlockCollection();
+  if (bc == null) {
+    NameNode.stateChangeLog.info("BLOCK markBlockAsCorrupt: " + b + " cannot be marked as corrupt as it does not belong to any file");
+    addToInvalidates(b.corrupted,node);
+    return;
+  }
+  node.addBlock(b.stored);
+  corruptReplicas.addToCorruptReplicasMap(b.corrupted,node,b.reason);
+  if (countNodes(b.stored).liveReplicas() >= bc.getReplication()) {
+    invalidateBlock(b,node);
+  }
+ else   if (namesystem.isPopulatingReplQueues()) {
+    updateNeededReplications(b.stored,-1,0);
+  }
+}
