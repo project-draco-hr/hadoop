@@ -1,9 +1,5 @@
 {
-  byte[] buf=new byte[HdfsConstants.IO_FILE_BUFFER_SIZE];
-  String str="http://" + nnHostPort + "/getimage?"+ queryString;
-  LOG.info("Opening connection to " + str);
   long startTime=Util.monotonicNow();
-  URL url=new URL(str);
   HttpURLConnection connection=(HttpURLConnection)SecurityUtil.openSecureHttpConnection(url);
   if (connection.getResponseCode() != HttpURLConnection.HTTP_OK) {
     throw new HttpGetFailedException("Image transfer servlet at " + url + " failed with status code "+ connection.getResponseCode()+ "\nResponse message:\n"+ connection.getResponseMessage(),connection);
@@ -14,7 +10,7 @@
     advertisedSize=Long.parseLong(contentLength);
   }
  else {
-    throw new IOException(CONTENT_LENGTH + " header is not provided " + "by the namenode when trying to fetch "+ str);
+    throw new IOException(CONTENT_LENGTH + " header is not provided " + "by the namenode when trying to fetch "+ url);
   }
   if (localPaths != null) {
     String fsImageName=connection.getHeaderField(GetImageServlet.HADOOP_IMAGE_EDITS_HEADER);
@@ -47,14 +43,14 @@
       for (      File f : localPaths) {
         try {
           if (f.exists()) {
-            LOG.warn("Overwriting existing file " + f + " with file downloaded from "+ str);
+            LOG.warn("Overwriting existing file " + f + " with file downloaded from "+ url);
           }
           outputStreams.add(new FileOutputStream(f));
         }
  catch (        IOException ioe) {
           LOG.warn("Unable to download file " + f,ioe);
-          if (dstStorage != null) {
-            dstStorage.reportErrorOnFile(f);
+          if (dstStorage != null && (dstStorage instanceof StorageErrorReporter)) {
+            ((StorageErrorReporter)dstStorage).reportErrorOnFile(f);
           }
         }
       }
@@ -63,6 +59,7 @@
       }
     }
     int num=1;
+    byte[] buf=new byte[HdfsConstants.IO_FILE_BUFFER_SIZE];
     while (num > 0) {
       num=stream.read(buf);
       if (num > 0) {
@@ -81,7 +78,7 @@
       fos.close();
     }
     if (finishedReceiving && received != advertisedSize) {
-      throw new IOException("File " + str + " received length "+ received+ " is not of the advertised size "+ advertisedSize);
+      throw new IOException("File " + url + " received length "+ received+ " is not of the advertised size "+ advertisedSize);
     }
   }
   double xferSec=Math.max(((float)(Util.monotonicNow() - startTime)) / 1000.0,0.001);
@@ -90,7 +87,7 @@
   if (digester != null) {
     MD5Hash computedDigest=new MD5Hash(digester.digest());
     if (advertisedDigest != null && !computedDigest.equals(advertisedDigest)) {
-      throw new IOException("File " + str + " computed digest "+ computedDigest+ " does not match advertised digest "+ advertisedDigest);
+      throw new IOException("File " + url + " computed digest "+ computedDigest+ " does not match advertised digest "+ advertisedDigest);
     }
     return computedDigest;
   }
