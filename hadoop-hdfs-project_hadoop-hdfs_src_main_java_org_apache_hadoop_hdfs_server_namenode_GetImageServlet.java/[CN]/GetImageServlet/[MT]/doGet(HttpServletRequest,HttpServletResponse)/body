@@ -33,17 +33,13 @@
             throw new IOException(errorMessage);
           }
           CheckpointFaultInjector.getInstance().beforeGetImageSetsHeaders();
-          setFileNameHeaders(response,imageFile);
-          setVerificationHeaders(response,imageFile);
-          TransferFsImage.getFileServer(response.getOutputStream(),imageFile,getThrottler(conf));
+          serveFile(imageFile);
         }
  else         if (parsedParams.isGetEdit()) {
           long startTxId=parsedParams.getStartTxId();
           long endTxId=parsedParams.getEndTxId();
           File editFile=nnImage.getStorage().findFinalizedEditsFile(startTxId,endTxId);
-          setVerificationHeaders(response,editFile);
-          setFileNameHeaders(response,editFile);
-          TransferFsImage.getFileServer(response.getOutputStream(),editFile,getThrottler(conf));
+          serveFile(editFile);
         }
  else         if (parsedParams.isPutImage()) {
           final long txid=parsedParams.getTxId();
@@ -68,6 +64,20 @@
           }
         }
         return null;
+      }
+      private void serveFile(      File file) throws IOException {
+        FileInputStream fis=new FileInputStream(file);
+        try {
+          setVerificationHeaders(response,file);
+          setFileNameHeaders(response,file);
+          if (!file.exists()) {
+            throw new FileNotFoundException(file.toString());
+          }
+          TransferFsImage.getFileServer(response,file,fis,getThrottler(conf));
+        }
+  finally {
+          IOUtils.closeStream(fis);
+        }
       }
     }
 );
