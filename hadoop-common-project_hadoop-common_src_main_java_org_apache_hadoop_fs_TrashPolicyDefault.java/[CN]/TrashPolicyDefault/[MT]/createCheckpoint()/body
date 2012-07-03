@@ -1,13 +1,22 @@
 {
   if (!fs.exists(current))   return;
-  Path checkpoint;
+  Path checkpointBase;
 synchronized (CHECKPOINT) {
-    checkpoint=new Path(trash,CHECKPOINT.format(new Date()));
+    checkpointBase=new Path(trash,CHECKPOINT.format(new Date()));
   }
-  if (fs.rename(current,checkpoint)) {
-    LOG.info("Created trash checkpoint: " + checkpoint.toUri().getPath());
+  Path checkpoint=checkpointBase;
+  int attempt=0;
+  while (true) {
+    try {
+      fs.rename(current,checkpoint,Rename.NONE);
+      break;
+    }
+ catch (    FileAlreadyExistsException e) {
+      if (++attempt > 1000) {
+        throw new IOException("Failed to checkpoint trash: " + checkpoint);
+      }
+      checkpoint=checkpointBase.suffix("-" + attempt);
+    }
   }
- else {
-    throw new IOException("Failed to checkpoint trash: " + checkpoint);
-  }
+  LOG.info("Created trash checkpoint: " + checkpoint.toUri().getPath());
 }
