@@ -3,14 +3,20 @@
   if (syncOnClose && (out != null || checksumOut != null)) {
     datanode.metrics.incrFsyncCount();
   }
+  long flushTotalNanos=0;
+  boolean measuredFlushTime=false;
   try {
     if (checksumOut != null) {
+      long flushStartNanos=System.nanoTime();
       checksumOut.flush();
+      long flushEndNanos=System.nanoTime();
       if (syncOnClose && (cout instanceof FileOutputStream)) {
-        long start=Util.now();
+        long fsyncStartNanos=flushEndNanos;
         ((FileOutputStream)cout).getChannel().force(true);
-        datanode.metrics.addFsync(Util.now() - start);
+        datanode.metrics.addFsyncNanos(System.nanoTime() - fsyncStartNanos);
       }
+      flushTotalNanos+=flushEndNanos - flushStartNanos;
+      measuredFlushTime=true;
       checksumOut.close();
       checksumOut=null;
     }
@@ -23,12 +29,16 @@
   }
   try {
     if (out != null) {
+      long flushStartNanos=System.nanoTime();
       out.flush();
+      long flushEndNanos=System.nanoTime();
       if (syncOnClose && (out instanceof FileOutputStream)) {
-        long start=Util.now();
+        long fsyncStartNanos=flushEndNanos;
         ((FileOutputStream)out).getChannel().force(true);
-        datanode.metrics.addFsync(Util.now() - start);
+        datanode.metrics.addFsyncNanos(System.nanoTime() - fsyncStartNanos);
       }
+      flushTotalNanos+=flushEndNanos - flushStartNanos;
+      measuredFlushTime=true;
       out.close();
       out=null;
     }
@@ -38,6 +48,9 @@
   }
  finally {
     IOUtils.closeStream(out);
+  }
+  if (measuredFlushTime) {
+    datanode.metrics.addFlushNanos(flushTotalNanos);
   }
   if (ioe != null) {
     datanode.checkDiskError(ioe);

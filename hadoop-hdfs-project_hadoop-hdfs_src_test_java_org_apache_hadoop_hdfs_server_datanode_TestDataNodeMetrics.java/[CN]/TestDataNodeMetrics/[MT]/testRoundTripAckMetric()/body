@@ -1,0 +1,24 @@
+{
+  final int DATANODE_COUNT=2;
+  Configuration conf=new HdfsConfiguration();
+  MiniDFSCluster cluster=new MiniDFSCluster.Builder(conf).numDataNodes(DATANODE_COUNT).build();
+  try {
+    cluster.waitActive();
+    DistributedFileSystem fs=(DistributedFileSystem)cluster.getFileSystem();
+    Path testFile=new Path("/testRoundTripAckMetric.txt");
+    DFSTestUtil.createFile(fs,testFile,1,(short)DATANODE_COUNT,new Random().nextLong());
+    boolean foundNonzeroPacketAckNumOps=false;
+    for (    DataNode datanode : cluster.getDataNodes()) {
+      MetricsRecordBuilder dnMetrics=getMetrics(datanode.getMetrics().name());
+      if (getLongCounter("PacketAckRoundTripTimeNanosNumOps",dnMetrics) > 0) {
+        foundNonzeroPacketAckNumOps=true;
+      }
+    }
+    assertTrue("Expected at least one datanode to have reported PacketAckRoundTripTimeNanos metric",foundNonzeroPacketAckNumOps);
+  }
+  finally {
+    if (cluster != null) {
+      cluster.shutdown();
+    }
+  }
+}

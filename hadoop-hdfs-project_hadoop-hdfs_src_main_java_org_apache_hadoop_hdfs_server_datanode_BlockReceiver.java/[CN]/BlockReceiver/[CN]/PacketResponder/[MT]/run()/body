@@ -2,15 +2,18 @@
   boolean lastPacketInBlock=false;
   final long startTime=ClientTraceLog.isInfoEnabled() ? System.nanoTime() : 0;
   while (running && datanode.shouldRun && !lastPacketInBlock) {
+    long totalAckTimeNanos=0;
     boolean isInterrupted=false;
     try {
       Packet pkt=null;
       long expected=-2;
       PipelineAck ack=new PipelineAck();
       long seqno=PipelineAck.UNKOWN_SEQNO;
+      long ackRecvNanoTime=0;
       try {
         if (type != PacketResponderType.LAST_IN_PIPELINE && !mirrorError) {
           ack.readFields(downstreamIn);
+          ackRecvNanoTime=System.nanoTime();
           if (LOG.isDebugEnabled()) {
             LOG.debug(myString + " got " + ack);
           }
@@ -31,6 +34,18 @@ synchronized (this) {
             expected=pkt.seqno;
             if (type == PacketResponderType.HAS_DOWNSTREAM_IN_PIPELINE && seqno != expected) {
               throw new IOException(myString + "seqno: expected=" + expected+ ", received="+ seqno);
+            }
+            if (type == PacketResponderType.HAS_DOWNSTREAM_IN_PIPELINE) {
+              totalAckTimeNanos=ackRecvNanoTime - pkt.ackEnqueueNanoTime;
+              long ackTimeNanos=totalAckTimeNanos - ack.getDownstreamAckTimeNanos();
+              if (ackTimeNanos < 0) {
+                if (LOG.isDebugEnabled()) {
+                  LOG.debug("Calculated invalid ack time: " + ackTimeNanos + "ns.");
+                }
+              }
+ else {
+                datanode.metrics.addPacketAckRoundTripTimeNanos(ackTimeNanos);
+              }
             }
             lastPacketInBlock=pkt.lastPacketInBlock;
           }
@@ -82,7 +97,7 @@ catch (      IOException ioe) {
           replies[i + 1]=ack.getReply(i);
         }
       }
-      PipelineAck replyAck=new PipelineAck(expected,replies);
+      PipelineAck replyAck=new PipelineAck(expected,replies,totalAckTimeNanos);
       if (replyAck.isSuccess() && pkt.offsetInBlock > replicaInfo.getBytesAcked())       replicaInfo.setBytesAcked(pkt.offsetInBlock);
       replyAck.write(upstreamOut);
       upstreamOut.flush();
