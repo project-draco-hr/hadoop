@@ -1,0 +1,24 @@
+{
+  Configuration conf=new HdfsConfiguration();
+  MiniDFSCluster cluster=new MiniDFSCluster.Builder(conf).numDataNodes(0).build();
+  StorageDirectory savedSd=null;
+  try {
+    NNStorage storage=cluster.getNameNode().getFSImage().getStorage();
+    for (    StorageDirectory sd : storage.dirIterable(null)) {
+      assertLockFails(sd);
+      savedSd=sd;
+    }
+    LogCapturer logs=GenericTestUtils.LogCapturer.captureLogs(LogFactory.getLog(Storage.class));
+    try {
+      savedSd.lock();
+      fail("Namenode should not be able to lock a storage that is already locked");
+    }
+ catch (    IOException ioe) {
+      String jvmName=ManagementFactory.getRuntimeMXBean().getName();
+      assertTrue("Error message does not include JVM name '" + jvmName + "'",logs.getOutput().contains(jvmName));
+    }
+  }
+  finally {
+    cluster.shutdown();
+  }
+}
