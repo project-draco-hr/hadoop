@@ -1,0 +1,38 @@
+{
+  int chainIdx=0;
+  HdfsFileStatus status=dfsClient.getFileInfo(name);
+  long length=status.getLen();
+  int numBlocks=(int)((length + blockSize - 1) / blockSize);
+  DFSInputStream in=null;
+  byte[] blockBuffer=new byte[blockSize];
+  try {
+    for (int blockIdx=0; blockIdx < numBlocks; blockIdx++) {
+      if (blocksToCorrupt.contains(blockIdx)) {
+        if (in != null) {
+          in.close();
+          in=null;
+        }
+        continue;
+      }
+      if (in == null) {
+        in=dfsClient.open("/lost+found" + name + "/"+ chainIdx);
+        chainIdx++;
+      }
+      int len=blockBuffer.length;
+      if (blockIdx == (numBlocks - 1)) {
+        len=(int)(in.getFileLength() % blockSize);
+        if (len == 0)         len=blockBuffer.length;
+      }
+      IOUtils.readFully(in,blockBuffer,0,(int)len);
+      int startIdx=blockIdx * blockSize;
+      for (int i=0; i < len; i++) {
+        if (initialContents[startIdx + i] != blockBuffer[i]) {
+          throw new IOException("salvaged file " + name + " differed "+ "from what we expected on block "+ blockIdx);
+        }
+      }
+    }
+  }
+  finally {
+    IOUtils.cleanup(null,in);
+  }
+}

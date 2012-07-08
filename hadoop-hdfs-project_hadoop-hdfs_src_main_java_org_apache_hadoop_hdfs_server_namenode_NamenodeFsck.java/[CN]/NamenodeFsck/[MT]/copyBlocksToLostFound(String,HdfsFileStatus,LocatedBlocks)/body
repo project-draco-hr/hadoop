@@ -1,60 +1,67 @@
 {
   final DFSClient dfs=new DFSClient(NameNode.getAddress(conf),conf);
+  final String fullName=file.getFullName(parent);
+  OutputStream fos=null;
   try {
     if (!lfInited) {
       lostFoundInit(dfs);
     }
     if (!lfInitedOk) {
+      throw new IOException("failed to initialize lost+found");
+    }
+    String target=lostFound + fullName;
+    if (hdfsPathExists(target)) {
+      LOG.warn("Fsck: can't copy the remains of " + fullName + " to "+ "lost+found, because "+ target+ " already exists.");
       return;
     }
-    String fullName=file.getFullName(parent);
-    String target=lostFound + fullName;
-    String errmsg="Failed to move " + fullName + " to /lost+found";
-    try {
-      if (!namenode.getRpcServer().mkdirs(target,file.getPermission(),true)) {
-        LOG.warn(errmsg);
-        return;
-      }
-      int chain=0;
-      OutputStream fos=null;
-      for (      LocatedBlock lBlk : blocks.getLocatedBlocks()) {
-        LocatedBlock lblock=lBlk;
-        DatanodeInfo[] locs=lblock.getLocations();
-        if (locs == null || locs.length == 0) {
-          if (fos != null) {
-            fos.flush();
-            fos.close();
-            fos=null;
-          }
-          continue;
-        }
-        if (fos == null) {
-          fos=dfs.create(target + "/" + chain,true);
-          if (fos != null)           chain++;
- else {
-            throw new IOException(errmsg + ": could not store chain " + chain);
-          }
-        }
-        try {
-          copyBlock(dfs,lblock,fos);
-        }
- catch (        Exception e) {
-          e.printStackTrace();
-          LOG.warn(" - could not copy block " + lblock.getBlock() + " to "+ target);
+    if (!namenode.getRpcServer().mkdirs(target,file.getPermission(),true)) {
+      throw new IOException("failed to create directory " + target);
+    }
+    int chain=0;
+    boolean copyError=false;
+    for (    LocatedBlock lBlk : blocks.getLocatedBlocks()) {
+      LocatedBlock lblock=lBlk;
+      DatanodeInfo[] locs=lblock.getLocations();
+      if (locs == null || locs.length == 0) {
+        if (fos != null) {
           fos.flush();
           fos.close();
           fos=null;
         }
+        continue;
       }
-      if (fos != null)       fos.close();
-      LOG.warn("\n - copied corrupted file " + fullName + " to /lost+found");
+      if (fos == null) {
+        fos=dfs.create(target + "/" + chain,true);
+        if (fos == null) {
+          throw new IOException("Failed to copy " + fullName + " to /lost+found: could not store chain "+ chain);
+        }
+        chain++;
+      }
+      try {
+        copyBlock(dfs,lblock,fos);
+      }
+ catch (      Exception e) {
+        LOG.error("Fsck: could not copy block " + lblock.getBlock() + " to "+ target,e);
+        fos.flush();
+        fos.close();
+        fos=null;
+        internalError=true;
+        copyError=true;
+      }
     }
- catch (    Exception e) {
-      e.printStackTrace();
-      LOG.warn(errmsg + ": " + e.getMessage());
+    if (copyError) {
+      LOG.warn("Fsck: there were errors copying the remains of the " + "corrupted file " + fullName + " to /lost+found");
+    }
+ else {
+      LOG.info("Fsck: copied the remains of the corrupted file " + fullName + " to /lost+found");
     }
   }
-  finally {
+ catch (  Exception e) {
+    LOG.error("copyBlocksToLostFound: error processing " + fullName,e);
+    internalError=true;
+  }
+ finally {
+    if (fos != null)     fos.close();
     dfs.close();
   }
 }
