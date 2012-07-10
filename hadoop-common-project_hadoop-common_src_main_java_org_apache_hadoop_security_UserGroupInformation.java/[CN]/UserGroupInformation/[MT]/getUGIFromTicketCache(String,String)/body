@@ -1,0 +1,35 @@
+{
+  if (!isSecurityEnabled()) {
+    return getBestUGI(null,user);
+  }
+  try {
+    Map<String,String> krbOptions=new HashMap<String,String>();
+    krbOptions.put("doNotPrompt","true");
+    krbOptions.put("useTicketCache","true");
+    krbOptions.put("useKeyTab","false");
+    krbOptions.put("renewTGT","false");
+    krbOptions.put("ticketCache",ticketCache);
+    krbOptions.putAll(HadoopConfiguration.BASIC_JAAS_OPTIONS);
+    AppConfigurationEntry ace=new AppConfigurationEntry(KerberosUtil.getKrb5LoginModuleName(),LoginModuleControlFlag.REQUIRED,krbOptions);
+    DynamicConfiguration dynConf=new DynamicConfiguration(new AppConfigurationEntry[]{ace});
+    LoginContext login=newLoginContext(HadoopConfiguration.USER_KERBEROS_CONFIG_NAME,null,dynConf);
+    login.login();
+    Subject loginSubject=login.getSubject();
+    Set<Principal> loginPrincipals=loginSubject.getPrincipals();
+    if (loginPrincipals.isEmpty()) {
+      throw new RuntimeException("No login principals found!");
+    }
+    if (loginPrincipals.size() != 1) {
+      LOG.warn("found more than one principal in the ticket cache file " + ticketCache);
+    }
+    User ugiUser=new User(loginPrincipals.iterator().next().getName(),AuthenticationMethod.KERBEROS,login);
+    loginSubject.getPrincipals().add(ugiUser);
+    UserGroupInformation ugi=new UserGroupInformation(loginSubject);
+    ugi.setLogin(login);
+    ugi.setAuthenticationMethod(AuthenticationMethod.KERBEROS);
+    return ugi;
+  }
+ catch (  LoginException le) {
+    throw new IOException("failure to login using ticket cache file " + ticketCache,le);
+  }
+}
