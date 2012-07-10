@@ -1,5 +1,8 @@
 {
+  String name=UNKNOWN_RESOURCE;
   try {
+    Object resource=wrapper.getResource();
+    name=wrapper.getName();
     DocumentBuilderFactory docBuilderFactory=DocumentBuilderFactory.newInstance();
     docBuilderFactory.setIgnoringComments(true);
     docBuilderFactory.setNamespaceAware(true);
@@ -12,8 +15,7 @@
     DocumentBuilder builder=docBuilderFactory.newDocumentBuilder();
     Document doc=null;
     Element root=null;
-    Object resource=wrapper.getResource();
-    String name=wrapper.getName();
+    boolean returnCachedProperties=false;
     if (resource instanceof URL) {
       URL url=(URL)resource;
       if (url != null) {
@@ -50,20 +52,28 @@
  else     if (resource instanceof InputStream) {
       try {
         doc=builder.parse((InputStream)resource);
+        returnCachedProperties=true;
       }
   finally {
         ((InputStream)resource).close();
       }
     }
+ else     if (resource instanceof Properties) {
+      overlay(properties,(Properties)resource);
+    }
  else     if (resource instanceof Element) {
       root=(Element)resource;
     }
     if (doc == null && root == null) {
-      if (quiet)       return;
+      if (quiet)       return null;
       throw new RuntimeException(resource + " not found");
     }
     if (root == null) {
       root=doc.getDocumentElement();
+    }
+    Properties toAddTo=properties;
+    if (returnCachedProperties) {
+      toAddTo=new Properties();
     }
     if (!"configuration".equals(root.getTagName()))     LOG.fatal("bad conf file: top-level element not <configuration>");
     NodeList props=root.getChildNodes();
@@ -72,7 +82,7 @@
       if (!(propNode instanceof Element))       continue;
       Element prop=(Element)propNode;
       if ("configuration".equals(prop.getTagName())) {
-        loadResource(properties,new Resource(prop,name),quiet);
+        loadResource(toAddTo,new Resource(prop,name),quiet);
         continue;
       }
       if (!"property".equals(prop.getTagName()))       LOG.warn("bad conf file: element not <property>");
@@ -96,29 +106,34 @@
           DeprecatedKeyInfo keyInfo=deprecatedKeyMap.get(attr);
           keyInfo.accessed=false;
           for (          String key : keyInfo.newKeys) {
-            loadProperty(properties,name,key,value,finalParameter,source.toArray(new String[source.size()]));
+            loadProperty(toAddTo,name,key,value,finalParameter,source.toArray(new String[source.size()]));
           }
         }
  else {
-          loadProperty(properties,name,attr,value,finalParameter,source.toArray(new String[source.size()]));
+          loadProperty(toAddTo,name,attr,value,finalParameter,source.toArray(new String[source.size()]));
         }
       }
     }
+    if (returnCachedProperties) {
+      overlay(properties,toAddTo);
+      return new Resource(toAddTo,name);
+    }
+    return null;
   }
  catch (  IOException e) {
-    LOG.fatal("error parsing conf file: " + e);
+    LOG.fatal("error parsing conf " + name,e);
     throw new RuntimeException(e);
   }
 catch (  DOMException e) {
-    LOG.fatal("error parsing conf file: " + e);
+    LOG.fatal("error parsing conf " + name,e);
     throw new RuntimeException(e);
   }
 catch (  SAXException e) {
-    LOG.fatal("error parsing conf file: " + e);
+    LOG.fatal("error parsing conf " + name,e);
     throw new RuntimeException(e);
   }
 catch (  ParserConfigurationException e) {
-    LOG.fatal("error parsing conf file: " + e);
+    LOG.fatal("error parsing conf " + name,e);
     throw new RuntimeException(e);
   }
 }
