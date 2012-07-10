@@ -12,8 +12,10 @@
     DocumentBuilder builder=docBuilderFactory.newDocumentBuilder();
     Document doc=null;
     Element root=null;
-    if (name instanceof URL) {
-      URL url=(URL)name;
+    Object resource=wrapper.getResource();
+    String name=wrapper.getName();
+    if (resource instanceof URL) {
+      URL url=(URL)resource;
       if (url != null) {
         if (!quiet) {
           LOG.info("parsing " + url);
@@ -21,8 +23,8 @@
         doc=builder.parse(url.toString());
       }
     }
- else     if (name instanceof String) {
-      URL url=getResource((String)name);
+ else     if (resource instanceof String) {
+      URL url=getResource((String)resource);
       if (url != null) {
         if (!quiet) {
           LOG.info("parsing " + url);
@@ -30,8 +32,8 @@
         doc=builder.parse(url.toString());
       }
     }
- else     if (name instanceof Path) {
-      File file=new File(((Path)name).toUri().getPath()).getAbsoluteFile();
+ else     if (resource instanceof Path) {
+      File file=new File(((Path)resource).toUri().getPath()).getAbsoluteFile();
       if (file.exists()) {
         if (!quiet) {
           LOG.info("parsing " + file);
@@ -45,20 +47,20 @@
         }
       }
     }
- else     if (name instanceof InputStream) {
+ else     if (resource instanceof InputStream) {
       try {
-        doc=builder.parse((InputStream)name);
+        doc=builder.parse((InputStream)resource);
       }
   finally {
-        ((InputStream)name).close();
+        ((InputStream)resource).close();
       }
     }
- else     if (name instanceof Element) {
-      root=(Element)name;
+ else     if (resource instanceof Element) {
+      root=(Element)resource;
     }
     if (doc == null && root == null) {
       if (quiet)       return;
-      throw new RuntimeException(name + " not found");
+      throw new RuntimeException(resource + " not found");
     }
     if (root == null) {
       root=doc.getDocumentElement();
@@ -70,7 +72,7 @@
       if (!(propNode instanceof Element))       continue;
       Element prop=(Element)propNode;
       if ("configuration".equals(prop.getTagName())) {
-        loadResource(properties,prop,quiet);
+        loadResource(properties,new Resource(prop,name),quiet);
         continue;
       }
       if (!"property".equals(prop.getTagName()))       LOG.warn("bad conf file: element not <property>");
@@ -78,6 +80,7 @@
       String attr=null;
       String value=null;
       boolean finalParameter=false;
+      LinkedList<String> source=new LinkedList<String>();
       for (int j=0; j < fields.getLength(); j++) {
         Node fieldNode=fields.item(j);
         if (!(fieldNode instanceof Element))         continue;
@@ -85,17 +88,19 @@
         if ("name".equals(field.getTagName()) && field.hasChildNodes())         attr=((Text)field.getFirstChild()).getData().trim();
         if ("value".equals(field.getTagName()) && field.hasChildNodes())         value=((Text)field.getFirstChild()).getData();
         if ("final".equals(field.getTagName()) && field.hasChildNodes())         finalParameter="true".equals(((Text)field.getFirstChild()).getData());
+        if ("source".equals(field.getTagName()) && field.hasChildNodes())         source.add(((Text)field.getFirstChild()).getData());
       }
+      source.add(name);
       if (attr != null) {
         if (deprecatedKeyMap.containsKey(attr)) {
           DeprecatedKeyInfo keyInfo=deprecatedKeyMap.get(attr);
           keyInfo.accessed=false;
           for (          String key : keyInfo.newKeys) {
-            loadProperty(properties,name,key,value,finalParameter);
+            loadProperty(properties,name,key,value,finalParameter,source.toArray(new String[source.size()]));
           }
         }
  else {
-          loadProperty(properties,name,attr,value,finalParameter);
+          loadProperty(properties,name,attr,value,finalParameter,source.toArray(new String[source.size()]));
         }
       }
     }
