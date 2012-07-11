@@ -4,12 +4,11 @@
   MiniDFSCluster cluster=null;
   File sharedEditsDir=null;
   try {
-    cluster=new MiniDFSCluster.Builder(conf).nnTopology(MiniDFSNNTopology.simpleHATopology()).numDataNodes(0).build();
+    cluster=new MiniDFSCluster.Builder(conf).nnTopology(MiniDFSNNTopology.simpleHATopology()).numDataNodes(0).checkExitOnShutdown(false).build();
     cluster.waitActive();
     cluster.transitionToActive(0);
     FileSystem fs=HATestUtil.configureFailoverFs(cluster,conf);
     assertTrue(fs.mkdirs(new Path("/test1")));
-    Runtime mockRuntime=Mockito.mock(Runtime.class);
     URI sharedEditsUri=cluster.getSharedEditsDir(0,1);
     sharedEditsDir=new File(sharedEditsUri);
     assertEquals(0,FileUtil.chmod(sharedEditsDir.getAbsolutePath(),"-w",true));
@@ -18,15 +17,12 @@
     assertTrue(nn1.isStandbyState());
     assertFalse("StandBy NameNode should not go to SafeMode on resource unavailability",nn1.isInSafeMode());
     NameNode nn0=cluster.getNameNode(0);
-    nn0.getNamesystem().getFSImage().getEditLog().getJournalSet().setRuntimeForTesting(mockRuntime);
     try {
       nn0.getRpcServer().rollEditLog();
       fail("Succeeded in rolling edit log despite shared dir being deleted");
     }
- catch (    IOException ioe) {
-      GenericTestUtils.assertExceptionContains("Unable to start log segment 4: too few journals successfully started",ioe);
-      Mockito.verify(mockRuntime,Mockito.atLeastOnce()).exit(Mockito.anyInt());
-      LOG.info("Got expected exception",ioe);
+ catch (    ExitException ee) {
+      GenericTestUtils.assertExceptionContains("finalize log segment 1, 3 failed for required journal",ee);
     }
     for (    URI editsUri : cluster.getNameEditsDirs(0)) {
       if (editsUri.equals(sharedEditsUri)) {

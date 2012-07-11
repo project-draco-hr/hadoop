@@ -3,8 +3,6 @@
   BookieServer newBookie=bkutil.newBookie();
   assertEquals("New bookie didn't start",ensembleSize,bkutil.checkBookiesUp(ensembleSize,10));
   BookieServer replacementBookie=null;
-  Runtime mockRuntime1=mock(Runtime.class);
-  Runtime mockRuntime2=mock(Runtime.class);
   MiniDFSCluster cluster=null;
   try {
     Configuration conf=new Configuration();
@@ -13,11 +11,9 @@
     conf.setInt(BookKeeperJournalManager.BKJM_BOOKKEEPER_ENSEMBLE_SIZE,ensembleSize);
     conf.setInt(BookKeeperJournalManager.BKJM_BOOKKEEPER_QUORUM_SIZE,ensembleSize);
     BKJMUtil.addJournalManagerDefinition(conf);
-    cluster=new MiniDFSCluster.Builder(conf).nnTopology(MiniDFSNNTopology.simpleHATopology()).numDataNodes(0).manageNameDfsSharedDirs(false).build();
+    cluster=new MiniDFSCluster.Builder(conf).nnTopology(MiniDFSNNTopology.simpleHATopology()).numDataNodes(0).manageNameDfsSharedDirs(false).checkExitOnShutdown(false).build();
     NameNode nn1=cluster.getNameNode(0);
     NameNode nn2=cluster.getNameNode(1);
-    FSEditLogTestUtil.setRuntimeForEditLog(nn1,mockRuntime1);
-    FSEditLogTestUtil.setRuntimeForEditLog(nn2,mockRuntime2);
     cluster.waitActive();
     cluster.transitionToActive(0);
     Path p1=new Path("/testBKJMFailingBKCluster1");
@@ -26,18 +22,21 @@
     fs.mkdirs(p1);
     newBookie.shutdown();
     assertEquals("New bookie didn't stop",numBookies,bkutil.checkBookiesUp(numBookies,10));
-    fs.mkdirs(p2);
-    verify(mockRuntime1,atLeastOnce()).exit(anyInt());
-    verify(mockRuntime2,times(0)).exit(anyInt());
+    try {
+      fs.mkdirs(p2);
+      fail("mkdirs should result in the NN exiting");
+    }
+ catch (    RemoteException re) {
+      assertTrue(re.getClassName().contains("ExitException"));
+    }
     cluster.shutdownNameNode(0);
     try {
       cluster.transitionToActive(1);
       fail("Shouldn't have been able to transition with bookies down");
     }
- catch (    ServiceFailedException e) {
-      assertTrue("Wrong exception",e.getMessage().contains("Failed to start active services"));
+ catch (    ExitException ee) {
+      assertTrue("Should shutdown due to required journal failure",ee.getMessage().contains("starting log segment 3 failed for required journal"));
     }
-    verify(mockRuntime2,atLeastOnce()).exit(anyInt());
     replacementBookie=bkutil.newBookie();
     assertEquals("Replacement bookie didn't start",ensembleSize,bkutil.checkBookiesUp(ensembleSize,10));
     cluster.transitionToActive(1);
