@@ -1,0 +1,66 @@
+{
+switch (event.getType()) {
+case NODE_ADDED:
+{
+      if (!(event instanceof NodeAddedSchedulerEvent)) {
+        throw new RuntimeException("Unexpected event type: " + event);
+      }
+      NodeAddedSchedulerEvent nodeAddedEvent=(NodeAddedSchedulerEvent)event;
+      addNode(nodeAddedEvent.getAddedRMNode());
+    }
+  break;
+case NODE_REMOVED:
+{
+  if (!(event instanceof NodeRemovedSchedulerEvent)) {
+    throw new RuntimeException("Unexpected event type: " + event);
+  }
+  NodeRemovedSchedulerEvent nodeRemovedEvent=(NodeRemovedSchedulerEvent)event;
+  removeNode(nodeRemovedEvent.getRemovedRMNode());
+}
+break;
+case NODE_UPDATE:
+{
+if (!(event instanceof NodeUpdateSchedulerEvent)) {
+throw new RuntimeException("Unexpected event type: " + event);
+}
+NodeUpdateSchedulerEvent nodeUpdatedEvent=(NodeUpdateSchedulerEvent)event;
+this.nodeUpdate(nodeUpdatedEvent.getRMNode(),nodeUpdatedEvent.getNewlyLaunchedContainers(),nodeUpdatedEvent.getCompletedContainers());
+}
+break;
+case APP_ADDED:
+{
+if (!(event instanceof AppAddedSchedulerEvent)) {
+throw new RuntimeException("Unexpected event type: " + event);
+}
+AppAddedSchedulerEvent appAddedEvent=(AppAddedSchedulerEvent)event;
+String queue=appAddedEvent.getQueue();
+String def=YarnConfiguration.DEFAULT_QUEUE_NAME;
+if (queue.equals(def) && userAsDefaultQueue) {
+queue=appAddedEvent.getUser();
+}
+addApplication(appAddedEvent.getApplicationAttemptId(),queue,appAddedEvent.getUser());
+}
+break;
+case APP_REMOVED:
+{
+if (!(event instanceof AppRemovedSchedulerEvent)) {
+throw new RuntimeException("Unexpected event type: " + event);
+}
+AppRemovedSchedulerEvent appRemovedEvent=(AppRemovedSchedulerEvent)event;
+this.removeApplication(appRemovedEvent.getApplicationAttemptID(),appRemovedEvent.getFinalAttemptState());
+}
+break;
+case CONTAINER_EXPIRED:
+{
+if (!(event instanceof ContainerExpiredSchedulerEvent)) {
+throw new RuntimeException("Unexpected event type: " + event);
+}
+ContainerExpiredSchedulerEvent containerExpiredEvent=(ContainerExpiredSchedulerEvent)event;
+ContainerId containerId=containerExpiredEvent.getContainerId();
+completedContainer(getRMContainer(containerId),SchedulerUtils.createAbnormalContainerStatus(containerId,SchedulerUtils.EXPIRED_CONTAINER),RMContainerEventType.EXPIRE);
+}
+break;
+default :
+LOG.error("Unknown event arrived at FairScheduler: " + event.toString());
+}
+}

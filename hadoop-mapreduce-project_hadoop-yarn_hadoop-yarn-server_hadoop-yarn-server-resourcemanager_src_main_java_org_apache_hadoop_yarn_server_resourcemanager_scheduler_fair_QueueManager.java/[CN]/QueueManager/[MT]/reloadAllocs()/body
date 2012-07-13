@@ -1,0 +1,147 @@
+{
+  if (allocFile == null)   return;
+  Map<String,Resource> minQueueResources=new HashMap<String,Resource>();
+  Map<String,Resource> maxQueueResources=new HashMap<String,Resource>();
+  Map<String,Integer> queueMaxApps=new HashMap<String,Integer>();
+  Map<String,Integer> userMaxApps=new HashMap<String,Integer>();
+  Map<String,Double> queueWeights=new HashMap<String,Double>();
+  Map<String,SchedulingMode> queueModes=new HashMap<String,SchedulingMode>();
+  Map<String,Long> minSharePreemptionTimeouts=new HashMap<String,Long>();
+  Map<String,Map<QueueACL,AccessControlList>> queueAcls=new HashMap<String,Map<QueueACL,AccessControlList>>();
+  int userMaxAppsDefault=Integer.MAX_VALUE;
+  int queueMaxAppsDefault=Integer.MAX_VALUE;
+  SchedulingMode defaultSchedulingMode=SchedulingMode.FAIR;
+  List<String> queueNamesInAllocFile=new ArrayList<String>();
+  DocumentBuilderFactory docBuilderFactory=DocumentBuilderFactory.newInstance();
+  docBuilderFactory.setIgnoringComments(true);
+  DocumentBuilder builder=docBuilderFactory.newDocumentBuilder();
+  Document doc;
+  if (allocFile instanceof String) {
+    doc=builder.parse(new File((String)allocFile));
+  }
+ else {
+    doc=builder.parse(allocFile.toString());
+  }
+  Element root=doc.getDocumentElement();
+  if (!"allocations".equals(root.getTagName()))   throw new AllocationConfigurationException("Bad fair scheduler config " + "file: top-level element not <allocations>");
+  NodeList elements=root.getChildNodes();
+  for (int i=0; i < elements.getLength(); i++) {
+    Node node=elements.item(i);
+    if (!(node instanceof Element))     continue;
+    Element element=(Element)node;
+    if ("queue".equals(element.getTagName()) || "pool".equals(element.getTagName())) {
+      String queueName=element.getAttribute("name");
+      Map<QueueACL,AccessControlList> acls=new HashMap<QueueACL,AccessControlList>();
+      queueNamesInAllocFile.add(queueName);
+      NodeList fields=element.getChildNodes();
+      for (int j=0; j < fields.getLength(); j++) {
+        Node fieldNode=fields.item(j);
+        if (!(fieldNode instanceof Element))         continue;
+        Element field=(Element)fieldNode;
+        if ("minResources".equals(field.getTagName())) {
+          String text=((Text)field.getFirstChild()).getData().trim();
+          int val=Integer.parseInt(text);
+          minQueueResources.put(queueName,Resources.createResource(val));
+        }
+ else         if ("maxResources".equals(field.getTagName())) {
+          String text=((Text)field.getFirstChild()).getData().trim();
+          int val=Integer.parseInt(text);
+          maxQueueResources.put(queueName,Resources.createResource(val));
+        }
+ else         if ("maxRunningApps".equals(field.getTagName())) {
+          String text=((Text)field.getFirstChild()).getData().trim();
+          int val=Integer.parseInt(text);
+          queueMaxApps.put(queueName,val);
+        }
+ else         if ("weight".equals(field.getTagName())) {
+          String text=((Text)field.getFirstChild()).getData().trim();
+          double val=Double.parseDouble(text);
+          queueWeights.put(queueName,val);
+        }
+ else         if ("minSharePreemptionTimeout".equals(field.getTagName())) {
+          String text=((Text)field.getFirstChild()).getData().trim();
+          long val=Long.parseLong(text) * 1000L;
+          minSharePreemptionTimeouts.put(queueName,val);
+        }
+ else         if ("schedulingMode".equals(field.getTagName())) {
+          String text=((Text)field.getFirstChild()).getData().trim();
+          queueModes.put(queueName,parseSchedulingMode(text));
+        }
+ else         if ("aclSubmitApps".equals(field.getTagName())) {
+          String text=((Text)field.getFirstChild()).getData().trim();
+          acls.put(QueueACL.SUBMIT_APPLICATIONS,new AccessControlList(text));
+        }
+ else         if ("aclAdministerApps".equals(field.getTagName())) {
+          String text=((Text)field.getFirstChild()).getData().trim();
+          acls.put(QueueACL.ADMINISTER_QUEUE,new AccessControlList(text));
+        }
+      }
+      queueAcls.put(queueName,acls);
+      if (maxQueueResources.containsKey(queueName) && minQueueResources.containsKey(queueName) && Resources.lessThan(maxQueueResources.get(queueName),minQueueResources.get(queueName))) {
+        LOG.warn(String.format("Queue %s has max resources %d less than min resources %d",queueName,maxQueueResources.get(queueName),minQueueResources.get(queueName)));
+      }
+    }
+ else     if ("user".equals(element.getTagName())) {
+      String userName=element.getAttribute("name");
+      NodeList fields=element.getChildNodes();
+      for (int j=0; j < fields.getLength(); j++) {
+        Node fieldNode=fields.item(j);
+        if (!(fieldNode instanceof Element))         continue;
+        Element field=(Element)fieldNode;
+        if ("maxRunningApps".equals(field.getTagName())) {
+          String text=((Text)field.getFirstChild()).getData().trim();
+          int val=Integer.parseInt(text);
+          userMaxApps.put(userName,val);
+        }
+      }
+    }
+ else     if ("userMaxAppsDefault".equals(element.getTagName())) {
+      String text=((Text)element.getFirstChild()).getData().trim();
+      int val=Integer.parseInt(text);
+      userMaxAppsDefault=val;
+    }
+ else     if ("fairSharePreemptionTimeout".equals(element.getTagName())) {
+      String text=((Text)element.getFirstChild()).getData().trim();
+      long val=Long.parseLong(text) * 1000L;
+      fairSharePreemptionTimeout=val;
+    }
+ else     if ("defaultMinSharePreemptionTimeout".equals(element.getTagName())) {
+      String text=((Text)element.getFirstChild()).getData().trim();
+      long val=Long.parseLong(text) * 1000L;
+      defaultMinSharePreemptionTimeout=val;
+    }
+ else     if ("queueMaxAppsDefault".equals(element.getTagName())) {
+      String text=((Text)element.getFirstChild()).getData().trim();
+      int val=Integer.parseInt(text);
+      queueMaxAppsDefault=val;
+    }
+ else     if ("defaultQueueSchedulingMode".equals(element.getTagName())) {
+      String text=((Text)element.getFirstChild()).getData().trim();
+      defaultSchedulingMode=parseSchedulingMode(text);
+    }
+ else {
+      LOG.warn("Bad element in allocations file: " + element.getTagName());
+    }
+  }
+synchronized (this) {
+    this.minQueueResources=minQueueResources;
+    this.maxQueueResources=maxQueueResources;
+    this.queueMaxApps=queueMaxApps;
+    this.userMaxApps=userMaxApps;
+    this.queueWeights=queueWeights;
+    this.userMaxAppsDefault=userMaxAppsDefault;
+    this.queueMaxAppsDefault=queueMaxAppsDefault;
+    this.defaultSchedulingMode=defaultSchedulingMode;
+    this.minSharePreemptionTimeouts=minSharePreemptionTimeouts;
+    this.queueAcls=queueAcls;
+    for (    String name : queueNamesInAllocFile) {
+      FSQueue queue=getQueue(name);
+      if (queueModes.containsKey(name)) {
+        queue.setSchedulingMode(queueModes.get(name));
+      }
+ else {
+        queue.setSchedulingMode(defaultSchedulingMode);
+      }
+    }
+  }
+}
