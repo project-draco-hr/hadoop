@@ -1,12 +1,23 @@
 {
   RMAppFailedAttemptEvent failedEvent=((RMAppFailedAttemptEvent)event);
-  if (app.attempts.size() == app.maxRetries) {
-    String msg="Application " + app.getApplicationId() + " failed "+ app.maxRetries+ " times due to "+ failedEvent.getDiagnostics()+ ". Failing the application.";
+  boolean retryApp=true;
+  String msg=null;
+  if (app.submissionContext.getUnmanagedAM()) {
+    retryApp=false;
+    msg="Unmanaged application " + app.getApplicationId() + " failed due to "+ failedEvent.getDiagnostics()+ ". Failing the application.";
+  }
+ else   if (app.attempts.size() == app.maxRetries) {
+    retryApp=false;
+    msg="Application " + app.getApplicationId() + " failed "+ app.maxRetries+ " times due to "+ failedEvent.getDiagnostics()+ ". Failing the application.";
+  }
+  if (retryApp) {
+    app.createNewAttempt();
+    return initialState;
+  }
+ else {
     LOG.info(msg);
     app.diagnostics.append(msg);
     FINAL_TRANSITION.transition(app,event);
     return RMAppState.FAILED;
   }
-  app.createNewAttempt();
-  return initialState;
 }
