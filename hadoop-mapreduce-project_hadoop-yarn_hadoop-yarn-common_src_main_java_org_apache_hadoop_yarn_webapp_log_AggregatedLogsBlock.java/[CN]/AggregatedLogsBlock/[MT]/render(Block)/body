@@ -2,7 +2,8 @@
   ContainerId containerId=verifyAndGetContainerId(html);
   NodeId nodeId=verifyAndGetNodeId(html);
   String appOwner=verifyAndGetAppOwner(html);
-  if (containerId == null || nodeId == null || appOwner == null || appOwner.isEmpty()) {
+  LogLimits logLimits=verifyAndGetLogLimits(html);
+  if (containerId == null || nodeId == null || appOwner == null || appOwner.isEmpty() || logLimits == null) {
     return;
   }
   ApplicationId applicationId=containerId.getApplicationAttemptId().getApplicationId();
@@ -50,21 +51,23 @@ catch (  IOException e) {
     html.h1()._("User [" + remoteUser + "] is not authorized to view the logs for "+ logEntity)._();
     return;
   }
-  DataInputStream valueStream;
-  LogKey key=new LogKey();
+  String desiredLogType=$(CONTAINER_LOG_TYPE);
   try {
-    valueStream=reader.next(key);
-    while (valueStream != null && !key.toString().equals(containerId.toString())) {
-      valueStream=reader.next(key);
-    }
-    if (valueStream == null) {
+    AggregatedLogFormat.ContainerLogsReader logReader=reader.getContainerLogsReader(containerId);
+    if (logReader == null) {
       html.h1()._("Logs not available for " + logEntity + ". Could be caused by the rentention policy")._();
       return;
     }
-    writer().write("<pre>");
-    AggregatedLogFormat.LogReader.readAcontainerLogs(valueStream,writer());
-    writer().write("</pre>");
-    return;
+    boolean foundLog=readContainerLogs(html,logReader,logLimits,desiredLogType);
+    if (!foundLog) {
+      if (desiredLogType.isEmpty()) {
+        html.h1("No logs available for container " + containerId.toString());
+      }
+ else {
+        html.h1("Unable to locate '" + desiredLogType + "' log for container "+ containerId.toString());
+      }
+      return;
+    }
   }
  catch (  IOException e) {
     html.h1()._("Error getting logs for " + logEntity)._();
