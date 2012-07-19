@@ -17,16 +17,16 @@
  catch (    IllegalArgumentException e) {
       badIdErrs.increment(1);
       LOG.warn("Invalid map id ",e);
-      return false;
+      return remaining.toArray(new TaskAttemptID[remaining.size()]);
     }
     if (!verifySanity(compressedLength,decompressedLength,forReduce,remaining,mapId)) {
-      return false;
+      return new TaskAttemptID[]{mapId};
     }
     LOG.debug("header: " + mapId + ", len: "+ compressedLength+ ", decomp len: "+ decompressedLength);
     mapOutput=merger.reserve(mapId,decompressedLength,id);
     if (mapOutput.getType() == Type.WAIT) {
       LOG.info("fetcher#" + id + " - MergerManager returned Status.WAIT ...");
-      return false;
+      return new TaskAttemptID[]{mapId};
     }
     LOG.info("fetcher#" + id + " about to shuffle output of map "+ mapOutput.getMapId()+ " decomp: "+ decompressedLength+ " len: "+ compressedLength+ " to "+ mapOutput.getType());
     if (mapOutput.getType() == Type.MEMORY) {
@@ -39,18 +39,22 @@
     scheduler.copySucceeded(mapId,host,compressedLength,endTime - startTime,mapOutput);
     remaining.remove(mapId);
     metrics.successFetch();
-    return true;
+    return null;
   }
  catch (  IOException ioe) {
     ioErrs.increment(1);
     if (mapId == null || mapOutput == null) {
       LOG.info("fetcher#" + id + " failed to read map header"+ mapId+ " decomp: "+ decompressedLength+ ", "+ compressedLength,ioe);
-      return false;
+      if (mapId == null) {
+        return remaining.toArray(new TaskAttemptID[remaining.size()]);
+      }
+ else {
+        return new TaskAttemptID[]{mapId};
+      }
     }
     LOG.info("Failed to shuffle output of " + mapId + " from "+ host.getHostName(),ioe);
     mapOutput.abort();
-    scheduler.copyFailed(mapId,host,true);
     metrics.failedFetch();
-    return false;
+    return new TaskAttemptID[]{mapId};
   }
 }
