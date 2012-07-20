@@ -1,0 +1,33 @@
+{
+  EditLogOutputStream stm=qjm.startLogSegment(1);
+  failLoggerAtTxn(spies.get(0),4);
+  failLoggerAtTxn(spies.get(1),5);
+  writeTxns(stm,1,3);
+  writeTxns(stm,4,1);
+  try {
+    writeTxns(stm,5,1);
+    fail("Did not fail to write when only a minority succeeded");
+  }
+ catch (  QuorumException qe) {
+    GenericTestUtils.assertExceptionContains("too many exceptions to achieve quorum size 2/3",qe);
+  }
+  cluster.getJournalNode(2).stopAndJoin(0);
+  qjm=createSpyingQJM();
+  spies=qjm.getLoggerSetForTests().getLoggersForTests();
+  for (  AsyncLogger spy : spies) {
+    TestQuorumJournalManagerUnit.futureThrows(new IOException("injected")).when(spy).finalizeLogSegment(Mockito.eq(1L),Mockito.eq(4L));
+  }
+  try {
+    qjm.recoverUnfinalizedSegments();
+    fail("Should have failed recovery since no finalization occurred");
+  }
+ catch (  IOException ioe) {
+    GenericTestUtils.assertExceptionContains("injected",ioe);
+  }
+  cluster.getJournalNode(0).stopAndJoin(0);
+  cluster.restartJournalNode(2);
+  qjm=createSpyingQJM();
+  spies=qjm.getLoggerSetForTests().getLoggersForTests();
+  qjm.recoverUnfinalizedSegments();
+  checkRecovery(cluster,1,4);
+}

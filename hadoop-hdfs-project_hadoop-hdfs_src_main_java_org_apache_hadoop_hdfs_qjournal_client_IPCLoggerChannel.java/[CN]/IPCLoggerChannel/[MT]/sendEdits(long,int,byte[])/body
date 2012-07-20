@@ -1,0 +1,35 @@
+{
+  try {
+    reserveQueueSpace(data.length);
+  }
+ catch (  LoggerTooFarBehindException e) {
+    return Futures.immediateFailedFuture(e);
+  }
+  ListenableFuture<Void> ret=null;
+  try {
+    ret=executor.submit(new Callable<Void>(){
+      @Override public Void call() throws IOException {
+        getProxy().journal(createReqInfo(),firstTxnId,numTxns,data);
+        return null;
+      }
+    }
+);
+  }
+  finally {
+    if (ret == null) {
+      unreserveQueueSpace(data.length);
+    }
+ else {
+      Futures.addCallback(ret,new FutureCallback<Void>(){
+        @Override public void onFailure(        Throwable t){
+          unreserveQueueSpace(data.length);
+        }
+        @Override public void onSuccess(        Void t){
+          unreserveQueueSpace(data.length);
+        }
+      }
+);
+    }
+  }
+  return ret;
+}
