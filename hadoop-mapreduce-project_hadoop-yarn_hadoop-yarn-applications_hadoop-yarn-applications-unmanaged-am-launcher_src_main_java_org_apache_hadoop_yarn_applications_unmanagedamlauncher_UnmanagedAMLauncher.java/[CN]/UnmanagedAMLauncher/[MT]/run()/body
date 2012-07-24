@@ -1,0 +1,39 @@
+{
+  LOG.info("Starting Client");
+  connectToRM();
+  assert(rmClient != null);
+  GetNewApplicationResponse newApp=getApplication();
+  ApplicationId appId=newApp.getApplicationId();
+  LOG.info("Setting up application submission context for ASM");
+  ApplicationSubmissionContext appContext=Records.newRecord(ApplicationSubmissionContext.class);
+  appContext.setApplicationId(appId);
+  appContext.setApplicationName(appName);
+  Priority pri=Records.newRecord(Priority.class);
+  pri.setPriority(amPriority);
+  appContext.setPriority(pri);
+  appContext.setQueue(amQueue);
+  ContainerLaunchContext amContainer=Records.newRecord(ContainerLaunchContext.class);
+  appContext.setAMContainerSpec(amContainer);
+  appContext.setUnmanagedAM(true);
+  LOG.info("Setting unmanaged AM");
+  SubmitApplicationRequest appRequest=Records.newRecord(SubmitApplicationRequest.class);
+  appRequest.setApplicationSubmissionContext(appContext);
+  LOG.info("Submitting application to ASM");
+  rmClient.submitApplication(appRequest);
+  ApplicationReport appReport=monitorApplication(appId,EnumSet.of(YarnApplicationState.ACCEPTED));
+  ApplicationAttemptId attemptId=appReport.getCurrentApplicationAttemptId();
+  LOG.info("Launching application with id: " + attemptId);
+  launchAM(attemptId);
+  appReport=monitorApplication(appId,EnumSet.of(YarnApplicationState.KILLED,YarnApplicationState.FAILED,YarnApplicationState.FINISHED));
+  YarnApplicationState appState=appReport.getYarnApplicationState();
+  FinalApplicationStatus appStatus=appReport.getFinalApplicationStatus();
+  LOG.info("App ended with state: " + appReport.getYarnApplicationState() + " and status: "+ appStatus);
+  if (YarnApplicationState.FINISHED == appState && FinalApplicationStatus.SUCCEEDED == appStatus) {
+    LOG.info("Application has completed successfully.");
+    return true;
+  }
+ else {
+    LOG.info("Application did finished unsuccessfully." + " YarnState=" + appState.toString() + ", FinalStatus="+ appStatus.toString());
+    return false;
+  }
+}
