@@ -22,14 +22,20 @@
     LOG.info(spillfile + " not found");
     return null;
   }
-  final FileRegion partition=new DefaultFileRegion(spill.getChannel(),info.startOffset,info.partLength);
-  ChannelFuture writeFuture=ch.write(partition);
-  writeFuture.addListener(new ChannelFutureListener(){
-    @Override public void operationComplete(    ChannelFuture future){
-      partition.releaseExternalResources();
+  ChannelFuture writeFuture;
+  if (ch.getPipeline().get(SslHandler.class) == null) {
+    final FileRegion partition=new DefaultFileRegion(spill.getChannel(),info.startOffset,info.partLength);
+    writeFuture=ch.write(partition);
+    writeFuture.addListener(new ChannelFutureListener(){
+      @Override public void operationComplete(      ChannelFuture future){
+        partition.releaseExternalResources();
+      }
     }
-  }
 );
+  }
+ else {
+    writeFuture=ch.write(new ChunkedFile(spill,info.startOffset,info.partLength,sslFileBufferSize));
+  }
   metrics.shuffleConnections.incr();
   metrics.shuffleOutputBytes.incr(info.partLength);
   return writeFuture;

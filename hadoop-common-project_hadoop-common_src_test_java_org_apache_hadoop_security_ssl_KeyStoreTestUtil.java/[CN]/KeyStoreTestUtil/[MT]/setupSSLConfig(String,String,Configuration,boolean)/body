@@ -1,0 +1,52 @@
+{
+  String clientKS=keystoresDir + "/clientKS.jks";
+  String clientPassword="clientP";
+  String serverKS=keystoresDir + "/serverKS.jks";
+  String serverPassword="serverP";
+  String trustKS=keystoresDir + "/trustKS.jks";
+  String trustPassword="trustP";
+  File sslClientConfFile=new File(sslConfDir + "/ssl-client.xml");
+  File sslServerConfFile=new File(sslConfDir + "/ssl-server.xml");
+  Map<String,X509Certificate> certs=new HashMap<String,X509Certificate>();
+  if (useClientCert) {
+    KeyPair cKP=KeyStoreTestUtil.generateKeyPair("RSA");
+    X509Certificate cCert=KeyStoreTestUtil.generateCertificate("CN=localhost, O=client",cKP,30,"SHA1withRSA");
+    KeyStoreTestUtil.createKeyStore(clientKS,clientPassword,"client",cKP.getPrivate(),cCert);
+    certs.put("client",cCert);
+  }
+  KeyPair sKP=KeyStoreTestUtil.generateKeyPair("RSA");
+  X509Certificate sCert=KeyStoreTestUtil.generateCertificate("CN=localhost, O=server",sKP,30,"SHA1withRSA");
+  KeyStoreTestUtil.createKeyStore(serverKS,serverPassword,"server",sKP.getPrivate(),sCert);
+  certs.put("server",sCert);
+  KeyStoreTestUtil.createTrustStore(trustKS,trustPassword,certs);
+  Configuration clientSSLConf=new Configuration(false);
+  clientSSLConf.set(FileBasedKeyStoresFactory.resolvePropertyName(SSLFactory.Mode.CLIENT,FileBasedKeyStoresFactory.SSL_KEYSTORE_LOCATION_TPL_KEY),clientKS);
+  clientSSLConf.set(FileBasedKeyStoresFactory.resolvePropertyName(SSLFactory.Mode.CLIENT,FileBasedKeyStoresFactory.SSL_KEYSTORE_PASSWORD_TPL_KEY),clientPassword);
+  clientSSLConf.set(FileBasedKeyStoresFactory.resolvePropertyName(SSLFactory.Mode.CLIENT,FileBasedKeyStoresFactory.SSL_TRUSTSTORE_LOCATION_TPL_KEY),trustKS);
+  clientSSLConf.set(FileBasedKeyStoresFactory.resolvePropertyName(SSLFactory.Mode.CLIENT,FileBasedKeyStoresFactory.SSL_TRUSTSTORE_PASSWORD_TPL_KEY),trustPassword);
+  clientSSLConf.set(FileBasedKeyStoresFactory.resolvePropertyName(SSLFactory.Mode.CLIENT,FileBasedKeyStoresFactory.SSL_TRUSTSTORE_RELOAD_INTERVAL_TPL_KEY),"1000");
+  Configuration serverSSLConf=new Configuration(false);
+  serverSSLConf.set(FileBasedKeyStoresFactory.resolvePropertyName(SSLFactory.Mode.SERVER,FileBasedKeyStoresFactory.SSL_KEYSTORE_LOCATION_TPL_KEY),serverKS);
+  serverSSLConf.set(FileBasedKeyStoresFactory.resolvePropertyName(SSLFactory.Mode.SERVER,FileBasedKeyStoresFactory.SSL_KEYSTORE_PASSWORD_TPL_KEY),serverPassword);
+  serverSSLConf.set(FileBasedKeyStoresFactory.resolvePropertyName(SSLFactory.Mode.SERVER,FileBasedKeyStoresFactory.SSL_TRUSTSTORE_LOCATION_TPL_KEY),trustKS);
+  serverSSLConf.set(FileBasedKeyStoresFactory.resolvePropertyName(SSLFactory.Mode.SERVER,FileBasedKeyStoresFactory.SSL_TRUSTSTORE_PASSWORD_TPL_KEY),trustPassword);
+  serverSSLConf.set(FileBasedKeyStoresFactory.resolvePropertyName(SSLFactory.Mode.SERVER,FileBasedKeyStoresFactory.SSL_TRUSTSTORE_RELOAD_INTERVAL_TPL_KEY),"1000");
+  Writer writer=new FileWriter(sslClientConfFile);
+  try {
+    clientSSLConf.writeXml(writer);
+  }
+  finally {
+    writer.close();
+  }
+  writer=new FileWriter(sslServerConfFile);
+  try {
+    serverSSLConf.writeXml(writer);
+  }
+  finally {
+    writer.close();
+  }
+  conf.set(SSLFactory.SSL_HOSTNAME_VERIFIER_KEY,"ALLOW_ALL");
+  conf.set(SSLFactory.SSL_CLIENT_CONF_KEY,sslClientConfFile.getName());
+  conf.set(SSLFactory.SSL_SERVER_CONF_KEY,sslServerConfFile.getName());
+  conf.setBoolean(SSLFactory.SSL_REQUIRE_CLIENT_CERT_KEY,useClientCert);
+}
