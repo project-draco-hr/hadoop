@@ -1,0 +1,23 @@
+{
+  KeyPair kp=generateKeyPair("RSA");
+  cert1=generateCertificate("CN=Cert1",kp,30,"SHA1withRSA");
+  cert2=generateCertificate("CN=Cert2",kp,30,"SHA1withRSA");
+  String truststoreLocation=BASEDIR + "/testreload.jks";
+  createTrustStore(truststoreLocation,"password","cert1",cert1);
+  ReloadingX509TrustManager tm=new ReloadingX509TrustManager("jks",truststoreLocation,"password",10);
+  try {
+    tm.init();
+    assertEquals(1,tm.getAcceptedIssuers().length);
+    Thread.sleep((tm.getReloadInterval() + 1000));
+    Map<String,X509Certificate> certs=new HashMap<String,X509Certificate>();
+    certs.put("cert1",cert1);
+    certs.put("cert2",cert2);
+    createTrustStore(truststoreLocation,"password",certs);
+    assertEquals(10,tm.getReloadInterval());
+    Thread.sleep((tm.getReloadInterval() + 200));
+    assertEquals(2,tm.getAcceptedIssuers().length);
+  }
+  finally {
+    tm.destroy();
+  }
+}

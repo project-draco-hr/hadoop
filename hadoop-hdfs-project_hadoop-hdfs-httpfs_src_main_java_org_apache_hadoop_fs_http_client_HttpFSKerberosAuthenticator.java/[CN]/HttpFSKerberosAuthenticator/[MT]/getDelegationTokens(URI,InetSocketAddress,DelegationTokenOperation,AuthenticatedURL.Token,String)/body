@@ -1,0 +1,40 @@
+{
+  Map<String,String> params=new HashMap<String,String>();
+  params.put(OP_PARAM,op.toString());
+  params.put(RENEWER_PARAM,renewer);
+  URL url=HttpFSUtils.createHttpURL(new Path(fsURI),params);
+  AuthenticatedURL aUrl=new AuthenticatedURL(new HttpFSKerberosAuthenticator());
+  try {
+    HttpURLConnection conn=aUrl.openConnection(url,token);
+    conn.setRequestMethod(op.getHttpMethod());
+    HttpFSUtils.validateResponse(conn,HttpURLConnection.HTTP_OK);
+    List<String> list=new ArrayList<String>();
+    if (op == DelegationTokenOperation.GETDELEGATIONTOKEN) {
+      JSONObject json=(JSONObject)((JSONObject)HttpFSUtils.jsonParse(conn)).get(DELEGATION_TOKEN_JSON);
+      String tokenStr=(String)json.get(DELEGATION_TOKEN_URL_STRING_JSON);
+      list.add(tokenStr);
+    }
+ else     if (op == DelegationTokenOperation.GETDELEGATIONTOKENS) {
+      JSONObject json=(JSONObject)((JSONObject)HttpFSUtils.jsonParse(conn)).get(DELEGATION_TOKENS_JSON);
+      JSONArray array=(JSONArray)json.get(DELEGATION_TOKEN_JSON);
+      for (      Object element : array) {
+        String tokenStr=(String)((Map)element).get(DELEGATION_TOKEN_URL_STRING_JSON);
+        list.add(tokenStr);
+      }
+    }
+ else {
+      throw new IllegalArgumentException("Invalid operation: " + op.toString());
+    }
+    List<Token<?>> dTokens=new ArrayList<Token<?>>();
+    for (    String tokenStr : list) {
+      Token<AbstractDelegationTokenIdentifier> dToken=new Token<AbstractDelegationTokenIdentifier>();
+      dToken.decodeFromUrlString(tokenStr);
+      dTokens.add(dToken);
+      SecurityUtil.setTokenService(dToken,httpFSAddr);
+    }
+    return dTokens;
+  }
+ catch (  AuthenticationException ex) {
+    throw new IOException(ex.toString(),ex);
+  }
+}

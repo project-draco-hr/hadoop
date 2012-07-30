@@ -1,55 +1,33 @@
 {
-  final UserGroupInformation ugi;
+  UserGroupInformation ugi=null;
   final String usernameFromQuery=getUsernameFromQuery(request,tryUgiParameter);
   final String doAsUserFromQuery=request.getParameter(DoAsParam.NAME);
+  final String remoteUser;
   if (UserGroupInformation.isSecurityEnabled()) {
-    final String remoteUser=request.getRemoteUser();
-    String tokenString=request.getParameter(DELEGATION_PARAMETER_NAME);
+    remoteUser=request.getRemoteUser();
+    final String tokenString=request.getParameter(DELEGATION_PARAMETER_NAME);
     if (tokenString != null) {
-      Token<DelegationTokenIdentifier> token=new Token<DelegationTokenIdentifier>();
-      token.decodeFromUrlString(tokenString);
-      InetSocketAddress serviceAddress=getNNServiceAddress(context,request);
-      if (serviceAddress != null) {
-        SecurityUtil.setTokenService(token,serviceAddress);
-        token.setKind(DelegationTokenIdentifier.HDFS_DELEGATION_KIND);
-      }
-      ByteArrayInputStream buf=new ByteArrayInputStream(token.getIdentifier());
-      DataInputStream in=new DataInputStream(buf);
-      DelegationTokenIdentifier id=new DelegationTokenIdentifier();
-      id.readFields(in);
-      if (context != null) {
-        final NameNode nn=NameNodeHttpServer.getNameNodeFromContext(context);
-        if (nn != null) {
-          nn.getNamesystem().verifyToken(id,token.getPassword());
-        }
-      }
-      ugi=id.getUser();
-      if (ugi.getRealUser() == null) {
-        checkUsername(ugi.getShortUserName(),usernameFromQuery);
-        checkUsername(null,doAsUserFromQuery);
-      }
- else {
-        checkUsername(ugi.getRealUser().getShortUserName(),usernameFromQuery);
-        checkUsername(ugi.getShortUserName(),doAsUserFromQuery);
-        ProxyUsers.authorize(ugi,request.getRemoteAddr(),conf);
-      }
-      ugi.addToken(token);
-      ugi.setAuthenticationMethod(AuthenticationMethod.TOKEN);
+      ugi=getTokenUGI(context,request,tokenString,conf);
+      checkUsername(ugi.getShortUserName(),usernameFromQuery);
+      checkUsername(ugi.getShortUserName(),doAsUserFromQuery);
     }
- else {
-      if (remoteUser == null) {
-        throw new IOException("Security enabled but user not " + "authenticated by filter");
-      }
-      final UserGroupInformation realUgi=UserGroupInformation.createRemoteUser(remoteUser);
-      checkUsername(realUgi.getShortUserName(),usernameFromQuery);
-      realUgi.setAuthenticationMethod(secureAuthMethod);
-      ugi=initUGI(realUgi,doAsUserFromQuery,request,true,conf);
+ else     if (remoteUser == null) {
+      throw new IOException("Security enabled but user not authenticated by filter");
     }
   }
  else {
-    final UserGroupInformation realUgi=usernameFromQuery == null ? getDefaultWebUser(conf) : UserGroupInformation.createRemoteUser(usernameFromQuery);
-    realUgi.setAuthenticationMethod(AuthenticationMethod.SIMPLE);
-    ugi=initUGI(realUgi,doAsUserFromQuery,request,false,conf);
+    remoteUser=(usernameFromQuery == null) ? getDefaultWebUserName(conf) : usernameFromQuery;
+  }
+  if (ugi == null) {
+    ugi=UserGroupInformation.createRemoteUser(remoteUser);
+    checkUsername(ugi.getShortUserName(),usernameFromQuery);
+    if (UserGroupInformation.isSecurityEnabled()) {
+      ugi.setAuthenticationMethod(secureAuthMethod);
+    }
+    if (doAsUserFromQuery != null) {
+      ugi=UserGroupInformation.createProxyUser(doAsUserFromQuery,ugi);
+      ProxyUsers.authorize(ugi,request.getRemoteAddr(),conf);
+    }
   }
   if (LOG.isDebugEnabled())   LOG.debug("getUGI is returning: " + ugi.getShortUserName());
   return ugi;

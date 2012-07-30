@@ -1,0 +1,80 @@
+{
+  Map<String,String> env=System.getenv();
+  ArrayList<String> envAMList=new ArrayList<String>();
+  boolean setClasspath=false;
+  for (  Map.Entry<String,String> entry : env.entrySet()) {
+    String key=entry.getKey();
+    String value=entry.getValue();
+    if (key.equals("CLASSPATH")) {
+      setClasspath=true;
+      if (classpath != null) {
+        value=value + File.pathSeparator + classpath;
+      }
+    }
+    envAMList.add(key + "=" + value);
+  }
+  if (!setClasspath && classpath != null) {
+    envAMList.add("CLASSPATH=" + classpath);
+  }
+  envAMList.add(ApplicationConstants.AM_APP_ATTEMPT_ID_ENV + "=" + attemptId);
+  String[] envAM=new String[envAMList.size()];
+  Process amProc=Runtime.getRuntime().exec(amCmd,envAMList.toArray(envAM));
+  final BufferedReader errReader=new BufferedReader(new InputStreamReader(amProc.getErrorStream()));
+  final BufferedReader inReader=new BufferedReader(new InputStreamReader(amProc.getInputStream()));
+  Thread errThread=new Thread(){
+    @Override public void run(){
+      try {
+        String line=errReader.readLine();
+        while ((line != null) && !isInterrupted()) {
+          System.err.println(line);
+          line=errReader.readLine();
+        }
+      }
+ catch (      IOException ioe) {
+        LOG.warn("Error reading the error stream",ioe);
+      }
+    }
+  }
+;
+  Thread outThread=new Thread(){
+    @Override public void run(){
+      try {
+        String line=inReader.readLine();
+        while ((line != null) && !isInterrupted()) {
+          System.out.println(line);
+          line=inReader.readLine();
+        }
+      }
+ catch (      IOException ioe) {
+        LOG.warn("Error reading the out stream",ioe);
+      }
+    }
+  }
+;
+  try {
+    errThread.start();
+    outThread.start();
+  }
+ catch (  IllegalStateException ise) {
+  }
+  try {
+    int exitCode=amProc.waitFor();
+    LOG.info("AM process exited with value: " + exitCode);
+  }
+ catch (  InterruptedException e) {
+    e.printStackTrace();
+  }
+  try {
+    errThread.join();
+    outThread.join();
+    errReader.close();
+    inReader.close();
+  }
+ catch (  InterruptedException ie) {
+    LOG.info("ShellExecutor: Interrupted while reading the error/out stream",ie);
+  }
+catch (  IOException ioe) {
+    LOG.warn("Error while closing the error/out stream",ioe);
+  }
+  amProc.destroy();
+}

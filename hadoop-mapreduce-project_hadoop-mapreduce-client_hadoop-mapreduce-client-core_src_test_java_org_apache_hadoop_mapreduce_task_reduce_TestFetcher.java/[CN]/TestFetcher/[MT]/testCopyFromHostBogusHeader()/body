@@ -1,4 +1,5 @@
 {
+  LOG.info("testCopyFromHostBogusHeader");
   JobConf job=new JobConf();
   TaskAttemptID id=TaskAttemptID.forName("attempt_0_1_r_1_1");
   ShuffleScheduler<Text,Text> ss=mock(ShuffleScheduler.class);
@@ -22,11 +23,13 @@
   String replyHash=SecureShuffleUtils.generateHash(encHash.getBytes(),key);
   when(connection.getResponseCode()).thenReturn(200);
   when(connection.getHeaderField(SecureShuffleUtils.HTTP_HEADER_REPLY_URL_HASH)).thenReturn(replyHash);
-  ByteArrayInputStream in=new ByteArrayInputStream("5 BOGUS DATA\nBOGUS DATA\nBOGUS DATA\n".getBytes());
+  ByteArrayInputStream in=new ByteArrayInputStream("\u00010 BOGUS DATA\nBOGUS DATA\nBOGUS DATA\n".getBytes());
   when(connection.getInputStream()).thenReturn(in);
   underTest.copyFromHost(host);
   verify(connection).addRequestProperty(SecureShuffleUtils.HTTP_HEADER_URL_HASH,encHash);
   verify(allErrs).increment(1);
   verify(ss).copyFailed(map1ID,host,true);
   verify(ss).copyFailed(map2ID,host,true);
+  verify(ss).putBackKnownMapOutput(any(MapHost.class),eq(map1ID));
+  verify(ss).putBackKnownMapOutput(any(MapHost.class),eq(map2ID));
 }
