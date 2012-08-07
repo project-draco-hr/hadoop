@@ -15,7 +15,7 @@
   final ExtendedBlock originalBlock=new ExtendedBlock(block);
   block.setNumBytes(dataXceiverServer.estimateBlockSize);
   LOG.info("Receiving block " + block + " src: "+ remoteAddress+ " dest: "+ localAddress);
-  final DataOutputStream replyOut=new DataOutputStream(new BufferedOutputStream(NetUtils.getOutputStream(s,dnConf.socketWriteTimeout),HdfsConstants.SMALL_BUFFER_SIZE));
+  final DataOutputStream replyOut=new DataOutputStream(new BufferedOutputStream(getOutputStream(),HdfsConstants.SMALL_BUFFER_SIZE));
   checkAccess(replyOut,isClient,block,blockToken,Op.WRITE_BLOCK,BlockTokenSecretManager.AccessMode.WRITE);
   DataOutputStream mirrorOut=null;
   DataInputStream mirrorIn=null;
@@ -42,8 +42,15 @@
         NetUtils.connect(mirrorSock,mirrorTarget,timeoutValue);
         mirrorSock.setSoTimeout(timeoutValue);
         mirrorSock.setSendBufferSize(HdfsConstants.DEFAULT_DATA_SOCKET_SIZE);
-        mirrorOut=new DataOutputStream(new BufferedOutputStream(NetUtils.getOutputStream(mirrorSock,writeTimeout),HdfsConstants.SMALL_BUFFER_SIZE));
-        mirrorIn=new DataInputStream(NetUtils.getInputStream(mirrorSock));
+        OutputStream unbufMirrorOut=NetUtils.getOutputStream(mirrorSock,writeTimeout);
+        InputStream unbufMirrorIn=NetUtils.getInputStream(mirrorSock);
+        if (dnConf.encryptDataTransfer) {
+          IOStreamPair encryptedStreams=DataTransferEncryptor.getEncryptedStreams(unbufMirrorOut,unbufMirrorIn,datanode.blockPoolTokenSecretManager.generateDataEncryptionKey(block.getBlockPoolId()));
+          unbufMirrorOut=encryptedStreams.out;
+          unbufMirrorIn=encryptedStreams.in;
+        }
+        mirrorOut=new DataOutputStream(new BufferedOutputStream(unbufMirrorOut,HdfsConstants.SMALL_BUFFER_SIZE));
+        mirrorIn=new DataInputStream(unbufMirrorIn);
         new Sender(mirrorOut).writeBlock(originalBlock,blockToken,clientname,targets,srcDataNode,stage,pipelineSize,minBytesRcvd,maxBytesRcvd,latestGenerationStamp,requestedChecksum);
         mirrorOut.flush();
         if (isClient) {
