@@ -1,0 +1,32 @@
+{
+  for (int failA=1; failA <= MAX_IPC_NUMBER; failA++) {
+    for (int failB=1; failB <= MAX_IPC_NUMBER; failB++) {
+      String injectionStr="(" + failA + ", "+ failB+ ")";
+      LOG.info("\n\n-------------------------------------------\n" + "Beginning test, failing at " + injectionStr + "\n"+ "-------------------------------------------\n\n");
+      MiniJournalCluster cluster=new MiniJournalCluster.Builder(conf).build();
+      try {
+        QuorumJournalManager qjm;
+        qjm=createInjectableQJM(cluster);
+        List<AsyncLogger> loggers=qjm.getLoggerSetForTests().getLoggersForTests();
+        failIpcNumber(loggers.get(0),failA);
+        failIpcNumber(loggers.get(1),failB);
+        int lastAckedTxn=doWorkload(cluster,qjm);
+        if (lastAckedTxn < 6) {
+          LOG.info("Failed after injecting failures at " + injectionStr + ". This is expected since we injected a failure in the "+ "majority.");
+        }
+        try {
+          qjm=createInjectableQJM(cluster);
+          qjm.recoverUnfinalizedSegments();
+          writeSegment(cluster,qjm,lastAckedTxn + 1,3,true);
+        }
+ catch (        Throwable t) {
+          throw new RuntimeException("Test failed with injection: " + injectionStr,t);
+        }
+      }
+  finally {
+        cluster.shutdown();
+        cluster=null;
+      }
+    }
+  }
+}

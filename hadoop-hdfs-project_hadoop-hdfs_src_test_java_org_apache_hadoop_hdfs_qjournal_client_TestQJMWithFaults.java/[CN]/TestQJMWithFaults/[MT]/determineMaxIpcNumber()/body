@@ -1,0 +1,20 @@
+{
+  Configuration conf=new Configuration();
+  MiniJournalCluster cluster=new MiniJournalCluster.Builder(conf).build();
+  try {
+    QuorumJournalManager qjm=createInjectableQJM(cluster);
+    doWorkload(cluster,qjm);
+    SortedSet<Integer> ipcCounts=Sets.newTreeSet();
+    for (    AsyncLogger l : qjm.getLoggerSetForTests().getLoggersForTests()) {
+      InvocationCountingChannel ch=(InvocationCountingChannel)l;
+      ch.waitForAllPendingCalls();
+      ipcCounts.add(ch.getRpcCount());
+    }
+    assertEquals(1,ipcCounts.size());
+    MAX_IPC_NUMBER=ipcCounts.first();
+    LOG.info("Max IPC count = " + MAX_IPC_NUMBER);
+  }
+  finally {
+    cluster.shutdown();
+  }
+}
