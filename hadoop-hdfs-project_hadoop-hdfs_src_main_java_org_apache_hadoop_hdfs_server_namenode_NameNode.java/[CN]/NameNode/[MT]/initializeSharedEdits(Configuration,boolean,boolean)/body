@@ -6,12 +6,16 @@
   try {
     FSNamesystem fsns=FSNamesystem.loadFromDisk(conf,FSNamesystem.getNamespaceDirs(conf),FSNamesystem.getNamespaceEditsDirs(conf,false));
     existingStorage=fsns.getFSImage().getStorage();
-    Collection<URI> sharedEditsDirs=FSNamesystem.getSharedEditsDirs(conf);
-    if (!confirmFormat(sharedEditsDirs,force,interactive)) {
+    NamespaceInfo nsInfo=existingStorage.getNamespaceInfo();
+    List<URI> sharedEditsDirs=FSNamesystem.getSharedEditsDirs(conf);
+    FSImage sharedEditsImage=new FSImage(conf,Lists.<URI>newArrayList(),sharedEditsDirs);
+    sharedEditsImage.getEditLog().initJournalsForWrite();
+    if (!sharedEditsImage.confirmFormat(force,interactive)) {
       return true;
     }
-    NNStorage newSharedStorage=new NNStorage(conf,Lists.<URI>newArrayList(),sharedEditsDirs);
-    newSharedStorage.format(existingStorage.getNamespaceInfo());
+    NNStorage newSharedStorage=sharedEditsImage.getStorage();
+    newSharedStorage.format(nsInfo);
+    sharedEditsImage.getEditLog().formatNonFileJournals(nsInfo);
     fsns.getFSImage().getEditLog().close();
     fsns.getFSImage().getEditLog().initJournalsForWrite();
     fsns.getFSImage().getEditLog().recoverUnclosedStreams();
