@@ -1,0 +1,42 @@
+{
+  Configuration conf=new HdfsConfiguration();
+  SimulatedFSDataset.setFactory(conf);
+  conf.setBoolean(DFSConfigKeys.DFS_PERMISSIONS_ENABLED_KEY,false);
+  final MiniDFSCluster cluster=new MiniDFSCluster.Builder(conf).build();
+  FileSystem fs=cluster.getFileSystem();
+  UserGroupInformation otherUgi=UserGroupInformation.createUserForTesting("testuser",new String[]{"testgroup"});
+  FileSystem fs2=otherUgi.doAs(new PrivilegedExceptionAction<FileSystem>(){
+    @Override public FileSystem run() throws Exception {
+      return FileSystem.get(cluster.getConfiguration(0));
+    }
+  }
+);
+  try {
+    Path p=new Path("/testfile");
+    FSDataOutputStream stm1=fs.create(p);
+    stm1.write(1);
+    stm1.hflush();
+    try {
+      fs2.create(p,false);
+      fail("Did not throw!");
+    }
+ catch (    IOException abce) {
+      GenericTestUtils.assertExceptionContains("already being created by",abce);
+    }
+    FSDataOutputStream stm2=fs2.create(p,true);
+    stm2.write(2);
+    stm2.close();
+    try {
+      stm1.close();
+      fail("Should have exception closing stm1 since it was deleted");
+    }
+ catch (    IOException ioe) {
+      GenericTestUtils.assertExceptionContains("File is not open for writing",ioe);
+    }
+  }
+  finally {
+    IOUtils.closeStream(fs);
+    IOUtils.closeStream(fs2);
+    cluster.shutdown();
+  }
+}

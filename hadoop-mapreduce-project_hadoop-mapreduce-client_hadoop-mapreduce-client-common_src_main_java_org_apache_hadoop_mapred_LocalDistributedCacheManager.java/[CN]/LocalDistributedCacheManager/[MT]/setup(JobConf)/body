@@ -1,4 +1,5 @@
 {
+  File workDir=new File(System.getProperty("user.dir"));
   Map<String,LocalResource> localResources=new LinkedHashMap<String,LocalResource>();
   MRApps.setupDistributedCache(conf,localResources);
   Map<String,Path> classpaths=new HashMap<String,Path>();
@@ -32,7 +33,8 @@
       Future<Path> future=exec.submit(download);
       resourcesToPaths.put(resource,future);
     }
-    for (    LocalResource resource : localResources.values()) {
+    for (    Entry<String,LocalResource> entry : localResources.entrySet()) {
+      LocalResource resource=entry.getValue();
       Path path;
       try {
         path=resourcesToPaths.get(resource).get();
@@ -44,6 +46,9 @@ catch (      ExecutionException e) {
         throw new IOException(e);
       }
       String pathString=path.toUri().toString();
+      String link=entry.getKey();
+      String target=new File(path.toUri()).getPath();
+      symlink(workDir,target,link);
       if (resource.getType() == LocalResourceType.ARCHIVE) {
         localArchives.add(pathString);
       }
@@ -74,27 +79,6 @@ catch (      ExecutionException e) {
   }
   if (!localFiles.isEmpty()) {
     conf.set(MRJobConfig.CACHE_LOCALFILES,StringUtils.arrayToString(localFiles.toArray(new String[localArchives.size()])));
-  }
-  if (DistributedCache.getSymlink(conf)) {
-    File workDir=new File(System.getProperty("user.dir"));
-    URI[] archives=DistributedCache.getCacheArchives(conf);
-    URI[] files=DistributedCache.getCacheFiles(conf);
-    Path[] localArchives=DistributedCache.getLocalCacheArchives(conf);
-    Path[] localFiles=DistributedCache.getLocalCacheFiles(conf);
-    if (archives != null) {
-      for (int i=0; i < archives.length; i++) {
-        String link=archives[i].getFragment();
-        String target=new File(localArchives[i].toUri()).getPath();
-        symlink(workDir,target,link);
-      }
-    }
-    if (files != null) {
-      for (int i=0; i < files.length; i++) {
-        String link=files[i].getFragment();
-        String target=new File(localFiles[i].toUri()).getPath();
-        symlink(workDir,target,link);
-      }
-    }
   }
   setupCalled=true;
 }
