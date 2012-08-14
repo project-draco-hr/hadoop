@@ -3,6 +3,8 @@
   final List<Exception> exceptions=new ArrayList<Exception>();
   final Path dir=new Path("/testNamenodeRestart");
   conf.setBoolean(DFSConfigKeys.DFS_CLIENT_RETRY_POLICY_ENABLED_KEY,true);
+  conf.setInt(DFSConfigKeys.DFS_NAMENODE_SAFEMODE_MIN_DATANODES_KEY,1);
+  conf.setInt(MiniDFSCluster.DFS_NAMENODE_SAFEMODE_EXTENSION_TESTING_KEY,5000);
   final short numDatanodes=3;
   final MiniDFSCluster cluster=new MiniDFSCluster.Builder(conf).numDataNodes(numDatanodes).build();
   try {
@@ -16,9 +18,31 @@
     DFSTestUtil.createFile(fs,file1,length,numDatanodes,20120406L);
     final FileStatus s1=fs.getFileStatus(file1);
     assertEquals(length,s1.getLen());
+    final Path file4=new Path(dir,"file4");
+    final FSDataOutputStream out4=fs.create(file4,false,4096,fs.getDefaultReplication(file4),1024L,null);
+    final byte[] bytes=new byte[1000];
+    new Random().nextBytes(bytes);
+    out4.write(bytes);
+    out4.write(bytes);
+    out4.hflush();
     assertTrue(HdfsUtils.isHealthy(uri));
     cluster.shutdownNameNode(0);
     assertFalse(HdfsUtils.isHealthy(uri));
+    final Thread file4thread=new Thread(new Runnable(){
+      @Override public void run(){
+        try {
+          out4.write(bytes);
+          out4.write(bytes);
+          out4.write(bytes);
+          out4.close();
+        }
+ catch (        Exception e) {
+          exceptions.add(e);
+        }
+      }
+    }
+);
+    file4thread.start();
     final Thread reader=new Thread(new Runnable(){
       @Override public void run(){
         try {
@@ -68,9 +92,22 @@
     final FileStatus s2=fs.getFileStatus(file1);
     assertEquals(s1,s2);
     thread.join();
+    assertEmpty(exceptions);
     assertEquals(s1.getLen(),fs.getFileStatus(file3).getLen());
     assertEquals(fs.getFileChecksum(file1),fs.getFileChecksum(file3));
     reader.join();
+    assertEmpty(exceptions);
+    file4thread.join();
+    assertEmpty(exceptions);
+{
+      final FSDataInputStream in=fs.open(file4);
+      int count=0;
+      for (int r; (r=in.read()) != -1; count++) {
+        Assert.assertEquals(String.format("count=%d",count),bytes[count % bytes.length],(byte)r);
+      }
+      Assert.assertEquals(5 * bytes.length,count);
+      in.close();
+    }
     assertTrue(HdfsUtils.isHealthy(uri));
     dfs.setSafeMode(SafeModeAction.SAFEMODE_ENTER);
     assertFalse(HdfsUtils.isHealthy(uri));
@@ -101,13 +138,7 @@
  catch (    FileNotFoundException fnfe) {
       LOG.info("GOOD!",fnfe);
     }
-    if (!exceptions.isEmpty()) {
-      LOG.error("There are " + exceptions.size() + " exception(s):");
-      for (int i=0; i < exceptions.size(); i++) {
-        LOG.error("Exception " + i,exceptions.get(i));
-      }
-      fail();
-    }
+    assertEmpty(exceptions);
   }
   finally {
     cluster.shutdown();
