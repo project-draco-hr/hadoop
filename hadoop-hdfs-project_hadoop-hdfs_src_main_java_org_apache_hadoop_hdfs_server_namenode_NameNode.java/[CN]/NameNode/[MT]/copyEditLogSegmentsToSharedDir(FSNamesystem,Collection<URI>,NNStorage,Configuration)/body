@@ -1,32 +1,38 @@
 {
-  for (  JournalAndStream jas : fsns.getFSImage().getEditLog().getJournals()) {
-    FileJournalManager fjm=null;
-    if (!(jas.getManager() instanceof FileJournalManager)) {
-      LOG.error("Cannot populate shared edits dir from non-file " + "journal manager: " + jas.getManager());
-      return true;
-    }
- else {
-      fjm=(FileJournalManager)jas.getManager();
-    }
-    for (    EditLogFile elf : fjm.getLogFiles(fsns.getFSImage().getMostRecentCheckpointTxId())) {
-      File editLogSegment=elf.getFile();
-      for (      URI sharedEditsUri : sharedEditsDirs) {
-        StorageDirectory sharedEditsDir=newSharedStorage.getStorageDirectory(sharedEditsUri);
-        File targetFile=new File(sharedEditsDir.getCurrentDir(),editLogSegment.getName());
-        if (!targetFile.exists()) {
-          InputStream in=null;
-          OutputStream out=null;
-          try {
-            in=new FileInputStream(editLogSegment);
-            out=new AtomicFileOutputStream(targetFile);
-            IOUtils.copyBytes(in,out,conf);
-          }
-  finally {
-            IOUtils.cleanup(LOG,in,out);
-          }
-        }
+  Preconditions.checkArgument(!sharedEditsDirs.isEmpty(),"No shared edits specified");
+  List<URI> sharedEditsUris=new ArrayList<URI>(sharedEditsDirs);
+  FSEditLog newSharedEditLog=new FSEditLog(conf,newSharedStorage,sharedEditsUris);
+  newSharedEditLog.initJournalsForWrite();
+  newSharedEditLog.recoverUnclosedStreams();
+  FSEditLog sourceEditLog=fsns.getFSImage().editLog;
+  long fromTxId=fsns.getFSImage().getMostRecentCheckpointTxId();
+  Collection<EditLogInputStream> streams=sourceEditLog.selectInputStreams(fromTxId + 1,0);
+  newSharedEditLog.setNextTxId(fromTxId + 1);
+  for (  EditLogInputStream stream : streams) {
+    LOG.debug("Beginning to copy stream " + stream + " to shared edits");
+    FSEditLogOp op;
+    boolean segmentOpen=false;
+    while ((op=stream.readOp()) != null) {
+      if (LOG.isTraceEnabled()) {
+        LOG.trace("copying op: " + op);
+      }
+      if (!segmentOpen) {
+        newSharedEditLog.startLogSegment(op.txid,false);
+        segmentOpen=true;
+      }
+      newSharedEditLog.logEdit(op);
+      if (op.opCode == FSEditLogOpCodes.OP_END_LOG_SEGMENT) {
+        newSharedEditLog.logSync();
+        newSharedEditLog.endCurrentLogSegment(false);
+        LOG.debug("ending log segment because of END_LOG_SEGMENT op in " + stream);
+        segmentOpen=false;
       }
     }
+    if (segmentOpen) {
+      LOG.debug("ending log segment because of end of stream in " + stream);
+      newSharedEditLog.logSync();
+      newSharedEditLog.endCurrentLogSegment(false);
+      segmentOpen=false;
+    }
   }
-  return false;
 }
