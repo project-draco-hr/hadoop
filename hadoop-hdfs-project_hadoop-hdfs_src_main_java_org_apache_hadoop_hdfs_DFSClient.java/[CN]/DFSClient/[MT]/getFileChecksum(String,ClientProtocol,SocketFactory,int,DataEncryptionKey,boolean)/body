@@ -1,0 +1,104 @@
+{
+  LocatedBlocks blockLocations=callGetBlockLocations(namenode,src,0,Long.MAX_VALUE);
+  if (null == blockLocations) {
+    throw new FileNotFoundException("File does not exist: " + src);
+  }
+  List<LocatedBlock> locatedblocks=blockLocations.getLocatedBlocks();
+  final DataOutputBuffer md5out=new DataOutputBuffer();
+  int bytesPerCRC=0;
+  long crcPerBlock=0;
+  boolean refetchBlocks=false;
+  int lastRetriedIndex=-1;
+  for (int i=0; i < locatedblocks.size(); i++) {
+    if (refetchBlocks) {
+      blockLocations=callGetBlockLocations(namenode,src,0,Long.MAX_VALUE);
+      if (null == blockLocations) {
+        throw new FileNotFoundException("File does not exist: " + src);
+      }
+      locatedblocks=blockLocations.getLocatedBlocks();
+      refetchBlocks=false;
+    }
+    LocatedBlock lb=locatedblocks.get(i);
+    final ExtendedBlock block=lb.getBlock();
+    final DatanodeInfo[] datanodes=lb.getLocations();
+    final int timeout=3000 * datanodes.length + socketTimeout;
+    boolean done=false;
+    for (int j=0; !done && j < datanodes.length; j++) {
+      Socket sock=null;
+      DataOutputStream out=null;
+      DataInputStream in=null;
+      try {
+        sock=socketFactory.createSocket();
+        String dnAddr=datanodes[j].getXferAddr(connectToDnViaHostname);
+        if (LOG.isDebugEnabled()) {
+          LOG.debug("Connecting to datanode " + dnAddr);
+        }
+        NetUtils.connect(sock,NetUtils.createSocketAddr(dnAddr),timeout);
+        sock.setSoTimeout(timeout);
+        OutputStream unbufOut=NetUtils.getOutputStream(sock);
+        InputStream unbufIn=NetUtils.getInputStream(sock);
+        if (encryptionKey != null) {
+          IOStreamPair encryptedStreams=DataTransferEncryptor.getEncryptedStreams(unbufOut,unbufIn,encryptionKey);
+          unbufOut=encryptedStreams.out;
+          unbufIn=encryptedStreams.in;
+        }
+        out=new DataOutputStream(new BufferedOutputStream(unbufOut,HdfsConstants.SMALL_BUFFER_SIZE));
+        in=new DataInputStream(unbufIn);
+        if (LOG.isDebugEnabled()) {
+          LOG.debug("write to " + datanodes[j] + ": "+ Op.BLOCK_CHECKSUM+ ", block="+ block);
+        }
+        new Sender(out).blockChecksum(block,lb.getBlockToken());
+        final BlockOpResponseProto reply=BlockOpResponseProto.parseFrom(HdfsProtoUtil.vintPrefixed(in));
+        if (reply.getStatus() != Status.SUCCESS) {
+          if (reply.getStatus() == Status.ERROR_ACCESS_TOKEN && i > lastRetriedIndex) {
+            if (LOG.isDebugEnabled()) {
+              LOG.debug("Got access token error in response to OP_BLOCK_CHECKSUM " + "for file " + src + " for block "+ block+ " from datanode "+ datanodes[j]+ ". Will retry the block once.");
+            }
+            lastRetriedIndex=i;
+            done=true;
+            i--;
+            refetchBlocks=true;
+            break;
+          }
+ else {
+            throw new IOException("Bad response " + reply + " for block "+ block+ " from datanode "+ datanodes[j]);
+          }
+        }
+        OpBlockChecksumResponseProto checksumData=reply.getChecksumResponse();
+        final int bpc=checksumData.getBytesPerCrc();
+        if (i == 0) {
+          bytesPerCRC=bpc;
+        }
+ else         if (bpc != bytesPerCRC) {
+          throw new IOException("Byte-per-checksum not matched: bpc=" + bpc + " but bytesPerCRC="+ bytesPerCRC);
+        }
+        final long cpb=checksumData.getCrcPerBlock();
+        if (locatedblocks.size() > 1 && i == 0) {
+          crcPerBlock=cpb;
+        }
+        final MD5Hash md5=new MD5Hash(checksumData.getMd5().toByteArray());
+        md5.write(md5out);
+        done=true;
+        if (LOG.isDebugEnabled()) {
+          if (i == 0) {
+            LOG.debug("set bytesPerCRC=" + bytesPerCRC + ", crcPerBlock="+ crcPerBlock);
+          }
+          LOG.debug("got reply from " + datanodes[j] + ": md5="+ md5);
+        }
+      }
+ catch (      IOException ie) {
+        LOG.warn("src=" + src + ", datanodes["+ j+ "]="+ datanodes[j],ie);
+      }
+ finally {
+        IOUtils.closeStream(in);
+        IOUtils.closeStream(out);
+        IOUtils.closeSocket(sock);
+      }
+    }
+    if (!done) {
+      throw new IOException("Fail to get block MD5 for " + block);
+    }
+  }
+  final MD5Hash fileMD5=MD5Hash.digest(md5out.getData());
+  return new MD5MD5CRC32FileChecksum(bytesPerCRC,crcPerBlock,fileMD5);
+}
