@@ -1,4 +1,5 @@
 {
+  final long MAX_IPC_NUMBER=determineMaxIpcNumber();
   for (int failA=1; failA <= MAX_IPC_NUMBER; failA++) {
     for (int failB=1; failB <= MAX_IPC_NUMBER; failB++) {
       String injectionStr="(" + failA + ", "+ failB+ ")";
@@ -15,16 +16,15 @@
         if (lastAckedTxn < 6) {
           LOG.info("Failed after injecting failures at " + injectionStr + ". This is expected since we injected a failure in the "+ "majority.");
         }
-        try {
-          qjm=createInjectableQJM(cluster);
-          qjm.recoverUnfinalizedSegments();
-          writeSegment(cluster,qjm,lastAckedTxn + 1,3,true);
-        }
- catch (        Throwable t) {
-          throw new RuntimeException("Test failed with injection: " + injectionStr,t);
-        }
+        qjm=createInjectableQJM(cluster);
+        long lastRecoveredTxn=QJMTestUtil.recoverAndReturnLastTxn(qjm);
+        assertTrue(lastRecoveredTxn >= lastAckedTxn);
+        writeSegment(cluster,qjm,lastRecoveredTxn + 1,3,true);
       }
-  finally {
+ catch (      Throwable t) {
+        throw new RuntimeException("Test failed with injection: " + injectionStr,t);
+      }
+ finally {
         cluster.shutdown();
         cluster=null;
       }

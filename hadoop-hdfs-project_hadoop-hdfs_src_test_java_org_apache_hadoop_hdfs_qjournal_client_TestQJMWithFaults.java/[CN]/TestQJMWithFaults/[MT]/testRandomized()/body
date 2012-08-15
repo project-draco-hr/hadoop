@@ -1,0 +1,58 @@
+{
+  long seed;
+  Long userSpecifiedSeed=Long.getLong(RAND_SEED_PROPERTY);
+  if (userSpecifiedSeed != null) {
+    LOG.info("Using seed specified in system property");
+    seed=userSpecifiedSeed;
+    ((Log4JLogger)ProtobufRpcEngine.LOG).getLogger().setLevel(Level.ALL);
+  }
+ else {
+    seed=new Random().nextLong();
+  }
+  LOG.info("Random seed: " + seed);
+  Random r=new Random(seed);
+  MiniJournalCluster cluster=new MiniJournalCluster.Builder(conf).build();
+  QuorumJournalManager qjmForInitialFormat=createInjectableQJM(cluster);
+  qjmForInitialFormat.format(FAKE_NSINFO);
+  qjmForInitialFormat.close();
+  try {
+    long txid=0;
+    long lastAcked=0;
+    for (int i=0; i < NUM_WRITER_ITERS; i++) {
+      LOG.info("Starting writer " + i + "\n-------------------");
+      QuorumJournalManager qjm=createRandomFaultyQJM(cluster,r);
+      try {
+        if (txid > 100) {
+          qjm.purgeLogsOlderThan(txid - 100);
+        }
+        long recovered;
+        try {
+          recovered=QJMTestUtil.recoverAndReturnLastTxn(qjm);
+        }
+ catch (        Throwable t) {
+          LOG.info("Failed recovery",t);
+          GenericTestUtils.assertExceptionContains("faking being down",t);
+          continue;
+        }
+        assertTrue("Recovered only up to txnid " + recovered + " but had gotten an ack for "+ lastAcked,recovered >= lastAcked);
+        txid=recovered + 1;
+        Holder<Throwable> thrown=new Holder<Throwable>(null);
+        for (int j=0; j < SEGMENTS_PER_WRITER; j++) {
+          lastAcked=writeSegmentUntilCrash(cluster,qjm,txid,4,thrown);
+          if (thrown.held != null) {
+            LOG.info("Failed write",thrown.held);
+            GenericTestUtils.assertExceptionContains("faking being down",thrown.held);
+            break;
+          }
+          txid+=4;
+        }
+      }
+  finally {
+        qjm.close();
+      }
+    }
+  }
+  finally {
+    cluster.shutdown();
+  }
+}
