@@ -1,0 +1,38 @@
+{
+  spylfs=spy(FileContext.getLocalFSFileContext().getDefaultFileSystem());
+  doNothing().when(spylfs).mkdir(isA(Path.class),isA(FsPermission.class),anyBoolean());
+  Configuration conf=new Configuration();
+  FileContext lfs=FileContext.getFileContext(spylfs,conf);
+  localDirs=new ArrayList<Path>();
+  for (int i=0; i < 4; ++i) {
+    localDirs.add(lfs.makeQualified(new Path(basedir,i + "")));
+  }
+  RecordFactory mockRF=getMockLocalizerRecordFactory();
+  ContainerLocalizer concreteLoc=new ContainerLocalizer(lfs,appUser,appId,containerId,localDirs,mockRF);
+  ContainerLocalizer localizer=spy(concreteLoc);
+  random=new Random();
+  long seed=random.nextLong();
+  System.out.println("SEED: " + seed);
+  random.setSeed(seed);
+  DataInputBuffer appTokens=createFakeCredentials(random,10);
+  tokenPath=lfs.makeQualified(new Path(String.format(ContainerLocalizer.TOKEN_FILE_NAME_FMT,containerId)));
+  doReturn(new FSDataInputStream(new FakeFSDataInputStream(appTokens))).when(spylfs).open(tokenPath);
+  nmProxy=mock(LocalizationProtocol.class);
+  doReturn(nmProxy).when(localizer).getProxy(nmAddr);
+  doNothing().when(localizer).sleep(anyInt());
+  ExecutorService syncExec=mock(ExecutorService.class);
+  CompletionService<Path> cs=mock(CompletionService.class);
+  when(cs.submit(isA(Callable.class))).thenAnswer(new Answer<Future<Path>>(){
+    @Override public Future<Path> answer(    InvocationOnMock invoc) throws Throwable {
+      Future<Path> done=mock(Future.class);
+      when(done.isDone()).thenReturn(true);
+      FakeDownload d=(FakeDownload)invoc.getArguments()[0];
+      when(done.get()).thenReturn(d.call());
+      return done;
+    }
+  }
+);
+  doReturn(syncExec).when(localizer).createDownloadThreadPool();
+  doReturn(cs).when(localizer).createCompletionService(syncExec);
+  return localizer;
+}
