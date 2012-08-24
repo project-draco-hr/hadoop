@@ -9,38 +9,13 @@
   }
 );
 {
-    final Token<DelegationTokenIdentifier> token=webhdfs.getDelegationToken("JobTracker");
-    DelegationTokenIdentifier identifier=new DelegationTokenIdentifier();
-    byte[] tokenId=token.getIdentifier();
-    identifier.readFields(new DataInputStream(new ByteArrayInputStream(tokenId)));
-    LOG.info("A valid token should have non-null password, and should be renewed successfully");
-    Assert.assertTrue(null != dtSecretManager.retrievePassword(identifier));
-    dtSecretManager.renewToken(token,"JobTracker");
-    ugi.doAs(new PrivilegedExceptionAction<Void>(){
-      @Override public Void run() throws Exception {
-        token.renew(config);
-        token.cancel(config);
-        return null;
-      }
-    }
-);
-  }
-{
-    final List<Token<?>> tokenlist=webhdfs.getDelegationTokens("JobTracker");
-    DelegationTokenIdentifier identifier=new DelegationTokenIdentifier();
-    @SuppressWarnings("unchecked") final Token<DelegationTokenIdentifier> token=(Token<DelegationTokenIdentifier>)tokenlist.get(0);
-    byte[] tokenId=token.getIdentifier();
-    identifier.readFields(new DataInputStream(new ByteArrayInputStream(tokenId)));
-    LOG.info("A valid token should have non-null password, and should be renewed successfully");
-    Assert.assertTrue(null != dtSecretManager.retrievePassword(identifier));
-    dtSecretManager.renewToken(token,"JobTracker");
-    ugi.doAs(new PrivilegedExceptionAction<Void>(){
-      @Override public Void run() throws Exception {
-        token.renew(config);
-        token.cancel(config);
-        return null;
-      }
-    }
-);
+    Credentials creds=new Credentials();
+    final Token<?> tokens[]=webhdfs.addDelegationTokens("JobTracker",creds);
+    Assert.assertEquals(1,tokens.length);
+    Assert.assertEquals(1,creds.numberOfTokens());
+    Assert.assertSame(tokens[0],creds.getAllTokens().iterator().next());
+    checkTokenIdentifier(ugi,tokens[0]);
+    final Token<?> tokens2[]=webhdfs.addDelegationTokens("JobTracker",creds);
+    Assert.assertEquals(0,tokens2.length);
   }
 }

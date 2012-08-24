@@ -2,13 +2,20 @@
   final boolean resolved=resolvedURL.getURL() != null;
   final URLOpener opener=resolved ? resolvedURL : originalURL;
   final HttpURLConnection connection=opener.connect(startPos,resolved);
-  final String cl=connection.getHeaderField(StreamFile.CONTENT_LENGTH);
-  if (cl == null) {
-    throw new IOException(StreamFile.CONTENT_LENGTH + " header is missing");
-  }
-  final long streamlength=Long.parseLong(cl);
-  filelength=startPos + streamlength;
-  InputStream is=new BoundedInputStream(connection.getInputStream(),streamlength);
   resolvedURL.setURL(getResolvedUrl(connection));
-  return is;
+  InputStream in=connection.getInputStream();
+  final Map<String,List<String>> headers=connection.getHeaderFields();
+  if (isChunkedTransferEncoding(headers)) {
+    fileLength=null;
+  }
+ else {
+    final String cl=connection.getHeaderField(HttpHeaders.CONTENT_LENGTH);
+    if (cl == null) {
+      throw new IOException(HttpHeaders.CONTENT_LENGTH + " is missing: " + headers);
+    }
+    final long streamlength=Long.parseLong(cl);
+    fileLength=startPos + streamlength;
+    in=new BoundedInputStream(in,streamlength);
+  }
+  return in;
 }
