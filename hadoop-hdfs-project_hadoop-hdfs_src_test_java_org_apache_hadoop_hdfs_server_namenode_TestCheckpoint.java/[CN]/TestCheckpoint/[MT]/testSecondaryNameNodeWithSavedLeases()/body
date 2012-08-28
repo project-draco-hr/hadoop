@@ -1,0 +1,36 @@
+{
+  MiniDFSCluster cluster=null;
+  SecondaryNameNode secondary=null;
+  FSDataOutputStream fos=null;
+  Configuration conf=new HdfsConfiguration();
+  try {
+    cluster=new MiniDFSCluster.Builder(conf).numDataNodes(numDatanodes).format(true).build();
+    FileSystem fs=cluster.getFileSystem();
+    fos=fs.create(new Path("tmpfile"));
+    fos.write(new byte[]{0,1,2,3});
+    fos.hflush();
+    assertEquals(1,cluster.getNamesystem().getLeaseManager().countLease());
+    secondary=startSecondaryNameNode(conf);
+    assertEquals(0,secondary.getFSNamesystem().getLeaseManager().countLease());
+    secondary.doCheckpoint();
+    assertEquals(1,secondary.getFSNamesystem().getLeaseManager().countLease());
+    fos.close();
+    fos=null;
+    cluster.getNameNodeRpc().setSafeMode(SafeModeAction.SAFEMODE_ENTER);
+    cluster.getNameNodeRpc().saveNamespace();
+    cluster.getNameNodeRpc().setSafeMode(SafeModeAction.SAFEMODE_LEAVE);
+    secondary.doCheckpoint();
+    assertEquals(0,secondary.getFSNamesystem().getLeaseManager().countLease());
+  }
+  finally {
+    if (fos != null) {
+      fos.close();
+    }
+    if (secondary != null) {
+      secondary.shutdown();
+    }
+    if (cluster != null) {
+      cluster.shutdown();
+    }
+  }
+}
