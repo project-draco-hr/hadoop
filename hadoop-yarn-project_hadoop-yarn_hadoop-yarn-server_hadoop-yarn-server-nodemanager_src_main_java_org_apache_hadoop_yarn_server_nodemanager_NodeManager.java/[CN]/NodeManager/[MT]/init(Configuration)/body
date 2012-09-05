@@ -1,10 +1,11 @@
 {
   conf.setBoolean(Dispatcher.DISPATCHER_EXIT_ON_ERROR_KEY,true);
-  Context context=new NMContext();
+  NMContainerTokenSecretManager containerTokenSecretManager=null;
   if (UserGroupInformation.isSecurityEnabled()) {
     LOG.info("Security is enabled on NodeManager. " + "Creating ContainerTokenSecretManager");
-    this.containerTokenSecretManager=new ContainerTokenSecretManager(conf);
+    containerTokenSecretManager=new NMContainerTokenSecretManager(conf);
   }
+  Context context=new NMContext(containerTokenSecretManager);
   this.aclsManager=new ApplicationACLsManager(conf);
   ContainerExecutor exec=ReflectionUtils.newInstance(conf.getClass(YarnConfiguration.NM_CONTAINER_EXECUTOR,DefaultContainerExecutor.class,ContainerExecutor.class),conf);
   try {
@@ -19,11 +20,11 @@
   nodeHealthChecker=new NodeHealthCheckerService();
   addService(nodeHealthChecker);
   dirsHandler=nodeHealthChecker.getDiskHandler();
-  NodeStatusUpdater nodeStatusUpdater=createNodeStatusUpdater(context,dispatcher,nodeHealthChecker,this.containerTokenSecretManager);
+  NodeStatusUpdater nodeStatusUpdater=createNodeStatusUpdater(context,dispatcher,nodeHealthChecker);
   nodeStatusUpdater.register(this);
   NodeResourceMonitor nodeResourceMonitor=createNodeResourceMonitor();
   addService(nodeResourceMonitor);
-  ContainerManagerImpl containerManager=createContainerManager(context,exec,del,nodeStatusUpdater,this.containerTokenSecretManager,this.aclsManager,dirsHandler);
+  ContainerManagerImpl containerManager=createContainerManager(context,exec,del,nodeStatusUpdater,this.aclsManager,dirsHandler);
   addService(containerManager);
   Service webServer=createWebServer(context,containerManager.getContainersMonitor(),this.aclsManager,dirsHandler);
   addService(webServer);

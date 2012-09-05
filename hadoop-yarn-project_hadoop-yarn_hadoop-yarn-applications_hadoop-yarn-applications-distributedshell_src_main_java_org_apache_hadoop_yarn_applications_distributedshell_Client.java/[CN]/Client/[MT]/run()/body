@@ -1,30 +1,22 @@
 {
-  LOG.info("Starting Client");
-  connectToASM();
-  assert(applicationsManager != null);
-  GetClusterMetricsRequest clusterMetricsReq=Records.newRecord(GetClusterMetricsRequest.class);
-  GetClusterMetricsResponse clusterMetricsResp=applicationsManager.getClusterMetrics(clusterMetricsReq);
-  LOG.info("Got Cluster metric info from ASM" + ", numNodeManagers=" + clusterMetricsResp.getClusterMetrics().getNumNodeManagers());
-  GetClusterNodesRequest clusterNodesReq=Records.newRecord(GetClusterNodesRequest.class);
-  GetClusterNodesResponse clusterNodesResp=applicationsManager.getClusterNodes(clusterNodesReq);
+  LOG.info("Running Client");
+  start();
+  YarnClusterMetrics clusterMetrics=super.getYarnClusterMetrics();
+  LOG.info("Got Cluster metric info from ASM" + ", numNodeManagers=" + clusterMetrics.getNumNodeManagers());
+  List<NodeReport> clusterNodeReports=super.getNodeReports();
   LOG.info("Got Cluster node info from ASM");
-  for (  NodeReport node : clusterNodesResp.getNodeReports()) {
+  for (  NodeReport node : clusterNodeReports) {
     LOG.info("Got node report from ASM for" + ", nodeId=" + node.getNodeId() + ", nodeAddress"+ node.getHttpAddress()+ ", nodeRackName"+ node.getRackName()+ ", nodeNumContainers"+ node.getNumContainers()+ ", nodeHealthStatus"+ node.getNodeHealthStatus());
   }
-  GetQueueInfoRequest queueInfoReq=Records.newRecord(GetQueueInfoRequest.class);
-  queueInfoReq.setQueueName(this.amQueue);
-  GetQueueInfoResponse queueInfoResp=applicationsManager.getQueueInfo(queueInfoReq);
-  QueueInfo queueInfo=queueInfoResp.getQueueInfo();
+  QueueInfo queueInfo=super.getQueueInfo(this.amQueue);
   LOG.info("Queue info" + ", queueName=" + queueInfo.getQueueName() + ", queueCurrentCapacity="+ queueInfo.getCurrentCapacity()+ ", queueMaxCapacity="+ queueInfo.getMaximumCapacity()+ ", queueApplicationCount="+ queueInfo.getApplications().size()+ ", queueChildQueueCount="+ queueInfo.getChildQueues().size());
-  GetQueueUserAclsInfoRequest queueUserAclsReq=Records.newRecord(GetQueueUserAclsInfoRequest.class);
-  GetQueueUserAclsInfoResponse queueUserAclsResp=applicationsManager.getQueueUserAcls(queueUserAclsReq);
-  List<QueueUserACLInfo> listAclInfo=queueUserAclsResp.getUserAclsInfoList();
+  List<QueueUserACLInfo> listAclInfo=super.getQueueAclsInfo();
   for (  QueueUserACLInfo aclInfo : listAclInfo) {
     for (    QueueACL userAcl : aclInfo.getUserAcls()) {
       LOG.info("User ACL Info for Queue" + ", queueName=" + aclInfo.getQueueName() + ", userAcl="+ userAcl.name());
     }
   }
-  GetNewApplicationResponse newApp=getApplication();
+  GetNewApplicationResponse newApp=super.getNewApplication();
   ApplicationId appId=newApp.getApplicationId();
   int minMem=newApp.getMinimumResourceCapability().getMemory();
   int maxMem=newApp.getMaximumResourceCapability().getMemory();
@@ -139,9 +131,7 @@
   pri.setPriority(amPriority);
   appContext.setPriority(pri);
   appContext.setQueue(amQueue);
-  SubmitApplicationRequest appRequest=Records.newRecord(SubmitApplicationRequest.class);
-  appRequest.setApplicationSubmissionContext(appContext);
   LOG.info("Submitting application to ASM");
-  applicationsManager.submitApplication(appRequest);
+  super.submitApplication(appContext);
   return monitorApplication(appId);
 }

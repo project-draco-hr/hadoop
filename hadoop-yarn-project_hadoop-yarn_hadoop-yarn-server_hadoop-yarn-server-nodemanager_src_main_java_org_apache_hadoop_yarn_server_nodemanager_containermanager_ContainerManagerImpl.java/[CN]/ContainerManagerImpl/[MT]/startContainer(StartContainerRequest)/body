@@ -1,8 +1,10 @@
 {
   ContainerLaunchContext launchContext=request.getContainerLaunchContext();
   ContainerId containerID=launchContext.getContainerId();
-  authorizeRequest(containerID,launchContext);
-  LOG.info("Start request for " + launchContext.getContainerId() + " by user "+ launchContext.getUser());
+  String containerIDStr=containerID.toString();
+  UserGroupInformation remoteUgi=getRemoteUgi(containerIDStr);
+  authorizeRequest(containerIDStr,launchContext,remoteUgi);
+  LOG.info("Start request for " + containerIDStr + " by user "+ launchContext.getUser());
   ByteBuffer tokens=launchContext.getContainerTokens();
   Credentials credentials=new Credentials();
   if (tokens != null) {
@@ -25,7 +27,7 @@
   ApplicationId applicationID=containerID.getApplicationAttemptId().getApplicationId();
   if (context.getContainers().putIfAbsent(containerID,container) != null) {
     NMAuditLogger.logFailure(launchContext.getUser(),AuditConstants.START_CONTAINER,"ContainerManagerImpl","Container already running on this node!",applicationID,containerID);
-    throw RPCUtil.getRemoteException("Container " + containerID + " already is running on this node!!");
+    throw RPCUtil.getRemoteException("Container " + containerIDStr + " already is running on this node!!");
   }
   Application application=new ApplicationImpl(dispatcher,this.aclsManager,launchContext.getUser(),applicationID,credentials,context);
   if (null == context.getApplications().putIfAbsent(applicationID,application)) {
@@ -33,6 +35,10 @@
     dispatcher.getEventHandler().handle(new ApplicationInitEvent(applicationID,container.getLaunchContext().getApplicationACLs()));
   }
   dispatcher.getEventHandler().handle(new ApplicationContainerInitEvent(container));
+  if (UserGroupInformation.isSecurityEnabled()) {
+    ContainerTokenIdentifier tokenId=selectContainerTokenIdentifier(remoteUgi);
+    this.context.getContainerTokenSecretManager().startContainerSuccessful(tokenId);
+  }
   NMAuditLogger.logSuccess(launchContext.getUser(),AuditConstants.START_CONTAINER,"ContainerManageImpl",applicationID,containerID);
   StartContainerResponse response=recordFactory.newRecordInstance(StartContainerResponse.class);
   response.addAllServiceResponse(auxiliaryServices.getMeta());

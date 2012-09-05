@@ -6,13 +6,15 @@
   Resource capability=request.getResource();
   RegisterNodeManagerResponse response=recordFactory.newRecordInstance(RegisterNodeManagerResponse.class);
   RegistrationResponse regResponse=recordFactory.newRecordInstance(RegistrationResponse.class);
-  SecretKey secretKey=this.containerTokenSecretManager.createAndGetSecretKey(nodeId.toString());
-  regResponse.setSecretKey(ByteBuffer.wrap(secretKey.getEncoded()));
   if (!this.nodesListManager.isValidNode(host)) {
     LOG.info("Disallowed NodeManager from  " + host + ", Sending SHUTDOWN signal to the NodeManager.");
     regResponse.setNodeAction(NodeAction.SHUTDOWN);
     response.setRegistrationResponse(regResponse);
     return response;
+  }
+  if (isSecurityEnabled()) {
+    MasterKey nextMasterKeyForNode=this.containerTokenSecretManager.getCurrentKey();
+    regResponse.setMasterKey(nextMasterKeyForNode);
   }
   RMNode rmNode=new RMNodeImpl(nodeId,rmContext,host,cmPort,httpPort,resolve(host),capability);
   RMNode oldNode=this.rmContext.getRMNodes().putIfAbsent(nodeId,rmNode);
