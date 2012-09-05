@@ -8,11 +8,27 @@
     throw new IllegalStateException("Writer out of sync: it thinks it is writing segment " + segmentTxId + " but current segment is "+ curSegmentTxId);
   }
   Preconditions.checkState(nextTxId == firstTxnId,"Can't write txid " + firstTxnId + " expecting nextTxId="+ nextTxId);
+  long lastTxnId=firstTxnId + numTxns - 1;
   if (LOG.isTraceEnabled()) {
-    LOG.trace("Writing txid " + firstTxnId + "-"+ (firstTxnId + numTxns - 1));
+    LOG.trace("Writing txid " + firstTxnId + "-"+ lastTxnId);
   }
   curSegment.writeRaw(records,0,records.length);
   curSegment.setReadyToFlush();
+  Stopwatch sw=new Stopwatch();
+  sw.start();
   curSegment.flush();
+  sw.stop();
+  metrics.addSync(sw.elapsedTime(TimeUnit.MICROSECONDS));
+  if (committedTxnId.get() > lastTxnId) {
+    metrics.batchesWrittenWhileLagging.incr(1);
+    metrics.currentLagTxns.set(committedTxnId.get() - lastTxnId);
+  }
+ else {
+    metrics.currentLagTxns.set(0L);
+  }
+  metrics.batchesWritten.incr(1);
+  metrics.bytesWritten.incr(records.length);
+  metrics.txnsWritten.incr(numTxns);
+  metrics.lastWrittenTxId.set(lastTxnId);
   nextTxId+=numTxns;
 }
