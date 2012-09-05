@@ -1,6 +1,6 @@
 {
-  checkRequest(reqInfo);
   checkFormatted();
+  checkRequest(reqInfo);
   long segmentTxId=segment.getStartTxId();
   Preconditions.checkArgument(segment.getEndTxId() > 0 && segment.getEndTxId() >= segmentTxId,"bad recovery state for segment %s: %s",segmentTxId,TextFormat.shortDebugString(segment));
   PersistedRecoveryPaxosData oldData=getPersistedPaxosData(segmentTxId);
@@ -14,7 +14,10 @@
       LOG.info("Synchronizing log " + TextFormat.shortDebugString(segment) + ": no current segment in place");
     }
  else {
-      LOG.info("Synchronizing log " + TextFormat.shortDebugString(segment) + ": old segment "+ TextFormat.shortDebugString(segment)+ " is "+ "not the right length");
+      LOG.info("Synchronizing log " + TextFormat.shortDebugString(segment) + ": old segment "+ TextFormat.shortDebugString(currentSegment)+ " is not the right length");
+      if (txnRange(currentSegment).contains(committedTxnId.get()) && !txnRange(segment).contains(committedTxnId.get())) {
+        throw new AssertionError("Cannot replace segment " + TextFormat.shortDebugString(currentSegment) + " with new segment "+ TextFormat.shortDebugString(segment)+ ": would discard already-committed txn "+ committedTxnId.get());
+      }
     }
     syncLog(reqInfo,segment,fromUrl);
   }
