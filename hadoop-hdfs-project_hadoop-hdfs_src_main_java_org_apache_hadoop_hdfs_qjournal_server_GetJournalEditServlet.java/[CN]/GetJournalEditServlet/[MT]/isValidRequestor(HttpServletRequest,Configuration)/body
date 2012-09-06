@@ -1,0 +1,27 @@
+{
+  String remotePrincipal=request.getUserPrincipal().getName();
+  String remoteShortName=request.getRemoteUser();
+  if (remotePrincipal == null) {
+    LOG.warn("Received null remoteUser while authorizing access to " + "GetJournalEditServlet");
+    return false;
+  }
+  if (LOG.isDebugEnabled()) {
+    LOG.debug("Validating request made by " + remotePrincipal + " / "+ remoteShortName+ ". This user is: "+ UserGroupInformation.getLoginUser());
+  }
+  Set<String> validRequestors=new HashSet<String>();
+  validRequestors.addAll(DFSUtil.getAllNnPrincipals(conf));
+  validRequestors.add(SecurityUtil.getServerPrincipal(conf.get(DFSConfigKeys.DFS_SECONDARY_NAMENODE_USER_NAME_KEY),SecondaryNameNode.getHttpAddress(conf).getHostName()));
+  for (  String v : validRequestors) {
+    if (LOG.isDebugEnabled())     LOG.debug("isValidRequestor is comparing to valid requestor: " + v);
+    if (v != null && v.equals(remotePrincipal)) {
+      if (LOG.isDebugEnabled())       LOG.debug("isValidRequestor is allowing: " + remotePrincipal);
+      return true;
+    }
+  }
+  if (remoteShortName.equals(UserGroupInformation.getLoginUser().getShortUserName())) {
+    if (LOG.isDebugEnabled())     LOG.debug("isValidRequestor is allowing other JN principal: " + remotePrincipal);
+    return true;
+  }
+  if (LOG.isDebugEnabled())   LOG.debug("isValidRequestor is rejecting: " + remotePrincipal);
+  return false;
+}
