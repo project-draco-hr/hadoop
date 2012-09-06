@@ -1,22 +1,24 @@
 {
   try {
     byte[] data=zkc.getData(path,false,null);
-    String[] parts=new String(data).split(";");
-    if (parts.length == 3) {
-      int version=Integer.valueOf(parts[0]);
-      long ledgerId=Long.valueOf(parts[1]);
-      long txId=Long.valueOf(parts[2]);
-      return new EditLogLedgerMetadata(path,version,ledgerId,txId);
+    EditLogLedgerProto.Builder builder=EditLogLedgerProto.newBuilder();
+    if (LOG.isDebugEnabled()) {
+      LOG.debug("Reading " + path + " data: "+ new String(data,UTF_8));
     }
- else     if (parts.length == 4) {
-      int version=Integer.valueOf(parts[0]);
-      long ledgerId=Long.valueOf(parts[1]);
-      long firstTxId=Long.valueOf(parts[2]);
-      long lastTxId=Long.valueOf(parts[3]);
-      return new EditLogLedgerMetadata(path,version,ledgerId,firstTxId,lastTxId);
+    TextFormat.merge(new String(data,UTF_8),builder);
+    if (!builder.isInitialized()) {
+      throw new IOException("Invalid/Incomplete data in znode");
+    }
+    EditLogLedgerProto ledger=builder.build();
+    int dataLayoutVersion=ledger.getDataLayoutVersion();
+    long ledgerId=ledger.getLedgerId();
+    long firstTxId=ledger.getFirstTxId();
+    if (ledger.hasLastTxId()) {
+      long lastTxId=ledger.getLastTxId();
+      return new EditLogLedgerMetadata(path,dataLayoutVersion,ledgerId,firstTxId,lastTxId);
     }
  else {
-      throw new IOException("Invalid ledger entry, " + new String(data));
+      return new EditLogLedgerMetadata(path,dataLayoutVersion,ledgerId,firstTxId);
     }
   }
  catch (  KeeperException.NoNodeException nne) {
