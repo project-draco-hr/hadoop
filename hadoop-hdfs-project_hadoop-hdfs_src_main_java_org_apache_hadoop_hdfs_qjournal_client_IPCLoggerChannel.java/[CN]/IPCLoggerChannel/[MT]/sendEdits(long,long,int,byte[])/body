@@ -9,7 +9,17 @@
   try {
     ret=executor.submit(new Callable<Void>(){
       @Override public Void call() throws IOException {
-        getProxy().journal(createReqInfo(),segmentTxId,firstTxnId,numTxns,data);
+        throwIfOutOfSync();
+        try {
+          getProxy().journal(createReqInfo(),segmentTxId,firstTxnId,numTxns,data);
+        }
+ catch (        IOException e) {
+          QuorumJournalManager.LOG.warn("Remote journal " + IPCLoggerChannel.this + " failed to "+ "write txns "+ firstTxnId+ "-"+ (firstTxnId + numTxns - 1)+ ". Will try to write to this JN again after the next "+ "log roll.",e);
+synchronized (IPCLoggerChannel.this) {
+            outOfSync=true;
+          }
+          throw e;
+        }
 synchronized (IPCLoggerChannel.this) {
           highestAckedTxId=firstTxnId + numTxns - 1;
         }
