@@ -11,6 +11,7 @@
     ret=executor.submit(new Callable<Void>(){
       @Override public Void call() throws IOException {
         throwIfOutOfSync();
+        long rpcSendTimeNanos=System.nanoTime();
         try {
           getProxy().journal(createReqInfo(),segmentTxId,firstTxnId,numTxns,data);
         }
@@ -20,6 +21,13 @@ synchronized (IPCLoggerChannel.this) {
             outOfSync=true;
           }
           throw e;
+        }
+ finally {
+          long now=System.nanoTime();
+          long rpcTime=TimeUnit.MICROSECONDS.convert(now - rpcSendTimeNanos,TimeUnit.NANOSECONDS);
+          long endToEndTime=TimeUnit.MICROSECONDS.convert(now - submitNanos,TimeUnit.NANOSECONDS);
+          metrics.addWriteEndToEndLatency(endToEndTime);
+          metrics.addWriteRpcLatency(rpcTime);
         }
 synchronized (IPCLoggerChannel.this) {
           highestAckedTxId=firstTxnId + numTxns - 1;
