@@ -3,24 +3,37 @@
   MiniJournalCluster cluster=new MiniJournalCluster.Builder(conf).build();
   URI uri=cluster.getQuorumJournalURI(JID);
   QuorumJournalManager qjm=new QuorumJournalManager(conf,uri,FAKE_NSINFO);
-  qjm.format(FAKE_NSINFO);
+  try {
+    qjm.format(FAKE_NSINFO);
+  }
+  finally {
+    qjm.close();
+  }
   try {
     for (int i=0; i < 5; i++) {
-      AsyncLoggerSet als=new AsyncLoggerSet(QuorumJournalManager.createLoggers(conf,uri,FAKE_NSINFO,IPCLoggerChannel.FACTORY));
-      als.createNewUniqueEpoch(FAKE_NSINFO);
-      assertEquals(i + 1,als.getEpoch());
+      qjm=new QuorumJournalManager(conf,uri,FAKE_NSINFO);
+      try {
+        qjm.createNewUniqueEpoch();
+        assertEquals(i + 1,qjm.getLoggerSetForTests().getEpoch());
+      }
+  finally {
+        qjm.close();
+      }
     }
     long prevEpoch=5;
     for (int i=0; i < 20; i++) {
-      AsyncLoggerSet als=new AsyncLoggerSet(makeFaulty(QuorumJournalManager.createLoggers(conf,uri,FAKE_NSINFO,IPCLoggerChannel.FACTORY)));
       long newEpoch=-1;
       while (true) {
+        qjm=new QuorumJournalManager(conf,uri,FAKE_NSINFO,new FaultyLoggerFactory());
         try {
-          als.createNewUniqueEpoch(FAKE_NSINFO);
-          newEpoch=als.getEpoch();
+          qjm.createNewUniqueEpoch();
+          newEpoch=qjm.getLoggerSetForTests().getEpoch();
           break;
         }
  catch (        IOException ioe) {
+        }
+ finally {
+          qjm.close();
         }
       }
       LOG.info("Created epoch " + newEpoch);
