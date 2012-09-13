@@ -5,8 +5,8 @@
       String injectionStr="(" + failA + ", "+ failB+ ")";
       LOG.info("\n\n-------------------------------------------\n" + "Beginning test, failing at " + injectionStr + "\n"+ "-------------------------------------------\n\n");
       MiniJournalCluster cluster=new MiniJournalCluster.Builder(conf).build();
+      QuorumJournalManager qjm=null;
       try {
-        QuorumJournalManager qjm;
         qjm=createInjectableQJM(cluster);
         qjm.format(FAKE_NSINFO);
         List<AsyncLogger> loggers=qjm.getLoggerSetForTests().getLoggersForTests();
@@ -16,6 +16,8 @@
         if (lastAckedTxn < 6) {
           LOG.info("Failed after injecting failures at " + injectionStr + ". This is expected since we injected a failure in the "+ "majority.");
         }
+        qjm.close();
+        qjm=null;
         qjm=createInjectableQJM(cluster);
         long lastRecoveredTxn=QJMTestUtil.recoverAndReturnLastTxn(qjm);
         assertTrue(lastRecoveredTxn >= lastAckedTxn);
@@ -27,6 +29,8 @@
  finally {
         cluster.shutdown();
         cluster=null;
+        IOUtils.closeStream(qjm);
+        qjm=null;
       }
     }
   }
