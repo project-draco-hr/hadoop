@@ -9,7 +9,26 @@
   if (ss.getLocalPort() != streamingAddr.getPort()) {
     throw new RuntimeException("Unable to bind on specified streaming port in secure " + "context. Needed " + streamingAddr.getPort() + ", got "+ ss.getLocalPort());
   }
-  SelectChannelConnector listener=(SelectChannelConnector)HttpServer.createDefaultChannelConnector();
+  Connector listener;
+  if (HttpConfig.isSecure()) {
+    sslFactory=new SSLFactory(SSLFactory.Mode.SERVER,conf);
+    try {
+      sslFactory.init();
+    }
+ catch (    GeneralSecurityException ex) {
+      throw new IOException(ex);
+    }
+    SslSocketConnector sslListener=new SslSocketConnector(){
+      @Override protected SSLServerSocketFactory createFactory() throws Exception {
+        return sslFactory.createSSLServerSocketFactory();
+      }
+    }
+;
+    listener=sslListener;
+  }
+ else {
+    listener=HttpServer.createDefaultChannelConnector();
+  }
   InetSocketAddress infoSocAddr=DataNode.getInfoAddr(conf);
   listener.setHost(infoSocAddr.getHostName());
   listener.setPort(infoSocAddr.getPort());
