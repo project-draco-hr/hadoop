@@ -9,6 +9,7 @@
   if (oldData != null) {
     alwaysAssert(oldData.getAcceptedInEpoch() <= reqInfo.getEpoch(),"Bad paxos transition, out-of-order epochs.\nOld: %s\nNew: %s\n",oldData,newData);
   }
+  File syncedFile=null;
   SegmentStateProto currentSegment=getSegmentInfo(segmentTxId);
   if (currentSegment == null || currentSegment.getEndTxId() != segment.getEndTxId()) {
     if (currentSegment == null) {
@@ -25,11 +26,16 @@
         highestWrittenTxId=segment.getEndTxId();
       }
     }
-    syncLog(reqInfo,segment,fromUrl);
+    syncedFile=syncLog(reqInfo,segment,fromUrl);
   }
  else {
     LOG.info("Skipping download of log " + TextFormat.shortDebugString(segment) + ": already have up-to-date logs");
   }
+  JournalFaultInjector.get().beforePersistPaxosData();
   persistPaxosData(segmentTxId,newData);
+  JournalFaultInjector.get().afterPersistPaxosData();
+  if (syncedFile != null) {
+    FileUtil.replaceFile(syncedFile,storage.getInProgressEditLog(segmentTxId));
+  }
   LOG.info("Accepted recovery for segment " + segmentTxId + ": "+ TextFormat.shortDebugString(newData));
 }
