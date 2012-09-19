@@ -7,7 +7,7 @@
   PersistedRecoveryPaxosData oldData=getPersistedPaxosData(segmentTxId);
   PersistedRecoveryPaxosData newData=PersistedRecoveryPaxosData.newBuilder().setAcceptedInEpoch(reqInfo.getEpoch()).setSegmentState(segment).build();
   if (oldData != null) {
-    Preconditions.checkState(oldData.getAcceptedInEpoch() <= reqInfo.getEpoch(),"Bad paxos transition, out-of-order epochs.\nOld: %s\nNew: %s\n",oldData,newData);
+    alwaysAssert(oldData.getAcceptedInEpoch() <= reqInfo.getEpoch(),"Bad paxos transition, out-of-order epochs.\nOld: %s\nNew: %s\n",oldData,newData);
   }
   SegmentStateProto currentSegment=getSegmentInfo(segmentTxId);
   if (currentSegment == null || currentSegment.getEndTxId() != segment.getEndTxId()) {
@@ -20,6 +20,7 @@
       if (txnRange(currentSegment).contains(committedTxnId.get()) && !txnRange(segment).contains(committedTxnId.get())) {
         throw new AssertionError("Cannot replace segment " + TextFormat.shortDebugString(currentSegment) + " with new segment "+ TextFormat.shortDebugString(segment)+ ": would discard already-committed txn "+ committedTxnId.get());
       }
+      alwaysAssert(currentSegment.getIsInProgress(),"Should never be asked to synchronize a different log on top of an " + "already-finalized segment");
       if (txnRange(currentSegment).contains(highestWrittenTxId)) {
         highestWrittenTxId=segment.getEndTxId();
       }
