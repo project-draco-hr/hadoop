@@ -1,0 +1,27 @@
+def main():
+    parser = OptionParser(usage='usage: %prog [options] [USER-ignored] [PASSWORD-ignored] [VERSION]')
+    parser.add_option('-v', '--version', dest='versions', action='append', type='string', help='versions in JIRA to include in releasenotes', metavar='VERSION')
+    parser.add_option('--previousVer', dest='previousVer', action='store', type='string', help='previous version to include in releasenotes', metavar='VERSION')
+    (options, args) = parser.parse_args()
+    if (options.versions == None):
+        options.versions = []
+    if (len(args) > 2):
+        options.versions.append(args[2])
+    if (len(options.versions) <= 0):
+        parser.error('At least one version needs to be supplied')
+    versions = [Version(v) for v in options.versions]
+    versions.sort()
+    maxVersion = str(versions[(-1)])
+    if (options.previousVer == None):
+        options.previousVer = str(versions[0].decBugFix())
+        print  >> sys.stderr, ('WARNING: no previousVersion given, guessing it is ' + options.previousVer)
+    list = JiraIter(options.versions)
+    version = maxVersion
+    outputs = Outputs('releasenotes.%(ver)s.html', 'releasenotes.%(key)s.%(ver)s.html', ['HADOOP', 'HDFS', 'MAPREDUCE', 'YARN'], {'ver': maxVersion, 'previousVer': options.previousVer, })
+    head = '<META http-equiv="Content-Type" content="text/html; charset=UTF-8">\n<title>Hadoop %(key)s %(ver)s Release Notes</title>\n<STYLE type="text/css">\n\tH1 {font-family: sans-serif}\n\tH2 {font-family: sans-serif; margin-left: 7mm}\n\tTABLE {margin-left: 7mm}\n</STYLE>\n</head>\n<body>\n<h1>Hadoop %(key)s %(ver)s Release Notes</h1>\nThese release notes include new developer and user-facing incompatibilities, features, and major improvements. \n<a name="changes"/>\n<h2>Changes since Hadoop %(previousVer)s</h2>\n<ul>\n'
+    outputs.writeAll(head)
+    for jira in list:
+        line = ('<li> <a href="https://issues.apache.org/jira/browse/%s">%s</a>.\n     %s %s reported by %s and fixed by %s %s<br>\n     <b>%s</b><br>\n     <blockquote>%s</blockquote></li>\n' % (quoteHtml(jira.getId()), quoteHtml(jira.getId()), clean(jira.getPriority()), clean(jira.getType()).lower(), quoteHtml(jira.getReporter()), quoteHtml(jira.getAssignee()), formatComponents(jira.getComponents()), quoteHtml(jira.getSummary()), quoteHtml(jira.getReleaseNote())))
+        outputs.writeKeyRaw(jira.getProject(), line)
+    outputs.writeAll('</ul>\n</body></html>\n')
+    outputs.close()
