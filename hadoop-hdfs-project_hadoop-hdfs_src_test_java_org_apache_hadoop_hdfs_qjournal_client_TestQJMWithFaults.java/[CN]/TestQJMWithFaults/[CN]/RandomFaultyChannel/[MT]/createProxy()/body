@@ -1,0 +1,26 @@
+{
+  QJournalProtocol realProxy=super.createProxy();
+  return mockProxy(new WrapEveryCall<Object>(realProxy){
+    @Override void beforeCall(    InvocationOnMock invocation) throws Exception {
+      if (random.nextFloat() < injectionProbability) {
+        isUp=!isUp;
+        LOG.info("transitioned " + addr + " to "+ (isUp ? "up" : "down"));
+      }
+      if (!isUp) {
+        throw new IOException("Injected - faking being down");
+      }
+      if (invocation.getMethod().getName().equals("acceptRecovery")) {
+        if (random.nextFloat() < injectionProbability) {
+          Mockito.doThrow(new IOException("Injected - faking fault before persisting paxos data")).when(faultInjector).beforePersistPaxosData();
+        }
+ else         if (random.nextFloat() < injectionProbability) {
+          Mockito.doThrow(new IOException("Injected - faking fault after persisting paxos data")).when(faultInjector).afterPersistPaxosData();
+        }
+      }
+    }
+    @Override public void afterCall(    InvocationOnMock invocation,    boolean succeeded){
+      Mockito.reset(faultInjector);
+    }
+  }
+);
+}

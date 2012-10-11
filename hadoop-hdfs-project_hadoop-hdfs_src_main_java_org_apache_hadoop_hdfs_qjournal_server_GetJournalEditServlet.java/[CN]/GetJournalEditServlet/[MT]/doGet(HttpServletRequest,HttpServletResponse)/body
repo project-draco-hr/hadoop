@@ -1,0 +1,40 @@
+{
+  FileInputStream editFileIn=null;
+  try {
+    final ServletContext context=getServletContext();
+    final Configuration conf=(Configuration)getServletContext().getAttribute(JspHelper.CURRENT_CONF);
+    final String journalId=request.getParameter(JOURNAL_ID_PARAM);
+    QuorumJournalManager.checkJournalId(journalId);
+    final JNStorage storage=JournalNodeHttpServer.getJournalFromContext(context,journalId).getStorage();
+    if (!checkRequestorOrSendError(conf,request,response)) {
+      return;
+    }
+    if (!checkStorageInfoOrSendError(storage,request,response)) {
+      return;
+    }
+    long segmentTxId=ServletUtil.parseLongParam(request,SEGMENT_TXID_PARAM);
+    FileJournalManager fjm=storage.getJournalManager();
+    File editFile;
+synchronized (fjm) {
+      EditLogFile elf=fjm.getLogFile(segmentTxId);
+      if (elf == null) {
+        response.sendError(HttpServletResponse.SC_NOT_FOUND,"No edit log found starting at txid " + segmentTxId);
+        return;
+      }
+      editFile=elf.getFile();
+      GetImageServlet.setVerificationHeaders(response,editFile);
+      GetImageServlet.setFileNameHeaders(response,editFile);
+      editFileIn=new FileInputStream(editFile);
+    }
+    DataTransferThrottler throttler=GetImageServlet.getThrottler(conf);
+    TransferFsImage.getFileServer(response,editFile,editFileIn,throttler);
+  }
+ catch (  Throwable t) {
+    String errMsg="getedit failed. " + StringUtils.stringifyException(t);
+    response.sendError(HttpServletResponse.SC_INTERNAL_SERVER_ERROR,errMsg);
+    throw new IOException(errMsg);
+  }
+ finally {
+    IOUtils.closeStream(editFileIn);
+  }
+}

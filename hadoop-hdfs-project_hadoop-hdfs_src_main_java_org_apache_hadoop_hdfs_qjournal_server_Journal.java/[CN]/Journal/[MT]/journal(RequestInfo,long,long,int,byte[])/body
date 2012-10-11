@@ -1,0 +1,32 @@
+{
+  checkFormatted();
+  checkWriteRequest(reqInfo);
+  checkSync(curSegment != null,"Can't write, no segment open");
+  if (curSegmentTxId != segmentTxId) {
+    JournalOutOfSyncException e=new JournalOutOfSyncException("Writer out of sync: it thinks it is writing segment " + segmentTxId + " but current segment is "+ curSegmentTxId);
+    abortCurSegment();
+    throw e;
+  }
+  checkSync(nextTxId == firstTxnId,"Can't write txid " + firstTxnId + " expecting nextTxId="+ nextTxId);
+  long lastTxnId=firstTxnId + numTxns - 1;
+  if (LOG.isTraceEnabled()) {
+    LOG.trace("Writing txid " + firstTxnId + "-"+ lastTxnId);
+  }
+  boolean isLagging=lastTxnId <= committedTxnId.get();
+  boolean shouldFsync=!isLagging;
+  curSegment.writeRaw(records,0,records.length);
+  curSegment.setReadyToFlush();
+  Stopwatch sw=new Stopwatch();
+  sw.start();
+  curSegment.flush(shouldFsync);
+  sw.stop();
+  metrics.addSync(sw.elapsedTime(TimeUnit.MICROSECONDS));
+  if (isLagging) {
+    metrics.batchesWrittenWhileLagging.incr(1);
+  }
+  metrics.batchesWritten.incr(1);
+  metrics.bytesWritten.incr(records.length);
+  metrics.txnsWritten.incr(numTxns);
+  highestWrittenTxId=lastTxnId;
+  nextTxId=lastTxnId + 1;
+}

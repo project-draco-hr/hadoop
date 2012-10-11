@@ -1,0 +1,19 @@
+{
+  Preconditions.checkState(!isActiveWriter,"already active writer");
+  LOG.info("Starting recovery process for unclosed journal segments...");
+  Map<AsyncLogger,NewEpochResponseProto> resps=createNewUniqueEpoch();
+  LOG.info("Successfully started new epoch " + loggers.getEpoch());
+  if (LOG.isDebugEnabled()) {
+    LOG.debug("newEpoch(" + loggers.getEpoch() + ") responses:\n"+ QuorumCall.mapToString(resps));
+  }
+  long mostRecentSegmentTxId=Long.MIN_VALUE;
+  for (  NewEpochResponseProto r : resps.values()) {
+    if (r.hasLastSegmentTxId()) {
+      mostRecentSegmentTxId=Math.max(mostRecentSegmentTxId,r.getLastSegmentTxId());
+    }
+  }
+  if (mostRecentSegmentTxId != Long.MIN_VALUE) {
+    recoverUnclosedSegment(mostRecentSegmentTxId);
+  }
+  isActiveWriter=true;
+}

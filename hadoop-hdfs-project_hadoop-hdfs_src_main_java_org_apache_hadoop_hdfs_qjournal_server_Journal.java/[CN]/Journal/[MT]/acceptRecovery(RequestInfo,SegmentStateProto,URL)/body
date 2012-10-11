@@ -1,0 +1,41 @@
+{
+  checkFormatted();
+  checkRequest(reqInfo);
+  abortCurSegment();
+  long segmentTxId=segment.getStartTxId();
+  Preconditions.checkArgument(segment.getEndTxId() > 0 && segment.getEndTxId() >= segmentTxId,"bad recovery state for segment %s: %s",segmentTxId,TextFormat.shortDebugString(segment));
+  PersistedRecoveryPaxosData oldData=getPersistedPaxosData(segmentTxId);
+  PersistedRecoveryPaxosData newData=PersistedRecoveryPaxosData.newBuilder().setAcceptedInEpoch(reqInfo.getEpoch()).setSegmentState(segment).build();
+  if (oldData != null) {
+    alwaysAssert(oldData.getAcceptedInEpoch() <= reqInfo.getEpoch(),"Bad paxos transition, out-of-order epochs.\nOld: %s\nNew: %s\n",oldData,newData);
+  }
+  File syncedFile=null;
+  SegmentStateProto currentSegment=getSegmentInfo(segmentTxId);
+  if (currentSegment == null || currentSegment.getEndTxId() != segment.getEndTxId()) {
+    if (currentSegment == null) {
+      LOG.info("Synchronizing log " + TextFormat.shortDebugString(segment) + ": no current segment in place");
+      highestWrittenTxId=Math.max(segment.getEndTxId(),highestWrittenTxId);
+    }
+ else {
+      LOG.info("Synchronizing log " + TextFormat.shortDebugString(segment) + ": old segment "+ TextFormat.shortDebugString(currentSegment)+ " is not the right length");
+      if (txnRange(currentSegment).contains(committedTxnId.get()) && !txnRange(segment).contains(committedTxnId.get())) {
+        throw new AssertionError("Cannot replace segment " + TextFormat.shortDebugString(currentSegment) + " with new segment "+ TextFormat.shortDebugString(segment)+ ": would discard already-committed txn "+ committedTxnId.get());
+      }
+      alwaysAssert(currentSegment.getIsInProgress(),"Should never be asked to synchronize a different log on top of an " + "already-finalized segment");
+      if (txnRange(currentSegment).contains(highestWrittenTxId)) {
+        highestWrittenTxId=segment.getEndTxId();
+      }
+    }
+    syncedFile=syncLog(reqInfo,segment,fromUrl);
+  }
+ else {
+    LOG.info("Skipping download of log " + TextFormat.shortDebugString(segment) + ": already have up-to-date logs");
+  }
+  JournalFaultInjector.get().beforePersistPaxosData();
+  persistPaxosData(segmentTxId,newData);
+  JournalFaultInjector.get().afterPersistPaxosData();
+  if (syncedFile != null) {
+    FileUtil.replaceFile(syncedFile,storage.getInProgressEditLog(segmentTxId));
+  }
+  LOG.info("Accepted recovery for segment " + segmentTxId + ": "+ TextFormat.shortDebugString(newData));
+}
