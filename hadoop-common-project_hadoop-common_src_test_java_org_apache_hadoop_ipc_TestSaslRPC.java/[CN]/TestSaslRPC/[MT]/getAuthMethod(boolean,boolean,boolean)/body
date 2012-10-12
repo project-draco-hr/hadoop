@@ -1,0 +1,41 @@
+{
+  TestTokenSecretManager sm=new TestTokenSecretManager();
+  Server server=new RPC.Builder(conf).setProtocol(TestSaslProtocol.class).setInstance(new TestSaslImpl()).setBindAddress(ADDRESS).setPort(0).setNumHandlers(5).setVerbose(true).setSecretManager(sm).build();
+  if (isSecureServer) {
+    server.enableSecurity();
+  }
+ else {
+    server.disableSecurity();
+  }
+  server.start();
+  final UserGroupInformation current=UserGroupInformation.getCurrentUser();
+  final InetSocketAddress addr=NetUtils.getConnectAddress(server);
+  if (useToken) {
+    TestTokenIdentifier tokenId=new TestTokenIdentifier(new Text(current.getUserName()));
+    Token<TestTokenIdentifier> token=new Token<TestTokenIdentifier>(tokenId,sm);
+    SecurityUtil.setTokenService(token,addr);
+    current.addToken(token);
+  }
+  conf.set(HADOOP_SECURITY_AUTHENTICATION,isSecureClient ? "kerberos" : "simple");
+  UserGroupInformation.setConfiguration(conf);
+  try {
+    return current.doAs(new PrivilegedExceptionAction<AuthenticationMethod>(){
+      @Override public AuthenticationMethod run() throws IOException {
+        TestSaslProtocol proxy=null;
+        try {
+          proxy=(TestSaslProtocol)RPC.getProxy(TestSaslProtocol.class,TestSaslProtocol.versionID,addr,conf);
+          return proxy.getAuthMethod();
+        }
+  finally {
+          if (proxy != null) {
+            RPC.stopProxy(proxy);
+          }
+        }
+      }
+    }
+);
+  }
+  finally {
+    server.stop();
+  }
+}
