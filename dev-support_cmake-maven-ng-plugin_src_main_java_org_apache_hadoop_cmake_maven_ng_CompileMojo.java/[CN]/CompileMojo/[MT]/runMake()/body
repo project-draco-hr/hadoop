@@ -1,0 +1,53 @@
+{
+  List<String> cmd=new LinkedList<String>();
+  cmd.add("make");
+  cmd.add("VERBOSE=1");
+  if (target != null) {
+    cmd.add(target);
+  }
+  ProcessBuilder pb=new ProcessBuilder(cmd);
+  pb.directory(output);
+  Process proc=null;
+  int retCode=-1;
+  OutputBufferThread stdoutThread=null, stderrThread=null;
+  try {
+    proc=pb.start();
+    stdoutThread=new OutputBufferThread(proc.getInputStream());
+    stderrThread=new OutputBufferThread(proc.getErrorStream());
+    stdoutThread.start();
+    stderrThread.start();
+    retCode=proc.waitFor();
+    if (retCode != 0) {
+      throw new MojoExecutionException("make failed with error code " + retCode);
+    }
+  }
+ catch (  InterruptedException e) {
+    throw new MojoExecutionException("Interrupted during Process#waitFor",e);
+  }
+catch (  IOException e) {
+    throw new MojoExecutionException("Error executing make",e);
+  }
+ finally {
+    if (stdoutThread != null) {
+      try {
+        stdoutThread.join();
+      }
+ catch (      InterruptedException e) {
+        e.printStackTrace();
+      }
+      if (retCode != 0) {
+        stdoutThread.printBufs();
+      }
+    }
+    if (stderrThread != null) {
+      try {
+        stderrThread.join();
+      }
+ catch (      InterruptedException e) {
+        e.printStackTrace();
+      }
+      stderrThread.printBufs();
+    }
+    if (proc != null)     proc.destroy();
+  }
+}

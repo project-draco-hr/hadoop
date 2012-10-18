@@ -1,0 +1,64 @@
+{
+  Utils.validatePlatform();
+  Utils.validateParams(output,source);
+  if (output.mkdirs()) {
+    System.out.println("mkdirs '" + output + "'");
+  }
+  List<String> cmd=new LinkedList<String>();
+  cmd.add("cmake");
+  cmd.add(source.getAbsolutePath());
+  for (  Map.Entry<String,String> entry : vars.entrySet()) {
+    if ((entry.getValue() != null) && (!entry.getValue().equals(""))) {
+      cmd.add("-D" + entry.getKey() + "="+ entry.getValue());
+    }
+  }
+  cmd.add("-G");
+  cmd.add("Unix Makefiles");
+  String prefix="";
+  StringBuilder bld=new StringBuilder();
+  for (  String c : cmd) {
+    bld.append(prefix);
+    bld.append("'").append(c).append("'");
+    prefix=" ";
+  }
+  System.out.println("Running " + bld.toString());
+  ProcessBuilder pb=new ProcessBuilder(cmd);
+  pb.directory(output);
+  pb.redirectErrorStream(true);
+  Utils.addEnvironment(pb,env);
+  Process proc=null;
+  OutputBufferThread outThread=null;
+  int retCode=-1;
+  try {
+    proc=pb.start();
+    outThread=new OutputBufferThread(proc.getInputStream());
+    outThread.start();
+    retCode=proc.waitFor();
+    if (retCode != 0) {
+      throw new MojoExecutionException("CMake failed with error code " + retCode);
+    }
+  }
+ catch (  IOException e) {
+    throw new MojoExecutionException("Error executing CMake",e);
+  }
+catch (  InterruptedException e) {
+    throw new MojoExecutionException("Interrupted while waiting for " + "CMake process",e);
+  }
+ finally {
+    if (proc != null) {
+      proc.destroy();
+    }
+    if (outThread != null) {
+      try {
+        outThread.interrupt();
+        outThread.join();
+      }
+ catch (      InterruptedException e) {
+        e.printStackTrace();
+      }
+      if (retCode != 0) {
+        outThread.printBufs();
+      }
+    }
+  }
+}
