@@ -1,0 +1,43 @@
+{
+  final Configuration CONF=new HdfsConfiguration();
+  CONF.setLong(DFSConfigKeys.DFS_BLOCK_SIZE_KEY,1024);
+  CONF.setLong(DFSConfigKeys.DFS_HEARTBEAT_INTERVAL_KEY,DFS_REPLICATION_INTERVAL);
+  CONF.setInt(DFSConfigKeys.DFS_NAMENODE_REPLICATION_INTERVAL_KEY,DFS_REPLICATION_INTERVAL);
+  MiniDFSCluster cluster=new MiniDFSCluster.Builder(CONF).numDataNodes(DATANODE_COUNT).build();
+  cluster.waitActive();
+  FSNamesystem namesystem=cluster.getNamesystem();
+  BlockManager bm=namesystem.getBlockManager();
+  DistributedFileSystem fs=cluster.getFileSystem();
+  try {
+    Path filePath=new Path("/tmp.txt");
+    DFSTestUtil.createFile(fs,filePath,1024,(short)3,0L);
+    for (    DataNode dn : cluster.getDataNodes()) {
+      DataNodeTestUtils.setHeartbeatsDisabledForTests(dn,true);
+    }
+    LocatedBlock block=NameNodeAdapter.getBlockLocations(cluster.getNameNode(),filePath.toString(),0,1).get(0);
+    cluster.getNamesystem().writeLock();
+    try {
+      bm.findAndMarkBlockAsCorrupt(block.getBlock(),block.getLocations()[0],"TEST");
+      bm.findAndMarkBlockAsCorrupt(block.getBlock(),block.getLocations()[1],"TEST");
+    }
+  finally {
+      cluster.getNamesystem().writeUnlock();
+    }
+    BlockManagerTestUtil.computeAllPendingWork(bm);
+    BlockManagerTestUtil.updateState(bm);
+    assertEquals(bm.getPendingReplicationBlocksCount(),1L);
+    assertEquals(bm.pendingReplications.getNumReplicas(block.getBlock().getLocalBlock()),2);
+    fs.delete(filePath,true);
+    int retries=10;
+    long pendingNum=bm.getPendingReplicationBlocksCount();
+    while (pendingNum != 0 && retries-- > 0) {
+      Thread.sleep(1000);
+      BlockManagerTestUtil.updateState(bm);
+      pendingNum=bm.getPendingReplicationBlocksCount();
+    }
+    assertEquals(pendingNum,0L);
+  }
+  finally {
+    cluster.shutdown();
+  }
+}
