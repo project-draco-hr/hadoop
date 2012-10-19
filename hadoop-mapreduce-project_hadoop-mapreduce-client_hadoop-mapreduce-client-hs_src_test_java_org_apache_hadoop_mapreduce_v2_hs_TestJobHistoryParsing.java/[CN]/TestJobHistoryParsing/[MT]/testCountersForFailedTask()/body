@@ -1,0 +1,42 @@
+{
+  LOG.info("STARTING testCountersForFailedTask");
+  try {
+    Configuration conf=new Configuration();
+    conf.setClass(CommonConfigurationKeysPublic.NET_TOPOLOGY_NODE_SWITCH_MAPPING_IMPL_KEY,MyResolver.class,DNSToSwitchMapping.class);
+    RackResolver.init(conf);
+    MRApp app=new MRAppWithHistoryWithFailedTask(2,1,true,this.getClass().getName(),true);
+    app.submit(conf);
+    Job job=app.getContext().getAllJobs().values().iterator().next();
+    JobId jobId=job.getID();
+    app.waitForState(job,JobState.FAILED);
+    app.waitForState(Service.STATE.STOPPED);
+    String jobhistoryDir=JobHistoryUtils.getHistoryIntermediateDoneDirForUser(conf);
+    JobHistory jobHistory=new JobHistory();
+    jobHistory.init(conf);
+    JobIndexInfo jobIndexInfo=jobHistory.getJobFileInfo(jobId).getJobIndexInfo();
+    String jobhistoryFileName=FileNameIndexUtils.getDoneFileName(jobIndexInfo);
+    Path historyFilePath=new Path(jobhistoryDir,jobhistoryFileName);
+    FSDataInputStream in=null;
+    FileContext fc=null;
+    try {
+      fc=FileContext.getFileContext(conf);
+      in=fc.open(fc.makeQualified(historyFilePath));
+    }
+ catch (    IOException ioe) {
+      LOG.info("Can not open history file: " + historyFilePath,ioe);
+      throw (new Exception("Can not open History File"));
+    }
+    JobHistoryParser parser=new JobHistoryParser(in);
+    JobInfo jobInfo=parser.parse();
+    Exception parseException=parser.getParseException();
+    Assert.assertNull("Caught an expected exception " + parseException,parseException);
+    for (    Map.Entry<TaskID,TaskInfo> entry : jobInfo.getAllTasks().entrySet()) {
+      TaskId yarnTaskID=TypeConverter.toYarn(entry.getKey());
+      CompletedTask ct=new CompletedTask(yarnTaskID,entry.getValue());
+      Assert.assertNotNull("completed task report has null counters",ct.getReport().getCounters());
+    }
+  }
+  finally {
+    LOG.info("FINISHED testCountersForFailedTask");
+  }
+}

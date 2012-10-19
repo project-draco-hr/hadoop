@@ -3,25 +3,43 @@
   if (namesystem.isInSafeMode()) {
     return;
   }
+  boolean checkStaleNodes=dm.isCheckingForStaleDataNodes();
   boolean allAlive=false;
   while (!allAlive) {
     DatanodeID dead=null;
+    int numOfStaleNodes=0;
 synchronized (this) {
       for (      DatanodeDescriptor d : datanodes) {
-        if (dm.isDatanodeDead(d)) {
+        if (dead == null && dm.isDatanodeDead(d)) {
           stats.incrExpiredHeartbeats();
           dead=d;
-          break;
+          if (!checkStaleNodes) {
+            break;
+          }
+        }
+        if (checkStaleNodes && d.isStale(dm.getStaleInterval())) {
+          numOfStaleNodes++;
+        }
+      }
+      if (checkStaleNodes) {
+        dm.setNumStaleNodes(numOfStaleNodes);
+        if (numOfStaleNodes > datanodes.size() * ratioUseStaleDataNodesForWrite) {
+          dm.setAvoidStaleDataNodesForWrite(false);
+        }
+ else {
+          if (this.initialAvoidWriteStaleNodes) {
+            dm.setAvoidStaleDataNodesForWrite(true);
+          }
         }
       }
     }
     allAlive=dead == null;
     if (!allAlive) {
       namesystem.writeLock();
-      if (namesystem.isInSafeMode()) {
-        return;
-      }
       try {
+        if (namesystem.isInSafeMode()) {
+          return;
+        }
 synchronized (this) {
           dm.removeDeadDatanode(dead);
         }

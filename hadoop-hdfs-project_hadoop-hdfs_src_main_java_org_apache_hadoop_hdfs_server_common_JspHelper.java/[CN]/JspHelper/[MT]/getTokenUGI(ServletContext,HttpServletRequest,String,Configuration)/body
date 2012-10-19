@@ -1,0 +1,22 @@
+{
+  final Token<DelegationTokenIdentifier> token=new Token<DelegationTokenIdentifier>();
+  token.decodeFromUrlString(tokenString);
+  InetSocketAddress serviceAddress=getNNServiceAddress(context,request);
+  if (serviceAddress != null) {
+    SecurityUtil.setTokenService(token,serviceAddress);
+    token.setKind(DelegationTokenIdentifier.HDFS_DELEGATION_KIND);
+  }
+  ByteArrayInputStream buf=new ByteArrayInputStream(token.getIdentifier());
+  DataInputStream in=new DataInputStream(buf);
+  DelegationTokenIdentifier id=new DelegationTokenIdentifier();
+  id.readFields(in);
+  if (context != null) {
+    final NameNode nn=NameNodeHttpServer.getNameNodeFromContext(context);
+    if (nn != null) {
+      nn.getNamesystem().verifyToken(id,token.getPassword());
+    }
+  }
+  UserGroupInformation ugi=id.getUser();
+  ugi.addToken(token);
+  return ugi;
+}

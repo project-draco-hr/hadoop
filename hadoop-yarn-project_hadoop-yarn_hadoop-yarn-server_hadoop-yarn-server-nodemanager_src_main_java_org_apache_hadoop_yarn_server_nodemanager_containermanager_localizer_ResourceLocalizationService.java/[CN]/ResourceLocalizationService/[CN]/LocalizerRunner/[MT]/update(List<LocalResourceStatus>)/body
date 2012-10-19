@@ -1,0 +1,64 @@
+{
+  LocalizerHeartbeatResponse response=recordFactory.newRecordInstance(LocalizerHeartbeatResponse.class);
+  if (remoteResourceStatuses.isEmpty()) {
+    LocalResource next=findNextResource();
+    if (next != null) {
+      response.setLocalizerAction(LocalizerAction.LIVE);
+      response.addResource(next);
+    }
+ else     if (pending.isEmpty()) {
+      response.setLocalizerAction(LocalizerAction.DIE);
+    }
+ else {
+      response.setLocalizerAction(LocalizerAction.LIVE);
+    }
+    return response;
+  }
+  for (  LocalResourceStatus stat : remoteResourceStatuses) {
+    LocalResource rsrc=stat.getResource();
+    LocalResourceRequest req=null;
+    try {
+      req=new LocalResourceRequest(rsrc);
+    }
+ catch (    URISyntaxException e) {
+    }
+    LocalizerResourceRequestEvent assoc=scheduled.get(req);
+    if (assoc == null) {
+      LOG.error("Unknown resource reported: " + req);
+      continue;
+    }
+switch (stat.getStatus()) {
+case FETCH_SUCCESS:
+      try {
+        assoc.getResource().handle(new ResourceLocalizedEvent(req,ConverterUtils.getPathFromYarnURL(stat.getLocalPath()),stat.getLocalSize()));
+      }
+ catch (      URISyntaxException e) {
+      }
+    if (pending.isEmpty()) {
+      response.setLocalizerAction(LocalizerAction.DIE);
+      break;
+    }
+  response.setLocalizerAction(LocalizerAction.LIVE);
+LocalResource next=findNextResource();
+if (next != null) {
+response.addResource(next);
+}
+break;
+case FETCH_PENDING:
+response.setLocalizerAction(LocalizerAction.LIVE);
+break;
+case FETCH_FAILURE:
+LOG.info("DEBUG: FAILED " + req,stat.getException());
+assoc.getResource().unlock();
+response.setLocalizerAction(LocalizerAction.DIE);
+dispatcher.getEventHandler().handle(new ContainerResourceFailedEvent(context.getContainerId(),req,stat.getException()));
+break;
+default :
+LOG.info("Unknown status: " + stat.getStatus());
+response.setLocalizerAction(LocalizerAction.DIE);
+dispatcher.getEventHandler().handle(new ContainerResourceFailedEvent(context.getContainerId(),req,stat.getException()));
+break;
+}
+}
+return response;
+}

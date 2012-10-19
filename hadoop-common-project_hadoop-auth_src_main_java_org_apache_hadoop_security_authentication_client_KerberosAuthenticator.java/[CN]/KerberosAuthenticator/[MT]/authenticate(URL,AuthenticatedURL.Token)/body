@@ -3,12 +3,22 @@
     this.url=url;
     base64=new Base64(0);
     conn=(HttpURLConnection)url.openConnection();
+    if (connConfigurator != null) {
+      conn=connConfigurator.configure(conn);
+    }
     conn.setRequestMethod(AUTH_HTTP_METHOD);
     conn.connect();
-    if (isNegotiate()) {
+    if (conn.getRequestProperty(AUTHORIZATION) != null && conn.getResponseCode() == HttpURLConnection.HTTP_OK) {
+      LOG.debug("JDK performed authentication on our behalf.");
+      AuthenticatedURL.extractToken(conn,token);
+      return;
+    }
+ else     if (isNegotiate()) {
+      LOG.debug("Performing our own SPNEGO sequence.");
       doSpnegoSequence(token);
     }
  else {
+      LOG.debug("Using fallback authenticator sequence.");
       getFallBackAuthenticator().authenticate(url,token);
     }
   }

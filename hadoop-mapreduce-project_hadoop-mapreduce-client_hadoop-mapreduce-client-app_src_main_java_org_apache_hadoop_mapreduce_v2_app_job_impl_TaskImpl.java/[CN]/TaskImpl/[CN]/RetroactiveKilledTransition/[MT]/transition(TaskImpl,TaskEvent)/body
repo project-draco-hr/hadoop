@@ -1,0 +1,19 @@
+{
+  TaskAttemptId attemptId=null;
+  if (event instanceof TaskTAttemptEvent) {
+    TaskTAttemptEvent castEvent=(TaskTAttemptEvent)event;
+    attemptId=castEvent.getTaskAttemptID();
+    if (task.getState() == TaskState.SUCCEEDED && !attemptId.equals(task.successfulAttempt)) {
+      return TaskState.SUCCEEDED;
+    }
+  }
+  if (!TaskType.MAP.equals(task.getType())) {
+    LOG.error("Unexpected event for REDUCE task " + event.getType());
+    task.internalError(event.getType());
+  }
+  unSucceed(task);
+  task.handleTaskAttemptCompletion(attemptId,TaskAttemptCompletionEventStatus.KILLED);
+  task.eventHandler.handle(new JobMapTaskRescheduledEvent(task.taskId));
+  task.addAndScheduleAttempt();
+  return TaskState.SCHEDULED;
+}

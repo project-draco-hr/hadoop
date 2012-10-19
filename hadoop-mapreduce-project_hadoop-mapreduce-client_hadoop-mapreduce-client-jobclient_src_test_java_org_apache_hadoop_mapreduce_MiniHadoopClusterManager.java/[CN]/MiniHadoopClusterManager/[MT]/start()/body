@@ -1,0 +1,38 @@
+{
+  if (!noDFS) {
+    dfs=new MiniDFSCluster(nnPort,conf,numDataNodes,true,true,dfsOpts,null,null);
+    LOG.info("Started MiniDFSCluster -- namenode on port " + dfs.getNameNodePort());
+  }
+  if (!noMR) {
+    if (fs == null && dfs != null) {
+      fs=dfs.getFileSystem().getUri().toString();
+    }
+ else     if (fs == null) {
+      fs="file:///tmp/minimr-" + System.nanoTime();
+    }
+    FileSystem.setDefaultUri(conf,new URI(fs));
+    conf.setBoolean(YarnConfiguration.YARN_MINICLUSTER_FIXED_PORTS,true);
+    conf.setBoolean(JHAdminConfig.MR_HISTORY_MINICLUSTER_FIXED_PORTS,true);
+    conf.set(YarnConfiguration.RM_ADDRESS,MiniYARNCluster.getHostname() + ":" + this.rmPort);
+    conf.set(JHAdminConfig.MR_HISTORY_ADDRESS,MiniYARNCluster.getHostname() + ":" + this.jhsPort);
+    mr=MiniMRClientClusterFactory.create(this.getClass(),numNodeManagers,conf);
+    LOG.info("Started MiniMRCluster");
+  }
+  if (writeConfig != null) {
+    FileOutputStream fos=new FileOutputStream(new File(writeConfig));
+    conf.writeXml(fos);
+    fos.close();
+  }
+  if (writeDetails != null) {
+    Map<String,Object> map=new TreeMap<String,Object>();
+    if (dfs != null) {
+      map.put("namenode_port",dfs.getNameNodePort());
+    }
+    if (mr != null) {
+      map.put("resourcemanager_port",mr.getConfig().get(YarnConfiguration.RM_ADDRESS).split(":")[1]);
+    }
+    FileWriter fw=new FileWriter(new File(writeDetails));
+    fw.write(new JSON().toJSON(map));
+    fw.close();
+  }
+}

@@ -1,0 +1,26 @@
+{
+  this.monitoringInterval=conf.getLong(YarnConfiguration.NM_CONTAINER_MON_INTERVAL_MS,YarnConfiguration.DEFAULT_NM_CONTAINER_MON_INTERVAL_MS);
+  Class<? extends ResourceCalculatorPlugin> clazz=conf.getClass(YarnConfiguration.NM_CONTAINER_MON_RESOURCE_CALCULATOR,null,ResourceCalculatorPlugin.class);
+  this.resourceCalculatorPlugin=ResourceCalculatorPlugin.getResourceCalculatorPlugin(clazz,conf);
+  LOG.info(" Using ResourceCalculatorPlugin : " + this.resourceCalculatorPlugin);
+  processTreeClass=conf.getClass(YarnConfiguration.NM_CONTAINER_MON_PROCESS_TREE,null,ResourceCalculatorProcessTree.class);
+  this.conf=conf;
+  LOG.info(" Using ResourceCalculatorProcessTree : " + this.processTreeClass);
+  long totalPhysicalMemoryOnNM=DISABLED_MEMORY_LIMIT;
+  if (this.resourceCalculatorPlugin != null) {
+    totalPhysicalMemoryOnNM=this.resourceCalculatorPlugin.getPhysicalMemorySize();
+    if (totalPhysicalMemoryOnNM <= 0) {
+      LOG.warn("NodeManager's totalPmem could not be calculated. " + "Setting it to " + DISABLED_MEMORY_LIMIT);
+      totalPhysicalMemoryOnNM=DISABLED_MEMORY_LIMIT;
+    }
+  }
+  this.maxPmemAllottedForContainers=conf.getLong(YarnConfiguration.NM_PMEM_MB,YarnConfiguration.DEFAULT_NM_PMEM_MB);
+  this.maxPmemAllottedForContainers=this.maxPmemAllottedForContainers * 1024 * 1024L;
+  if (totalPhysicalMemoryOnNM != DISABLED_MEMORY_LIMIT && this.maxPmemAllottedForContainers > totalPhysicalMemoryOnNM * 0.80f) {
+    LOG.warn("NodeManager configured with " + StringUtils.humanReadableInt(maxPmemAllottedForContainers) + " physical memory allocated to containers, which is more than "+ "80% of the total physical memory available ("+ StringUtils.humanReadableInt(totalPhysicalMemoryOnNM)+ "). Thrashing might happen.");
+  }
+  float vmemRatio=conf.getFloat(YarnConfiguration.NM_VMEM_PMEM_RATIO,YarnConfiguration.DEFAULT_NM_VMEM_PMEM_RATIO);
+  Preconditions.checkArgument(vmemRatio > 0.99f,YarnConfiguration.NM_VMEM_PMEM_RATIO + " should be at least 1.0");
+  this.maxVmemAllottedForContainers=(long)(vmemRatio * maxPmemAllottedForContainers);
+  super.init(conf);
+}

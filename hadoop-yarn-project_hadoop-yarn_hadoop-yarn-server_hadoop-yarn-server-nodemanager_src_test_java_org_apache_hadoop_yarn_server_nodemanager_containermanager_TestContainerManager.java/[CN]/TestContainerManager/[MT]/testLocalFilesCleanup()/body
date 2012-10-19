@@ -1,0 +1,69 @@
+{
+  delSrvc=new DeletionService(exec);
+  delSrvc.init(conf);
+  containerManager=new ContainerManagerImpl(context,exec,delSrvc,nodeStatusUpdater,metrics,new ApplicationACLsManager(conf),dirsHandler);
+  containerManager.init(conf);
+  containerManager.start();
+  File dir=new File(tmpDir,"dir");
+  dir.mkdirs();
+  File file=new File(dir,"file");
+  PrintWriter fileWriter=new PrintWriter(file);
+  fileWriter.write("Hello World!");
+  fileWriter.close();
+  ContainerLaunchContext container=recordFactory.newRecordInstance(ContainerLaunchContext.class);
+  ContainerId cId=createContainerId();
+  ApplicationId appId=cId.getApplicationAttemptId().getApplicationId();
+  container.setContainerId(cId);
+  container.setUser(user);
+  ContainerLaunchContext containerLaunchContext=recordFactory.newRecordInstance(ContainerLaunchContext.class);
+  URL resource_alpha=ConverterUtils.getYarnUrlFromPath(FileContext.getLocalFSFileContext().makeQualified(new Path(file.getAbsolutePath())));
+  LocalResource rsrc_alpha=recordFactory.newRecordInstance(LocalResource.class);
+  rsrc_alpha.setResource(resource_alpha);
+  rsrc_alpha.setSize(-1);
+  rsrc_alpha.setVisibility(LocalResourceVisibility.APPLICATION);
+  rsrc_alpha.setType(LocalResourceType.FILE);
+  rsrc_alpha.setTimestamp(file.lastModified());
+  String destinationFile="dest_file";
+  Map<String,LocalResource> localResources=new HashMap<String,LocalResource>();
+  localResources.put(destinationFile,rsrc_alpha);
+  containerLaunchContext.setLocalResources(localResources);
+  containerLaunchContext.setUser(container.getUser());
+  containerLaunchContext.setContainerId(container.getContainerId());
+  containerLaunchContext.setResource(recordFactory.newRecordInstance(Resource.class));
+  StartContainerRequest request=recordFactory.newRecordInstance(StartContainerRequest.class);
+  request.setContainerLaunchContext(containerLaunchContext);
+  containerManager.startContainer(request);
+  BaseContainerManagerTest.waitForContainerState(containerManager,cId,ContainerState.COMPLETE);
+  BaseContainerManagerTest.waitForApplicationState(containerManager,cId.getApplicationAttemptId().getApplicationId(),ApplicationState.RUNNING);
+  String appIDStr=ConverterUtils.toString(appId);
+  String containerIDStr=ConverterUtils.toString(cId);
+  File userCacheDir=new File(localDir,ContainerLocalizer.USERCACHE);
+  File userDir=new File(userCacheDir,user);
+  File appCache=new File(userDir,ContainerLocalizer.APPCACHE);
+  File appDir=new File(appCache,appIDStr);
+  File containerDir=new File(appDir,containerIDStr);
+  File targetFile=new File(containerDir,destinationFile);
+  File sysDir=new File(localDir,ResourceLocalizationService.NM_PRIVATE_DIR);
+  File appSysDir=new File(sysDir,appIDStr);
+  File containerSysDir=new File(appSysDir,containerIDStr);
+  Assert.assertTrue("AppDir " + appDir.getAbsolutePath() + " doesn't exist!!",appDir.exists());
+  Assert.assertTrue("AppSysDir " + appSysDir.getAbsolutePath() + " doesn't exist!!",appSysDir.exists());
+  for (  File f : new File[]{containerDir,containerSysDir}) {
+    Assert.assertFalse(f.getAbsolutePath() + " exists!!",f.exists());
+  }
+  Assert.assertFalse(targetFile.getAbsolutePath() + " exists!!",targetFile.exists());
+  containerManager.handle(new CMgrCompletedAppsEvent(Arrays.asList(new ApplicationId[]{appId})));
+  BaseContainerManagerTest.waitForApplicationState(containerManager,cId.getApplicationAttemptId().getApplicationId(),ApplicationState.FINISHED);
+  for (  File f : new File[]{appDir,containerDir,appSysDir,containerSysDir}) {
+    int timeout=0;
+    while (f.exists() && timeout++ < 15) {
+      Thread.sleep(1000);
+    }
+    Assert.assertFalse(f.getAbsolutePath() + " exists!!",f.exists());
+  }
+  int timeout=0;
+  while (targetFile.exists() && timeout++ < 15) {
+    Thread.sleep(1000);
+  }
+  Assert.assertFalse(targetFile.getAbsolutePath() + " exists!!",targetFile.exists());
+}

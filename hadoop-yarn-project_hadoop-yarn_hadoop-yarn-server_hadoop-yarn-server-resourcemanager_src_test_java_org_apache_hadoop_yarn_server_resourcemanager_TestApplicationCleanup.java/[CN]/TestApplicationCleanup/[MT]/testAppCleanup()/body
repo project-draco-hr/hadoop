@@ -1,0 +1,47 @@
+{
+  Logger rootLogger=LogManager.getRootLogger();
+  rootLogger.setLevel(Level.DEBUG);
+  MockRM rm=new MockRM();
+  rm.start();
+  MockNM nm1=rm.registerNode("h1:1234",5000);
+  RMApp app=rm.submitApp(2000);
+  nm1.nodeHeartbeat(true);
+  RMAppAttempt attempt=app.getCurrentAppAttempt();
+  MockAM am=rm.sendAMLaunched(attempt.getAppAttemptId());
+  am.registerAppAttempt();
+  int request=2;
+  am.allocate("h1",1000,request,new ArrayList<ContainerId>());
+  nm1.nodeHeartbeat(true);
+  List<Container> conts=am.allocate(new ArrayList<ResourceRequest>(),new ArrayList<ContainerId>()).getAllocatedContainers();
+  int contReceived=conts.size();
+  int waitCount=0;
+  while (contReceived < request && waitCount++ < 20) {
+    conts=am.allocate(new ArrayList<ResourceRequest>(),new ArrayList<ContainerId>()).getAllocatedContainers();
+    contReceived+=conts.size();
+    LOG.info("Got " + contReceived + " containers. Waiting to get "+ request);
+    Thread.sleep(2000);
+  }
+  Assert.assertEquals(request,conts.size());
+  am.unregisterAppAttempt();
+  HeartbeatResponse resp=nm1.nodeHeartbeat(attempt.getAppAttemptId(),1,ContainerState.COMPLETE);
+  am.waitForState(RMAppAttemptState.FINISHED);
+  int cleanedConts=0;
+  int cleanedApps=0;
+  List<ContainerId> contsToClean=null;
+  List<ApplicationId> apps=null;
+  waitCount=0;
+  while ((cleanedConts < 2 || cleanedApps < 1) && waitCount++ < 20) {
+    contsToClean=resp.getContainersToCleanupList();
+    apps=resp.getApplicationsToCleanupList();
+    LOG.info("Waiting to get cleanup events.. cleanedConts: " + cleanedConts + " cleanedApps: "+ cleanedApps);
+    cleanedConts+=contsToClean.size();
+    cleanedApps+=apps.size();
+    Thread.sleep(1000);
+    resp=nm1.nodeHeartbeat(true);
+  }
+  Assert.assertEquals(1,apps.size());
+  Assert.assertEquals(app.getApplicationId(),apps.get(0));
+  Assert.assertEquals(1,cleanedApps);
+  Assert.assertEquals(2,cleanedConts);
+  rm.stop();
+}

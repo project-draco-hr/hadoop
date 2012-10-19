@@ -11,8 +11,14 @@
   int jvmIdInt=Integer.parseInt(args[3]);
   JVMId jvmId=new JVMId(firstTaskid.getJobID(),firstTaskid.getTaskType() == TaskType.MAP,jvmIdInt);
   DefaultMetricsSystem.initialize(StringUtils.camelize(firstTaskid.getTaskType().name()) + "Task");
-  Token<JobTokenIdentifier> jt=loadCredentials(defaultConf,address);
+  Credentials credentials=UserGroupInformation.getCurrentUser().getCredentials();
+  LOG.info("Executing with tokens:");
+  for (  Token<?> token : credentials.getAllTokens()) {
+    LOG.info(token);
+  }
   UserGroupInformation taskOwner=UserGroupInformation.createRemoteUser(firstTaskid.getJobID().toString());
+  Token<JobTokenIdentifier> jt=TokenCache.getJobToken(credentials);
+  SecurityUtil.setTokenService(jt,address);
   taskOwner.addToken(jt);
   final TaskUmbilicalProtocol umbilical=taskOwner.doAs(new PrivilegedExceptionAction<TaskUmbilicalProtocol>(){
     @Override public TaskUmbilicalProtocol run() throws Exception {
@@ -39,12 +45,10 @@
     }
     task=myTask.getTask();
     YarnChild.taskid=task.getTaskID();
-    final JobConf job=configureTask(task,defaultConf.getCredentials(),jt);
+    final JobConf job=configureTask(task,credentials,jt);
     JvmMetrics.initSingleton(jvmId.toString(),job.getSessionId());
     childUGI=UserGroupInformation.createRemoteUser(System.getenv(ApplicationConstants.Environment.USER.toString()));
-    for (    Token<?> token : UserGroupInformation.getCurrentUser().getTokens()) {
-      childUGI.addToken(token);
-    }
+    childUGI.addCredentials(credentials);
     final Task taskFinal=task;
     childUGI.doAs(new PrivilegedExceptionAction<Object>(){
       @Override public Object run() throws Exception {

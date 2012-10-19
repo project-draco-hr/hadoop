@@ -1,0 +1,41 @@
+{
+  Preconditions.checkState(curHeader == null || !curHeader.isLastPacketInBlock());
+  curPacketBuf.clear();
+  curPacketBuf.limit(PacketHeader.PKT_LENGTHS_LEN);
+  doReadFully(ch,in,curPacketBuf);
+  curPacketBuf.flip();
+  int payloadLen=curPacketBuf.getInt();
+  if (payloadLen < Ints.BYTES) {
+    throw new IOException("Invalid payload length " + payloadLen);
+  }
+  int dataPlusChecksumLen=payloadLen - Ints.BYTES;
+  int headerLen=curPacketBuf.getShort();
+  if (headerLen < 0) {
+    throw new IOException("Invalid header length " + headerLen);
+  }
+  if (LOG.isTraceEnabled()) {
+    LOG.trace("readNextPacket: dataPlusChecksumLen = " + dataPlusChecksumLen + " headerLen = "+ headerLen);
+  }
+  int totalLen=payloadLen + headerLen;
+  if (totalLen < 0 || totalLen > MAX_PACKET_SIZE) {
+    throw new IOException("Incorrect value for packet payload size: " + payloadLen);
+  }
+  reallocPacketBuf(PacketHeader.PKT_LENGTHS_LEN + dataPlusChecksumLen + headerLen);
+  curPacketBuf.clear();
+  curPacketBuf.position(PacketHeader.PKT_LENGTHS_LEN);
+  curPacketBuf.limit(PacketHeader.PKT_LENGTHS_LEN + dataPlusChecksumLen + headerLen);
+  doReadFully(ch,in,curPacketBuf);
+  curPacketBuf.flip();
+  curPacketBuf.position(PacketHeader.PKT_LENGTHS_LEN);
+  byte[] headerBuf=new byte[headerLen];
+  curPacketBuf.get(headerBuf);
+  if (curHeader == null) {
+    curHeader=new PacketHeader();
+  }
+  curHeader.setFieldsFromData(dataPlusChecksumLen,headerBuf);
+  int checksumLen=dataPlusChecksumLen - curHeader.getDataLen();
+  if (checksumLen < 0) {
+    throw new IOException("Invalid packet: data length in packet header " + "exceeds data length received. dataPlusChecksumLen=" + dataPlusChecksumLen + " header: "+ curHeader);
+  }
+  reslicePacket(headerLen,checksumLen,curHeader.getDataLen());
+}

@@ -1,0 +1,85 @@
+{
+  Options opts=new Options();
+  opts.addOption("app_attempt_id",true,"App Attempt ID. Not to be used unless for testing purposes");
+  opts.addOption("shell_command",true,"Shell command to be executed by the Application Master");
+  opts.addOption("shell_script",true,"Location of the shell script to be executed");
+  opts.addOption("shell_args",true,"Command line args for the shell script");
+  opts.addOption("shell_env",true,"Environment for shell script. Specified as env_key=env_val pairs");
+  opts.addOption("container_memory",true,"Amount of memory in MB to be requested to run the shell command");
+  opts.addOption("num_containers",true,"No. of containers on which the shell command needs to be executed");
+  opts.addOption("priority",true,"Application Priority. Default 0");
+  opts.addOption("debug",false,"Dump out debug information");
+  opts.addOption("help",false,"Print usage");
+  CommandLine cliParser=new GnuParser().parse(opts,args);
+  if (args.length == 0) {
+    printUsage(opts);
+    throw new IllegalArgumentException("No args specified for application master to initialize");
+  }
+  if (cliParser.hasOption("help")) {
+    printUsage(opts);
+    return false;
+  }
+  if (cliParser.hasOption("debug")) {
+    dumpOutDebugInfo();
+  }
+  Map<String,String> envs=System.getenv();
+  appAttemptID=Records.newRecord(ApplicationAttemptId.class);
+  if (envs.containsKey(ApplicationConstants.AM_APP_ATTEMPT_ID_ENV)) {
+    appAttemptID=ConverterUtils.toApplicationAttemptId(envs.get(ApplicationConstants.AM_APP_ATTEMPT_ID_ENV));
+  }
+ else   if (!envs.containsKey(ApplicationConstants.AM_CONTAINER_ID_ENV)) {
+    if (cliParser.hasOption("app_attempt_id")) {
+      String appIdStr=cliParser.getOptionValue("app_attempt_id","");
+      appAttemptID=ConverterUtils.toApplicationAttemptId(appIdStr);
+    }
+ else {
+      throw new IllegalArgumentException("Application Attempt Id not set in the environment");
+    }
+  }
+ else {
+    ContainerId containerId=ConverterUtils.toContainerId(envs.get(ApplicationConstants.AM_CONTAINER_ID_ENV));
+    appAttemptID=containerId.getApplicationAttemptId();
+  }
+  LOG.info("Application master for app" + ", appId=" + appAttemptID.getApplicationId().getId() + ", clustertimestamp="+ appAttemptID.getApplicationId().getClusterTimestamp()+ ", attemptId="+ appAttemptID.getAttemptId());
+  if (!cliParser.hasOption("shell_command")) {
+    throw new IllegalArgumentException("No shell command specified to be executed by application master");
+  }
+  shellCommand=cliParser.getOptionValue("shell_command");
+  if (cliParser.hasOption("shell_args")) {
+    shellArgs=cliParser.getOptionValue("shell_args");
+  }
+  if (cliParser.hasOption("shell_env")) {
+    String shellEnvs[]=cliParser.getOptionValues("shell_env");
+    for (    String env : shellEnvs) {
+      env=env.trim();
+      int index=env.indexOf('=');
+      if (index == -1) {
+        shellEnv.put(env,"");
+        continue;
+      }
+      String key=env.substring(0,index);
+      String val="";
+      if (index < (env.length() - 1)) {
+        val=env.substring(index + 1);
+      }
+      shellEnv.put(key,val);
+    }
+  }
+  if (envs.containsKey(DSConstants.DISTRIBUTEDSHELLSCRIPTLOCATION)) {
+    shellScriptPath=envs.get(DSConstants.DISTRIBUTEDSHELLSCRIPTLOCATION);
+    if (envs.containsKey(DSConstants.DISTRIBUTEDSHELLSCRIPTTIMESTAMP)) {
+      shellScriptPathTimestamp=Long.valueOf(envs.get(DSConstants.DISTRIBUTEDSHELLSCRIPTTIMESTAMP));
+    }
+    if (envs.containsKey(DSConstants.DISTRIBUTEDSHELLSCRIPTLEN)) {
+      shellScriptPathLen=Long.valueOf(envs.get(DSConstants.DISTRIBUTEDSHELLSCRIPTLEN));
+    }
+    if (!shellScriptPath.isEmpty() && (shellScriptPathTimestamp <= 0 || shellScriptPathLen <= 0)) {
+      LOG.error("Illegal values in env for shell script path" + ", path=" + shellScriptPath + ", len="+ shellScriptPathLen+ ", timestamp="+ shellScriptPathTimestamp);
+      throw new IllegalArgumentException("Illegal values in env for shell script path");
+    }
+  }
+  containerMemory=Integer.parseInt(cliParser.getOptionValue("container_memory","10"));
+  numTotalContainers=Integer.parseInt(cliParser.getOptionValue("num_containers","1"));
+  requestPriority=Integer.parseInt(cliParser.getOptionValue("priority","0"));
+  return true;
+}

@@ -1,0 +1,38 @@
+{
+  writeSegment(cluster,qjm,1,100,true);
+  failLoggerAtTxn(spies.get(1),101);
+  failLoggerAtTxn(spies.get(2),101);
+  try {
+    writeSegment(cluster,qjm,101,1,true);
+    fail("Should have failed");
+  }
+ catch (  QuorumException qe) {
+    GenericTestUtils.assertExceptionContains("mock failure",qe);
+  }
+ finally {
+    qjm.close();
+  }
+  qjm=createSpyingQJM();
+  spies=qjm.getLoggerSetForTests().getLoggersForTests();
+  futureThrows(new IOException("mock failure")).when(spies.get(1)).acceptRecovery(Mockito.<SegmentStateProto>any(),Mockito.<URL>any());
+  futureThrows(new IOException("mock failure")).when(spies.get(2)).acceptRecovery(Mockito.<SegmentStateProto>any(),Mockito.<URL>any());
+  try {
+    qjm.recoverUnfinalizedSegments();
+    fail("Should have failed to recover");
+  }
+ catch (  QuorumException qe) {
+    GenericTestUtils.assertExceptionContains("mock failure",qe);
+  }
+ finally {
+    qjm.close();
+  }
+  GenericTestUtils.assertGlobEquals(cluster.getCurrentDir(0,JID),"edits_.*",NNStorage.getFinalizedEditsFileName(1,100),NNStorage.getInProgressEditsFileName(101));
+  GenericTestUtils.assertGlobEquals(cluster.getCurrentDir(1,JID),"edits_.*",NNStorage.getFinalizedEditsFileName(1,100),NNStorage.getInProgressEditsFileName(101) + ".empty");
+  GenericTestUtils.assertGlobEquals(cluster.getCurrentDir(2,JID),"edits_.*",NNStorage.getFinalizedEditsFileName(1,100),NNStorage.getInProgressEditsFileName(101) + ".empty");
+  File paxos0=new File(cluster.getCurrentDir(0,JID),"paxos");
+  File paxos1=new File(cluster.getCurrentDir(1,JID),"paxos");
+  File paxos2=new File(cluster.getCurrentDir(2,JID),"paxos");
+  GenericTestUtils.assertGlobEquals(paxos0,".*","101");
+  GenericTestUtils.assertGlobEquals(paxos1,".*");
+  GenericTestUtils.assertGlobEquals(paxos2,".*");
+}

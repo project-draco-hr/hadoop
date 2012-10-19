@@ -5,31 +5,12 @@
       LOG.info("Skipping jas " + jas + " since it's disabled");
       continue;
     }
-    jas.getManager().selectInputStreams(allStreams,fromTxId,inProgressOk);
-  }
-  LinkedList<EditLogInputStream> acc=new LinkedList<EditLogInputStream>();
-  EditLogInputStream elis;
-  while ((elis=allStreams.poll()) != null) {
-    if (acc.isEmpty()) {
-      acc.add(elis);
+    try {
+      jas.getManager().selectInputStreams(allStreams,fromTxId,inProgressOk);
     }
- else {
-      long accFirstTxId=acc.get(0).getFirstTxId();
-      if (accFirstTxId == elis.getFirstTxId()) {
-        acc.add(elis);
-      }
- else       if (accFirstTxId < elis.getFirstTxId()) {
-        streams.add(new RedundantEditLogInputStream(acc,fromTxId));
-        acc.clear();
-        acc.add(elis);
-      }
- else       if (accFirstTxId > elis.getFirstTxId()) {
-        throw new RuntimeException("sorted set invariants violated!  " + "Got stream with first txid " + elis.getFirstTxId() + ", but the last firstTxId was "+ accFirstTxId);
-      }
+ catch (    IOException ioe) {
+      LOG.warn("Unable to determine input streams from " + jas.getManager() + ". Skipping.",ioe);
     }
   }
-  if (!acc.isEmpty()) {
-    streams.add(new RedundantEditLogInputStream(acc,fromTxId));
-    acc.clear();
-  }
+  chainAndMakeRedundantStreams(streams,allStreams,fromTxId,inProgressOk);
 }

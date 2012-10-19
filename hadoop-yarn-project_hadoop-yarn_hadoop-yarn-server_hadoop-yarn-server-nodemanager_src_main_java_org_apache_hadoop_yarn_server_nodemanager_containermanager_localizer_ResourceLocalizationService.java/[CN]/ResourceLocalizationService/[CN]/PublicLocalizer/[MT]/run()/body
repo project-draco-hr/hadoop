@@ -1,0 +1,49 @@
+{
+  try {
+    while (!Thread.currentThread().isInterrupted()) {
+      try {
+        Future<Path> completed=queue.take();
+        LocalizerResourceRequestEvent assoc=pending.remove(completed);
+        try {
+          Path local=completed.get();
+          if (null == assoc) {
+            LOG.error("Localized unkonwn resource to " + completed);
+            return;
+          }
+          LocalResourceRequest key=assoc.getResource().getRequest();
+          assoc.getResource().handle(new ResourceLocalizedEvent(key,local,FileUtil.getDU(new File(local.toUri()))));
+synchronized (attempts) {
+            attempts.remove(key);
+          }
+        }
+ catch (        ExecutionException e) {
+          LOG.info("Failed to download rsrc " + assoc.getResource(),e.getCause());
+          dispatcher.getEventHandler().handle(new ContainerResourceFailedEvent(assoc.getContext().getContainerId(),assoc.getResource().getRequest(),e.getCause()));
+synchronized (attempts) {
+            LocalResourceRequest req=assoc.getResource().getRequest();
+            List<LocalizerResourceRequestEvent> reqs=attempts.get(req);
+            if (null == reqs) {
+              LOG.error("Missing pending list for " + req);
+              return;
+            }
+            if (reqs.isEmpty()) {
+              attempts.remove(req);
+            }
+          }
+        }
+catch (        CancellationException e) {
+        }
+      }
+ catch (      InterruptedException e) {
+        return;
+      }
+    }
+  }
+ catch (  Throwable t) {
+    LOG.fatal("Error: Shutting down",t);
+  }
+ finally {
+    LOG.info("Public cache exiting");
+    threadPool.shutdownNow();
+  }
+}

@@ -7,14 +7,14 @@
     }
  catch (    InvalidToken e) {
       LOG.warn("Invalid access token in request from " + remoteAddress + " for OP_REPLACE_BLOCK for block "+ block+ " : "+ e.getLocalizedMessage());
-      sendResponse(s,ERROR_ACCESS_TOKEN,"Invalid access token",dnConf.socketWriteTimeout);
+      sendResponse(ERROR_ACCESS_TOKEN,"Invalid access token");
       return;
     }
   }
   if (!dataXceiverServer.balanceThrottler.acquire()) {
     String msg="Not able to receive block " + block.getBlockId() + " from "+ s.getRemoteSocketAddress()+ " because threads quota is exceeded.";
     LOG.warn(msg);
-    sendResponse(s,ERROR,msg,dnConf.socketWriteTimeout);
+    sendResponse(ERROR,msg);
     return;
   }
   Socket proxySock=null;
@@ -24,14 +24,24 @@
   BlockReceiver blockReceiver=null;
   DataInputStream proxyReply=null;
   try {
-    InetSocketAddress proxyAddr=NetUtils.createSocketAddr(proxySource.getXferAddr());
+    final String dnAddr=proxySource.getXferAddr(connectToDnViaHostname);
+    if (LOG.isDebugEnabled()) {
+      LOG.debug("Connecting to datanode " + dnAddr);
+    }
+    InetSocketAddress proxyAddr=NetUtils.createSocketAddr(dnAddr);
     proxySock=datanode.newSocket();
     NetUtils.connect(proxySock,proxyAddr,dnConf.socketTimeout);
     proxySock.setSoTimeout(dnConf.socketTimeout);
-    OutputStream baseStream=NetUtils.getOutputStream(proxySock,dnConf.socketWriteTimeout);
-    proxyOut=new DataOutputStream(new BufferedOutputStream(baseStream,HdfsConstants.SMALL_BUFFER_SIZE));
+    OutputStream unbufProxyOut=NetUtils.getOutputStream(proxySock,dnConf.socketWriteTimeout);
+    InputStream unbufProxyIn=NetUtils.getInputStream(proxySock);
+    if (dnConf.encryptDataTransfer) {
+      IOStreamPair encryptedStreams=DataTransferEncryptor.getEncryptedStreams(unbufProxyOut,unbufProxyIn,datanode.blockPoolTokenSecretManager.generateDataEncryptionKey(block.getBlockPoolId()));
+      unbufProxyOut=encryptedStreams.out;
+      unbufProxyIn=encryptedStreams.in;
+    }
+    proxyOut=new DataOutputStream(new BufferedOutputStream(unbufProxyOut,HdfsConstants.SMALL_BUFFER_SIZE));
+    proxyReply=new DataInputStream(new BufferedInputStream(unbufProxyIn,HdfsConstants.IO_FILE_BUFFER_SIZE));
     new Sender(proxyOut).copyBlock(block,blockToken);
-    proxyReply=new DataInputStream(new BufferedInputStream(NetUtils.getInputStream(proxySock),HdfsConstants.IO_FILE_BUFFER_SIZE));
     BlockOpResponseProto copyResponse=BlockOpResponseProto.parseFrom(HdfsProtoUtil.vintPrefixed(proxyReply));
     if (copyResponse.getStatus() != SUCCESS) {
       if (copyResponse.getStatus() == ERROR_ACCESS_TOKEN) {
@@ -62,7 +72,7 @@
     }
     dataXceiverServer.balanceThrottler.release();
     try {
-      sendResponse(s,opStatus,errMsg,dnConf.socketWriteTimeout);
+      sendResponse(opStatus,errMsg);
     }
  catch (    IOException ioe) {
       LOG.warn("Error writing reply back to " + s.getRemoteSocketAddress());

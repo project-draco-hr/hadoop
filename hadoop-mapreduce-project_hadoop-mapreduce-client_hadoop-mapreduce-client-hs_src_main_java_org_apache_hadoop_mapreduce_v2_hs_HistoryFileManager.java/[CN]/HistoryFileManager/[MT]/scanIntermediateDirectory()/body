@@ -2,21 +2,14 @@
   List<FileStatus> userDirList=JobHistoryUtils.localGlobber(intermediateDoneDirFc,intermediateDoneDirPath,"");
   for (  FileStatus userDir : userDirList) {
     String name=userDir.getPath().getName();
-    long newModificationTime=userDir.getModificationTime();
-    boolean shouldScan=false;
-synchronized (userDirModificationTimeMap) {
-      if (!userDirModificationTimeMap.containsKey(name) || newModificationTime > userDirModificationTimeMap.get(name)) {
-        shouldScan=true;
-        userDirModificationTimeMap.put(name,newModificationTime);
+    UserLogDir dir=userDirModificationTimeMap.get(name);
+    if (dir == null) {
+      dir=new UserLogDir();
+      UserLogDir old=userDirModificationTimeMap.putIfAbsent(name,dir);
+      if (old != null) {
+        dir=old;
       }
     }
-    if (shouldScan) {
-      try {
-        scanIntermediateDirectory(userDir.getPath());
-      }
- catch (      IOException e) {
-        LOG.error("Error while trying to scan the directory " + userDir.getPath(),e);
-      }
-    }
+    dir.scanIfNeeded(userDir);
   }
 }

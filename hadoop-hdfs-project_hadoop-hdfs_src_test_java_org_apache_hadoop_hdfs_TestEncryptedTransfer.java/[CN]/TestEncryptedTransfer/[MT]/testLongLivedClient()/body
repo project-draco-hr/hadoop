@@ -1,0 +1,33 @@
+{
+  MiniDFSCluster cluster=null;
+  try {
+    Configuration conf=new Configuration();
+    cluster=new MiniDFSCluster.Builder(conf).build();
+    FileSystem fs=getFileSystem(conf);
+    writeTestDataToFile(fs);
+    assertEquals(PLAIN_TEXT,DFSTestUtil.readFile(fs,TEST_PATH));
+    FileChecksum checksum=fs.getFileChecksum(TEST_PATH);
+    fs.close();
+    cluster.shutdown();
+    setEncryptionConfigKeys(conf);
+    cluster=new MiniDFSCluster.Builder(conf).manageDataDfsDirs(false).manageNameDfsDirs(false).format(false).startupOption(StartupOption.REGULAR).build();
+    BlockTokenSecretManager btsm=cluster.getNamesystem().getBlockManager().getBlockTokenSecretManager();
+    btsm.setKeyUpdateIntervalForTesting(2 * 1000);
+    btsm.setTokenLifetime(2 * 1000);
+    btsm.clearAllKeysForTesting();
+    fs=getFileSystem(conf);
+    assertEquals(PLAIN_TEXT,DFSTestUtil.readFile(fs,TEST_PATH));
+    assertEquals(checksum,fs.getFileChecksum(TEST_PATH));
+    LOG.info("Sleeping so that encryption keys expire...");
+    Thread.sleep(15 * 1000);
+    LOG.info("Done sleeping.");
+    assertEquals(PLAIN_TEXT,DFSTestUtil.readFile(fs,TEST_PATH));
+    assertEquals(checksum,fs.getFileChecksum(TEST_PATH));
+    fs.close();
+  }
+  finally {
+    if (cluster != null) {
+      cluster.shutdown();
+    }
+  }
+}

@@ -3,15 +3,16 @@
   String namenodeId=HAUtil.getNameNodeId(conf,nsId);
   initializeGenericKeys(conf,nsId,namenodeId);
   checkAllowFormat(conf);
+  if (UserGroupInformation.isSecurityEnabled()) {
+    InetSocketAddress socAddr=getAddress(conf);
+    SecurityUtil.login(conf,DFS_NAMENODE_KEYTAB_FILE_KEY,DFS_NAMENODE_USER_NAME_KEY,socAddr.getHostName());
+  }
   Collection<URI> nameDirsToFormat=FSNamesystem.getNamespaceDirs(conf);
   List<URI> sharedDirs=FSNamesystem.getSharedEditsDirs(conf);
   List<URI> dirsToPrompt=new ArrayList<URI>();
   dirsToPrompt.addAll(nameDirsToFormat);
   dirsToPrompt.addAll(sharedDirs);
   List<URI> editDirsToFormat=FSNamesystem.getNamespaceEditsDirs(conf);
-  if (!confirmFormat(dirsToPrompt,force,isInteractive)) {
-    return true;
-  }
   String clusterId=StartupOption.FORMAT.getClusterId();
   if (clusterId == null || clusterId.equals("")) {
     clusterId=NNStorage.newClusterID();
@@ -19,6 +20,10 @@
   System.out.println("Formatting using clusterid: " + clusterId);
   FSImage fsImage=new FSImage(conf,nameDirsToFormat,editDirsToFormat);
   FSNamesystem fsn=new FSNamesystem(conf,fsImage);
+  fsImage.getEditLog().initJournalsForWrite();
+  if (!fsImage.confirmFormat(force,isInteractive)) {
+    return true;
+  }
   fsImage.format(fsn,clusterId);
   return false;
 }

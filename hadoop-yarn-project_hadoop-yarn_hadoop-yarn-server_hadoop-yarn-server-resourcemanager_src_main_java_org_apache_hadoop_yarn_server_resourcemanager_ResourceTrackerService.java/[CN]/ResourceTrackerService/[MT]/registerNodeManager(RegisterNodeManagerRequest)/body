@@ -1,0 +1,34 @@
+{
+  NodeId nodeId=request.getNodeId();
+  String host=nodeId.getHost();
+  int cmPort=nodeId.getPort();
+  int httpPort=request.getHttpPort();
+  Resource capability=request.getResource();
+  RegisterNodeManagerResponse response=recordFactory.newRecordInstance(RegisterNodeManagerResponse.class);
+  RegistrationResponse regResponse=recordFactory.newRecordInstance(RegistrationResponse.class);
+  if (!this.nodesListManager.isValidNode(host)) {
+    LOG.info("Disallowed NodeManager from  " + host + ", Sending SHUTDOWN signal to the NodeManager.");
+    regResponse.setNodeAction(NodeAction.SHUTDOWN);
+    response.setRegistrationResponse(regResponse);
+    return response;
+  }
+  if (isSecurityEnabled()) {
+    MasterKey nextMasterKeyForNode=this.containerTokenSecretManager.getCurrentKey();
+    regResponse.setMasterKey(nextMasterKeyForNode);
+  }
+  RMNode rmNode=new RMNodeImpl(nodeId,rmContext,host,cmPort,httpPort,resolve(host),capability);
+  RMNode oldNode=this.rmContext.getRMNodes().putIfAbsent(nodeId,rmNode);
+  if (oldNode == null) {
+    this.rmContext.getDispatcher().getEventHandler().handle(new RMNodeEvent(nodeId,RMNodeEventType.STARTED));
+  }
+ else {
+    LOG.info("Reconnect from the node at: " + host);
+    this.nmLivelinessMonitor.unregister(nodeId);
+    this.rmContext.getDispatcher().getEventHandler().handle(new RMNodeReconnectEvent(nodeId,rmNode));
+  }
+  this.nmLivelinessMonitor.register(nodeId);
+  LOG.info("NodeManager from node " + host + "(cmPort: "+ cmPort+ " httpPort: "+ httpPort+ ") "+ "registered with capability: "+ capability.getMemory()+ ", assigned nodeId "+ nodeId);
+  regResponse.setNodeAction(NodeAction.NORMAL);
+  response.setRegistrationResponse(regResponse);
+  return response;
+}

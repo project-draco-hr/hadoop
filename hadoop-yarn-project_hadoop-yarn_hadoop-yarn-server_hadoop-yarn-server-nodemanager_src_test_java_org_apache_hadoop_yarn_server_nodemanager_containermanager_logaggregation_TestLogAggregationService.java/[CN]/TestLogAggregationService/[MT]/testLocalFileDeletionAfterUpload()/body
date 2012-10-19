@@ -1,0 +1,38 @@
+{
+  this.delSrvc=new DeletionService(createContainerExecutor());
+  this.delSrvc.init(conf);
+  this.conf.set(YarnConfiguration.NM_LOG_DIRS,localLogDir.getAbsolutePath());
+  this.conf.set(YarnConfiguration.NM_REMOTE_APP_LOG_DIR,this.remoteRootLogDir.getAbsolutePath());
+  DrainDispatcher dispatcher=createDispatcher();
+  EventHandler<ApplicationEvent> appEventHandler=mock(EventHandler.class);
+  dispatcher.register(ApplicationEventType.class,appEventHandler);
+  LogAggregationService logAggregationService=spy(new LogAggregationService(dispatcher,this.context,this.delSrvc,super.dirsHandler));
+  logAggregationService.init(this.conf);
+  logAggregationService.start();
+  ApplicationId application1=BuilderUtils.newApplicationId(1234,1);
+  File app1LogDir=new File(localLogDir,ConverterUtils.toString(application1));
+  app1LogDir.mkdir();
+  logAggregationService.handle(new LogHandlerAppStartedEvent(application1,this.user,null,ContainerLogsRetentionPolicy.ALL_CONTAINERS,this.acls));
+  ApplicationAttemptId appAttemptId=BuilderUtils.newApplicationAttemptId(application1,1);
+  ContainerId container11=BuilderUtils.newContainerId(appAttemptId,1);
+  writeContainerLogs(app1LogDir,container11);
+  logAggregationService.handle(new LogHandlerContainerFinishedEvent(container11,0));
+  logAggregationService.handle(new LogHandlerAppFinishedEvent(application1));
+  logAggregationService.stop();
+  assertEquals(0,logAggregationService.getNumAggregators());
+  verify(logAggregationService).closeFileSystems(any(UserGroupInformation.class));
+  delSrvc.stop();
+  String containerIdStr=ConverterUtils.toString(container11);
+  File containerLogDir=new File(app1LogDir,containerIdStr);
+  for (  String fileType : new String[]{"stdout","stderr","syslog"}) {
+    File f=new File(containerLogDir,fileType);
+    Assert.assertFalse("check " + f,f.exists());
+  }
+  Assert.assertFalse(app1LogDir.exists());
+  Path logFilePath=logAggregationService.getRemoteNodeLogFileForApp(application1,this.user);
+  Assert.assertTrue("Log file [" + logFilePath + "] not found",new File(logFilePath.toUri().getPath()).exists());
+  dispatcher.await();
+  ApplicationEvent expectedEvents[]=new ApplicationEvent[]{new ApplicationEvent(appAttemptId.getApplicationId(),ApplicationEventType.APPLICATION_LOG_HANDLING_INITED),new ApplicationEvent(appAttemptId.getApplicationId(),ApplicationEventType.APPLICATION_LOG_HANDLING_FINISHED)};
+  checkEvents(appEventHandler,expectedEvents,true,"getType","getApplicationID");
+  dispatcher.stop();
+}

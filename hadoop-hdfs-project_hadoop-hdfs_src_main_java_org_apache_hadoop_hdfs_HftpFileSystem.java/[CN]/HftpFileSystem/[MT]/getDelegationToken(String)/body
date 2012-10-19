@@ -2,18 +2,21 @@
   try {
     ugi.reloginFromKeytab();
     return ugi.doAs(new PrivilegedExceptionAction<Token<?>>(){
-      public Token<?> run() throws IOException {
+      @Override public Token<?> run() throws IOException {
         final String nnHttpUrl=nnSecureUri.toString();
         Credentials c;
         try {
           c=DelegationTokenFetcher.getDTfromRemote(nnHttpUrl,renewer);
         }
- catch (        Exception e) {
-          LOG.info("Couldn't get a delegation token from " + nnHttpUrl + " using http.");
-          if (LOG.isDebugEnabled()) {
-            LOG.debug("error was ",e);
+ catch (        IOException e) {
+          if (e.getCause() instanceof ConnectException) {
+            LOG.warn("Couldn't connect to " + nnHttpUrl + ", assuming security is disabled");
+            return null;
           }
-          return null;
+          if (LOG.isDebugEnabled()) {
+            LOG.debug("Exception getting delegation token",e);
+          }
+          throw e;
         }
         for (        Token<? extends TokenIdentifier> t : c.getAllTokens()) {
           if (LOG.isDebugEnabled()) {

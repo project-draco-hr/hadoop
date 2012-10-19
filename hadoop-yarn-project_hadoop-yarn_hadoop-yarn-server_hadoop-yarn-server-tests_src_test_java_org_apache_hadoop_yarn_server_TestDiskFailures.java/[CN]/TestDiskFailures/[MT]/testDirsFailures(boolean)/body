@@ -1,0 +1,34 @@
+{
+  String dirType=localORLogDirs ? "local" : "log";
+  String dirsProperty=localORLogDirs ? YarnConfiguration.NM_LOCAL_DIRS : YarnConfiguration.NM_LOG_DIRS;
+  Configuration conf=new Configuration();
+  conf.setLong(YarnConfiguration.NM_DISK_HEALTH_CHECK_INTERVAL_MS,DISK_HEALTH_CHECK_INTERVAL);
+  conf.setFloat(YarnConfiguration.NM_MIN_HEALTHY_DISKS_FRACTION,0.60F);
+  if (yarnCluster != null) {
+    yarnCluster.stop();
+    FileUtil.fullyDelete(localFSDirBase);
+    localFSDirBase.mkdirs();
+  }
+  LOG.info("Starting up YARN cluster");
+  yarnCluster=new MiniYARNCluster(TestDiskFailures.class.getName(),1,numLocalDirs,numLogDirs);
+  yarnCluster.init(conf);
+  yarnCluster.start();
+  NodeManager nm=yarnCluster.getNodeManager(0);
+  LOG.info("Configured nm-" + dirType + "-dirs="+ nm.getConfig().get(dirsProperty));
+  dirsHandler=nm.getNodeHealthChecker().getDiskHandler();
+  List<String> list=localORLogDirs ? dirsHandler.getLocalDirs() : dirsHandler.getLogDirs();
+  String[] dirs=list.toArray(new String[list.size()]);
+  Assert.assertEquals("Number of nm-" + dirType + "-dirs is wrong.",numLocalDirs,dirs.length);
+  String expectedDirs=StringUtils.join(",",list);
+  verifyDisksHealth(localORLogDirs,expectedDirs,true);
+  prepareDirToFail(dirs[2]);
+  expectedDirs=dirs[0] + "," + dirs[1]+ ","+ dirs[3];
+  verifyDisksHealth(localORLogDirs,expectedDirs,true);
+  prepareDirToFail(dirs[0]);
+  expectedDirs=dirs[1] + "," + dirs[3];
+  verifyDisksHealth(localORLogDirs,expectedDirs,false);
+  prepareDirToFail(dirs[1]);
+  prepareDirToFail(dirs[3]);
+  expectedDirs="";
+  verifyDisksHealth(localORLogDirs,expectedDirs,false);
+}

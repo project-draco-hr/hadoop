@@ -8,12 +8,12 @@
   Path indexFileName=lDirAlloc.getLocalPathToRead(base + "/file.out.index",conf);
   Path mapOutputFileName=lDirAlloc.getLocalPathToRead(base + "/file.out",conf);
   LOG.debug("DEBUG1 " + base + " : "+ mapOutputFileName+ " : "+ indexFileName);
-  IndexRecord info=indexCache.getIndexInformation(mapId,reduce,indexFileName,user);
+  final IndexRecord info=indexCache.getIndexInformation(mapId,reduce,indexFileName,user);
   final ShuffleHeader header=new ShuffleHeader(mapId,info.partLength,info.rawLength,reduce);
   final DataOutputBuffer dob=new DataOutputBuffer();
   header.write(dob);
   ch.write(wrappedBuffer(dob.getData(),0,dob.getLength()));
-  File spillfile=new File(mapOutputFileName.toString());
+  final File spillfile=new File(mapOutputFileName.toString());
   RandomAccessFile spill;
   try {
     spill=new RandomAccessFile(spillfile,"r");
@@ -22,14 +22,21 @@
     LOG.info(spillfile + " not found");
     return null;
   }
-  final FileRegion partition=new DefaultFileRegion(spill.getChannel(),info.startOffset,info.partLength);
-  ChannelFuture writeFuture=ch.write(partition);
-  writeFuture.addListener(new ChannelFutureListener(){
-    @Override public void operationComplete(    ChannelFuture future){
-      partition.releaseExternalResources();
+  ChannelFuture writeFuture;
+  if (ch.getPipeline().get(SslHandler.class) == null) {
+    final FadvisedFileRegion partition=new FadvisedFileRegion(spill,info.startOffset,info.partLength,manageOsCache,readaheadLength,readaheadPool,spillfile.getAbsolutePath());
+    writeFuture=ch.write(partition);
+    writeFuture.addListener(new ChannelFutureListener(){
+      @Override public void operationComplete(      ChannelFuture future){
+        partition.releaseExternalResources();
+      }
     }
-  }
 );
+  }
+ else {
+    final FadvisedChunkedFile chunk=new FadvisedChunkedFile(spill,info.startOffset,info.partLength,sslFileBufferSize,manageOsCache,readaheadLength,readaheadPool,spillfile.getAbsolutePath());
+    writeFuture=ch.write(chunk);
+  }
   metrics.shuffleConnections.incr();
   metrics.shuffleOutputBytes.incr(info.partLength);
   return writeFuture;

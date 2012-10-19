@@ -1,0 +1,39 @@
+{
+  ContainerId containerId=container.getContainerID();
+  String containerIdStr=ConverterUtils.toString(containerId);
+  LOG.info("Cleaning up container " + containerIdStr);
+  boolean alreadyLaunched=!shouldLaunchContainer.compareAndSet(false,true);
+  if (!alreadyLaunched) {
+    LOG.info("Container " + containerIdStr + " not launched."+ " No cleanup needed to be done");
+    return;
+  }
+  LOG.debug("Marking container " + containerIdStr + " as inactive");
+  exec.deactivateContainer(containerId);
+  if (LOG.isDebugEnabled()) {
+    LOG.debug("Getting pid for container " + containerIdStr + " to kill"+ " from pid file "+ (pidFilePath != null ? pidFilePath.toString() : "null"));
+  }
+  try {
+    String processId=null;
+    if (pidFilePath != null) {
+      processId=getContainerPid(pidFilePath);
+    }
+    if (processId != null) {
+      String user=container.getLaunchContext().getUser();
+      LOG.debug("Sending signal to pid " + processId + " as user "+ user+ " for container "+ containerIdStr);
+      if (sleepDelayBeforeSigKill > 0) {
+        boolean result=exec.signalContainer(user,processId,Signal.TERM);
+        LOG.debug("Sent signal to pid " + processId + " as user "+ user+ " for container "+ containerIdStr+ ", result="+ (result ? "success" : "failed"));
+        new DelayedProcessKiller(user,processId,sleepDelayBeforeSigKill,Signal.KILL,exec).start();
+      }
+    }
+  }
+ catch (  Exception e) {
+    LOG.warn("Got error when trying to cleanup container " + containerIdStr + ", error="+ e.getMessage());
+  }
+ finally {
+    if (pidFilePath != null) {
+      FileContext lfs=FileContext.getLocalFSFileContext();
+      lfs.delete(pidFilePath,false);
+    }
+  }
+}

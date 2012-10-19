@@ -5,9 +5,16 @@
   try {
     sock.connect(NetUtils.createSocketAddr(target.datanode.getXferAddr()),HdfsServerConstants.READ_TIMEOUT);
     sock.setKeepAlive(true);
-    out=new DataOutputStream(new BufferedOutputStream(sock.getOutputStream(),HdfsConstants.IO_FILE_BUFFER_SIZE));
+    OutputStream unbufOut=sock.getOutputStream();
+    InputStream unbufIn=sock.getInputStream();
+    if (nnc.getDataEncryptionKey() != null) {
+      IOStreamPair encryptedStreams=DataTransferEncryptor.getEncryptedStreams(unbufOut,unbufIn,nnc.getDataEncryptionKey());
+      unbufOut=encryptedStreams.out;
+      unbufIn=encryptedStreams.in;
+    }
+    out=new DataOutputStream(new BufferedOutputStream(unbufOut,HdfsConstants.IO_FILE_BUFFER_SIZE));
+    in=new DataInputStream(new BufferedInputStream(unbufIn,HdfsConstants.IO_FILE_BUFFER_SIZE));
     sendRequest(out);
-    in=new DataInputStream(new BufferedInputStream(sock.getInputStream(),HdfsConstants.IO_FILE_BUFFER_SIZE));
     receiveResponse(in);
     bytesMoved.inc(block.getNumBytes());
     LOG.info("Moving block " + block.getBlock().getBlockId() + " from "+ source.getDisplayName()+ " to "+ target.getDisplayName()+ " through "+ proxySource.getDisplayName()+ " is succeeded.");

@@ -1,0 +1,102 @@
+{
+  Configuration conf=new YarnConfiguration();
+  AbstractFileSystem spylfs=spy(FileContext.getLocalFSFileContext().getDefaultFileSystem());
+  final FileContext lfs=FileContext.getFileContext(spylfs,conf);
+  doNothing().when(spylfs).mkdir(isA(Path.class),isA(FsPermission.class),anyBoolean());
+  List<Path> localDirs=new ArrayList<Path>();
+  String[] sDirs=new String[4];
+  for (int i=0; i < 4; ++i) {
+    localDirs.add(lfs.makeQualified(new Path(basedir,i + "")));
+    sDirs[i]=localDirs.get(i).toString();
+  }
+  conf.setStrings(YarnConfiguration.NM_LOCAL_DIRS,sDirs);
+  String logDir=lfs.makeQualified(new Path(basedir,"logdir ")).toString();
+  conf.set(YarnConfiguration.NM_LOG_DIRS,logDir);
+  DrainDispatcher dispatcher=new DrainDispatcher();
+  dispatcher.init(conf);
+  dispatcher.start();
+  EventHandler<ApplicationEvent> applicationBus=mock(EventHandler.class);
+  dispatcher.register(ApplicationEventType.class,applicationBus);
+  EventHandler<ContainerEvent> containerBus=mock(EventHandler.class);
+  dispatcher.register(ContainerEventType.class,containerBus);
+  ContainerExecutor exec=mock(ContainerExecutor.class);
+  LocalDirsHandlerService dirsHandler=new LocalDirsHandlerService();
+  dirsHandler.init(conf);
+  DeletionService delServiceReal=new DeletionService(exec);
+  DeletionService delService=spy(delServiceReal);
+  delService.init(new Configuration());
+  delService.start();
+  ResourceLocalizationService rawService=new ResourceLocalizationService(dispatcher,exec,delService,dirsHandler);
+  ResourceLocalizationService spyService=spy(rawService);
+  doReturn(mockServer).when(spyService).createServer();
+  doReturn(lfs).when(spyService).getLocalFileContext(isA(Configuration.class));
+  try {
+    spyService.init(conf);
+    spyService.start();
+    final Application app=mock(Application.class);
+    final ApplicationId appId=BuilderUtils.newApplicationId(314159265358979L,3);
+    when(app.getUser()).thenReturn("user0");
+    when(app.getAppId()).thenReturn(appId);
+    spyService.handle(new ApplicationLocalizationEvent(LocalizationEventType.INIT_APPLICATION_RESOURCES,app));
+    ArgumentMatcher<ApplicationEvent> matchesAppInit=new ArgumentMatcher<ApplicationEvent>(){
+      @Override public boolean matches(      Object o){
+        ApplicationEvent evt=(ApplicationEvent)o;
+        return evt.getType() == ApplicationEventType.APPLICATION_INITED && appId == evt.getApplicationID();
+      }
+    }
+;
+    dispatcher.await();
+    verify(applicationBus).handle(argThat(matchesAppInit));
+    Random r=new Random();
+    long seed=r.nextLong();
+    System.out.println("SEED: " + seed);
+    r.setSeed(seed);
+    final Container c=getMockContainer(appId,42);
+    FSDataOutputStream out=new FSDataOutputStream(new DataOutputBuffer(),null);
+    doReturn(out).when(spylfs).createInternal(isA(Path.class),isA(EnumSet.class),isA(FsPermission.class),anyInt(),anyShort(),anyLong(),isA(Progressable.class),isA(ChecksumOpt.class),anyBoolean());
+    final LocalResource resource=getPrivateMockedResource(r);
+    final LocalResourceRequest req=new LocalResourceRequest(resource);
+    Map<LocalResourceVisibility,Collection<LocalResourceRequest>> rsrcs=new HashMap<LocalResourceVisibility,Collection<LocalResourceRequest>>();
+    rsrcs.put(LocalResourceVisibility.PRIVATE,Collections.singletonList(req));
+    spyService.handle(new ContainerLocalizationRequestEvent(c,rsrcs));
+    Thread.sleep(1000);
+    dispatcher.await();
+    String appStr=ConverterUtils.toString(appId);
+    String ctnrStr=c.getContainerID().toString();
+    ArgumentCaptor<Path> tokenPathCaptor=ArgumentCaptor.forClass(Path.class);
+    verify(exec).startLocalizer(tokenPathCaptor.capture(),isA(InetSocketAddress.class),eq("user0"),eq(appStr),eq(ctnrStr),isA(List.class),isA(List.class));
+    Path localizationTokenPath=tokenPathCaptor.getValue();
+    LocalResourceStatus rsrcStat=mock(LocalResourceStatus.class);
+    LocalizerStatus stat=mock(LocalizerStatus.class);
+    when(stat.getLocalizerId()).thenReturn(ctnrStr);
+    when(rsrcStat.getResource()).thenReturn(resource);
+    when(rsrcStat.getLocalSize()).thenReturn(4344L);
+    URL locPath=getPath("/cache/private/blah");
+    when(rsrcStat.getLocalPath()).thenReturn(locPath);
+    when(rsrcStat.getStatus()).thenReturn(ResourceStatusType.FETCH_SUCCESS);
+    when(stat.getResources()).thenReturn(Collections.<LocalResourceStatus>emptyList()).thenReturn(Collections.singletonList(rsrcStat)).thenReturn(Collections.<LocalResourceStatus>emptyList());
+    LocalizerHeartbeatResponse response=spyService.heartbeat(stat);
+    assertEquals(LocalizerAction.LIVE,response.getLocalizerAction());
+    assertEquals(req,new LocalResourceRequest(response.getLocalResource(0)));
+    response=spyService.heartbeat(stat);
+    assertEquals(LocalizerAction.LIVE,response.getLocalizerAction());
+    assertEquals(0,response.getAllResources().size());
+    response=spyService.heartbeat(stat);
+    assertEquals(LocalizerAction.DIE,response.getLocalizerAction());
+    ArgumentMatcher<ContainerEvent> matchesContainerLoc=new ArgumentMatcher<ContainerEvent>(){
+      @Override public boolean matches(      Object o){
+        ContainerEvent evt=(ContainerEvent)o;
+        return evt.getType() == ContainerEventType.RESOURCE_LOCALIZED && c.getContainerID() == evt.getContainerID();
+      }
+    }
+;
+    dispatcher.await();
+    verify(containerBus).handle(argThat(matchesContainerLoc));
+    verify(delService).delete((String)isNull(),eq(localizationTokenPath));
+  }
+  finally {
+    spyService.stop();
+    dispatcher.stop();
+    delService.stop();
+  }
+}

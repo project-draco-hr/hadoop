@@ -1,0 +1,48 @@
+{
+  NodeStatus remoteNodeStatus=request.getNodeStatus();
+  NodeId nodeId=remoteNodeStatus.getNodeId();
+  RMNode rmNode=this.rmContext.getRMNodes().get(nodeId);
+  if (rmNode == null) {
+    LOG.info("Node not found rebooting " + remoteNodeStatus.getNodeId());
+    return reboot;
+  }
+  this.nmLivelinessMonitor.receivedPing(nodeId);
+  if (!this.nodesListManager.isValidNode(rmNode.getHostName())) {
+    LOG.info("Disallowed NodeManager nodeId: " + nodeId + " hostname: "+ rmNode.getNodeAddress());
+    this.rmContext.getDispatcher().getEventHandler().handle(new RMNodeEvent(nodeId,RMNodeEventType.DECOMMISSION));
+    return shutDown;
+  }
+  NodeHeartbeatResponse nodeHeartBeatResponse=recordFactory.newRecordInstance(NodeHeartbeatResponse.class);
+  HeartbeatResponse lastHeartbeatResponse=rmNode.getLastHeartBeatResponse();
+  if (remoteNodeStatus.getResponseId() + 1 == lastHeartbeatResponse.getResponseId()) {
+    LOG.info("Received duplicate heartbeat from node " + rmNode.getNodeAddress());
+    nodeHeartBeatResponse.setHeartbeatResponse(lastHeartbeatResponse);
+    return nodeHeartBeatResponse;
+  }
+ else   if (remoteNodeStatus.getResponseId() + 1 < lastHeartbeatResponse.getResponseId()) {
+    LOG.info("Too far behind rm response id:" + lastHeartbeatResponse.getResponseId() + " nm response id:"+ remoteNodeStatus.getResponseId());
+    this.rmContext.getDispatcher().getEventHandler().handle(new RMNodeEvent(nodeId,RMNodeEventType.REBOOTING));
+    return reboot;
+  }
+  HeartbeatResponse latestResponse=recordFactory.newRecordInstance(HeartbeatResponse.class);
+  latestResponse.setResponseId(lastHeartbeatResponse.getResponseId() + 1);
+  latestResponse.addAllContainersToCleanup(rmNode.getContainersToCleanUp());
+  latestResponse.addAllApplicationsToCleanup(rmNode.getAppsToCleanup());
+  latestResponse.setNodeAction(NodeAction.NORMAL);
+  if (isSecurityEnabled()) {
+    boolean shouldSendMasterKey=false;
+    MasterKey nextMasterKeyForNode=this.containerTokenSecretManager.getNextKey();
+    if (nextMasterKeyForNode != null) {
+      MasterKey nodeKnownMasterKey=request.getLastKnownMasterKey();
+      if (nodeKnownMasterKey.getKeyId() != nextMasterKeyForNode.getKeyId()) {
+        shouldSendMasterKey=true;
+      }
+    }
+    if (shouldSendMasterKey) {
+      latestResponse.setMasterKey(nextMasterKeyForNode);
+    }
+  }
+  this.rmContext.getDispatcher().getEventHandler().handle(new RMNodeStatusEvent(nodeId,remoteNodeStatus.getNodeHealthStatus(),remoteNodeStatus.getContainersStatuses(),remoteNodeStatus.getKeepAliveApplications(),latestResponse));
+  nodeHeartBeatResponse.setHeartbeatResponse(latestResponse);
+  return nodeHeartBeatResponse;
+}

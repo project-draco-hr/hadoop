@@ -1,0 +1,30 @@
+{
+  checkFormatted();
+  checkRequest(reqInfo);
+  boolean needsValidation=true;
+  if (startTxId == curSegmentTxId) {
+    if (curSegment != null) {
+      curSegment.close();
+      curSegment=null;
+      curSegmentTxId=HdfsConstants.INVALID_TXID;
+    }
+    checkSync(nextTxId == endTxId + 1,"Trying to finalize in-progress log segment %s to end at " + "txid %s but only written up to txid %s",startTxId,endTxId,nextTxId - 1);
+    needsValidation=false;
+  }
+  FileJournalManager.EditLogFile elf=fjm.getLogFile(startTxId);
+  if (elf == null) {
+    throw new JournalOutOfSyncException("No log file to finalize at " + "transaction ID " + startTxId);
+  }
+  if (elf.isInProgress()) {
+    if (needsValidation) {
+      LOG.info("Validating log segment " + elf.getFile() + " about to be "+ "finalized");
+      elf.validateLog();
+      checkSync(elf.getLastTxId() == endTxId,"Trying to finalize in-progress log segment %s to end at " + "txid %s but log %s on disk only contains up to txid %s",startTxId,endTxId,elf.getFile(),elf.getLastTxId());
+    }
+    fjm.finalizeLogSegment(startTxId,endTxId);
+  }
+ else {
+    Preconditions.checkArgument(endTxId == elf.getLastTxId(),"Trying to re-finalize already finalized log " + elf + " with different endTxId "+ endTxId);
+  }
+  purgePaxosDecision(elf.getFirstTxId());
+}

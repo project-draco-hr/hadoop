@@ -1,0 +1,48 @@
+{
+  ContainerLaunchContext launchContext=request.getContainerLaunchContext();
+  ContainerId containerID=launchContext.getContainerId();
+  String containerIDStr=containerID.toString();
+  UserGroupInformation remoteUgi=getRemoteUgi(containerIDStr);
+  authorizeRequest(containerIDStr,launchContext,remoteUgi);
+  LOG.info("Start request for " + containerIDStr + " by user "+ launchContext.getUser());
+  ByteBuffer tokens=launchContext.getContainerTokens();
+  Credentials credentials=new Credentials();
+  if (tokens != null) {
+    DataInputByteBuffer buf=new DataInputByteBuffer();
+    tokens.rewind();
+    buf.reset(tokens);
+    try {
+      credentials.readTokenStorageStream(buf);
+      if (LOG.isDebugEnabled()) {
+        for (        Token<? extends TokenIdentifier> tk : credentials.getAllTokens()) {
+          LOG.debug(tk.getService() + " = " + tk.toString());
+        }
+      }
+    }
+ catch (    IOException e) {
+      throw RPCUtil.getRemoteException(e);
+    }
+  }
+  Container container=new ContainerImpl(getConfig(),this.dispatcher,launchContext,credentials,metrics);
+  ApplicationId applicationID=containerID.getApplicationAttemptId().getApplicationId();
+  if (context.getContainers().putIfAbsent(containerID,container) != null) {
+    NMAuditLogger.logFailure(launchContext.getUser(),AuditConstants.START_CONTAINER,"ContainerManagerImpl","Container already running on this node!",applicationID,containerID);
+    throw RPCUtil.getRemoteException("Container " + containerIDStr + " already is running on this node!!");
+  }
+  Application application=new ApplicationImpl(dispatcher,this.aclsManager,launchContext.getUser(),applicationID,credentials,context);
+  if (null == context.getApplications().putIfAbsent(applicationID,application)) {
+    LOG.info("Creating a new application reference for app " + applicationID);
+    dispatcher.getEventHandler().handle(new ApplicationInitEvent(applicationID,container.getLaunchContext().getApplicationACLs()));
+  }
+  dispatcher.getEventHandler().handle(new ApplicationContainerInitEvent(container));
+  if (UserGroupInformation.isSecurityEnabled()) {
+    ContainerTokenIdentifier tokenId=selectContainerTokenIdentifier(remoteUgi);
+    this.context.getContainerTokenSecretManager().startContainerSuccessful(tokenId);
+  }
+  NMAuditLogger.logSuccess(launchContext.getUser(),AuditConstants.START_CONTAINER,"ContainerManageImpl",applicationID,containerID);
+  StartContainerResponse response=recordFactory.newRecordInstance(StartContainerResponse.class);
+  response.addAllServiceResponse(auxiliaryServices.getMeta());
+  metrics.launchedContainer();
+  metrics.allocateContainer(launchContext.getResource());
+  return response;
+}

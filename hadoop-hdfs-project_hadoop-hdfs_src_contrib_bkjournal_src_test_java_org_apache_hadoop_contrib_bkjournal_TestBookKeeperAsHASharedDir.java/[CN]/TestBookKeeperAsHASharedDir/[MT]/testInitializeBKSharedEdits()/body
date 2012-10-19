@@ -1,0 +1,29 @@
+{
+  MiniDFSCluster cluster=null;
+  try {
+    Configuration conf=new Configuration();
+    HAUtil.setAllowStandbyReads(conf,true);
+    conf.setInt(DFSConfigKeys.DFS_HA_TAILEDITS_PERIOD_KEY,1);
+    MiniDFSNNTopology topology=MiniDFSNNTopology.simpleHATopology();
+    cluster=new MiniDFSCluster.Builder(conf).nnTopology(topology).numDataNodes(0).build();
+    cluster.waitActive();
+    cluster.shutdownNameNodes();
+    File shareddir=new File(cluster.getSharedEditsDir(0,1));
+    assertTrue("Initial Shared edits dir not fully deleted",FileUtil.fullyDelete(shareddir));
+    assertCanNotStartNamenode(cluster,0);
+    assertCanNotStartNamenode(cluster,1);
+    Configuration nn1Conf=cluster.getConfiguration(0);
+    Configuration nn2Conf=cluster.getConfiguration(1);
+    nn1Conf.set(DFSConfigKeys.DFS_NAMENODE_SHARED_EDITS_DIR_KEY,BKJMUtil.createJournalURI("/initializeSharedEdits").toString());
+    nn2Conf.set(DFSConfigKeys.DFS_NAMENODE_SHARED_EDITS_DIR_KEY,BKJMUtil.createJournalURI("/initializeSharedEdits").toString());
+    BKJMUtil.addJournalManagerDefinition(nn1Conf);
+    BKJMUtil.addJournalManagerDefinition(nn2Conf);
+    assertFalse(NameNode.initializeSharedEdits(nn1Conf));
+    assertCanStartHANameNodes(cluster,conf,"/testBKJMInitialize");
+  }
+  finally {
+    if (cluster != null) {
+      cluster.shutdown();
+    }
+  }
+}

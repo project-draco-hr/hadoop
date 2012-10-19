@@ -1,0 +1,45 @@
+{
+  List<VolumeBlockLocationCallable> callables=createVolumeBlockLocationCallables(conf,datanodeBlocks,timeout,connectToDnViaHostname);
+  List<Future<HdfsBlocksMetadata>> futures=new ArrayList<Future<HdfsBlocksMetadata>>();
+  ExecutorService executor=new ScheduledThreadPoolExecutor(poolsize);
+  try {
+    futures=executor.invokeAll(callables,timeout,TimeUnit.SECONDS);
+  }
+ catch (  InterruptedException e) {
+  }
+  executor.shutdown();
+  List<HdfsBlocksMetadata> metadatas=new ArrayList<HdfsBlocksMetadata>();
+  for (int i=0; i < futures.size(); i++) {
+    metadatas.add(null);
+  }
+  for (int i=0; i < futures.size(); i++) {
+    Future<HdfsBlocksMetadata> future=futures.get(i);
+    try {
+      HdfsBlocksMetadata metadata=future.get();
+      metadatas.set(i,metadata);
+    }
+ catch (    ExecutionException e) {
+      VolumeBlockLocationCallable callable=callables.get(i);
+      DatanodeInfo datanode=callable.getDatanodeInfo();
+      Throwable t=e.getCause();
+      if (t instanceof InvalidBlockTokenException) {
+        LOG.warn("Invalid access token when trying to retrieve " + "information from datanode " + datanode.getIpcAddr(false));
+        throw (InvalidBlockTokenException)t;
+      }
+ else       if (t instanceof UnsupportedOperationException) {
+        LOG.info("Datanode " + datanode.getIpcAddr(false) + " does not support"+ " required #getHdfsBlocksMetadata() API");
+        throw (UnsupportedOperationException)t;
+      }
+ else {
+        LOG.info("Failed to connect to datanode " + datanode.getIpcAddr(false));
+      }
+      if (LOG.isDebugEnabled()) {
+        LOG.debug("Could not fetch information from datanode",t);
+      }
+    }
+catch (    InterruptedException e) {
+      LOG.info("Interrupted while fetching HdfsBlocksMetadata");
+    }
+  }
+  return metadatas;
+}

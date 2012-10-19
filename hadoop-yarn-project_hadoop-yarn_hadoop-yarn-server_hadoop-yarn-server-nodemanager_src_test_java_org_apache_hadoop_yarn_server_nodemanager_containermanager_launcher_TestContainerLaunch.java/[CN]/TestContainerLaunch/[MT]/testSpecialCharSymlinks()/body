@@ -1,0 +1,42 @@
+{
+  File shellFile=null;
+  File tempFile=null;
+  String badSymlink="foo@zz%_#*&!-+= bar()";
+  File symLinkFile=null;
+  try {
+    shellFile=new File(tmpDir,"hello.sh");
+    tempFile=new File(tmpDir,"temp.sh");
+    String timeoutCommand="echo \"hello\"";
+    PrintWriter writer=new PrintWriter(new FileOutputStream(shellFile));
+    shellFile.setExecutable(true);
+    writer.println(timeoutCommand);
+    writer.close();
+    Map<Path,List<String>> resources=new HashMap<Path,List<String>>();
+    Path path=new Path(shellFile.getAbsolutePath());
+    resources.put(path,Arrays.asList(badSymlink));
+    FileOutputStream fos=new FileOutputStream(tempFile);
+    Map<String,String> env=new HashMap<String,String>();
+    List<String> commands=new ArrayList<String>();
+    commands.add("/bin/sh ./\\\"" + badSymlink + "\\\"");
+    ContainerLaunch.writeLaunchEnv(fos,env,resources,commands);
+    fos.flush();
+    fos.close();
+    tempFile.setExecutable(true);
+    Shell.ShellCommandExecutor shexc=new Shell.ShellCommandExecutor(new String[]{tempFile.getAbsolutePath()},tmpDir);
+    shexc.execute();
+    assertEquals(shexc.getExitCode(),0);
+    assert(shexc.getOutput().contains("hello"));
+    symLinkFile=new File(tmpDir,badSymlink);
+  }
+  finally {
+    if (shellFile != null && shellFile.exists()) {
+      shellFile.delete();
+    }
+    if (tempFile != null && tempFile.exists()) {
+      tempFile.delete();
+    }
+    if (symLinkFile != null && symLinkFile.exists()) {
+      symLinkFile.delete();
+    }
+  }
+}

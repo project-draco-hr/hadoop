@@ -1,0 +1,96 @@
+{
+  String remoteUser=request().getRemoteUser();
+  UserGroupInformation callerUGI=null;
+  if (remoteUser != null) {
+    callerUGI=UserGroupInformation.createRemoteUser(remoteUser);
+  }
+  if (callerUGI != null && !this.aclsManager.checkAccess(callerUGI,ApplicationAccessType.VIEW_APP,application.getUser(),applicationId)) {
+    html.h1("User [" + remoteUser + "] is not authorized to view the logs for application "+ applicationId);
+    return;
+  }
+  if (!$(CONTAINER_LOG_TYPE).isEmpty()) {
+    File logFile=null;
+    try {
+      URI logPathURI=new URI(this.dirsHandler.getLogPathToRead(ContainerLaunch.getRelativeContainerLogDir(applicationId.toString(),containerId.toString()) + Path.SEPARATOR + $(CONTAINER_LOG_TYPE)).toString());
+      logFile=new File(logPathURI.getPath());
+    }
+ catch (    URISyntaxException e) {
+      html.h1("Cannot find this log on the local disk.");
+      return;
+    }
+catch (    Exception e) {
+      html.h1("Cannot find this log on the local disk.");
+      return;
+    }
+    long start=$("start").isEmpty() ? -4 * 1024 : Long.parseLong($("start"));
+    start=start < 0 ? logFile.length() + start : start;
+    start=start < 0 ? 0 : start;
+    long end=$("end").isEmpty() ? logFile.length() : Long.parseLong($("end"));
+    end=end < 0 ? logFile.length() + end : end;
+    end=end < 0 ? logFile.length() : end;
+    if (start > end) {
+      html.h1("Invalid start and end values. Start: [" + start + "]"+ ", end["+ end+ "]");
+      return;
+    }
+ else {
+      InputStreamReader reader=null;
+      try {
+        long toRead=end - start;
+        if (toRead < logFile.length()) {
+          html.p()._("Showing " + toRead + " bytes. Click ").a(url("containerlogs",$(CONTAINER_ID),$(APP_OWNER),logFile.getName(),"?start=0"),"here")._(" for full log")._();
+        }
+        reader=new FileReader(logFile);
+        int bufferSize=65536;
+        char[] cbuf=new char[bufferSize];
+        long skipped=0;
+        long totalSkipped=0;
+        while (totalSkipped < start) {
+          skipped=reader.skip(start - totalSkipped);
+          totalSkipped+=skipped;
+        }
+        int len=0;
+        int currentToRead=toRead > bufferSize ? bufferSize : (int)toRead;
+        writer().write("<pre>");
+        while ((len=reader.read(cbuf,0,currentToRead)) > 0 && toRead > 0) {
+          writer().write(cbuf,0,len);
+          toRead=toRead - len;
+          currentToRead=toRead > bufferSize ? bufferSize : (int)toRead;
+        }
+        reader.close();
+        writer().write("</pre>");
+      }
+ catch (      IOException e) {
+        html.h1("Exception reading log-file. Log file was likely aggregated. " + StringUtils.stringifyException(e));
+      }
+ finally {
+        if (reader != null) {
+          try {
+            reader.close();
+          }
+ catch (          IOException e) {
+          }
+        }
+      }
+    }
+  }
+ else {
+    List<File> containerLogsDirs=getContainerLogDirs(containerId,dirsHandler);
+    Collections.sort(containerLogsDirs);
+    boolean foundLogFile=false;
+    for (    File containerLogsDir : containerLogsDirs) {
+      File[] logFiles=containerLogsDir.listFiles();
+      if (logFiles != null) {
+        Arrays.sort(logFiles);
+        for (        File logFile : logFiles) {
+          foundLogFile=true;
+          html.p().a(url("containerlogs",$(CONTAINER_ID),$(APP_OWNER),logFile.getName(),"?start=-4096"),logFile.getName() + " : Total file length is " + logFile.length()+ " bytes.")._();
+        }
+      }
+    }
+    if (!foundLogFile) {
+      html.h1("No logs available for container " + containerId.toString());
+      return;
+    }
+  }
+  return;
+}

@@ -1,0 +1,64 @@
+{
+  JobConf conf=new JobConf();
+  conf.setClass("fs.mock.impl",MockFileSystem.class,FileSystem.class);
+  URI mockBase=new URI("mock://test-nn1/");
+  when(mockfs.getUri()).thenReturn(mockBase);
+  Path working=new Path("mock://test-nn1/user/me/");
+  when(mockfs.getWorkingDirectory()).thenReturn(working);
+  when(mockfs.resolvePath(any(Path.class))).thenAnswer(new Answer<Path>(){
+    @Override public Path answer(    InvocationOnMock args) throws Throwable {
+      return (Path)args.getArguments()[0];
+    }
+  }
+);
+  final URI file=new URI("mock://test-nn1/user/me/file.txt#link");
+  final Path filePath=new Path(file);
+  File link=new File("link");
+  when(mockfs.getFileStatus(any(Path.class))).thenAnswer(new Answer<FileStatus>(){
+    @Override public FileStatus answer(    InvocationOnMock args) throws Throwable {
+      Path p=(Path)args.getArguments()[0];
+      if ("file.txt".equals(p.getName())) {
+        return new FileStatus(201,false,1,500,101,101,FsPermission.getDefault(),"me","me",filePath);
+      }
+ else {
+        throw new FileNotFoundException(p + " not supported by mocking");
+      }
+    }
+  }
+);
+  doAnswer(new Answer(){
+    @Override public Object answer(    InvocationOnMock args) throws Throwable {
+      Path src=(Path)args.getArguments()[1];
+      Path dst=(Path)args.getArguments()[2];
+      if ("file.txt".equals(src.getName())) {
+        File f=new File(dst.toUri().getPath());
+        FileWriter writer=new FileWriter(f);
+        try {
+          writer.append("This is a test file\n");
+        }
+  finally {
+          if (writer != null)           writer.close();
+        }
+      }
+ else {
+        throw new FileNotFoundException(src + " not supported by mocking");
+      }
+      return null;
+    }
+  }
+).when(mockfs).copyToLocalFile(anyBoolean(),any(Path.class),any(Path.class));
+  DistributedCache.addCacheFile(file,conf);
+  conf.set(MRJobConfig.CACHE_FILE_TIMESTAMPS,"101");
+  conf.set(MRJobConfig.CACHE_FILES_SIZES,"201");
+  conf.set(MRJobConfig.CACHE_FILE_VISIBILITIES,"false");
+  conf.set(MRConfig.LOCAL_DIR,localDir.getAbsolutePath());
+  LocalDistributedCacheManager manager=new LocalDistributedCacheManager();
+  try {
+    manager.setup(conf);
+    assertTrue(link.exists());
+  }
+  finally {
+    manager.close();
+  }
+  assertFalse(link.exists());
+}

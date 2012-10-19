@@ -1,0 +1,64 @@
+{
+  final ContainerLaunchContext ctxt=container.getLaunchContext();
+  container.metrics.initingContainer();
+  Map<String,ByteBuffer> csd=ctxt.getServiceData();
+  if (csd != null) {
+    for (    Map.Entry<String,ByteBuffer> service : csd.entrySet()) {
+      container.dispatcher.getEventHandler().handle(new AuxServicesEvent(AuxServicesEventType.APPLICATION_INIT,ctxt.getUser(),ctxt.getContainerId().getApplicationAttemptId().getApplicationId(),service.getKey().toString(),service.getValue()));
+    }
+  }
+  Map<String,LocalResource> cntrRsrc=ctxt.getLocalResources();
+  if (!cntrRsrc.isEmpty()) {
+    try {
+      for (      Map.Entry<String,LocalResource> rsrc : cntrRsrc.entrySet()) {
+        try {
+          LocalResourceRequest req=new LocalResourceRequest(rsrc.getValue());
+          List<String> links=container.pendingResources.get(req);
+          if (links == null) {
+            links=new ArrayList<String>();
+            container.pendingResources.put(req,links);
+          }
+          links.add(rsrc.getKey());
+switch (rsrc.getValue().getVisibility()) {
+case PUBLIC:
+            container.publicRsrcs.add(req);
+          break;
+case PRIVATE:
+        container.privateRsrcs.add(req);
+      break;
+case APPLICATION:
+    container.appRsrcs.add(req);
+  break;
+}
+}
+ catch (URISyntaxException e) {
+LOG.info("Got exception parsing " + rsrc.getKey() + " and value "+ rsrc.getValue());
+throw e;
+}
+}
+}
+ catch (URISyntaxException e) {
+LOG.warn("Failed to parse resource-request",e);
+container.cleanup();
+container.metrics.endInitingContainer();
+return ContainerState.LOCALIZATION_FAILED;
+}
+Map<LocalResourceVisibility,Collection<LocalResourceRequest>> req=new HashMap<LocalResourceVisibility,Collection<LocalResourceRequest>>();
+if (!container.publicRsrcs.isEmpty()) {
+req.put(LocalResourceVisibility.PUBLIC,container.publicRsrcs);
+}
+if (!container.privateRsrcs.isEmpty()) {
+req.put(LocalResourceVisibility.PRIVATE,container.privateRsrcs);
+}
+if (!container.appRsrcs.isEmpty()) {
+req.put(LocalResourceVisibility.APPLICATION,container.appRsrcs);
+}
+container.dispatcher.getEventHandler().handle(new ContainerLocalizationRequestEvent(container,req));
+return ContainerState.LOCALIZING;
+}
+ else {
+container.dispatcher.getEventHandler().handle(new ContainersLauncherEvent(container,ContainersLauncherEventType.LAUNCH_CONTAINER));
+container.metrics.endInitingContainer();
+return ContainerState.LOCALIZED;
+}
+}

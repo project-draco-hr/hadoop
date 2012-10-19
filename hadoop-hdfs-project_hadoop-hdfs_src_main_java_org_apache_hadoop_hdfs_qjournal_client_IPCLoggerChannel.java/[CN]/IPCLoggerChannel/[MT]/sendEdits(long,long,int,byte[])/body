@@ -1,0 +1,58 @@
+{
+  try {
+    reserveQueueSpace(data.length);
+  }
+ catch (  LoggerTooFarBehindException e) {
+    return Futures.immediateFailedFuture(e);
+  }
+  final long submitNanos=System.nanoTime();
+  ListenableFuture<Void> ret=null;
+  try {
+    ret=executor.submit(new Callable<Void>(){
+      @Override public Void call() throws IOException {
+        throwIfOutOfSync();
+        long rpcSendTimeNanos=System.nanoTime();
+        try {
+          getProxy().journal(createReqInfo(),segmentTxId,firstTxnId,numTxns,data);
+        }
+ catch (        IOException e) {
+          QuorumJournalManager.LOG.warn("Remote journal " + IPCLoggerChannel.this + " failed to "+ "write txns "+ firstTxnId+ "-"+ (firstTxnId + numTxns - 1)+ ". Will try to write to this JN again after the next "+ "log roll.",e);
+synchronized (IPCLoggerChannel.this) {
+            outOfSync=true;
+          }
+          throw e;
+        }
+ finally {
+          long now=System.nanoTime();
+          long rpcTime=TimeUnit.MICROSECONDS.convert(now - rpcSendTimeNanos,TimeUnit.NANOSECONDS);
+          long endToEndTime=TimeUnit.MICROSECONDS.convert(now - submitNanos,TimeUnit.NANOSECONDS);
+          metrics.addWriteEndToEndLatency(endToEndTime);
+          metrics.addWriteRpcLatency(rpcTime);
+        }
+synchronized (IPCLoggerChannel.this) {
+          highestAckedTxId=firstTxnId + numTxns - 1;
+          lastAckNanos=submitNanos;
+        }
+        return null;
+      }
+    }
+);
+  }
+  finally {
+    if (ret == null) {
+      unreserveQueueSpace(data.length);
+    }
+ else {
+      Futures.addCallback(ret,new FutureCallback<Void>(){
+        @Override public void onFailure(        Throwable t){
+          unreserveQueueSpace(data.length);
+        }
+        @Override public void onSuccess(        Void t){
+          unreserveQueueSpace(data.length);
+        }
+      }
+);
+    }
+  }
+  return ret;
+}

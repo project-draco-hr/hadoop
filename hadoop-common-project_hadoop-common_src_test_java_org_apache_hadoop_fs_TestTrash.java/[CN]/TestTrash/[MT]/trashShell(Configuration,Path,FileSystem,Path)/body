@@ -1,8 +1,8 @@
 {
   FileSystem fs=FileSystem.get(conf);
-  conf.set(FS_TRASH_INTERVAL_KEY,"0");
+  conf.setLong(FS_TRASH_INTERVAL_KEY,0);
   assertFalse(new Trash(conf).isEnabled());
-  conf.set(FS_TRASH_INTERVAL_KEY,"10");
+  conf.setLong(FS_TRASH_INTERVAL_KEY,10);
   assertTrue(new Trash(conf).isEnabled());
   FsShell shell=new FsShell();
   shell.setConf(conf);
@@ -239,6 +239,25 @@
     String output=byteStream.toString();
     System.setOut(stdout);
     System.setErr(stderr);
-    assertTrue("skipTrash wasn't suggested as remedy to failed rm command",output.indexOf(("Consider using -skipTrash option")) != -1);
+    assertTrue("skipTrash wasn't suggested as remedy to failed rm command" + " or we deleted / even though we could not get server defaults",output.indexOf("Consider using -skipTrash option") != -1 || output.indexOf("Failed to determine server trash configuration") != -1);
+  }
+{
+    long trashInterval=conf.getLong(FS_TRASH_INTERVAL_KEY,FS_TRASH_INTERVAL_DEFAULT);
+    long now=Time.now();
+    DateFormat oldCheckpointFormat=new SimpleDateFormat("yyMMddHHmm");
+    Path dirToDelete=new Path(trashRoot.getParent(),oldCheckpointFormat.format(now - (trashInterval * 60 * 1000) - 1));
+    Path dirToKeep=new Path(trashRoot.getParent(),oldCheckpointFormat.format(now));
+    mkdir(trashRootFs,dirToDelete);
+    mkdir(trashRootFs,dirToKeep);
+    int rc=-1;
+    try {
+      rc=shell.run(new String[]{"-expunge"});
+    }
+ catch (    Exception e) {
+      System.err.println("Exception raised from fs expunge " + e.getLocalizedMessage());
+    }
+    assertEquals(0,rc);
+    assertFalse("old checkpoint format not recognized",trashRootFs.exists(dirToDelete));
+    assertTrue("old checkpoint format directory should not be removed",trashRootFs.exists(dirToKeep));
   }
 }

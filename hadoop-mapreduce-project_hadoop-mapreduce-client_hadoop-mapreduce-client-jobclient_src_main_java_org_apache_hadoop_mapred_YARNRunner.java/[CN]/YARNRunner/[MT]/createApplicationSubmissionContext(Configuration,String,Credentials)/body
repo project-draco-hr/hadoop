@@ -7,22 +7,23 @@
   Path jobConfPath=new Path(jobSubmitDir,MRJobConfig.JOB_CONF_FILE);
   URL yarnUrlForJobSubmitDir=ConverterUtils.getYarnUrlFromPath(defaultFileContext.getDefaultFileSystem().resolvePath(defaultFileContext.makeQualified(new Path(jobSubmitDir))));
   LOG.debug("Creating setup context, jobSubmitDir url is " + yarnUrlForJobSubmitDir);
-  localResources.put(MRJobConfig.JOB_CONF_FILE,createApplicationResource(defaultFileContext,jobConfPath));
+  localResources.put(MRJobConfig.JOB_CONF_FILE,createApplicationResource(defaultFileContext,jobConfPath,LocalResourceType.FILE));
   if (jobConf.get(MRJobConfig.JAR) != null) {
-    localResources.put(MRJobConfig.JOB_JAR,createApplicationResource(defaultFileContext,new Path(jobSubmitDir,MRJobConfig.JOB_JAR)));
+    Path jobJarPath=new Path(jobConf.get(MRJobConfig.JAR));
+    LocalResource rc=createApplicationResource(defaultFileContext,jobJarPath,LocalResourceType.PATTERN);
+    String pattern=conf.getPattern(JobContext.JAR_UNPACK_PATTERN,JobConf.UNPACK_JAR_PATTERN_DEFAULT).pattern();
+    rc.setPattern(pattern);
+    localResources.put(MRJobConfig.JOB_JAR,rc);
   }
  else {
     LOG.info("Job jar is not present. " + "Not adding any jar to the list of resources.");
   }
   for (  String s : new String[]{MRJobConfig.JOB_SPLIT,MRJobConfig.JOB_SPLIT_METAINFO,MRJobConfig.APPLICATION_TOKENS_FILE}) {
-    localResources.put(MRJobConfig.JOB_SUBMIT_DIR + "/" + s,createApplicationResource(defaultFileContext,new Path(jobSubmitDir,s)));
+    localResources.put(MRJobConfig.JOB_SUBMIT_DIR + "/" + s,createApplicationResource(defaultFileContext,new Path(jobSubmitDir,s),LocalResourceType.FILE));
   }
-  ByteBuffer securityTokens=null;
-  if (UserGroupInformation.isSecurityEnabled()) {
-    DataOutputBuffer dob=new DataOutputBuffer();
-    ts.writeTokenStorageToStream(dob);
-    securityTokens=ByteBuffer.wrap(dob.getData(),0,dob.getLength());
-  }
+  DataOutputBuffer dob=new DataOutputBuffer();
+  ts.writeTokenStorageToStream(dob);
+  ByteBuffer securityTokens=ByteBuffer.wrap(dob.getData(),0,dob.getLength());
   List<String> vargs=new ArrayList<String>(8);
   vargs.add(Environment.JAVA_HOME.$() + "/bin/java");
   long logSize=TaskLog.getTaskLogLength(new JobConf(conf));

@@ -1,0 +1,52 @@
+{
+  containerManager.start();
+  File dir=new File(tmpDir,"dir");
+  dir.mkdirs();
+  File file=new File(dir,"file");
+  PrintWriter fileWriter=new PrintWriter(file);
+  fileWriter.write("Hello World!");
+  fileWriter.close();
+  ContainerLaunchContext container=recordFactory.newRecordInstance(ContainerLaunchContext.class);
+  ContainerId cId=createContainerId();
+  container.setContainerId(cId);
+  container.setUser(user);
+  ContainerLaunchContext containerLaunchContext=recordFactory.newRecordInstance(ContainerLaunchContext.class);
+  URL resource_alpha=ConverterUtils.getYarnUrlFromPath(localFS.makeQualified(new Path(file.getAbsolutePath())));
+  LocalResource rsrc_alpha=recordFactory.newRecordInstance(LocalResource.class);
+  rsrc_alpha.setResource(resource_alpha);
+  rsrc_alpha.setSize(-1);
+  rsrc_alpha.setVisibility(LocalResourceVisibility.APPLICATION);
+  rsrc_alpha.setType(LocalResourceType.FILE);
+  rsrc_alpha.setTimestamp(file.lastModified());
+  String destinationFile="dest_file";
+  Map<String,LocalResource> localResources=new HashMap<String,LocalResource>();
+  localResources.put(destinationFile,rsrc_alpha);
+  containerLaunchContext.setLocalResources(localResources);
+  containerLaunchContext.setUser(container.getUser());
+  containerLaunchContext.setContainerId(container.getContainerId());
+  containerLaunchContext.setResource(recordFactory.newRecordInstance(Resource.class));
+  StartContainerRequest startRequest=recordFactory.newRecordInstance(StartContainerRequest.class);
+  startRequest.setContainerLaunchContext(containerLaunchContext);
+  containerManager.startContainer(startRequest);
+  BaseContainerManagerTest.waitForContainerState(containerManager,cId,ContainerState.COMPLETE);
+  ApplicationId appId=cId.getApplicationAttemptId().getApplicationId();
+  String appIDStr=ConverterUtils.toString(appId);
+  String containerIDStr=ConverterUtils.toString(cId);
+  File userCacheDir=new File(localDir,ContainerLocalizer.USERCACHE);
+  File userDir=new File(userCacheDir,user);
+  File appCache=new File(userDir,ContainerLocalizer.APPCACHE);
+  File appDir=new File(appCache,appIDStr);
+  File containerDir=new File(appDir,containerIDStr);
+  File targetFile=new File(containerDir,destinationFile);
+  File sysDir=new File(localDir,ResourceLocalizationService.NM_PRIVATE_DIR);
+  File appSysDir=new File(sysDir,appIDStr);
+  File containerSysDir=new File(appSysDir,containerIDStr);
+  for (  File f : new File[]{localDir,sysDir,userCacheDir,appDir,appSysDir,containerDir,containerSysDir}) {
+    Assert.assertTrue(f.getAbsolutePath() + " doesn't exist!!",f.exists());
+    Assert.assertTrue(f.getAbsolutePath() + " is not a directory!!",f.isDirectory());
+  }
+  Assert.assertTrue(targetFile.getAbsolutePath() + " doesn't exist!!",targetFile.exists());
+  BufferedReader reader=new BufferedReader(new FileReader(targetFile));
+  Assert.assertEquals("Hello World!",reader.readLine());
+  Assert.assertEquals(null,reader.readLine());
+}

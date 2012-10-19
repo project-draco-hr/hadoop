@@ -5,9 +5,17 @@
   try {
     sock=createSocketForPipeline(src,2,dfsClient);
     final long writeTimeout=dfsClient.getDatanodeWriteTimeout(2);
-    out=new DataOutputStream(new BufferedOutputStream(NetUtils.getOutputStream(sock,writeTimeout),HdfsConstants.SMALL_BUFFER_SIZE));
+    OutputStream unbufOut=NetUtils.getOutputStream(sock,writeTimeout);
+    InputStream unbufIn=NetUtils.getInputStream(sock);
+    if (dfsClient.shouldEncryptData()) {
+      IOStreamPair encryptedStreams=DataTransferEncryptor.getEncryptedStreams(unbufOut,unbufIn,dfsClient.getDataEncryptionKey());
+      unbufOut=encryptedStreams.out;
+      unbufIn=encryptedStreams.in;
+    }
+    out=new DataOutputStream(new BufferedOutputStream(unbufOut,HdfsConstants.SMALL_BUFFER_SIZE));
+    in=new DataInputStream(unbufIn);
     new Sender(out).transferBlock(block,blockToken,dfsClient.clientName,targets);
-    in=new DataInputStream(NetUtils.getInputStream(sock));
+    out.flush();
     BlockOpResponseProto response=BlockOpResponseProto.parseFrom(HdfsProtoUtil.vintPrefixed(in));
     if (SUCCESS != response.getStatus()) {
       throw new IOException("Failed to add a datanode");

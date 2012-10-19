@@ -1,0 +1,41 @@
+{
+  final Configuration conf=WebHdfsTestUtil.createConf();
+  final MiniDFSCluster cluster=new MiniDFSCluster.Builder(conf).numDataNodes(3).build();
+  try {
+    cluster.waitActive();
+    final FileSystem fs=WebHdfsTestUtil.getWebHdfsFileSystem(conf);
+    final Path dir=new Path("/test/largeFile");
+    Assert.assertTrue(fs.mkdirs(dir));
+    final byte[] data=new byte[1 << 20];
+    RANDOM.nextBytes(data);
+    final byte[] expected=new byte[2 * data.length];
+    System.arraycopy(data,0,expected,0,data.length);
+    System.arraycopy(data,0,expected,data.length,data.length);
+    final Path p=new Path(dir,"file");
+    final Ticker t=new Ticker("WRITE","fileLength=" + fileLength);
+    final FSDataOutputStream out=fs.create(p);
+    try {
+      long remaining=fileLength;
+      for (; remaining > 0; ) {
+        t.tick(fileLength - remaining,"remaining=%d",remaining);
+        final int n=(int)Math.min(remaining,data.length);
+        out.write(data,0,n);
+        remaining-=n;
+      }
+    }
+  finally {
+      out.close();
+    }
+    t.end(fileLength);
+    Assert.assertEquals(fileLength,fs.getFileStatus(p).getLen());
+    final long smallOffset=RANDOM.nextInt(1 << 20) + (1 << 20);
+    final long largeOffset=fileLength - smallOffset;
+    final byte[] buf=new byte[data.length];
+    verifySeek(fs,p,largeOffset,fileLength,buf,expected);
+    verifySeek(fs,p,smallOffset,fileLength,buf,expected);
+    verifyPread(fs,p,largeOffset,fileLength,buf,expected);
+  }
+  finally {
+    cluster.shutdown();
+  }
+}

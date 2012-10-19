@@ -1,0 +1,75 @@
+{
+  containerManager.start();
+  File processStartFile=new File(tmpDir,"pid.txt").getAbsoluteFile();
+  File scriptFile=new File(tmpDir,"testscript.sh");
+  PrintWriter writer=new PrintWriter(new FileOutputStream(scriptFile));
+  writer.println("#!/bin/bash\n\n");
+  writer.println("echo \"Running testscript for delayed kill\"");
+  writer.println("hello=\"Got SIGTERM\"");
+  writer.println("umask 0");
+  writer.println("trap \"echo $hello >> " + processStartFile + "\" SIGTERM");
+  writer.println("echo \"Writing pid to start file\"");
+  writer.println("echo $$ >> " + processStartFile);
+  writer.println("while true; do\nsleep 1s;\ndone");
+  writer.close();
+  scriptFile.setExecutable(true);
+  ContainerLaunchContext containerLaunchContext=recordFactory.newRecordInstance(ContainerLaunchContext.class);
+  ApplicationId appId=recordFactory.newRecordInstance(ApplicationId.class);
+  appId.setClusterTimestamp(1);
+  appId.setId(1);
+  ApplicationAttemptId appAttemptId=recordFactory.newRecordInstance(ApplicationAttemptId.class);
+  appAttemptId.setApplicationId(appId);
+  appAttemptId.setAttemptId(1);
+  ContainerId cId=recordFactory.newRecordInstance(ContainerId.class);
+  cId.setApplicationAttemptId(appAttemptId);
+  containerLaunchContext.setContainerId(cId);
+  containerLaunchContext.setUser(user);
+  URL resource_alpha=ConverterUtils.getYarnUrlFromPath(localFS.makeQualified(new Path(scriptFile.getAbsolutePath())));
+  LocalResource rsrc_alpha=recordFactory.newRecordInstance(LocalResource.class);
+  rsrc_alpha.setResource(resource_alpha);
+  rsrc_alpha.setSize(-1);
+  rsrc_alpha.setVisibility(LocalResourceVisibility.APPLICATION);
+  rsrc_alpha.setType(LocalResourceType.FILE);
+  rsrc_alpha.setTimestamp(scriptFile.lastModified());
+  String destinationFile="dest_file.sh";
+  Map<String,LocalResource> localResources=new HashMap<String,LocalResource>();
+  localResources.put(destinationFile,rsrc_alpha);
+  containerLaunchContext.setLocalResources(localResources);
+  containerLaunchContext.setUser(containerLaunchContext.getUser());
+  List<String> commands=new ArrayList<String>();
+  commands.add(scriptFile.getAbsolutePath());
+  containerLaunchContext.setCommands(commands);
+  containerLaunchContext.setResource(recordFactory.newRecordInstance(Resource.class));
+  containerLaunchContext.getResource().setMemory(1024);
+  StartContainerRequest startRequest=recordFactory.newRecordInstance(StartContainerRequest.class);
+  startRequest.setContainerLaunchContext(containerLaunchContext);
+  containerManager.startContainer(startRequest);
+  int timeoutSecs=0;
+  while (!processStartFile.exists() && timeoutSecs++ < 20) {
+    Thread.sleep(1000);
+    LOG.info("Waiting for process start-file to be created");
+  }
+  Assert.assertTrue("ProcessStartFile doesn't exist!",processStartFile.exists());
+  StopContainerRequest stopRequest=recordFactory.newRecordInstance(StopContainerRequest.class);
+  stopRequest.setContainerId(cId);
+  containerManager.stopContainer(stopRequest);
+  BaseContainerManagerTest.waitForContainerState(containerManager,cId,ContainerState.COMPLETE);
+  GetContainerStatusRequest gcsRequest=recordFactory.newRecordInstance(GetContainerStatusRequest.class);
+  gcsRequest.setContainerId(cId);
+  ContainerStatus containerStatus=containerManager.getContainerStatus(gcsRequest).getStatus();
+  Assert.assertEquals(ExitCode.FORCE_KILLED.getExitCode(),containerStatus.getExitStatus());
+  BufferedReader reader=new BufferedReader(new FileReader(processStartFile));
+  boolean foundSigTermMessage=false;
+  while (true) {
+    String line=reader.readLine();
+    if (line == null) {
+      break;
+    }
+    if (line.contains("SIGTERM")) {
+      foundSigTermMessage=true;
+      break;
+    }
+  }
+  Assert.assertTrue("Did not find sigterm message",foundSigTermMessage);
+  reader.close();
+}

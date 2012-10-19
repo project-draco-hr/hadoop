@@ -2,14 +2,12 @@
   checkpointImage.ensureCurrentDirExists();
   NNStorage dstStorage=checkpointImage.getStorage();
   CheckpointSignature sig=namenode.rollEditLog();
-  if (checkpointImage.getNamespaceID() != 0) {
-    sig.validateStorageInfo(checkpointImage);
-  }
- else {
+  if ((checkpointImage.getNamespaceID() == 0) || (sig.isSameCluster(checkpointImage) && !sig.storageVersionMatches(checkpointImage.getStorage()))) {
     dstStorage.setStorageInfo(sig);
     dstStorage.setClusterID(sig.getClusterID());
     dstStorage.setBlockPoolID(sig.getBlockpoolID());
   }
+  sig.validateStorageInfo(checkpointImage);
   CheckpointFaultInjector.getInstance().afterSecondaryCallsRollEditLog();
   RemoteEditLogManifest manifest=namenode.getEditLogManifest(sig.mostRecentCheckpointTxId + 1);
   boolean loadImage=downloadCheckpointFiles(fsName,checkpointImage,sig,manifest);
@@ -18,6 +16,5 @@
   TransferFsImage.uploadImageFromStorage(fsName,getImageListenAddress(),dstStorage,txid);
   CheckpointFaultInjector.getInstance().afterSecondaryUploadsNewImage();
   LOG.warn("Checkpoint done. New Image Size: " + dstStorage.getFsImageName(txid).length());
-  checkpointImage.purgeOldStorage();
   return loadImage;
 }

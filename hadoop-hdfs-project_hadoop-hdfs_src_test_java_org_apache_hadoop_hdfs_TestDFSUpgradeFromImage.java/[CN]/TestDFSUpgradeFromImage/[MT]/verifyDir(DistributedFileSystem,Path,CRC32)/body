@@ -1,0 +1,26 @@
+{
+  FileStatus[] fileArr=dfs.listStatus(dir);
+  TreeMap<Path,Boolean> fileMap=new TreeMap<Path,Boolean>();
+  for (  FileStatus file : fileArr) {
+    fileMap.put(file.getPath(),Boolean.valueOf(file.isDirectory()));
+  }
+  for (Iterator<Path> it=fileMap.keySet().iterator(); it.hasNext(); ) {
+    Path path=it.next();
+    boolean isDir=fileMap.get(path);
+    String pathName=path.toUri().getPath();
+    overallChecksum.update(pathName.getBytes());
+    if (isDir) {
+      verifyDir(dfs,path,overallChecksum);
+    }
+ else {
+      CRC32 fileCRC=new CRC32();
+      FSInputStream in=dfsOpenFileWithRetries(dfs,pathName);
+      byte[] buf=new byte[4096];
+      int nRead=0;
+      while ((nRead=in.read(buf,0,buf.length)) > 0) {
+        fileCRC.update(buf,0,nRead);
+      }
+      verifyChecksum(pathName,fileCRC.getValue());
+    }
+  }
+}

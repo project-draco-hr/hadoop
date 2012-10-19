@@ -1,0 +1,58 @@
+{
+  String skipTests=session.getExecutionProperties().getProperty("skipTests");
+  if (isTruthy(skipTests)) {
+    System.out.println("skipTests is in effect for test " + testName);
+    return false;
+  }
+  if (!binary.exists()) {
+    if (skipIfMissing) {
+      System.out.println("Skipping missing test " + testName);
+      return false;
+    }
+ else {
+      throw new MojoExecutionException("Test " + binary + " was not built!  (File does not exist.)");
+    }
+  }
+  String testProp=session.getExecutionProperties().getProperty("test");
+  if (testProp != null) {
+    String testPropArr[]=testProp.split(",");
+    boolean found=false;
+    for (    String test : testPropArr) {
+      if (test.equals(testName)) {
+        found=true;
+        break;
+      }
+    }
+    if (!found) {
+      System.out.println("did not find test '" + testName + "' in "+ "list "+ testProp);
+      return false;
+    }
+  }
+  if (preconditions != null) {
+    int idx=1;
+    for (    Map.Entry<String,String> entry : preconditions.entrySet()) {
+      String key=entry.getKey();
+      String val=entry.getValue();
+      if (key == null) {
+        throw new MojoExecutionException("NULL is not a valid " + "precondition type.  " + VALID_PRECONDITION_TYPES_STR);
+      }
+      if (key.equals("and")) {
+        if (!isTruthy(val)) {
+          System.out.println("Skipping test " + testName + " because precondition number "+ idx+ " was not met.");
+          return false;
+        }
+      }
+ else       if (key.equals("andNot")) {
+        if (isTruthy(val)) {
+          System.out.println("Skipping test " + testName + " because negative precondition number "+ idx+ " was met.");
+          return false;
+        }
+      }
+ else {
+        throw new MojoExecutionException(key + " is not a valid " + "precondition type.  "+ VALID_PRECONDITION_TYPES_STR);
+      }
+      idx++;
+    }
+  }
+  return true;
+}

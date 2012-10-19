@@ -2,28 +2,14 @@
   if (target.exists && (target.stat.isDirectory() || !overwrite)) {
     throw new PathExistsException(target.toString());
   }
-  target.fs.setWriteChecksum(writeChecksum);
-  PathData tempFile=null;
+  TargetFileSystem targetFs=new TargetFileSystem(target.fs);
   try {
-    tempFile=target.createTempFile(target + "._COPYING_");
-    FSDataOutputStream out=target.fs.create(tempFile.path,true);
-    IOUtils.copyBytes(in,out,getConf(),true);
-    if (target.exists && !target.fs.delete(target.path,false)) {
-      PathIOException e=new PathIOException(target.toString());
-      e.setOperation("delete");
-      throw e;
-    }
-    if (!tempFile.fs.rename(tempFile.path,target.path)) {
-      PathIOException e=new PathIOException(tempFile.toString());
-      e.setOperation("rename");
-      e.setTargetPath(target.toString());
-      throw e;
-    }
-    tempFile=null;
+    PathData tempTarget=target.suffix("._COPYING_");
+    targetFs.setWriteChecksum(writeChecksum);
+    targetFs.writeStreamToFile(in,tempTarget);
+    targetFs.rename(tempTarget,target);
   }
   finally {
-    if (tempFile != null) {
-      tempFile.fs.delete(tempFile.path,false);
-    }
+    targetFs.close();
   }
 }

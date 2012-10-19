@@ -1,0 +1,30 @@
+{
+  String[] pids={"100","200","300","400"};
+  File procfsRootDir=new File(TEST_ROOT_DIR,"proc");
+  try {
+    setupProcfsRootDir(procfsRootDir);
+    setupPidDirs(procfsRootDir,pids);
+    ProcessStatInfo[] procInfos=new ProcessStatInfo[4];
+    procInfos[0]=new ProcessStatInfo(new String[]{"100","proc1","1","100","100","100000","100","1000","200"});
+    procInfos[1]=new ProcessStatInfo(new String[]{"200","proc2","100","100","100","200000","200","2000","400"});
+    procInfos[2]=new ProcessStatInfo(new String[]{"300","proc3","200","100","100","300000","300","3000","600"});
+    procInfos[3]=new ProcessStatInfo(new String[]{"400","proc4","1","400","400","400000","400","4000","800"});
+    writeStatFiles(procfsRootDir,pids,procInfos);
+    ProcfsBasedProcessTree processTree=createProcessTree("100",procfsRootDir.getAbsolutePath());
+    processTree.getProcessTree();
+    Assert.assertEquals("Cumulative virtual memory does not match",600000L,processTree.getCumulativeVmem());
+    long cumuRssMem=ProcfsBasedProcessTree.PAGE_SIZE > 0 ? 600L * ProcfsBasedProcessTree.PAGE_SIZE : 0L;
+    Assert.assertEquals("Cumulative rss memory does not match",cumuRssMem,processTree.getCumulativeRssmem());
+    long cumuCpuTime=ProcfsBasedProcessTree.JIFFY_LENGTH_IN_MILLIS > 0 ? 7200L * ProcfsBasedProcessTree.JIFFY_LENGTH_IN_MILLIS : 0L;
+    Assert.assertEquals("Cumulative cpu time does not match",cumuCpuTime,processTree.getCumulativeCpuTime());
+    procInfos[0]=new ProcessStatInfo(new String[]{"100","proc1","1","100","100","100000","100","2000","300"});
+    procInfos[1]=new ProcessStatInfo(new String[]{"200","proc2","100","100","100","200000","200","3000","500"});
+    writeStatFiles(procfsRootDir,pids,procInfos);
+    processTree.getProcessTree();
+    cumuCpuTime=ProcfsBasedProcessTree.JIFFY_LENGTH_IN_MILLIS > 0 ? 9400L * ProcfsBasedProcessTree.JIFFY_LENGTH_IN_MILLIS : 0L;
+    Assert.assertEquals("Cumulative cpu time does not match",cumuCpuTime,processTree.getCumulativeCpuTime());
+  }
+  finally {
+    FileUtil.fullyDelete(procfsRootDir);
+  }
+}
