@@ -1,23 +1,25 @@
 {
   int numNewMaps=0;
-  MapTaskCompletionEventsUpdate update=umbilical.getMapCompletionEvents((org.apache.hadoop.mapred.JobID)reduce.getJobID(),fromEventId,MAX_EVENTS_TO_FETCH,(org.apache.hadoop.mapred.TaskAttemptID)reduce);
-  TaskCompletionEvent events[]=update.getMapTaskCompletionEvents();
-  LOG.debug("Got " + events.length + " map completion events from "+ fromEventId);
-  if (update.shouldReset()) {
-    fromEventId=0;
-    scheduler.resetKnownMaps();
-  }
-  fromEventId+=events.length;
-  for (  TaskCompletionEvent event : events) {
+  TaskCompletionEvent events[]=null;
+  do {
+    MapTaskCompletionEventsUpdate update=umbilical.getMapCompletionEvents((org.apache.hadoop.mapred.JobID)reduce.getJobID(),fromEventIdx,maxEventsToFetch,(org.apache.hadoop.mapred.TaskAttemptID)reduce);
+    events=update.getMapTaskCompletionEvents();
+    LOG.debug("Got " + events.length + " map completion events from "+ fromEventIdx);
+    if (update.shouldReset()) {
+      fromEventIdx=0;
+      scheduler.resetKnownMaps();
+    }
+    fromEventIdx+=events.length;
+    for (    TaskCompletionEvent event : events) {
 switch (event.getTaskStatus()) {
 case SUCCEEDED:
-      URI u=getBaseURI(event.getTaskTrackerHttp());
-    scheduler.addKnownMapOutput(u.getHost() + ":" + u.getPort(),u.toString(),event.getTaskAttemptId());
-  numNewMaps++;
-int duration=event.getTaskRunTime();
+        URI u=getBaseURI(event.getTaskTrackerHttp());
+      scheduler.addKnownMapOutput(u.getHost() + ":" + u.getPort(),u.toString(),event.getTaskAttemptId());
+    numNewMaps++;
+  int duration=event.getTaskRunTime();
 if (duration > maxMapRuntime) {
-maxMapRuntime=duration;
-scheduler.informMaxMapRunTime(maxMapRuntime);
+  maxMapRuntime=duration;
+  scheduler.informMaxMapRunTime(maxMapRuntime);
 }
 break;
 case FAILED:
@@ -32,5 +34,7 @@ LOG.info("Ignoring output of failed map TIP: '" + event.getTaskAttemptId() + "'"
 break;
 }
 }
+}
+ while (events.length == maxEventsToFetch);
 return numNewMaps;
 }
