@@ -24,17 +24,24 @@
     new Random().nextBytes(bytes);
     out4.write(bytes);
     out4.write(bytes);
-    out4.hflush();
+    if (isWebHDFS) {
+      out4.close();
+    }
+ else {
+      out4.hflush();
+    }
     assertTrue(HdfsUtils.isHealthy(uri));
     cluster.shutdownNameNode(0);
     assertFalse(HdfsUtils.isHealthy(uri));
     final Thread file4thread=new Thread(new Runnable(){
       @Override public void run(){
         try {
-          out4.write(bytes);
-          out4.write(bytes);
-          out4.write(bytes);
-          out4.close();
+          if (!isWebHDFS) {
+            out4.write(bytes);
+            out4.write(bytes);
+            out4.write(bytes);
+            out4.close();
+          }
         }
  catch (        Exception e) {
           exceptions.add(e);
@@ -105,7 +112,12 @@
       for (int r; (r=in.read()) != -1; count++) {
         Assert.assertEquals(String.format("count=%d",count),bytes[count % bytes.length],(byte)r);
       }
-      Assert.assertEquals(5 * bytes.length,count);
+      if (!isWebHDFS) {
+        Assert.assertEquals(5 * bytes.length,count);
+      }
+ else {
+        Assert.assertEquals(2 * bytes.length,count);
+      }
       in.close();
     }
     assertTrue(HdfsUtils.isHealthy(uri));
