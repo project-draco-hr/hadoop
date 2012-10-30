@@ -1,0 +1,21 @@
+{
+  Configuration conf=new Configuration();
+  conf.set(CommonConfigurationKeys.FS_DEFAULT_NAME_KEY,DUMMY_FS_URI);
+  assertEquals(DUMMY_FS_URI,FileSystem.getDefaultUri(conf).toString());
+  Path localPath=new Path("testFile1");
+  FileSystem lfs=FileSystem.getLocal(conf);
+  FSDataOutputStream dos=lfs.create(localPath);
+  dos.writeChars("Local file for CFIF");
+  dos.close();
+  Job job=Job.getInstance(conf);
+  FileInputFormat.setInputPaths(job,lfs.makeQualified(localPath));
+  DummyInputFormat inFormat=new DummyInputFormat();
+  List<InputSplit> splits=inFormat.getSplits(job);
+  assertTrue(splits.size() > 0);
+  for (  InputSplit s : splits) {
+    CombineFileSplit cfs=(CombineFileSplit)s;
+    for (    Path p : cfs.getPaths()) {
+      assertEquals(p.toUri().getScheme(),"file");
+    }
+  }
+}
