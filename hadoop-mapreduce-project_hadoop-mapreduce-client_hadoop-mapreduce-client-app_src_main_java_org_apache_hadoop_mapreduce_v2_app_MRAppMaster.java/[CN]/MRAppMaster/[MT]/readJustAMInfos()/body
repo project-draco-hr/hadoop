@@ -1,0 +1,31 @@
+{
+  List<AMInfo> amInfos=new ArrayList<AMInfo>();
+  FSDataInputStream inputStream=null;
+  try {
+    inputStream=RecoveryService.getPreviousJobHistoryFileStream(getConfig(),appAttemptID);
+    EventReader jobHistoryEventReader=new EventReader(inputStream);
+    boolean amStartedEventsBegan=false;
+    HistoryEvent event;
+    while ((event=jobHistoryEventReader.getNextEvent()) != null) {
+      if (event.getEventType() == EventType.AM_STARTED) {
+        if (!amStartedEventsBegan) {
+          amStartedEventsBegan=true;
+        }
+        AMStartedEvent amStartedEvent=(AMStartedEvent)event;
+        amInfos.add(MRBuilderUtils.newAMInfo(amStartedEvent.getAppAttemptId(),amStartedEvent.getStartTime(),amStartedEvent.getContainerId(),StringInterner.weakIntern(amStartedEvent.getNodeManagerHost()),amStartedEvent.getNodeManagerPort(),amStartedEvent.getNodeManagerHttpPort()));
+      }
+ else       if (amStartedEventsBegan) {
+        break;
+      }
+    }
+  }
+ catch (  IOException e) {
+    LOG.warn("Could not parse the old history file. " + "Will not have old AMinfos ",e);
+  }
+ finally {
+    if (inputStream != null) {
+      IOUtils.closeQuietly(inputStream);
+    }
+  }
+  return amInfos;
+}
