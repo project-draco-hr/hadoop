@@ -16,48 +16,35 @@
   int[] sizes=new int[10];
   for (int i=0; i < 10; ++i) {
     sizes[i]=rand.nextInt(512) + 512;
-    LocalResourceVisibility vis=LocalResourceVisibility.PUBLIC;
-switch (i % 3) {
-case 1:
-      vis=LocalResourceVisibility.PRIVATE;
-    break;
-case 2:
-  vis=LocalResourceVisibility.APPLICATION;
-break;
-}
-Path p=new Path(basedir,"" + i);
-LocalResource rsrc=createFile(files,p,sizes[i],rand,vis);
-rsrcVis.put(rsrc,vis);
-Path destPath=dirs.getLocalPathForWrite(basedir.toString(),sizes[i],conf);
-FSDownload fsd=new FSDownload(files,UserGroupInformation.getCurrentUser(),conf,destPath,rsrc,new Random(sharedSeed));
-pending.put(rsrc,exec.submit(fsd));
-}
-try {
-for (Map.Entry<LocalResource,Future<Path>> p : pending.entrySet()) {
-Path localized=p.getValue().get();
-assertEquals(sizes[Integer.valueOf(localized.getName())],p.getKey().getSize());
-FileStatus status=files.getFileStatus(localized.getParent());
-FsPermission perm=status.getPermission();
-assertEquals("Cache directory permissions are incorrect",new FsPermission((short)0755),perm);
-status=files.getFileStatus(localized);
-perm=status.getPermission();
-System.out.println("File permission " + perm + " for rsrc vis "+ p.getKey().getVisibility().name());
-assert(rsrcVis.containsKey(p.getKey()));
-switch (rsrcVis.get(p.getKey())) {
-case PUBLIC:
-Assert.assertTrue("Public file should be 555",perm.toShort() == FSDownload.PUBLIC_FILE_PERMS.toShort());
-break;
-case PRIVATE:
-case APPLICATION:
-Assert.assertTrue("Private file should be 500",perm.toShort() == FSDownload.PRIVATE_FILE_PERMS.toShort());
-break;
-}
-}
-}
- catch (ExecutionException e) {
-throw new IOException("Failed exec",e);
-}
+    LocalResourceVisibility vis=LocalResourceVisibility.PRIVATE;
+    if (i % 2 == 1) {
+      vis=LocalResourceVisibility.APPLICATION;
+    }
+    Path p=new Path(basedir,"" + i);
+    LocalResource rsrc=createFile(files,p,sizes[i],rand,vis);
+    rsrcVis.put(rsrc,vis);
+    Path destPath=dirs.getLocalPathForWrite(basedir.toString(),sizes[i],conf);
+    FSDownload fsd=new FSDownload(files,UserGroupInformation.getCurrentUser(),conf,destPath,rsrc,new Random(sharedSeed));
+    pending.put(rsrc,exec.submit(fsd));
+  }
+  try {
+    for (    Map.Entry<LocalResource,Future<Path>> p : pending.entrySet()) {
+      Path localized=p.getValue().get();
+      assertEquals(sizes[Integer.valueOf(localized.getName())],p.getKey().getSize());
+      FileStatus status=files.getFileStatus(localized.getParent());
+      FsPermission perm=status.getPermission();
+      assertEquals("Cache directory permissions are incorrect",new FsPermission((short)0755),perm);
+      status=files.getFileStatus(localized);
+      perm=status.getPermission();
+      System.out.println("File permission " + perm + " for rsrc vis "+ p.getKey().getVisibility().name());
+      assert(rsrcVis.containsKey(p.getKey()));
+      Assert.assertTrue("Private file should be 500",perm.toShort() == FSDownload.PRIVATE_FILE_PERMS.toShort());
+    }
+  }
+ catch (  ExecutionException e) {
+    throw new IOException("Failed exec",e);
+  }
  finally {
-exec.shutdown();
-}
+    exec.shutdown();
+  }
 }

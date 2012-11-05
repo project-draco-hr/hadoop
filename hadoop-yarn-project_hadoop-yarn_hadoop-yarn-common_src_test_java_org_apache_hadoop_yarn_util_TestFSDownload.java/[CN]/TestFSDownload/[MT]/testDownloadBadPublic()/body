@@ -1,5 +1,6 @@
 {
   Configuration conf=new Configuration();
+  conf.set(CommonConfigurationKeys.FS_PERMISSIONS_UMASK_KEY,"077");
   FileContext files=FileContext.getLocalFSFileContext(conf);
   final Path basedir=files.makeQualified(new Path("target",TestFSDownload.class.getSimpleName()));
   files.mkdir(basedir,null,true);
@@ -12,30 +13,22 @@
   Map<LocalResource,Future<Path>> pending=new HashMap<LocalResource,Future<Path>>();
   ExecutorService exec=Executors.newSingleThreadExecutor();
   LocalDirAllocator dirs=new LocalDirAllocator(TestFSDownload.class.getName());
-  for (int i=0; i < 5; ++i) {
-    LocalResourceVisibility vis=LocalResourceVisibility.PRIVATE;
-    if (i % 2 == 1) {
-      vis=LocalResourceVisibility.APPLICATION;
-    }
-    Path p=new Path(basedir,"dir" + i + ".jar");
-    LocalResource rsrc=createJar(files,p,vis);
-    rsrcVis.put(rsrc,vis);
-    Path destPath=dirs.getLocalPathForWrite(basedir.toString(),conf);
-    FSDownload fsd=new FSDownload(files,UserGroupInformation.getCurrentUser(),conf,destPath,rsrc,new Random(sharedSeed));
-    pending.put(rsrc,exec.submit(fsd));
-  }
+  int size=512;
+  LocalResourceVisibility vis=LocalResourceVisibility.PUBLIC;
+  Path path=new Path(basedir,"test-file");
+  LocalResource rsrc=createFile(files,path,size,rand,vis);
+  rsrcVis.put(rsrc,vis);
+  Path destPath=dirs.getLocalPathForWrite(basedir.toString(),size,conf);
+  FSDownload fsd=new FSDownload(files,UserGroupInformation.getCurrentUser(),conf,destPath,rsrc,new Random(sharedSeed));
+  pending.put(rsrc,exec.submit(fsd));
   try {
     for (    Map.Entry<LocalResource,Future<Path>> p : pending.entrySet()) {
-      Path localized=p.getValue().get();
-      FileStatus status=files.getFileStatus(localized);
-      System.out.println("Testing path " + localized);
-      assert(status.isDirectory());
-      assert(rsrcVis.containsKey(p.getKey()));
-      verifyPermsRecursively(localized.getFileSystem(conf),files,localized,rsrcVis.get(p.getKey()));
+      p.getValue().get();
+      Assert.fail("We localized a file that is not public.");
     }
   }
  catch (  ExecutionException e) {
-    throw new IOException("Failed exec",e);
+    Assert.assertTrue(e.getCause() instanceof IOException);
   }
  finally {
     exec.shutdown();
