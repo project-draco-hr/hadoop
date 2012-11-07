@@ -6,9 +6,14 @@
   final UserGroupInformation serverUgi=UserGroupInformation.createRemoteUser(currentUser + "-SERVER");
   serverUgi.setAuthenticationMethod(serverAuth);
   final TestTokenSecretManager sm=new TestTokenSecretManager();
+  boolean useSecretManager=(serverAuth != SIMPLE);
+  if (forceSecretManager != null) {
+    useSecretManager&=forceSecretManager.booleanValue();
+  }
+  final SecretManager<?> serverSm=useSecretManager ? sm : null;
   Server server=serverUgi.doAs(new PrivilegedExceptionAction<Server>(){
     @Override public Server run() throws IOException {
-      Server server=new RPC.Builder(serverConf).setProtocol(TestSaslProtocol.class).setInstance(new TestSaslImpl()).setBindAddress(ADDRESS).setPort(0).setNumHandlers(5).setVerbose(true).setSecretManager((serverAuth != SIMPLE) ? sm : null).build();
+      Server server=new RPC.Builder(serverConf).setProtocol(TestSaslProtocol.class).setInstance(new TestSaslImpl()).setBindAddress(ADDRESS).setPort(0).setNumHandlers(5).setVerbose(true).setSecretManager(serverSm).build();
       server.start();
       return server;
     }
@@ -32,6 +37,10 @@
         TestSaslProtocol proxy=null;
         try {
           proxy=(TestSaslProtocol)RPC.getProxy(TestSaslProtocol.class,TestSaslProtocol.versionID,addr,clientConf);
+          proxy.ping();
+          if (serverAuth != SIMPLE) {
+            assertEquals(SaslRpcServer.SASL_PROPS.get(Sasl.QOP),"auth");
+          }
           assertEquals(clientUgi.getUserName(),proxy.getAuthUser());
           return proxy.getAuthMethod().toString();
         }
