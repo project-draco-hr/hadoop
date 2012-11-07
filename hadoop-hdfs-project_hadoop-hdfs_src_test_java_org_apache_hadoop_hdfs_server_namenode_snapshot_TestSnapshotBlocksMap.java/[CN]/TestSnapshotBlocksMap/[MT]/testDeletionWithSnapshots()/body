@@ -1,0 +1,39 @@
+{
+  Path file0=new Path(sub1,"file0");
+  Path file1=new Path(sub1,"file1");
+  Path subsub1=new Path(sub1,"sub1");
+  Path subfile0=new Path(subsub1,"file0");
+  DFSTestUtil.createFile(hdfs,file0,BLOCKSIZE,REPLICATION,seed);
+  DFSTestUtil.createFile(hdfs,file1,BLOCKSIZE,REPLICATION,seed);
+  DFSTestUtil.createFile(hdfs,subfile0,BLOCKSIZE,REPLICATION,seed);
+  BlockManager bm=fsn.getBlockManager();
+  FSDirectory dir=fsn.getFSDirectory();
+  INodeFile inodeForDeletedFile=INodeFile.valueOf(dir.getINode(subfile0.toString()),subfile0.toString());
+  BlockInfo[] blocksForDeletedFile=inodeForDeletedFile.getBlocks();
+  assertEquals(blocksForDeletedFile.length,1);
+  BlockCollection bcForDeletedFile=bm.getBlockCollection(blocksForDeletedFile[0]);
+  assertNotNull(bcForDeletedFile);
+  hdfs.delete(subsub1,true);
+  bcForDeletedFile=bm.getBlockCollection(blocksForDeletedFile[0]);
+  assertNull(bcForDeletedFile);
+  for (int i=0; i < 2; i++) {
+    SnapshotTestHelper.createSnapshot(hdfs,sub1,"s" + i);
+  }
+  INodeFile inode=INodeFile.valueOf(dir.getINode(file0.toString()),file0.toString());
+  BlockInfo[] blocks=inode.getBlocks();
+  BlockCollection bc=bm.getBlockCollection(blocks[0]);
+  assertTrue(bc == inode);
+  Path snapshotFile0=SnapshotTestHelper.getSnapshotPath(sub1,"s0",file0.getName());
+  INodeFile ssINode0=INodeFile.valueOf(dir.getINode(snapshotFile0.toString()),snapshotFile0.toString());
+  BlockInfo[] ssBlocks=ssINode0.getBlocks();
+  assertEquals(ssBlocks.length,1);
+  hdfs.delete(file0,true);
+  BlockInfo blockInfoAfterDeletion=bm.getStoredBlock(blocks[0]);
+  assertNotNull(blockInfoAfterDeletion);
+  BlockCollection bcAfterDeletion=blockInfoAfterDeletion.getBlockCollection();
+  assertFalse(bcAfterDeletion == inode);
+  Path snapshot1File0=SnapshotTestHelper.getSnapshotPath(sub1,"s1",file0.getName());
+  INodeFile ssINode1=INodeFile.valueOf(dir.getINode(snapshot1File0.toString()),snapshot1File0.toString());
+  assertTrue(bcAfterDeletion == ssINode0 || bcAfterDeletion == ssINode1);
+  assertEquals(bcAfterDeletion.getBlocks().length,1);
+}
