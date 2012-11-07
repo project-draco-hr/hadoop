@@ -15,13 +15,15 @@
   boolean lastPacketInBlock=header.isLastPacketInBlock();
   int len=header.getDataLen();
   boolean syncBlock=header.getSyncBlock();
-  this.syncOnClose|=syncBlock && lastPacketInBlock;
+  if (syncBlock && lastPacketInBlock) {
+    this.syncOnClose=false;
+  }
   long firstByteInBlock=offsetInBlock;
   offsetInBlock+=len;
   if (replicaInfo.getNumBytes() < offsetInBlock) {
     replicaInfo.setNumBytes(offsetInBlock);
   }
-  if (responder != null) {
+  if (responder != null && !syncBlock) {
     ((PacketResponder)responder.getRunnable()).enqueue(seqno,lastPacketInBlock,offsetInBlock);
   }
   if (mirrorOut != null && !mirrorError) {
@@ -39,7 +41,7 @@
     if (LOG.isDebugEnabled()) {
       LOG.debug("Receiving an empty packet or the end of the block " + block);
     }
-    if (syncBlock && !lastPacketInBlock) {
+    if (syncBlock) {
       flushOrSync(true);
     }
   }
@@ -86,7 +88,7 @@
           lastChunkChecksum=Arrays.copyOfRange(checksumBuf.array(),checksumBuf.arrayOffset() + checksumBuf.position() + checksumLen - checksumSize,checksumBuf.arrayOffset() + checksumBuf.position() + checksumLen);
           checksumOut.write(checksumBuf.array(),checksumBuf.arrayOffset() + checksumBuf.position(),checksumLen);
         }
-        flushOrSync(syncBlock && !lastPacketInBlock);
+        flushOrSync(syncBlock);
         replicaInfo.setLastChecksumAndDataLen(offsetInBlock,lastChunkChecksum);
         datanode.metrics.incrBytesWritten(len);
         dropOsCacheBehindWriter(offsetInBlock);
@@ -96,6 +98,9 @@
       datanode.checkDiskError(iex);
       throw iex;
     }
+  }
+  if (responder != null && syncBlock) {
+    ((PacketResponder)responder.getRunnable()).enqueue(seqno,lastPacketInBlock,offsetInBlock);
   }
   if (throttler != null) {
     throttler.throttle(len);
