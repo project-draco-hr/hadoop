@@ -1,0 +1,63 @@
+{
+  final URI uri=BKJMUtil.createJournalURI("/hdfsjournal-concurrentformat");
+  final NamespaceInfo nsi=newNSInfo();
+  BookKeeperJournalManager bkjm=new BookKeeperJournalManager(conf,uri,nsi);
+  bkjm.format(nsi);
+  for (int i=1; i < 100 * 2; i+=2) {
+    bkjm.startLogSegment(i);
+    bkjm.finalizeLogSegment(i,i + 1);
+  }
+  bkjm.close();
+  final int numThreads=40;
+  List<Callable<ThreadStatus>> threads=new ArrayList<Callable<ThreadStatus>>();
+  final CyclicBarrier barrier=new CyclicBarrier(numThreads);
+  for (int i=0; i < numThreads; i++) {
+    threads.add(new Callable<ThreadStatus>(){
+      public ThreadStatus call(){
+        BookKeeperJournalManager bkjm=null;
+        try {
+          bkjm=new BookKeeperJournalManager(conf,uri,nsi);
+          barrier.await();
+          bkjm.format(nsi);
+          return ThreadStatus.COMPLETED;
+        }
+ catch (        IOException ioe) {
+          LOG.info("Exception formatting ",ioe);
+          return ThreadStatus.GOODEXCEPTION;
+        }
+catch (        InterruptedException ie) {
+          LOG.error("Interrupted. Something is broken",ie);
+          Thread.currentThread().interrupt();
+          return ThreadStatus.BADEXCEPTION;
+        }
+catch (        Exception e) {
+          LOG.error("Some other bad exception",e);
+          return ThreadStatus.BADEXCEPTION;
+        }
+ finally {
+          if (bkjm != null) {
+            try {
+              bkjm.close();
+            }
+ catch (            IOException ioe) {
+              LOG.error("Error closing journal manager",ioe);
+            }
+          }
+        }
+      }
+    }
+);
+  }
+  ExecutorService service=Executors.newFixedThreadPool(numThreads);
+  List<Future<ThreadStatus>> statuses=service.invokeAll(threads,60,TimeUnit.SECONDS);
+  int numCompleted=0;
+  for (  Future<ThreadStatus> s : statuses) {
+    assertTrue(s.isDone());
+    assertTrue("Thread threw invalid exception",s.get() == ThreadStatus.COMPLETED || s.get() == ThreadStatus.GOODEXCEPTION);
+    if (s.get() == ThreadStatus.COMPLETED) {
+      numCompleted++;
+    }
+  }
+  LOG.info("Completed " + numCompleted + " formats");
+  assertTrue("No thread managed to complete formatting",numCompleted > 0);
+}
