@@ -1,2 +1,31 @@
 {
+  this.conf=conf;
+  this.nsInfo=nsInfo;
+  String zkConnect=uri.getAuthority().replace(";",",");
+  basePath=uri.getPath();
+  ensembleSize=conf.getInt(BKJM_BOOKKEEPER_ENSEMBLE_SIZE,BKJM_BOOKKEEPER_ENSEMBLE_SIZE_DEFAULT);
+  quorumSize=conf.getInt(BKJM_BOOKKEEPER_QUORUM_SIZE,BKJM_BOOKKEEPER_QUORUM_SIZE_DEFAULT);
+  ledgerPath=basePath + "/ledgers";
+  String maxTxIdPath=basePath + "/maxtxid";
+  String currentInprogressNodePath=basePath + "/CurrentInprogress";
+  versionPath=basePath + "/version";
+  digestpw=conf.get(BKJM_BOOKKEEPER_DIGEST_PW,BKJM_BOOKKEEPER_DIGEST_PW_DEFAULT);
+  try {
+    zkConnectLatch=new CountDownLatch(1);
+    zkc=new ZooKeeper(zkConnect,conf.getInt(BKJM_ZK_SESSION_TIMEOUT,BKJM_ZK_SESSION_TIMEOUT_DEFAULT),new ZkConnectionWatcher());
+    if (!zkConnectLatch.await(6000,TimeUnit.MILLISECONDS)) {
+      throw new IOException("Error connecting to zookeeper");
+    }
+    prepareBookKeeperEnv();
+    bkc=new BookKeeper(new ClientConfiguration(),zkc);
+  }
+ catch (  KeeperException e) {
+    throw new IOException("Error initializing zk",e);
+  }
+catch (  InterruptedException ie) {
+    Thread.currentThread().interrupt();
+    throw new IOException("Interrupted while initializing bk journal manager",ie);
+  }
+  ci=new CurrentInprogress(zkc,currentInprogressNodePath);
+  maxTxId=new MaxTxId(zkc,maxTxIdPath);
 }

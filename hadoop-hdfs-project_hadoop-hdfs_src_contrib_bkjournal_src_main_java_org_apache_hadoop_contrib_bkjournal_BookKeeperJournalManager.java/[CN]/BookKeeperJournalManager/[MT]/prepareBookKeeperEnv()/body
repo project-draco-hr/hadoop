@@ -1,22 +1,24 @@
 {
   final String zkAvailablePath=conf.get(BKJM_ZK_LEDGERS_AVAILABLE_PATH,BKJM_ZK_LEDGERS_AVAILABLE_PATH_DEFAULT);
   final CountDownLatch zkPathLatch=new CountDownLatch(1);
+  final AtomicBoolean success=new AtomicBoolean(false);
   StringCallback callback=new StringCallback(){
     @Override public void processResult(    int rc,    String path,    Object ctx,    String name){
       if (KeeperException.Code.OK.intValue() == rc || KeeperException.Code.NODEEXISTS.intValue() == rc) {
         LOG.info("Successfully created bookie available path : " + zkAvailablePath);
-        zkPathLatch.countDown();
+        success.set(true);
       }
  else {
         KeeperException.Code code=KeeperException.Code.get(rc);
         LOG.error("Error : " + KeeperException.create(code,path).getMessage() + ", failed to create bookie available path : "+ zkAvailablePath);
       }
+      zkPathLatch.countDown();
     }
   }
 ;
   ZkUtils.createFullPathOptimistic(zkc,zkAvailablePath,new byte[0],Ids.OPEN_ACL_UNSAFE,CreateMode.PERSISTENT,callback,null);
   try {
-    if (!zkPathLatch.await(zkc.getSessionTimeout(),TimeUnit.MILLISECONDS)) {
+    if (!zkPathLatch.await(zkc.getSessionTimeout(),TimeUnit.MILLISECONDS) || !success.get()) {
       throw new IOException("Couldn't create bookie available path :" + zkAvailablePath + ", timed out "+ zkc.getSessionTimeout()+ " millis");
     }
   }

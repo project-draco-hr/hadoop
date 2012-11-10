@@ -1,3 +1,36 @@
 {
-  LOG.info("Not formatting " + this + " - BKJM does not currently "+ "support reformatting. If it has not been used before, it will"+ "be formatted automatically upon first use.");
+  try {
+    Stat baseStat=null;
+    Stat ledgerStat=null;
+    if ((baseStat=zkc.exists(basePath,false)) != null) {
+      if ((ledgerStat=zkc.exists(ledgerPath,false)) != null) {
+        for (        EditLogLedgerMetadata l : getLedgerList(true)) {
+          try {
+            bkc.deleteLedger(l.getLedgerId());
+          }
+ catch (          BKException.BKNoSuchLedgerExistsException bke) {
+            LOG.warn("Ledger " + l.getLedgerId() + " does not exist;"+ " Cannot delete.");
+          }
+        }
+      }
+      ZKUtil.deleteRecursive(zkc,basePath);
+    }
+    zkc.create(basePath,new byte[]{'0'},Ids.OPEN_ACL_UNSAFE,CreateMode.PERSISTENT);
+    VersionProto.Builder builder=VersionProto.newBuilder();
+    builder.setNamespaceInfo(PBHelper.convert(ns)).setLayoutVersion(BKJM_LAYOUT_VERSION);
+    byte[] data=TextFormat.printToString(builder.build()).getBytes(UTF_8);
+    zkc.create(versionPath,data,Ids.OPEN_ACL_UNSAFE,CreateMode.PERSISTENT);
+    zkc.create(ledgerPath,new byte[]{'0'},Ids.OPEN_ACL_UNSAFE,CreateMode.PERSISTENT);
+  }
+ catch (  KeeperException ke) {
+    LOG.error("Error accessing zookeeper to format",ke);
+    throw new IOException("Error accessing zookeeper to format",ke);
+  }
+catch (  InterruptedException ie) {
+    Thread.currentThread().interrupt();
+    throw new IOException("Interrupted during format",ie);
+  }
+catch (  BKException bke) {
+    throw new IOException("Error cleaning up ledgers during format",bke);
+  }
 }

@@ -15,29 +15,30 @@
   List<Container> conts=am.allocate(new ArrayList<ResourceRequest>(),new ArrayList<ContainerId>()).getAllocatedContainers();
   int contReceived=conts.size();
   int waitCount=0;
-  while (contReceived < request && waitCount++ < 20) {
+  while (contReceived < request && waitCount++ < 200) {
+    LOG.info("Got " + contReceived + " containers. Waiting to get "+ request);
+    Thread.sleep(100);
     conts=am.allocate(new ArrayList<ResourceRequest>(),new ArrayList<ContainerId>()).getAllocatedContainers();
     contReceived+=conts.size();
-    LOG.info("Got " + contReceived + " containers. Waiting to get "+ request);
-    Thread.sleep(2000);
   }
-  Assert.assertEquals(request,conts.size());
+  Assert.assertEquals(request,contReceived);
   am.unregisterAppAttempt();
   HeartbeatResponse resp=nm1.nodeHeartbeat(attempt.getAppAttemptId(),1,ContainerState.COMPLETE);
   am.waitForState(RMAppAttemptState.FINISHED);
-  int cleanedConts=0;
-  int cleanedApps=0;
-  List<ContainerId> contsToClean=null;
-  List<ApplicationId> apps=null;
+  resp=nm1.nodeHeartbeat(true);
+  List<ContainerId> contsToClean=resp.getContainersToCleanupList();
+  List<ApplicationId> apps=resp.getApplicationsToCleanupList();
+  int cleanedConts=contsToClean.size();
+  int cleanedApps=apps.size();
   waitCount=0;
-  while ((cleanedConts < 2 || cleanedApps < 1) && waitCount++ < 20) {
+  while ((cleanedConts < 2 || cleanedApps < 1) && waitCount++ < 200) {
+    LOG.info("Waiting to get cleanup events.. cleanedConts: " + cleanedConts + " cleanedApps: "+ cleanedApps);
+    Thread.sleep(100);
+    resp=nm1.nodeHeartbeat(true);
     contsToClean=resp.getContainersToCleanupList();
     apps=resp.getApplicationsToCleanupList();
-    LOG.info("Waiting to get cleanup events.. cleanedConts: " + cleanedConts + " cleanedApps: "+ cleanedApps);
     cleanedConts+=contsToClean.size();
     cleanedApps+=apps.size();
-    Thread.sleep(1000);
-    resp=nm1.nodeHeartbeat(true);
   }
   Assert.assertEquals(1,apps.size());
   Assert.assertEquals(app.getApplicationId(),apps.get(0));

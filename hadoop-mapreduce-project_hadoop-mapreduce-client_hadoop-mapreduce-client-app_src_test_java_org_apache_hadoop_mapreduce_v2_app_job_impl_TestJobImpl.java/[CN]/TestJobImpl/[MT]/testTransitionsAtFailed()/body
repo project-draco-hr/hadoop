@@ -1,0 +1,20 @@
+{
+  Configuration conf=new Configuration();
+  JobID jobID=JobID.forName("job_1234567890000_0001");
+  JobId jobId=TypeConverter.toYarn(jobID);
+  OutputCommitter committer=mock(OutputCommitter.class);
+  doThrow(new IOException("forcefail")).when(committer).setupJob(any(JobContext.class));
+  InlineDispatcher dispatcher=new InlineDispatcher();
+  JobImpl job=new StubbedJob(jobId,Records.newRecord(ApplicationAttemptId.class),conf,dispatcher.getEventHandler(),committer,true,null);
+  dispatcher.register(JobEventType.class,job);
+  job.handle(new JobEvent(jobId,JobEventType.JOB_INIT));
+  Assert.assertEquals(JobState.FAILED,job.getState());
+  job.handle(new JobEvent(jobId,JobEventType.JOB_TASK_COMPLETED));
+  Assert.assertEquals(JobState.FAILED,job.getState());
+  job.handle(new JobEvent(jobId,JobEventType.JOB_TASK_ATTEMPT_COMPLETED));
+  Assert.assertEquals(JobState.FAILED,job.getState());
+  job.handle(new JobEvent(jobId,JobEventType.JOB_MAP_TASK_RESCHEDULED));
+  Assert.assertEquals(JobState.FAILED,job.getState());
+  job.handle(new JobEvent(jobId,JobEventType.JOB_TASK_ATTEMPT_FETCH_FAILURE));
+  Assert.assertEquals(JobState.FAILED,job.getState());
+}
