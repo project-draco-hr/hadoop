@@ -35,71 +35,44 @@
       if (authMethod == null) {
         throw new IOException("Unable to read authentication method");
       }
-      boolean useSaslServer=isSecurityEnabled;
-      final boolean clientUsingSasl;
-switch (authMethod) {
-case SIMPLE:
-{
-          clientUsingSasl=false;
-          break;
-        }
-case DIGEST:
-{
-        useSaslServer|=(secretManager != null);
-        clientUsingSasl=true;
-        break;
-      }
-default :
-{
-      clientUsingSasl=true;
-      break;
+      authMethod=initializeAuthContext(authMethod);
+      connectionHeaderBuf=null;
+      connectionHeaderRead=true;
+      continue;
     }
-}
-if (useSaslServer) {
-  saslServer=createSaslServer(authMethod);
-}
- else if (clientUsingSasl) {
-  doSaslReply(SaslStatus.SUCCESS,new IntWritable(SaslRpcServer.SWITCH_TO_SIMPLE_AUTH),null,null);
-  authMethod=AuthMethod.SIMPLE;
-  skipInitialSaslHandshake=true;
-}
-connectionHeaderBuf=null;
-connectionHeaderRead=true;
-continue;
-}
-if (data == null) {
-dataLengthBuffer.flip();
-dataLength=dataLengthBuffer.getInt();
-if ((dataLength == Client.PING_CALL_ID) && (!useWrap)) {
-  dataLengthBuffer.clear();
-  return 0;
-}
-if (dataLength < 0) {
-  LOG.warn("Unexpected data length " + dataLength + "!! from "+ getHostAddress());
-}
-data=ByteBuffer.allocate(dataLength);
-}
-count=channelRead(channel,data);
-if (data.remaining() == 0) {
-dataLengthBuffer.clear();
-data.flip();
-if (skipInitialSaslHandshake) {
-  data=null;
-  skipInitialSaslHandshake=false;
-  continue;
-}
-boolean isHeaderRead=connectionContextRead;
-if (saslServer != null) {
-  saslReadAndProcess(data.array());
-}
+    if (data == null) {
+      dataLengthBuffer.flip();
+      dataLength=dataLengthBuffer.getInt();
+      if ((dataLength == Client.PING_CALL_ID) && (!useWrap)) {
+        dataLengthBuffer.clear();
+        return 0;
+      }
+      if (dataLength < 0) {
+        LOG.warn("Unexpected data length " + dataLength + "!! from "+ getHostAddress());
+      }
+      data=ByteBuffer.allocate(dataLength);
+    }
+    count=channelRead(channel,data);
+    if (data.remaining() == 0) {
+      dataLengthBuffer.clear();
+      data.flip();
+      if (skipInitialSaslHandshake) {
+        data=null;
+        skipInitialSaslHandshake=false;
+        continue;
+      }
+      boolean isHeaderRead=connectionContextRead;
+      if (saslServer != null) {
+        saslReadAndProcess(data.array());
+      }
  else {
-  processOneRpc(data.array());
-}
-data=null;
-if (!isHeaderRead) {
-  continue;
-}
-}
-return count;
-}
+        processOneRpc(data.array());
+      }
+      data=null;
+      if (!isHeaderRead) {
+        continue;
+      }
+    }
+    return count;
+  }
 }
