@@ -1,26 +1,26 @@
 {
-  task.failedAttempts++;
   TaskTAttemptEvent castEvent=(TaskTAttemptEvent)event;
-  if (castEvent.getTaskAttemptID().equals(task.commitAttempt)) {
+  TaskAttemptId taskAttemptId=castEvent.getTaskAttemptID();
+  task.failedAttempts.add(taskAttemptId);
+  if (taskAttemptId.equals(task.commitAttempt)) {
     task.commitAttempt=null;
   }
-  TaskAttempt attempt=task.attempts.get(castEvent.getTaskAttemptID());
+  TaskAttempt attempt=task.attempts.get(taskAttemptId);
   if (attempt.getAssignedContainerMgrAddress() != null) {
     task.eventHandler.handle(new ContainerFailedEvent(attempt.getID(),attempt.getAssignedContainerMgrAddress()));
   }
-  task.finishedAttempts++;
-  if (task.failedAttempts < task.maxAttempts) {
-    task.handleTaskAttemptCompletion(((TaskTAttemptEvent)event).getTaskAttemptID(),TaskAttemptCompletionEventStatus.FAILED);
-    if (--task.numberUncompletedAttempts == 0 && task.successfulAttempt == null) {
+  task.finishedAttempts.add(taskAttemptId);
+  if (task.failedAttempts.size() < task.maxAttempts) {
+    task.handleTaskAttemptCompletion(taskAttemptId,TaskAttemptCompletionEventStatus.FAILED);
+    task.inProgressAttempts.remove(taskAttemptId);
+    if (task.inProgressAttempts.size() == 0 && task.successfulAttempt == null) {
       task.addAndScheduleAttempt();
     }
   }
  else {
-    task.handleTaskAttemptCompletion(((TaskTAttemptEvent)event).getTaskAttemptID(),TaskAttemptCompletionEventStatus.TIPFAILED);
-    TaskTAttemptEvent ev=(TaskTAttemptEvent)event;
-    TaskAttemptId taId=ev.getTaskAttemptID();
+    task.handleTaskAttemptCompletion(taskAttemptId,TaskAttemptCompletionEventStatus.TIPFAILED);
     if (task.historyTaskStartGenerated) {
-      TaskFailedEvent taskFailedEvent=createTaskFailedEvent(task,attempt.getDiagnostics(),TaskStateInternal.FAILED,taId);
+      TaskFailedEvent taskFailedEvent=createTaskFailedEvent(task,attempt.getDiagnostics(),TaskStateInternal.FAILED,taskAttemptId);
       task.eventHandler.handle(new JobHistoryEvent(task.taskId.getJobId(),taskFailedEvent));
     }
  else {
