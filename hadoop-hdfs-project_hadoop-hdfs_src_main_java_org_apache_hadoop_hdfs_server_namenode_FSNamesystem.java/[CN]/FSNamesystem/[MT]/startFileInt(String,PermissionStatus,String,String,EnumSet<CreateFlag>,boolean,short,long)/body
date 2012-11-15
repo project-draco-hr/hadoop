@@ -1,13 +1,20 @@
 {
+  boolean skipSync=false;
   writeLock();
   try {
     checkOperation(OperationCategory.WRITE);
     startFileInternal(src,permissions,holder,clientMachine,flag,createParent,replication,blockSize);
   }
-  finally {
-    writeUnlock();
+ catch (  StandbyException se) {
+    skipSync=true;
+    throw se;
   }
-  getEditLog().logSync();
+ finally {
+    writeUnlock();
+    if (!skipSync) {
+      getEditLog().logSync();
+    }
+  }
   if (auditLog.isInfoEnabled() && isExternalInvocation()) {
     final HdfsFileStatus stat=dir.getFileInfo(src,false);
     logAuditEvent(UserGroupInformation.getCurrentUser(),getRemoteIp(),"create",src,null,stat);

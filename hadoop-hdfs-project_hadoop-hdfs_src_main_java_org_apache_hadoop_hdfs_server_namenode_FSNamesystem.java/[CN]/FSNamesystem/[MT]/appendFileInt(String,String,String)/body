@@ -1,4 +1,5 @@
 {
+  boolean skipSync=false;
   if (!supportAppends) {
     throw new UnsupportedOperationException("Append is not enabled on this NameNode. Use the " + DFS_SUPPORT_APPEND_KEY + " configuration option to enable it.");
   }
@@ -8,10 +9,16 @@
     checkOperation(OperationCategory.WRITE);
     lb=startFileInternal(src,null,holder,clientMachine,EnumSet.of(CreateFlag.APPEND),false,blockManager.maxReplication,0);
   }
-  finally {
-    writeUnlock();
+ catch (  StandbyException se) {
+    skipSync=true;
+    throw se;
   }
-  getEditLog().logSync();
+ finally {
+    writeUnlock();
+    if (!skipSync) {
+      getEditLog().logSync();
+    }
+  }
   if (lb != null) {
     if (NameNode.stateChangeLog.isDebugEnabled()) {
       NameNode.stateChangeLog.debug("DIR* NameSystem.appendFile: file " + src + " for "+ holder+ " at "+ clientMachine+ " block "+ lb.getBlock()+ " block size "+ lb.getBlock().getNumBytes());
