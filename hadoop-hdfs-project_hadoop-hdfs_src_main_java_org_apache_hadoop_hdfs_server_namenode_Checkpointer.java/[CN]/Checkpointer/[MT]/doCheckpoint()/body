@@ -21,22 +21,26 @@ sig.validateStorageInfo(bnImage);
 long lastApplied=bnImage.getLastAppliedTxId();
 LOG.debug("Doing checkpoint. Last applied: " + lastApplied);
 RemoteEditLogManifest manifest=getRemoteNamenodeProxy().getEditLogManifest(bnImage.getLastAppliedTxId() + 1);
+boolean needReloadImage=false;
 if (!manifest.getLogs().isEmpty()) {
 RemoteEditLog firstRemoteLog=manifest.getLogs().get(0);
 if (firstRemoteLog.getStartTxId() > lastApplied + 1) {
 LOG.info("Unable to roll forward using only logs. Downloading " + "image with txid " + sig.mostRecentCheckpointTxId);
 MD5Hash downloadedHash=TransferFsImage.downloadImageToStorage(backupNode.nnHttpAddress,sig.mostRecentCheckpointTxId,bnStorage,true);
 bnImage.saveDigestAndRenameCheckpointImage(sig.mostRecentCheckpointTxId,downloadedHash);
-LOG.info("Loading image with txid " + sig.mostRecentCheckpointTxId);
-File file=bnStorage.findImageFile(sig.mostRecentCheckpointTxId);
-bnImage.reloadFromImageFile(file,backupNode.getNamesystem());
+lastApplied=sig.mostRecentCheckpointTxId;
+needReloadImage=true;
 }
-lastApplied=bnImage.getLastAppliedTxId();
 if (firstRemoteLog.getStartTxId() > lastApplied + 1) {
 throw new IOException("No logs to roll forward from " + lastApplied);
 }
 for (RemoteEditLog log : manifest.getLogs()) {
 TransferFsImage.downloadEditsToStorage(backupNode.nnHttpAddress,log,bnStorage);
+}
+if (needReloadImage) {
+LOG.info("Loading image with txid " + sig.mostRecentCheckpointTxId);
+File file=bnStorage.findImageFile(sig.mostRecentCheckpointTxId);
+bnImage.reloadFromImageFile(file,backupNode.getNamesystem());
 }
 rollForwardByApplyingLogs(manifest,bnImage,backupNode.getNamesystem());
 }
@@ -44,7 +48,9 @@ long txid=bnImage.getLastAppliedTxId();
 backupNode.namesystem.writeLock();
 try {
 backupNode.namesystem.dir.setReady();
+if (backupNode.namesystem.getBlocksTotal() > 0) {
 backupNode.namesystem.setBlockTotal();
+}
 bnImage.saveFSImageInAllDirs(backupNode.getNamesystem(),txid);
 bnStorage.writeAll();
 }
