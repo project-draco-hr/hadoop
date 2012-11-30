@@ -14,7 +14,16 @@
     for (int i=0; i < SECTIONS; i++) {
       System.out.println("Writing " + (tenth * i) + " to "+ (tenth * (i + 1))+ " section to file "+ fileName);
       stm.write(fileContent,tenth * i,tenth);
-      ((DFSOutputStream)stm.getWrappedStream()).hflush();
+      if (isSync) {
+        ((DFSOutputStream)stm.getWrappedStream()).hsync(syncFlags);
+      }
+ else {
+        ((DFSOutputStream)stm.getWrappedStream()).hflush();
+      }
+      if (isSync && syncFlags.contains(SyncFlag.UPDATE_LENGTH)) {
+        long currentFileLength=fileSystem.getFileStatus(path).getLen();
+        assertEquals("File size doesn't match for hsync/hflush with updating the length",tenth * (i + 1),currentFileLength);
+      }
       byte[] toRead=new byte[tenth];
       byte[] expected=new byte[tenth];
       System.arraycopy(fileContent,tenth * i,expected,0,tenth);
@@ -32,10 +41,7 @@
     assertEquals("File size doesn't match ",AppendTestUtil.FILE_SIZE,fileSystem.getFileStatus(path).getLen());
     AppendTestUtil.checkFullFile(fileSystem,path,fileContent.length,fileContent,"hflush()");
   }
- catch (  Exception e) {
-    e.printStackTrace();
-  }
- finally {
+  finally {
     fileSystem.close();
     cluster.shutdown();
   }
