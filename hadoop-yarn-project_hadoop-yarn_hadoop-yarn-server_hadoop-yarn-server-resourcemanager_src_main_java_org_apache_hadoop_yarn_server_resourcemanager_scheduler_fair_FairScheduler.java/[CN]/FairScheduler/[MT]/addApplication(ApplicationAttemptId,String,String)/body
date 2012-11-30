@@ -1,6 +1,9 @@
 {
-  FSQueue queue=queueMgr.getQueue(queueName);
-  FSSchedulerApp schedulerApp=new FSSchedulerApp(applicationAttemptId,user,queue.getQueueSchedulable(),new ActiveUsersManager(getRootQueueMetrics()),rmContext,null);
+  FSLeafQueue queue=queueMgr.getLeafQueue(queueName);
+  if (queue == null) {
+    queue=queueMgr.getLeafQueue(YarnConfiguration.DEFAULT_QUEUE_NAME);
+  }
+  FSSchedulerApp schedulerApp=new FSSchedulerApp(applicationAttemptId,user,queue,new ActiveUsersManager(getRootQueueMetrics()),rmContext);
   UserGroupInformation userUgi;
   try {
     userUgi=UserGroupInformation.getCurrentUser();
@@ -9,13 +12,13 @@
     LOG.info("Failed to get current user information");
     return;
   }
-  List<QueueUserACLInfo> info=queue.getQueueSchedulable().getQueueUserAclInfo(userUgi);
+  List<QueueUserACLInfo> info=queue.getQueueUserAclInfo(userUgi);
   if (!info.get(0).getUserAcls().contains(QueueACL.SUBMIT_APPLICATIONS)) {
     LOG.info("User " + userUgi.getUserName() + " cannot submit"+ " applications to queue "+ queue.getName());
     return;
   }
   queue.addApp(schedulerApp);
-  queue.getQueueSchedulable().getMetrics().submitApp(user,applicationAttemptId.getAttemptId());
+  queue.getMetrics().submitApp(user,applicationAttemptId.getAttemptId());
   rootMetrics.submitApp(user,applicationAttemptId.getAttemptId());
   applications.put(applicationAttemptId,schedulerApp);
   LOG.info("Application Submission: " + applicationAttemptId + ", user: "+ user+ ", currently active: "+ applications.size());
