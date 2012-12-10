@@ -1,0 +1,50 @@
+{
+  final Configuration conf=new Configuration();
+  Server server=RPC.getServer(TestProtocol.class,new TestImpl(),ADDRESS,0,5,true,conf,null);
+  server.start();
+  int numConcurrentRPC=200;
+  InetSocketAddress addr=NetUtils.getConnectAddress(server);
+  final CyclicBarrier barrier=new CyclicBarrier(numConcurrentRPC);
+  final CountDownLatch latch=new CountDownLatch(numConcurrentRPC);
+  final AtomicBoolean leaderRunning=new AtomicBoolean(true);
+  final AtomicReference<Throwable> error=new AtomicReference<Throwable>();
+  Thread leaderThread=null;
+  for (int i=0; i < numConcurrentRPC; i++) {
+    final int num=i;
+    final TestProtocol proxy=(TestProtocol)RPC.getProxy(TestProtocol.class,TestProtocol.versionID,addr,conf);
+    Thread rpcThread=new Thread(new Runnable(){
+      @Override public void run(){
+        try {
+          barrier.await();
+          while (num == 0 || leaderRunning.get()) {
+            proxy.slowPing(false);
+          }
+          proxy.slowPing(false);
+        }
+ catch (        Exception e) {
+          if (num == 0) {
+            leaderRunning.set(false);
+          }
+ else {
+            error.set(e);
+          }
+          LOG.error(e);
+        }
+ finally {
+          latch.countDown();
+        }
+      }
+    }
+);
+    rpcThread.start();
+    if (leaderThread == null) {
+      leaderThread=rpcThread;
+    }
+  }
+  Thread.sleep(1000);
+  while (leaderRunning.get()) {
+    leaderThread.interrupt();
+  }
+  latch.await();
+  assertTrue("rpc got exception " + error.get(),error.get() == null);
+}
