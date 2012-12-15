@@ -1,0 +1,20 @@
+{
+  FileSystem localFs=FileSystem.getLocal(jobConf);
+  FileSystem rfs=((LocalFileSystem)localFs).getRaw();
+  FSDataOutputStream rawOutput=rfs.create(mapOutputPath,true,BUF_SIZE);
+  SpillRecord spillRecord=new SpillRecord(numberOfPartitions);
+  IndexRecord indexRecord=new IndexRecord();
+  for (int i=0; i < numberOfPartitions; i++) {
+    indexRecord.startOffset=rawOutput.getPos();
+    byte buffer[]=outStreams[i].toByteArray();
+    IFileOutputStream checksumOutput=new IFileOutputStream(rawOutput);
+    checksumOutput.write(buffer);
+    checksumOutput.finish();
+    indexRecord.rawLength=(long)buffer.length;
+    indexRecord.partLength=rawOutput.getPos() - indexRecord.startOffset;
+    spillRecord.putIndex(indexRecord,i);
+    reporter.progress();
+  }
+  rawOutput.close();
+  spillRecord.writeToFile(indexPath,jobConf);
+}
