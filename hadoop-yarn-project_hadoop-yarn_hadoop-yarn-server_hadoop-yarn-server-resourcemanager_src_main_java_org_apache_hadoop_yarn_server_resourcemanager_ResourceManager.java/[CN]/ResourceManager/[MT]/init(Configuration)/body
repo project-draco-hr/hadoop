@@ -13,7 +13,25 @@
   DelegationTokenRenewer tokenRenewer=createDelegationTokenRenewer();
   addService(tokenRenewer);
   this.containerTokenSecretManager=createContainerTokenSecretManager(conf);
-  this.rmContext=new RMContextImpl(this.rmDispatcher,this.containerAllocationExpirer,amLivelinessMonitor,amFinishingMonitor,tokenRenewer,this.appTokenSecretManager,this.containerTokenSecretManager,this.clientToAMSecretManager);
+  boolean isRecoveryEnabled=conf.getBoolean(YarnConfiguration.RECOVERY_ENABLED,YarnConfiguration.DEFAULT_RM_RECOVERY_ENABLED);
+  RMStateStore rmStore=null;
+  if (isRecoveryEnabled) {
+    recoveryEnabled=true;
+    rmStore=RMStateStoreFactory.getStore(conf);
+  }
+ else {
+    recoveryEnabled=false;
+    rmStore=new NullRMStateStore();
+  }
+  try {
+    rmStore.init(conf);
+    rmStore.setDispatcher(rmDispatcher);
+  }
+ catch (  Exception e) {
+    LOG.error("Failed to init state store",e);
+    ExitUtil.terminate(1,e);
+  }
+  this.rmContext=new RMContextImpl(this.rmDispatcher,rmStore,this.containerAllocationExpirer,amLivelinessMonitor,amFinishingMonitor,tokenRenewer,this.appTokenSecretManager,this.containerTokenSecretManager,this.clientToAMSecretManager);
   this.nodesListManager=new NodesListManager(this.rmContext);
   this.rmDispatcher.register(NodesListManagerEventType.class,this.nodesListManager);
   addService(nodesListManager);
