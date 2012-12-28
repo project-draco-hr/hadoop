@@ -1,0 +1,37 @@
+{
+  this.conf=conf;
+  this.clock=clock;
+  this.jobFile=remoteJobConfFile;
+  ReadWriteLock readWriteLock=new ReentrantReadWriteLock();
+  readLock=readWriteLock.readLock();
+  writeLock=readWriteLock.writeLock();
+  this.attempts=Collections.emptyMap();
+  this.finishedAttempts=new HashSet<TaskAttemptId>(2);
+  this.failedAttempts=new HashSet<TaskAttemptId>(2);
+  this.inProgressAttempts=new HashSet<TaskAttemptId>(2);
+  maxAttempts=getMaxAttempts();
+  taskId=MRBuilderUtils.newTaskId(jobId,partition,taskType);
+  this.partition=partition;
+  this.taskAttemptListener=taskAttemptListener;
+  this.eventHandler=eventHandler;
+  this.credentials=credentials;
+  this.jobToken=jobToken;
+  this.metrics=metrics;
+  this.appContext=appContext;
+  this.encryptedShuffle=conf.getBoolean(MRConfig.SHUFFLE_SSL_ENABLED_KEY,MRConfig.SHUFFLE_SSL_ENABLED_DEFAULT);
+  if (completedTasksFromPreviousRun != null && completedTasksFromPreviousRun.containsKey(taskId)) {
+    LOG.info("Task is from previous run " + taskId);
+    TaskInfo taskInfo=completedTasksFromPreviousRun.get(taskId);
+    Map<TaskAttemptID,TaskAttemptInfo> allAttempts=taskInfo.getAllTaskAttempts();
+    taskAttemptsFromPreviousGeneration=new ArrayList<TaskAttemptInfo>();
+    taskAttemptsFromPreviousGeneration.addAll(allAttempts.values());
+    Collections.sort(taskAttemptsFromPreviousGeneration,RECOVERED_ATTEMPTS_COMPARATOR);
+  }
+  if (taskAttemptsFromPreviousGeneration.isEmpty()) {
+    nextAttemptNumber=(startCount - 1) * 1000;
+  }
+ else {
+    nextAttemptNumber=taskAttemptsFromPreviousGeneration.remove(0).getAttemptId().getId();
+  }
+  stateMachine=stateMachineFactory.make(this);
+}

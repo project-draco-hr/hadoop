@@ -1,23 +1,18 @@
 {
-  JobImpl mockJob=mock(JobImpl.class);
-  mockJob.tasks=new HashMap<TaskId,Task>();
-  OutputCommitter mockCommitter=mock(OutputCommitter.class);
-  EventHandler mockEventHandler=mock(EventHandler.class);
-  JobContext mockJobContext=mock(JobContext.class);
-  when(mockJob.getCommitter()).thenReturn(mockCommitter);
-  when(mockJob.getEventHandler()).thenReturn(mockEventHandler);
-  when(mockJob.getJobContext()).thenReturn(mockJobContext);
-  when(mockJob.finished(JobStateInternal.KILLED)).thenReturn(JobStateInternal.KILLED);
-  when(mockJob.finished(JobStateInternal.FAILED)).thenReturn(JobStateInternal.FAILED);
-  when(mockJob.finished(JobStateInternal.SUCCEEDED)).thenReturn(JobStateInternal.SUCCEEDED);
-  try {
-    doThrow(new IOException()).when(mockCommitter).commitJob(any(JobContext.class));
-  }
- catch (  IOException e) {
-  }
-  doNothing().when(mockEventHandler).handle(any(JobHistoryEvent.class));
-  JobStateInternal jobState=JobImpl.checkJobCompleteSuccess(mockJob);
-  Assert.assertNotNull("checkJobCompleteSuccess incorrectly returns null " + "for successful job",jobState);
-  Assert.assertEquals("checkJobCompleteSuccess returns incorrect state",JobStateInternal.FAILED,jobState);
-  verify(mockJob).abortJob(eq(org.apache.hadoop.mapreduce.JobStatus.State.FAILED));
+  Configuration conf=new Configuration();
+  AsyncDispatcher dispatcher=new AsyncDispatcher();
+  dispatcher.init(conf);
+  dispatcher.start();
+  CyclicBarrier syncBarrier=new CyclicBarrier(2);
+  OutputCommitter committer=new TestingOutputCommitter(syncBarrier,false);
+  CommitterEventHandler commitHandler=createCommitterEventHandler(dispatcher,committer);
+  commitHandler.init(conf);
+  commitHandler.start();
+  JobImpl job=createRunningStubbedJob(conf,dispatcher,2);
+  completeJobTasks(job);
+  assertJobState(job,JobStateInternal.COMMITTING);
+  syncBarrier.await();
+  assertJobState(job,JobStateInternal.FAILED);
+  dispatcher.stop();
+  commitHandler.stop();
 }
