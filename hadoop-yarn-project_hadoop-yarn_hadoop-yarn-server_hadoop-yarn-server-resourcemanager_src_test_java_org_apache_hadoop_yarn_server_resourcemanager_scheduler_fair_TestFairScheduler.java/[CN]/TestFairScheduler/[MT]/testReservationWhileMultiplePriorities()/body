@@ -1,0 +1,31 @@
+{
+  RMNode node1=MockNodes.newNodeInfo(1,Resources.createResource(1024));
+  NodeAddedSchedulerEvent nodeEvent1=new NodeAddedSchedulerEvent(node1);
+  scheduler.handle(nodeEvent1);
+  ApplicationAttemptId attId=createSchedulingRequest(1024,"queue1","user1",1,2);
+  scheduler.update();
+  NodeUpdateSchedulerEvent updateEvent=new NodeUpdateSchedulerEvent(node1,new ArrayList<ContainerStatus>(),new ArrayList<ContainerStatus>());
+  scheduler.handle(updateEvent);
+  FSSchedulerApp app=scheduler.applications.get(attId);
+  assertEquals(1,app.getLiveContainers().size());
+  ContainerId containerId=scheduler.applications.get(attId).getLiveContainers().iterator().next().getContainerId();
+  createSchedulingRequestExistingApplication(1024,2,attId);
+  scheduler.update();
+  scheduler.handle(updateEvent);
+  assertEquals(1,app.getLiveContainers().size());
+  createSchedulingRequestExistingApplication(1024,1,attId);
+  scheduler.update();
+  scheduler.handle(updateEvent);
+  assertEquals(1,app.getLiveContainers().size());
+  for (  RMContainer container : app.getReservedContainers()) {
+    assertEquals(2,container.getReservedPriority().getPriority());
+  }
+  scheduler.allocate(attId,new ArrayList<ResourceRequest>(),Arrays.asList(containerId));
+  scheduler.update();
+  scheduler.handle(updateEvent);
+  Collection<RMContainer> liveContainers=app.getLiveContainers();
+  assertEquals(1,liveContainers.size());
+  for (  RMContainer liveContainer : liveContainers) {
+    Assert.assertEquals(2,liveContainer.getContainer().getPriority().getPriority());
+  }
+}
