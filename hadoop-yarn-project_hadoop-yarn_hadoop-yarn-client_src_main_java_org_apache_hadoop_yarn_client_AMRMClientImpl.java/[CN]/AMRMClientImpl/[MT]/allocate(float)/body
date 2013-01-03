@@ -1,0 +1,35 @@
+{
+  AllocateResponse allocateResponse=null;
+  ArrayList<ResourceRequest> askList=null;
+  ArrayList<ContainerId> releaseList=null;
+  AllocateRequest allocateRequest=null;
+  try {
+synchronized (this) {
+      askList=new ArrayList<ResourceRequest>(ask);
+      releaseList=new ArrayList<ContainerId>(release);
+      ask.clear();
+      release.clear();
+      allocateRequest=BuilderUtils.newAllocateRequest(appAttemptId,lastResponseId,progressIndicator,askList,releaseList);
+    }
+    allocateResponse=rmClient.allocate(allocateRequest);
+    AMResponse response=allocateResponse.getAMResponse();
+synchronized (this) {
+      clusterNodeCount=allocateResponse.getNumClusterNodes();
+      lastResponseId=response.getResponseId();
+      clusterAvailableResources=response.getAvailableResources();
+    }
+  }
+  finally {
+    if (allocateResponse == null) {
+synchronized (this) {
+        release.addAll(releaseList);
+        for (        ResourceRequest oldAsk : askList) {
+          if (!ask.contains(oldAsk)) {
+            ask.add(oldAsk);
+          }
+        }
+      }
+    }
+  }
+  return allocateResponse;
+}
