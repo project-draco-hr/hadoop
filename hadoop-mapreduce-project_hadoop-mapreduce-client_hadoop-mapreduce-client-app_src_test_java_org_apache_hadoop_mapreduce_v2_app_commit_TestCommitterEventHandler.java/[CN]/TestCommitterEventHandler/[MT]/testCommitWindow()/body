@@ -1,5 +1,6 @@
 {
   Configuration conf=new Configuration();
+  conf.set(MRJobConfig.MR_AM_STAGING_DIR,stagingDir);
   AsyncDispatcher dispatcher=new AsyncDispatcher();
   dispatcher.init(conf);
   dispatcher.start();
@@ -7,6 +8,9 @@
   dispatcher.register(JobEventType.class,jeh);
   SystemClock clock=new SystemClock();
   AppContext appContext=mock(AppContext.class);
+  ApplicationAttemptId attemptid=ConverterUtils.toApplicationAttemptId("appattempt_1234567890000_0001_0");
+  when(appContext.getApplicationID()).thenReturn(attemptid.getApplicationId());
+  when(appContext.getApplicationAttemptId()).thenReturn(attemptid);
   when(appContext.getEventHandler()).thenReturn(dispatcher.getEventHandler());
   when(appContext.getClock()).thenReturn(clock);
   OutputCommitter committer=mock(OutputCommitter.class);
@@ -31,6 +35,7 @@
   }
   Assert.assertEquals("committer did not complete commit after RM hearbeat",1,jeh.numCommitCompletedEvents);
   verify(committer,times(1)).commitJob(any(JobContext.class));
+  cleanup();
   ceh.handle(new CommitterJobCommitEvent(null,null));
   timeToWaitMs=5000;
   while (jeh.numCommitCompletedEvents != 2 && timeToWaitMs > 0) {
