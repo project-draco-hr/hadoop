@@ -1,0 +1,27 @@
+{
+  CSQueue queue;
+  String[] childQueueNames=conf.getQueues((parent == null) ? queueName : (parent.getQueuePath() + "." + queueName));
+  if (childQueueNames == null || childQueueNames.length == 0) {
+    if (null == parent) {
+      throw new IllegalStateException("Queue configuration missing child queue names for " + queueName);
+    }
+    queue=new LeafQueue(csContext,queueName,parent,oldQueues.get(queueName));
+    queue=hook.hook(queue);
+  }
+ else {
+    ParentQueue parentQueue=new ParentQueue(csContext,queueName,parent,oldQueues.get(queueName));
+    queue=hook.hook(parentQueue);
+    List<CSQueue> childQueues=new ArrayList<CSQueue>();
+    for (    String childQueueName : childQueueNames) {
+      CSQueue childQueue=parseQueue(csContext,conf,queue,childQueueName,queues,oldQueues,hook);
+      childQueues.add(childQueue);
+    }
+    parentQueue.setChildQueues(childQueues);
+  }
+  if (queue instanceof LeafQueue == true && queues.containsKey(queueName) && queues.get(queueName) instanceof LeafQueue == true) {
+    throw new IOException("Two leaf queues were named " + queueName + ". Leaf queue names must be distinct");
+  }
+  queues.put(queueName,queue);
+  LOG.info("Initialized queue: " + queue);
+  return queue;
+}
