@@ -1,13 +1,14 @@
 {
-  Peer peer=null;
   while (datanode.shouldRun) {
+    Socket s=null;
     try {
-      peer=peerServer.accept();
+      s=ss.accept();
+      s.setTcpNoDelay(true);
       int curXceiverCount=datanode.getXceiverCount();
       if (curXceiverCount > maxXceiverCount) {
         throw new IOException("Xceiver count " + curXceiverCount + " exceeds the limit of concurrent xcievers: "+ maxXceiverCount);
       }
-      new Daemon(datanode.threadGroup,DataXceiver.create(peer,datanode,this)).start();
+      new Daemon(datanode.threadGroup,DataXceiver.create(s,datanode,this)).start();
     }
  catch (    SocketTimeoutException ignored) {
     }
@@ -17,11 +18,11 @@ catch (    AsynchronousCloseException ace) {
       }
     }
 catch (    IOException ie) {
-      IOUtils.cleanup(null,peer);
+      IOUtils.closeSocket(s);
       LOG.warn(datanode.getDisplayName() + ":DataXceiverServer: ",ie);
     }
 catch (    OutOfMemoryError ie) {
-      IOUtils.cleanup(null,peer);
+      IOUtils.closeSocket(s);
       LOG.warn("DataNode is out of memory. Will retry in 30 seconds.",ie);
       try {
         Thread.sleep(30 * 1000);
@@ -34,13 +35,8 @@ catch (    Throwable te) {
       datanode.shouldRun=false;
     }
   }
-synchronized (this) {
-    for (    Peer p : peers) {
-      IOUtils.cleanup(LOG,p);
-    }
-  }
   try {
-    peerServer.close();
+    ss.close();
   }
  catch (  IOException ie) {
     LOG.warn(datanode.getDisplayName() + " :DataXceiverServer: close exception",ie);

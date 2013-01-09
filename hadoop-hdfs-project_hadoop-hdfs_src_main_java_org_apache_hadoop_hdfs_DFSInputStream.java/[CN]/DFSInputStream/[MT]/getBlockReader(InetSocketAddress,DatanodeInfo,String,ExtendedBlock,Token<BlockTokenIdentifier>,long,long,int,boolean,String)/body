@@ -5,21 +5,33 @@
   IOException err=null;
   boolean fromCache=true;
   for (int retries=0; retries <= nCachedConnRetry && fromCache; ++retries) {
-    Peer peer=null;
+    SocketAndStreams sockAndStreams=null;
     if (retries < nCachedConnRetry) {
-      peer=peerCache.get(chosenNode);
+      sockAndStreams=socketCache.get(dnAddr);
     }
-    if (peer == null) {
-      peer=newPeer(dnAddr);
+    Socket sock;
+    if (sockAndStreams == null) {
       fromCache=false;
+      sock=dfsClient.socketFactory.createSocket();
+      sock.setTcpNoDelay(true);
+      NetUtils.connect(sock,dnAddr,dfsClient.getRandomLocalInterfaceAddr(),dfsClient.getConf().socketTimeout);
+      sock.setSoTimeout(dfsClient.getConf().socketTimeout);
+    }
+ else {
+      sock=sockAndStreams.sock;
     }
     try {
-      BlockReader reader=BlockReaderFactory.newBlockReader(new BlockReaderFactory.Params(dfsClient.getConf()).setFile(file).setBlock(block).setBlockToken(blockToken).setStartOffset(startOffset).setLen(len).setBufferSize(bufferSize).setVerifyChecksum(verifyChecksum).setClientName(clientName).setDatanodeID(chosenNode).setPeer(peer));
+      BlockReader reader=BlockReaderFactory.newBlockReader(new BlockReaderFactory.Params(dfsClient.getConf()).setFile(file).setBlock(block).setBlockToken(blockToken).setStartOffset(startOffset).setLen(len).setBufferSize(bufferSize).setVerifyChecksum(verifyChecksum).setClientName(clientName).setEncryptionKey(dfsClient.getDataEncryptionKey()).setIoStreamPair(sockAndStreams == null ? null : sockAndStreams.ioStreams).setSocket(sock));
       return reader;
     }
  catch (    IOException ex) {
-      DFSClient.LOG.debug("Error making BlockReader. Closing stale " + peer,ex);
-      IOUtils.closeQuietly(peer);
+      DFSClient.LOG.debug("Error making BlockReader. Closing stale " + sock,ex);
+      if (sockAndStreams != null) {
+        sockAndStreams.close();
+      }
+ else {
+        sock.close();
+      }
       err=ex;
     }
   }
