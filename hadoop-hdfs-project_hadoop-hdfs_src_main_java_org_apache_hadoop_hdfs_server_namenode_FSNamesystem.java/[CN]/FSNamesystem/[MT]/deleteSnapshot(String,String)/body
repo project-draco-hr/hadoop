@@ -1,0 +1,29 @@
+{
+  writeLock();
+  try {
+    checkOperation(OperationCategory.WRITE);
+    if (isInSafeMode()) {
+      throw new SafeModeException("Cannot delete snapshot for " + snapshotRoot,safeMode);
+    }
+    checkOwner(snapshotRoot);
+    BlocksMapUpdateInfo collectedBlocks=new BlocksMapUpdateInfo();
+    dir.writeLock();
+    try {
+      snapshotManager.deleteSnapshot(snapshotRoot,snapshotName,collectedBlocks);
+    }
+  finally {
+      dir.writeUnlock();
+    }
+    this.removeBlocks(collectedBlocks);
+    collectedBlocks.clear();
+    getEditLog().logDeleteSnapshot(snapshotRoot,snapshotName);
+  }
+  finally {
+    writeUnlock();
+  }
+  getEditLog().logSync();
+  if (auditLog.isInfoEnabled() && isExternalInvocation()) {
+    Path rootPath=new Path(snapshotRoot,HdfsConstants.DOT_SNAPSHOT_DIR + Path.SEPARATOR + snapshotName);
+    logAuditEvent(UserGroupInformation.getCurrentUser(),getRemoteIp(),"deleteSnapshot",rootPath.toString(),null,null);
+  }
+}
