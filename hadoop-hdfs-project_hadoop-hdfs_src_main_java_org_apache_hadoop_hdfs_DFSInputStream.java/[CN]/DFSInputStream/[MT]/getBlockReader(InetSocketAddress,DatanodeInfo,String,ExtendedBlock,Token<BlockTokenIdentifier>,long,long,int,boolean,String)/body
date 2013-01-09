@@ -5,33 +5,21 @@
   IOException err=null;
   boolean fromCache=true;
   for (int retries=0; retries <= nCachedConnRetry && fromCache; ++retries) {
-    SocketAndStreams sockAndStreams=null;
+    Peer peer=null;
     if (retries < nCachedConnRetry) {
-      sockAndStreams=socketCache.get(dnAddr);
+      peer=peerCache.get(chosenNode);
     }
-    Socket sock;
-    if (sockAndStreams == null) {
+    if (peer == null) {
+      peer=newPeer(dnAddr);
       fromCache=false;
-      sock=dfsClient.socketFactory.createSocket();
-      sock.setTcpNoDelay(true);
-      NetUtils.connect(sock,dnAddr,dfsClient.getRandomLocalInterfaceAddr(),dfsClient.getConf().socketTimeout);
-      sock.setSoTimeout(dfsClient.getConf().socketTimeout);
-    }
- else {
-      sock=sockAndStreams.sock;
     }
     try {
-      BlockReader reader=BlockReaderFactory.newBlockReader(dfsClient.getConf(),sock,file,block,blockToken,startOffset,len,bufferSize,verifyChecksum,clientName,dfsClient.getDataEncryptionKey(),sockAndStreams == null ? null : sockAndStreams.ioStreams);
+      BlockReader reader=BlockReaderFactory.newBlockReader(dfsClient.conf,file,block,blockToken,startOffset,len,verifyChecksum,clientName,peer,chosenNode);
       return reader;
     }
  catch (    IOException ex) {
-      DFSClient.LOG.debug("Error making BlockReader. Closing stale " + sock,ex);
-      if (sockAndStreams != null) {
-        sockAndStreams.close();
-      }
- else {
-        sock.close();
-      }
+      DFSClient.LOG.debug("Error making BlockReader. Closing stale " + peer,ex);
+      IOUtils.closeQuietly(peer);
       err=ex;
     }
   }
