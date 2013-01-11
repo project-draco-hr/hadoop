@@ -1,0 +1,47 @@
+{
+  if (shouldCloseConnection.get()) {
+    return;
+  }
+  final DataOutputBuffer d=new DataOutputBuffer();
+  RpcRequestHeaderProto header=ProtoUtil.makeRpcRequestHeader(call.rpcKind,OperationProto.RPC_FINAL_PACKET,call.id);
+  header.writeDelimitedTo(d);
+  call.rpcRequest.write(d);
+synchronized (sendRpcRequestLock) {
+    Future<?> senderFuture=SEND_PARAMS_EXECUTOR.submit(new Runnable(){
+      @Override public void run(){
+        try {
+synchronized (Connection.this.out) {
+            if (shouldCloseConnection.get()) {
+              return;
+            }
+            if (LOG.isDebugEnabled())             LOG.debug(getName() + " sending #" + call.id);
+            byte[] data=d.getData();
+            int totalLength=d.getLength();
+            out.writeInt(totalLength);
+            out.write(data,0,totalLength);
+            out.flush();
+          }
+        }
+ catch (        IOException e) {
+          markClosed(e);
+        }
+ finally {
+          IOUtils.closeStream(d);
+        }
+      }
+    }
+);
+    try {
+      senderFuture.get();
+    }
+ catch (    ExecutionException e) {
+      Throwable cause=e.getCause();
+      if (cause instanceof RuntimeException) {
+        throw (RuntimeException)cause;
+      }
+ else {
+        throw new RuntimeException("unexpected checked exception",cause);
+      }
+    }
+  }
+}
