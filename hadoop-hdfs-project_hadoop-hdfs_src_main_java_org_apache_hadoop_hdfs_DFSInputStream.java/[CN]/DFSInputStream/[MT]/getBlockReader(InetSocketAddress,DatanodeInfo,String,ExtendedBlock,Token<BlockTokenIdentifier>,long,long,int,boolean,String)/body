@@ -1,26 +1,42 @@
 {
-  if (dfsClient.shouldTryShortCircuitRead(dnAddr) && !blockUnderConstruction()) {
-    return DFSClient.getLocalBlockReader(dfsClient.conf,src,block,blockToken,chosenNode,dfsClient.hdfsTimeout,startOffset,dfsClient.connectToDnViaHostname());
-  }
   IOException err=null;
-  boolean fromCache=true;
-  for (int retries=0; retries <= nCachedConnRetry && fromCache; ++retries) {
+  FileInputStream fis[]=fileInputStreamCache.get(chosenNode,block);
+  if (fis != null) {
+    if (DFSClient.LOG.isDebugEnabled()) {
+      DFSClient.LOG.debug("got FileInputStreams for " + block + " from "+ "the FileInputStreamCache.");
+    }
+    return new BlockReaderLocal(dfsClient.conf,file,block,startOffset,len,fis[0],fis[1],chosenNode,verifyChecksum);
+  }
+  boolean triedNonDomainSocketReader=false;
+  for (int retries=0; retries < nCachedConnRetry && (!triedNonDomainSocketReader); ++retries) {
     Peer peer=null;
     if (retries < nCachedConnRetry) {
       peer=peerCache.get(chosenNode);
     }
     if (peer == null) {
       peer=newPeer(dnAddr);
-      fromCache=false;
+      if (peer.getDomainSocket() == null) {
+        triedNonDomainSocketReader=true;
+      }
     }
+    boolean success=false;
     try {
-      BlockReader reader=BlockReaderFactory.newBlockReader(dfsClient.conf,file,block,blockToken,startOffset,len,verifyChecksum,clientName,peer,chosenNode);
-      return reader;
+      boolean allowShortCircuitLocalReads=(peer.getDomainSocket() != null) && dfsClient.getConf().shortCircuitLocalReads && (!shortCircuitForbidden());
+      BlockReader blockReader=BlockReaderFactory.newBlockReader(dfsClient.conf,file,block,blockToken,startOffset,len,verifyChecksum,clientName,peer,chosenNode,dfsClient.getDomainSocketFactory(),allowShortCircuitLocalReads);
+      success=true;
+      return blockReader;
     }
  catch (    IOException ex) {
-      DFSClient.LOG.debug("Error making BlockReader. Closing stale " + peer,ex);
-      IOUtils.closeQuietly(peer);
+      DFSClient.LOG.debug("Error making BlockReader. " + "Closing stale " + peer,ex);
+      if (peer.getDomainSocket() != null) {
+        dfsClient.getDomainSocketFactory().disableDomainSocketPath(peer.getDomainSocket().getPath());
+      }
       err=ex;
+    }
+ finally {
+      if (!success) {
+        IOUtils.closeQuietly(peer);
+      }
     }
   }
   throw err;

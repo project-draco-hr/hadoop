@@ -1,0 +1,33 @@
+{
+  if (conf.domainSocketPath == null)   return null;
+  if (!DFSClient.isLocalAddress(addr))   return null;
+  if (DomainSocket.getLoadingFailureReason() != null)   return null;
+  String escapedPath=DomainSocket.getEffectivePath(conf.domainSocketPath,addr.getPort());
+  PathStatus info=pathInfo.getIfPresent(escapedPath);
+  if (info == PathStatus.UNUSABLE) {
+    return null;
+  }
+  if ((!conf.domainSocketDataTraffic) && ((info == PathStatus.SHORT_CIRCUIT_DISABLED) || stream.shortCircuitForbidden())) {
+    return null;
+  }
+  boolean success=false;
+  DomainSocket sock=null;
+  try {
+    sock=DomainSocket.connect(escapedPath);
+    sock.setAttribute(DomainSocket.RCV_TIMEO,conf.socketTimeout);
+    success=true;
+  }
+ catch (  IOException e) {
+    LOG.error("error creating DomainSocket",e);
+  }
+ finally {
+    if (!success) {
+      if (sock != null) {
+        IOUtils.closeQuietly(sock);
+      }
+      pathInfo.put(escapedPath,PathStatus.UNUSABLE);
+      sock=null;
+    }
+  }
+  return sock;
+}
