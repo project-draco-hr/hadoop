@@ -27,21 +27,23 @@
       pktBufSize+=(chunkSize + checksumSize) * maxChunksPerPacket;
     }
     ByteBuffer pktBuf=ByteBuffer.allocate(pktBufSize);
-    while (endOffset > offset) {
+    while (endOffset > offset && !Thread.currentThread().isInterrupted()) {
       manageOsCache();
       long len=sendPacket(pktBuf,maxChunksPerPacket,streamForSendChunks,transferTo,throttler);
       offset+=len;
       totalRead+=len + (numberOfChunks(len) * checksumSize);
       seqno++;
     }
-    try {
-      sendPacket(pktBuf,maxChunksPerPacket,streamForSendChunks,transferTo,throttler);
-      out.flush();
+    if (!Thread.currentThread().isInterrupted()) {
+      try {
+        sendPacket(pktBuf,maxChunksPerPacket,streamForSendChunks,transferTo,throttler);
+        out.flush();
+      }
+ catch (      IOException e) {
+        throw ioeToSocketException(e);
+      }
+      sentEntireByteRange=true;
     }
- catch (    IOException e) {
-      throw ioeToSocketException(e);
-    }
-    sentEntireByteRange=true;
   }
   finally {
     if (clientTraceFmt != null) {
