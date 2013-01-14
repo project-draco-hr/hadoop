@@ -14,48 +14,113 @@
     newApiCommitter=true;
     LOG.info("Using mapred newApiCommitter.");
   }
-  committer=createOutputCommitter(conf);
-  boolean recoveryEnabled=conf.getBoolean(MRJobConfig.MR_AM_JOB_RECOVERY_ENABLE,true);
-  boolean recoverySupportedByCommitter=committer.isRecoverySupported();
-  if (recoveryEnabled && recoverySupportedByCommitter && appAttemptID.getAttemptId() > 1) {
-    LOG.info("Recovery is enabled. " + "Will try to recover from previous life on best effort basis.");
-    recoveryServ=createRecoveryService(context);
-    addIfService(recoveryServ);
-    dispatcher=recoveryServ.getDispatcher();
-    clock=recoveryServ.getClock();
-    inRecovery=true;
-  }
+  boolean copyHistory=false;
+  try {
+    String user=UserGroupInformation.getCurrentUser().getShortUserName();
+    Path stagingDir=MRApps.getStagingAreaDir(conf,user);
+    FileSystem fs=getFileSystem(conf);
+    boolean stagingExists=fs.exists(stagingDir);
+    Path startCommitFile=MRApps.getStartJobCommitFile(conf,user,jobId);
+    boolean commitStarted=fs.exists(startCommitFile);
+    Path endCommitSuccessFile=MRApps.getEndJobCommitSuccessFile(conf,user,jobId);
+    boolean commitSuccess=fs.exists(endCommitSuccessFile);
+    Path endCommitFailureFile=MRApps.getEndJobCommitFailureFile(conf,user,jobId);
+    boolean commitFailure=fs.exists(endCommitFailureFile);
+    if (!stagingExists) {
+      isLastAMRetry=true;
+      errorHappenedShutDown=true;
+      forcedState=JobStateInternal.ERROR;
+      shutDownMessage="Staging dir does not exist " + stagingDir;
+      LOG.fatal(shutDownMessage);
+    }
+ else     if (commitStarted) {
+      errorHappenedShutDown=true;
+      isLastAMRetry=true;
+      copyHistory=true;
+      if (commitSuccess) {
+        shutDownMessage="We crashed after successfully committing. Recovering.";
+        forcedState=JobStateInternal.SUCCEEDED;
+      }
+ else       if (commitFailure) {
+        shutDownMessage="We crashed after a commit failure.";
+        forcedState=JobStateInternal.FAILED;
+      }
  else {
-    LOG.info("Not starting RecoveryService: recoveryEnabled: " + recoveryEnabled + " recoverySupportedByCommitter: "+ recoverySupportedByCommitter+ " ApplicationAttemptID: "+ appAttemptID.getAttemptId());
+        shutDownMessage="We crashed durring a commit";
+        forcedState=JobStateInternal.ERROR;
+      }
+    }
+  }
+ catch (  IOException e) {
+    throw new YarnException("Error while initializing",e);
+  }
+  if (errorHappenedShutDown) {
     dispatcher=createDispatcher();
     addIfService(dispatcher);
+    NoopEventHandler eater=new NoopEventHandler();
+    dispatcher.register(JobEventType.class,eater);
+    EventHandler<JobHistoryEvent> historyService=null;
+    if (copyHistory) {
+      historyService=createJobHistoryHandler(context);
+      dispatcher.register(org.apache.hadoop.mapreduce.jobhistory.EventType.class,historyService);
+    }
+ else {
+      dispatcher.register(org.apache.hadoop.mapreduce.jobhistory.EventType.class,eater);
+    }
+    containerAllocator=createContainerAllocator(null,context);
+    addIfService(containerAllocator);
+    dispatcher.register(ContainerAllocator.EventType.class,containerAllocator);
+    if (copyHistory) {
+      addService(createStagingDirCleaningService());
+      addIfService(historyService);
+      JobHistoryCopyService cpHist=new JobHistoryCopyService(appAttemptID,dispatcher.getEventHandler());
+      addIfService(cpHist);
+    }
   }
-  taskAttemptListener=createTaskAttemptListener(context);
-  addIfService(taskAttemptListener);
-  taskCleaner=createTaskCleaner(context);
-  addIfService(taskCleaner);
-  clientService=createClientService(context);
-  addIfService(clientService);
-  EventHandler<JobHistoryEvent> historyService=createJobHistoryHandler(context);
-  dispatcher.register(org.apache.hadoop.mapreduce.jobhistory.EventType.class,historyService);
-  this.jobEventDispatcher=new JobEventDispatcher();
-  dispatcher.register(JobEventType.class,jobEventDispatcher);
-  dispatcher.register(TaskEventType.class,new TaskEventDispatcher());
-  dispatcher.register(TaskAttemptEventType.class,new TaskAttemptEventDispatcher());
-  dispatcher.register(TaskCleaner.EventType.class,taskCleaner);
-  if (conf.getBoolean(MRJobConfig.MAP_SPECULATIVE,false) || conf.getBoolean(MRJobConfig.REDUCE_SPECULATIVE,false)) {
-    speculator=createSpeculator(conf,context);
-    addIfService(speculator);
+ else {
+    committer=createOutputCommitter(conf);
+    boolean recoveryEnabled=conf.getBoolean(MRJobConfig.MR_AM_JOB_RECOVERY_ENABLE,true);
+    boolean recoverySupportedByCommitter=committer.isRecoverySupported();
+    if (recoveryEnabled && recoverySupportedByCommitter && appAttemptID.getAttemptId() > 1) {
+      LOG.info("Recovery is enabled. " + "Will try to recover from previous life on best effort basis.");
+      recoveryServ=createRecoveryService(context);
+      addIfService(recoveryServ);
+      dispatcher=recoveryServ.getDispatcher();
+      clock=recoveryServ.getClock();
+      inRecovery=true;
+    }
+ else {
+      LOG.info("Not starting RecoveryService: recoveryEnabled: " + recoveryEnabled + " recoverySupportedByCommitter: "+ recoverySupportedByCommitter+ " ApplicationAttemptID: "+ appAttemptID.getAttemptId());
+      dispatcher=createDispatcher();
+      addIfService(dispatcher);
+    }
+    clientService=createClientService(context);
+    addIfService(clientService);
+    containerAllocator=createContainerAllocator(clientService,context);
+    committerEventHandler=createCommitterEventHandler(context,committer);
+    addIfService(committerEventHandler);
+    taskAttemptListener=createTaskAttemptListener(context);
+    addIfService(taskAttemptListener);
+    EventHandler<JobHistoryEvent> historyService=createJobHistoryHandler(context);
+    dispatcher.register(org.apache.hadoop.mapreduce.jobhistory.EventType.class,historyService);
+    this.jobEventDispatcher=new JobEventDispatcher();
+    dispatcher.register(JobEventType.class,jobEventDispatcher);
+    dispatcher.register(TaskEventType.class,new TaskEventDispatcher());
+    dispatcher.register(TaskAttemptEventType.class,new TaskAttemptEventDispatcher());
+    dispatcher.register(CommitterEventType.class,committerEventHandler);
+    if (conf.getBoolean(MRJobConfig.MAP_SPECULATIVE,false) || conf.getBoolean(MRJobConfig.REDUCE_SPECULATIVE,false)) {
+      speculator=createSpeculator(conf,context);
+      addIfService(speculator);
+    }
+    speculatorEventDispatcher=new SpeculatorEventDispatcher(conf);
+    dispatcher.register(Speculator.EventType.class,speculatorEventDispatcher);
+    addIfService(containerAllocator);
+    dispatcher.register(ContainerAllocator.EventType.class,containerAllocator);
+    containerLauncher=createContainerLauncher(context);
+    addIfService(containerLauncher);
+    dispatcher.register(ContainerLauncher.EventType.class,containerLauncher);
+    addService(createStagingDirCleaningService());
+    addIfService(historyService);
   }
-  speculatorEventDispatcher=new SpeculatorEventDispatcher(conf);
-  dispatcher.register(Speculator.EventType.class,speculatorEventDispatcher);
-  containerAllocator=createContainerAllocator(clientService,context);
-  addIfService(containerAllocator);
-  dispatcher.register(ContainerAllocator.EventType.class,containerAllocator);
-  containerLauncher=createContainerLauncher(context);
-  addIfService(containerLauncher);
-  dispatcher.register(ContainerLauncher.EventType.class,containerLauncher);
-  addService(createStagingDirCleaningService());
-  addIfService(historyService);
   super.init(conf);
 }

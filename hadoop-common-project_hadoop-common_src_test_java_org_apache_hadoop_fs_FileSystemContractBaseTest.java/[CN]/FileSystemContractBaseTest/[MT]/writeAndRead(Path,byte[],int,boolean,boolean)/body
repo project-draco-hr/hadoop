@@ -1,0 +1,45 @@
+{
+  assertTrue("Not enough data in source array to write " + len + " bytes",src.length >= len);
+  fs.mkdirs(path.getParent());
+  FSDataOutputStream out=fs.create(path,overwrite,fs.getConf().getInt("io.file.buffer.size",4096),(short)1,getBlockSize());
+  out.write(src,0,len);
+  out.close();
+  assertTrue("Exists",fs.exists(path));
+  assertEquals("Length",len,fs.getFileStatus(path).getLen());
+  FSDataInputStream in=fs.open(path);
+  byte[] buf=new byte[len];
+  in.readFully(0,buf);
+  in.close();
+  assertEquals(len,buf.length);
+  int errors=0;
+  int first_error_byte=-1;
+  for (int i=0; i < len; i++) {
+    if (src[i] != buf[i]) {
+      if (errors == 0) {
+        first_error_byte=i;
+      }
+      errors++;
+    }
+  }
+  if (errors > 0) {
+    String message=String.format(" %d errors in file of length %d",errors,len);
+    LOG.warn(message);
+    final int overlap=10;
+    for (int i=Math.max(0,first_error_byte - overlap); i < Math.min(first_error_byte + overlap,len); i++) {
+      byte actual=buf[i];
+      byte expected=src[i];
+      String letter=toChar(actual);
+      String line=String.format("[%04d] %2x %s\n",i,actual,letter);
+      if (expected != actual) {
+        line=String.format("[%04d] %2x %s -expected %2x %s\n",i,actual,letter,expected,toChar(expected));
+      }
+      LOG.warn(line);
+    }
+    fail(message);
+  }
+  if (delete) {
+    boolean deleted=fs.delete(path,false);
+    assertTrue("Deleted",deleted);
+    assertFalse("No longer exists",fs.exists(path));
+  }
+}

@@ -18,8 +18,8 @@
     sendAssignedEvent(aId,attInfo);
     return;
   }
- else   if (event.getType() == TaskCleaner.EventType.TASK_CLEAN) {
-    TaskAttemptId aId=((TaskCleanupEvent)event).getAttemptID();
+ else   if (event.getType() == CommitterEventType.TASK_ABORT) {
+    TaskAttemptId aId=((CommitterTaskAbortEvent)event).getAttemptID();
     LOG.debug("TASK_CLEAN");
     actualHandler.handle(new TaskAttemptEvent(aId,TaskAttemptEventType.TA_CLEANUP_DONE));
     return;
@@ -32,24 +32,30 @@
     TaskAttemptState state=TaskAttemptState.valueOf(attInfo.getTaskStatus());
 switch (state) {
 case SUCCEEDED:
-      TaskAttemptContext taskContext=new TaskAttemptContextImpl(getConfig(),attInfo.getAttemptId());
-    try {
-      TaskType type=taskContext.getTaskAttemptID().getTaskID().getTaskType();
-      int numReducers=taskContext.getConfiguration().getInt(MRJobConfig.NUM_REDUCES,1);
-      if (type == TaskType.REDUCE || (type == TaskType.MAP && numReducers <= 0)) {
-        committer.recoverTask(taskContext);
-        LOG.info("Recovered output from task attempt " + attInfo.getAttemptId());
-      }
+      TaskAttemptContext taskContext=null;
+    if (newApiCommitter) {
+      taskContext=new TaskAttemptContextImpl(getConfig(),attInfo.getAttemptId());
+    }
  else {
-        LOG.info("Will not try to recover output for " + taskContext.getTaskAttemptID());
-      }
+      taskContext=new org.apache.hadoop.mapred.TaskAttemptContextImpl(new JobConf(getConfig()),TypeConverter.fromYarn(aId));
     }
- catch (    IOException e) {
-      LOG.error("Caught an exception while trying to recover task " + aId,e);
-      actualHandler.handle(new JobDiagnosticsUpdateEvent(aId.getTaskId().getJobId(),"Error in recovering task output " + e.getMessage()));
-      actualHandler.handle(new JobEvent(aId.getTaskId().getJobId(),JobEventType.INTERNAL_ERROR));
+  try {
+    TaskType type=taskContext.getTaskAttemptID().getTaskID().getTaskType();
+    int numReducers=taskContext.getConfiguration().getInt(MRJobConfig.NUM_REDUCES,1);
+    if (type == TaskType.REDUCE || (type == TaskType.MAP && numReducers <= 0)) {
+      committer.recoverTask(taskContext);
+      LOG.info("Recovered output from task attempt " + attInfo.getAttemptId());
     }
-  LOG.info("Sending done event to recovered attempt " + aId);
+ else {
+      LOG.info("Will not try to recover output for " + taskContext.getTaskAttemptID());
+    }
+  }
+ catch (  IOException e) {
+    LOG.error("Caught an exception while trying to recover task " + aId,e);
+    actualHandler.handle(new JobDiagnosticsUpdateEvent(aId.getTaskId().getJobId(),"Error in recovering task output " + e.getMessage()));
+    actualHandler.handle(new JobEvent(aId.getTaskId().getJobId(),JobEventType.INTERNAL_ERROR));
+  }
+LOG.info("Sending done event to recovered attempt " + aId);
 actualHandler.handle(new TaskAttemptEvent(aId,TaskAttemptEventType.TA_DONE));
 break;
 case KILLED:

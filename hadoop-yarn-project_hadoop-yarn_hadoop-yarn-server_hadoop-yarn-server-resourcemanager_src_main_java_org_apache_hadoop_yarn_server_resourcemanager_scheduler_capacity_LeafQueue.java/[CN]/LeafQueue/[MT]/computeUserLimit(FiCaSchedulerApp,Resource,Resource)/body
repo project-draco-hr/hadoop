@@ -1,12 +1,11 @@
 {
-  final int queueCapacity=Math.max(CSQueueUtils.roundUp(minimumAllocation,(int)(absoluteCapacity * clusterResource.getMemory())),required.getMemory());
-  final int consumed=usedResources.getMemory();
-  final int currentCapacity=(consumed < queueCapacity) ? queueCapacity : (consumed + required.getMemory());
+  final Resource queueCapacity=Resources.max(resourceCalculator,clusterResource,Resources.multiplyAndNormalizeUp(resourceCalculator,clusterResource,absoluteCapacity,minimumAllocation),required);
+  Resource currentCapacity=Resources.lessThan(resourceCalculator,clusterResource,usedResources,queueCapacity) ? queueCapacity : Resources.add(usedResources,required);
   final int activeUsers=activeUsersManager.getNumActiveUsers();
-  int limit=CSQueueUtils.roundUp(minimumAllocation,Math.min(Math.max(divideAndCeil(currentCapacity,activeUsers),divideAndCeil((int)userLimit * currentCapacity,100)),(int)(queueCapacity * userLimitFactor)));
+  Resource limit=Resources.roundUp(resourceCalculator,Resources.min(resourceCalculator,clusterResource,Resources.max(resourceCalculator,clusterResource,Resources.divideAndCeil(resourceCalculator,currentCapacity,activeUsers),Resources.divideAndCeil(resourceCalculator,Resources.multiplyAndRoundDown(currentCapacity,userLimit),100)),Resources.multiplyAndRoundDown(queueCapacity,userLimitFactor)),minimumAllocation);
   if (LOG.isDebugEnabled()) {
     String userName=application.getUser();
-    LOG.debug("User limit computation for " + userName + " in queue "+ getQueueName()+ " userLimit="+ userLimit+ " userLimitFactor="+ userLimitFactor+ " required: "+ required+ " consumed: "+ getUser(userName).getConsumedResources()+ " limit: "+ limit+ " queueCapacity: "+ queueCapacity+ " qconsumed: "+ consumed+ " currentCapacity: "+ currentCapacity+ " activeUsers: "+ activeUsers+ " clusterCapacity: "+ clusterResource.getMemory());
+    LOG.debug("User limit computation for " + userName + " in queue "+ getQueueName()+ " userLimit="+ userLimit+ " userLimitFactor="+ userLimitFactor+ " required: "+ required+ " consumed: "+ getUser(userName).getConsumedResources()+ " limit: "+ limit+ " queueCapacity: "+ queueCapacity+ " qconsumed: "+ usedResources+ " currentCapacity: "+ currentCapacity+ " activeUsers: "+ activeUsers+ " clusterCapacity: "+ clusterResource);
   }
-  return Resources.createResource(limit);
+  return limit;
 }

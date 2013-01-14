@@ -26,6 +26,23 @@
     cluster.shutdown();
     UpgradeUtilities.createEmptyDirs(nameNodeDirs);
     UpgradeUtilities.createEmptyDirs(dataNodeDirs);
+    log("Normal BlockPool rollback",numDirs);
+    UpgradeUtilities.createNameNodeStorageDirs(nameNodeDirs,"current");
+    UpgradeUtilities.createNameNodeStorageDirs(nameNodeDirs,"previous");
+    cluster=new MiniDFSCluster.Builder(conf).numDataNodes(0).format(false).manageDataDfsDirs(false).manageNameDfsDirs(false).startupOption(StartupOption.ROLLBACK).build();
+    UpgradeUtilities.createDataNodeStorageDirs(dataNodeDirs,"current");
+    UpgradeUtilities.createBlockPoolStorageDirs(dataNodeDirs,"current",UpgradeUtilities.getCurrentBlockPoolID(cluster));
+    UpgradeUtilities.createBlockPoolStorageDirs(dataNodeDirs,"previous",UpgradeUtilities.getCurrentBlockPoolID(cluster));
+    storageInfo=new StorageInfo(UpgradeUtilities.getCurrentLayoutVersion() + 1,UpgradeUtilities.getCurrentNamespaceID(cluster),UpgradeUtilities.getCurrentClusterID(cluster),UpgradeUtilities.getCurrentFsscTime(cluster));
+    for (int i=0; i < dataNodeDirs.length; i++) {
+      Path bpPrevPath=new Path(dataNodeDirs[i] + "/current/" + UpgradeUtilities.getCurrentBlockPoolID(cluster));
+      UpgradeUtilities.createBlockPoolVersionFile(new File(bpPrevPath.toString()),storageInfo,UpgradeUtilities.getCurrentBlockPoolID(cluster));
+    }
+    cluster.startDataNodes(conf,1,false,StartupOption.ROLLBACK,null);
+    assertTrue(cluster.isDataNodeUp());
+    cluster.shutdown();
+    UpgradeUtilities.createEmptyDirs(nameNodeDirs);
+    UpgradeUtilities.createEmptyDirs(dataNodeDirs);
     log("NameNode rollback without existing previous dir",numDirs);
     UpgradeUtilities.createNameNodeStorageDirs(nameNodeDirs,"current");
     startNameNodeShouldFail(StartupOption.ROLLBACK,"None of the storage directories contain previous fs state");
