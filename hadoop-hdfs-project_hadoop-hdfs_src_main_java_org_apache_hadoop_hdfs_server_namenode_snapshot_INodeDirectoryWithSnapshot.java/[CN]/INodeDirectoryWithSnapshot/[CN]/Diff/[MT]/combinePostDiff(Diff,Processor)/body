@@ -1,23 +1,30 @@
 {
-  while (postDiff.created != null && !postDiff.created.isEmpty()) {
-    final INode c=postDiff.created.remove(postDiff.created.size() - 1);
-    final int deletedIndex=search(postDiff.deleted,c);
-    if (deletedIndex < 0) {
+  final List<INode> postCreated=postDiff.created != null ? postDiff.created : Collections.<INode>emptyList();
+  final List<INode> postDeleted=postDiff.deleted != null ? postDiff.deleted : Collections.<INode>emptyList();
+  final Iterator<INode> createdIterator=postCreated.iterator();
+  final Iterator<INode> deletedIterator=postDeleted.iterator();
+  INode c=createdIterator.hasNext() ? createdIterator.next() : null;
+  INode d=deletedIterator.hasNext() ? deletedIterator.next() : null;
+  for (; c != null || d != null; ) {
+    final int cmp=c == null ? 1 : d == null ? -1 : c.compareTo(d.getLocalNameBytes());
+    if (cmp < 0) {
       create(c);
+      c=createdIterator.hasNext() ? createdIterator.next() : null;
+    }
+ else     if (cmp > 0) {
+      Triple<Integer,INode,Integer> triple=delete(d);
+      if (deletedINodeProcesser != null) {
+        deletedINodeProcesser.process(triple.middle);
+      }
+      d=deletedIterator.hasNext() ? deletedIterator.next() : null;
     }
  else {
-      final INode d=postDiff.deleted.remove(deletedIndex);
       final Triple<Integer,INode,Integer> triple=modify(d,c);
       if (deletedINodeProcesser != null) {
         deletedINodeProcesser.process(triple.middle);
       }
-    }
-  }
-  while (postDiff.deleted != null && !postDiff.deleted.isEmpty()) {
-    INode node=postDiff.deleted.remove(postDiff.deleted.size() - 1);
-    Triple<Integer,INode,Integer> triple=delete(node);
-    if (deletedINodeProcesser != null) {
-      deletedINodeProcesser.process(triple.middle);
+      c=createdIterator.hasNext() ? createdIterator.next() : null;
+      d=deletedIterator.hasNext() ? deletedIterator.next() : null;
     }
   }
 }
