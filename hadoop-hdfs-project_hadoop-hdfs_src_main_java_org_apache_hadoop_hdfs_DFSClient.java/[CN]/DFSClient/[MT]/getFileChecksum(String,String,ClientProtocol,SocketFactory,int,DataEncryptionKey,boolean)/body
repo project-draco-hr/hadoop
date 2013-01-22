@@ -25,41 +25,20 @@
     final int timeout=3000 * datanodes.length + socketTimeout;
     boolean done=false;
     for (int j=0; !done && j < datanodes.length; j++) {
-      Socket sock=null;
       DataOutputStream out=null;
       DataInputStream in=null;
       try {
-        sock=socketFactory.createSocket();
-        String dnAddr=datanodes[j].getXferAddr(connectToDnViaHostname);
-        if (LOG.isDebugEnabled()) {
-          LOG.debug("Connecting to datanode " + dnAddr);
-        }
-        NetUtils.connect(sock,NetUtils.createSocketAddr(dnAddr),timeout);
-        sock.setSoTimeout(timeout);
-        OutputStream unbufOut=NetUtils.getOutputStream(sock);
-        InputStream unbufIn=NetUtils.getInputStream(sock);
-        if (encryptionKey != null) {
-          IOStreamPair encryptedStreams=DataTransferEncryptor.getEncryptedStreams(unbufOut,unbufIn,encryptionKey);
-          unbufOut=encryptedStreams.out;
-          unbufIn=encryptedStreams.in;
-        }
-        out=new DataOutputStream(new BufferedOutputStream(unbufOut,HdfsConstants.SMALL_BUFFER_SIZE));
-        in=new DataInputStream(unbufIn);
+        IOStreamPair pair=connectToDN(socketFactory,connectToDnViaHostname,encryptionKey,datanodes[j],timeout);
+        out=new DataOutputStream(new BufferedOutputStream(pair.out,HdfsConstants.SMALL_BUFFER_SIZE));
+        in=new DataInputStream(pair.in);
         if (LOG.isDebugEnabled()) {
           LOG.debug("write to " + datanodes[j] + ": "+ Op.BLOCK_CHECKSUM+ ", block="+ block);
         }
         new Sender(out).blockChecksum(block,lb.getBlockToken());
         final BlockOpResponseProto reply=BlockOpResponseProto.parseFrom(PBHelper.vintPrefixed(in));
         if (reply.getStatus() != Status.SUCCESS) {
-          if (reply.getStatus() == Status.ERROR_ACCESS_TOKEN && i > lastRetriedIndex) {
-            if (LOG.isDebugEnabled()) {
-              LOG.debug("Got access token error in response to OP_BLOCK_CHECKSUM " + "for file " + src + " for block "+ block+ " from datanode "+ datanodes[j]+ ". Will retry the block once.");
-            }
-            lastRetriedIndex=i;
-            done=true;
-            i--;
-            refetchBlocks=true;
-            break;
+          if (reply.getStatus() == Status.ERROR_ACCESS_TOKEN) {
+            throw new InvalidBlockTokenException();
           }
  else {
             throw new IOException("Bad response " + reply + " for block "+ block+ " from datanode "+ datanodes[j]);
@@ -79,7 +58,14 @@
         }
         final MD5Hash md5=new MD5Hash(checksumData.getMd5().toByteArray());
         md5.write(md5out);
-        final DataChecksum.Type ct=PBHelper.convert(checksumData.getCrcType());
+        final DataChecksum.Type ct;
+        if (checksumData.hasCrcType()) {
+          ct=PBHelper.convert(checksumData.getCrcType());
+        }
+ else {
+          LOG.debug("Retrieving checksum from an earlier-version DataNode: " + "inferring checksum by reading first byte");
+          ct=inferChecksumTypeByReading(clientName,socketFactory,socketTimeout,lb,datanodes[j],encryptionKey,connectToDnViaHostname);
+        }
         if (i == 0) {
           crcType=ct;
         }
@@ -94,13 +80,24 @@
           LOG.debug("got reply from " + datanodes[j] + ": md5="+ md5);
         }
       }
- catch (      IOException ie) {
+ catch (      InvalidBlockTokenException ibte) {
+        if (i > lastRetriedIndex) {
+          if (LOG.isDebugEnabled()) {
+            LOG.debug("Got access token error in response to OP_BLOCK_CHECKSUM " + "for file " + src + " for block "+ block+ " from datanode "+ datanodes[j]+ ". Will retry the block once.");
+          }
+          lastRetriedIndex=i;
+          done=true;
+          i--;
+          refetchBlocks=true;
+          break;
+        }
+      }
+catch (      IOException ie) {
         LOG.warn("src=" + src + ", datanodes["+ j+ "]="+ datanodes[j],ie);
       }
  finally {
         IOUtils.closeStream(in);
         IOUtils.closeStream(out);
-        IOUtils.closeSocket(sock);
       }
     }
     if (!done) {
