@@ -25,13 +25,15 @@
   request.setApplicationId(app.getApplicationId());
   GetApplicationReportResponse reportResponse=rm.getClientRMService().getApplicationReport(request);
   ApplicationReport appReport=reportResponse.getApplicationReport();
-  String clientTokenEncoded=appReport.getClientToken();
+  ClientToken clientToken=appReport.getClientToken();
   int waitTime=0;
   while (containerManager.clientTokensSecret == null && waitTime++ < 20) {
     Thread.sleep(1000);
   }
   Assert.assertNotNull(containerManager.clientTokensSecret);
-  final CustomAM am=new CustomAM(app.getApplicationId(),containerManager.clientTokensSecret);
+  ApplicationAttemptId appAttemptId=app.getAppAttempts().keySet().iterator().next();
+  Assert.assertNotNull(appAttemptId);
+  final CustomAM am=new CustomAM(appAttemptId,containerManager.clientTokensSecret);
   am.init(conf);
   am.start();
   SecurityUtil.setSecurityInfoProviders(new CustomSecurityInfo());
@@ -44,11 +46,9 @@
     Assert.assertFalse(am.pinged);
   }
   UserGroupInformation ugi=UserGroupInformation.createRemoteUser("me");
-  Token<ClientTokenIdentifier> clientToken=new Token<ClientTokenIdentifier>();
-  clientToken.decodeFromUrlString(clientTokenEncoded);
-  SecurityUtil.setTokenService(clientToken,am.address);
-  ClientTokenIdentifier maliciousID=new ClientTokenIdentifier(BuilderUtils.newApplicationId(app.getApplicationId().getClusterTimestamp(),42));
-  Token<ClientTokenIdentifier> maliciousToken=new Token<ClientTokenIdentifier>(maliciousID.getBytes(),clientToken.getPassword(),clientToken.getKind(),clientToken.getService());
+  Token<ClientTokenIdentifier> token=ProtoUtils.convertFromProtoFormat(clientToken,am.address);
+  ClientTokenIdentifier maliciousID=new ClientTokenIdentifier(BuilderUtils.newApplicationAttemptId(BuilderUtils.newApplicationId(app.getApplicationId().getClusterTimestamp(),42),43));
+  Token<ClientTokenIdentifier> maliciousToken=new Token<ClientTokenIdentifier>(maliciousID.getBytes(),token.getPassword(),token.getKind(),token.getService());
   ugi.addToken(maliciousToken);
   try {
     ugi.doAs(new PrivilegedExceptionAction<Void>(){
@@ -70,7 +70,7 @@ catch (  Exception e) {
     Assert.assertFalse(am.pinged);
   }
   ugi=UserGroupInformation.createRemoteUser("me");
-  ugi.addToken(clientToken);
+  ugi.addToken(token);
   ugi.doAs(new PrivilegedExceptionAction<Void>(){
     @Override public Void run() throws Exception {
       CustomProtocol client=(CustomProtocol)RPC.getProxy(CustomProtocol.class,1L,am.address,conf);
