@@ -1,0 +1,59 @@
+{
+  final ReadOnlyList<INode> children=current.getChildrenList(null);
+  int dirNum=0;
+  Map<Snapshot,List<INodeDirectory>> snapshotDirMap=null;
+  if (current instanceof INodeDirectoryWithSnapshot) {
+    snapshotDirMap=new HashMap<Snapshot,List<INodeDirectory>>();
+    dirNum+=((INodeDirectoryWithSnapshot)current).getSnapshotDirectory(snapshotDirMap);
+  }
+  int prefixLen=currentDirName.position();
+  if (snapshot == null) {
+    if (prefixLen == 0) {
+      out.writeShort(PATH_SEPARATOR.length);
+      out.write(PATH_SEPARATOR);
+    }
+ else {
+      out.writeShort(prefixLen);
+      out.write(currentDirName.array(),0,prefixLen);
+    }
+  }
+ else {
+    String nonSnapshotPath=prefixLen == 0 ? Path.SEPARATOR : DFSUtil.bytes2String(currentDirName.array(),0,prefixLen);
+    String snapshotFullPath=computeSnapshotPath(nonSnapshotPath,snapshot);
+    byte[] snapshotFullPathBytes=DFSUtil.string2Bytes(snapshotFullPath);
+    out.writeShort(snapshotFullPathBytes.length);
+    out.write(snapshotFullPathBytes);
+  }
+  dirNum+=saveChildren(children,out);
+  if (current instanceof INodeDirectorySnapshottable) {
+    INodeDirectorySnapshottable snapshottableNode=(INodeDirectorySnapshottable)current;
+    SnapshotFSImageFormat.saveSnapshots(snapshottableNode,out);
+  }
+ else {
+    out.writeInt(-1);
+  }
+  if (current instanceof INodeDirectoryWithSnapshot) {
+    INodeDirectoryWithSnapshot sNode=(INodeDirectoryWithSnapshot)current;
+    SnapshotFSImageFormat.saveSnapshotDiffs(sNode,out);
+  }
+ else {
+    out.writeInt(-1);
+  }
+  out.writeInt(dirNum);
+  for (  INode child : children) {
+    if (!child.isDirectory())     continue;
+    currentDirName.put(PATH_SEPARATOR).put(child.getLocalNameBytes());
+    saveImage(currentDirName,(INodeDirectory)child,out,snapshot);
+    currentDirName.position(prefixLen);
+  }
+  if (snapshotDirMap != null) {
+    for (    Snapshot ss : snapshotDirMap.keySet()) {
+      List<INodeDirectory> snapshotSubDirs=snapshotDirMap.get(ss);
+      for (      INodeDirectory subDir : snapshotSubDirs) {
+        currentDirName.put(PATH_SEPARATOR).put(subDir.getLocalNameBytes());
+        saveImage(currentDirName,subDir,out,ss);
+        currentDirName.position(prefixLen);
+      }
+    }
+  }
+}

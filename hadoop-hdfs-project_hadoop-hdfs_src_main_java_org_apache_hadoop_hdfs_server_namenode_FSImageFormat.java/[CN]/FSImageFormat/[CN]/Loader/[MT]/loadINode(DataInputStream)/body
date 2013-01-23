@@ -2,6 +2,10 @@
   long modificationTime=0;
   long atime=0;
   long blockSize=0;
+  long computeFileSize=-1;
+  boolean snapshottable=false;
+  boolean withSnapshot=false;
+  boolean withLink=false;
   int imgVersion=getLayoutVersion();
   long inodeId=namesystem.allocateNewInodeId();
   short replication=in.readShort();
@@ -14,10 +18,16 @@
   int numBlocks=in.readInt();
   BlockInfo blocks[]=null;
   if (numBlocks >= 0) {
-    blocks=new BlockInfo[numBlocks];
+    blocks=LayoutVersion.supports(Feature.SNAPSHOT,imgVersion) ? (in.readBoolean() ? new BlockInfo[numBlocks] : null) : new BlockInfo[numBlocks];
     for (int j=0; j < numBlocks; j++) {
       blocks[j]=new BlockInfo(replication);
       blocks[j].readFields(in);
+    }
+    if (LayoutVersion.supports(Feature.SNAPSHOT,imgVersion)) {
+      computeFileSize=in.readLong();
+      if (computeFileSize < 0) {
+        withLink=in.readBoolean();
+      }
     }
   }
   long nsQuota=-1L;
@@ -28,10 +38,16 @@
   if (LayoutVersion.supports(Feature.DISKSPACE_QUOTA,imgVersion) && blocks == null && numBlocks == -1) {
     dsQuota=in.readLong();
   }
+  if (LayoutVersion.supports(Feature.SNAPSHOT,imgVersion) && blocks == null && numBlocks == -1) {
+    snapshottable=in.readBoolean();
+    if (!snapshottable) {
+      withSnapshot=in.readBoolean();
+    }
+  }
   String symlink="";
   if (numBlocks == -2) {
     symlink=Text.readString(in);
   }
   PermissionStatus permissions=PermissionStatus.read(in);
-  return INode.newINode(inodeId,permissions,blocks,symlink,replication,modificationTime,atime,nsQuota,dsQuota,blockSize);
+  return INode.newINode(inodeId,permissions,blocks,symlink,replication,modificationTime,atime,nsQuota,dsQuota,blockSize,numBlocks,withLink,computeFileSize,snapshottable,withSnapshot);
 }
