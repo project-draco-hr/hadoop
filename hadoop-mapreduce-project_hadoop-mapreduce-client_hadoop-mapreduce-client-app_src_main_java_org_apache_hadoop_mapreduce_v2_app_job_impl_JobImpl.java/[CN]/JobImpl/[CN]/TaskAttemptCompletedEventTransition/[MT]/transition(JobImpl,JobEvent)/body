@@ -2,15 +2,23 @@
   TaskAttemptCompletionEvent tce=((JobTaskAttemptCompletedEvent)event).getCompletionEvent();
   tce.setEventId(job.taskAttemptCompletionEvents.size());
   job.taskAttemptCompletionEvents.add(tce);
+  int mapEventIdx=-1;
   if (TaskType.MAP.equals(tce.getAttemptId().getTaskId().getTaskType())) {
-    job.mapAttemptCompletionEvents.add(tce);
+    mapEventIdx=job.mapAttemptCompletionEvents.size();
+    job.mapAttemptCompletionEvents.add(TypeConverter.fromYarn(tce));
   }
+  job.taskCompletionIdxToMapCompletionIdx.add(mapEventIdx);
   TaskAttemptId attemptId=tce.getAttemptId();
   TaskId taskId=attemptId.getTaskId();
-  Object successEventNo=job.successAttemptCompletionEventNoMap.remove(taskId);
+  Integer successEventNo=job.successAttemptCompletionEventNoMap.remove(taskId);
   if (successEventNo != null) {
-    TaskAttemptCompletionEvent successEvent=job.taskAttemptCompletionEvents.get((Integer)successEventNo);
+    TaskAttemptCompletionEvent successEvent=job.taskAttemptCompletionEvents.get(successEventNo);
     successEvent.setStatus(TaskAttemptCompletionEventStatus.OBSOLETE);
+    int mapCompletionIdx=job.taskCompletionIdxToMapCompletionIdx.get(successEventNo);
+    if (mapCompletionIdx >= 0) {
+      TaskCompletionEvent mapEvent=job.mapAttemptCompletionEvents.get(mapCompletionIdx);
+      job.mapAttemptCompletionEvents.set(mapCompletionIdx,new TaskCompletionEvent(mapEvent.getEventId(),mapEvent.getTaskAttemptId(),mapEvent.idWithinJob(),mapEvent.isMapTask(),TaskCompletionEvent.Status.OBSOLETE,mapEvent.getTaskTrackerHttp()));
+    }
   }
   if (TaskAttemptCompletionEventStatus.SUCCEEDED.equals(tce.getStatus())) {
     job.successAttemptCompletionEventNoMap.put(taskId,tce.getEventId());
