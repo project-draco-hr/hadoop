@@ -1,10 +1,21 @@
 {
   Preconditions.checkArgument(!child.isDirectory(),"child is a directory, child=%s",child);
+  if (latest == null) {
+    return child;
+  }
   final SnapshotDiff diff=checkAndAddLatestSnapshotDiff(latest);
   if (diff.getChild(child.getLocalNameBytes(),false) != null) {
-    return null;
+    return child;
   }
   final Pair<? extends INode,? extends INode> p=child.createSnapshotCopy();
-  diff.diff.modify(p.right,p.left,true);
-  return p;
+  if (p.left != p.right) {
+    final Triple<Integer,INode,Integer> triple=diff.diff.modify(p.right,p.left);
+    if (triple.middle != null && p.left instanceof FileWithSnapshot) {
+      FileWithSnapshot newNodeWithLink=(FileWithSnapshot)p.left;
+      FileWithSnapshot oldNodeWithLink=(FileWithSnapshot)p.right;
+      newNodeWithLink.setNext(oldNodeWithLink.getNext());
+      oldNodeWithLink.setNext(null);
+    }
+  }
+  return p.left;
 }
