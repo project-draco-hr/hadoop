@@ -1,0 +1,38 @@
+{
+  Path file=new Path(dir,"file");
+  SnapshotTestHelper.createSnapshot(hdfs,dir,"s0");
+  DFSTestUtil.createFile(hdfs,file,BLOCKSIZE,REPLICATION,seed);
+  DFSTestUtil.appendFile(hdfs,file,BLOCKSIZE);
+  INodeFile fileNode=(INodeFile)fsdir.getINode(file.toString());
+  INodeDirectorySnapshottable dirNode=(INodeDirectorySnapshottable)fsdir.getINode(dir.toString());
+  Diff diff=dirNode.getLastSnapshotDiff().getDiff();
+  INode nodeInCreated=diff.searchCreated(fileNode.getLocalNameBytes());
+  assertTrue(fileNode == nodeInCreated);
+  INode nodeInDeleted=diff.searchDeleted(fileNode.getLocalNameBytes());
+  assertNull(nodeInDeleted);
+  hdfs.createSnapshot(dir,"s1");
+  hdfs.setReplication(file,(short)(REPLICATION - 1));
+  DFSTestUtil.appendFile(hdfs,file,BLOCKSIZE);
+  diff=dirNode.getLastSnapshotDiff().getDiff();
+  fileNode=(INodeFile)fsdir.getINode(file.toString());
+  nodeInCreated=diff.searchCreated(fileNode.getLocalNameBytes());
+  assertTrue(fileNode == nodeInCreated);
+  assertEquals(REPLICATION - 1,((INodeFile)nodeInCreated).getFileReplication());
+  assertEquals(BLOCKSIZE * 3,((INodeFile)fileNode).computeFileSize(true));
+  nodeInDeleted=diff.searchDeleted(fileNode.getLocalNameBytes());
+  assertEquals(REPLICATION,((INodeFile)nodeInDeleted).getFileReplication());
+  assertEquals(BLOCKSIZE * 2,((INodeFile)nodeInDeleted).computeFileSize(true));
+  checkCircularList((INodeFileWithSnapshot)fileNode,(INodeFileSnapshot)nodeInDeleted);
+  hdfs.createSnapshot(dir,"s2");
+  DFSTestUtil.appendFile(hdfs,file,BLOCKSIZE);
+  diff=dirNode.getLastSnapshotDiff().getDiff();
+  fileNode=(INodeFile)fsdir.getINode(file.toString());
+  nodeInCreated=diff.searchCreated(fileNode.getLocalNameBytes());
+  assertTrue(fileNode == nodeInCreated);
+  assertEquals(REPLICATION - 1,((INodeFile)nodeInCreated).getFileReplication());
+  assertEquals(BLOCKSIZE * 4,((INodeFile)fileNode).computeFileSize(true));
+  INode nodeInDeleted2=diff.searchDeleted(fileNode.getLocalNameBytes());
+  assertEquals(REPLICATION - 1,((INodeFile)nodeInDeleted2).getFileReplication());
+  assertEquals(BLOCKSIZE * 3,((INodeFile)nodeInDeleted2).computeFileSize(true));
+  checkCircularList((INodeFileWithSnapshot)fileNode,(INodeFileSnapshot)nodeInDeleted2,(INodeFileSnapshot)nodeInDeleted);
+}
