@@ -6,23 +6,25 @@
   long approxOutputSize=0;
   int bytesPerSum=jobConf.getInt("io.bytes.per.checksum",512);
   LOG.info("OnDiskMerger: We have  " + inputs.size() + " map outputs on disk. Triggering merge...");
-  for (  Path file : inputs) {
-    approxOutputSize+=localFS.getFileStatus(file).getLen();
+  for (  CompressAwarePath file : inputs) {
+    approxOutputSize+=localFS.getFileStatus(file.getPath()).getLen();
   }
   approxOutputSize+=ChecksumFileSystem.getChecksumLength(approxOutputSize,bytesPerSum);
   Path outputPath=localDirAllocator.getLocalPathForWrite(inputs.get(0).toString(),approxOutputSize,jobConf).suffix(Task.MERGED_OUTPUT_PREFIX);
   Writer<K,V> writer=new Writer<K,V>(jobConf,rfs,outputPath,(Class<K>)jobConf.getMapOutputKeyClass(),(Class<V>)jobConf.getMapOutputValueClass(),codec,null);
   RawKeyValueIterator iter=null;
+  CompressAwarePath compressAwarePath;
   Path tmpDir=new Path(reduceId.toString());
   try {
     iter=Merger.merge(jobConf,rfs,(Class<K>)jobConf.getMapOutputKeyClass(),(Class<V>)jobConf.getMapOutputValueClass(),codec,inputs.toArray(new Path[inputs.size()]),true,ioSortFactor,tmpDir,(RawComparator<K>)jobConf.getOutputKeyComparator(),reporter,spilledRecordsCounter,null,mergedMapOutputsCounter,null);
     Merger.writeFile(iter,writer,reporter,jobConf);
+    compressAwarePath=new CompressAwarePath(outputPath,writer.getRawLength());
     writer.close();
   }
  catch (  IOException e) {
     localFS.delete(outputPath,true);
     throw e;
   }
-  closeOnDiskFile(outputPath);
+  closeOnDiskFile(compressAwarePath);
   LOG.info(reduceId + " Finished merging " + inputs.size()+ " map output files on disk of total-size "+ approxOutputSize+ "."+ " Local output file is "+ outputPath+ " of size "+ localFS.getFileStatus(outputPath).getLen());
 }
