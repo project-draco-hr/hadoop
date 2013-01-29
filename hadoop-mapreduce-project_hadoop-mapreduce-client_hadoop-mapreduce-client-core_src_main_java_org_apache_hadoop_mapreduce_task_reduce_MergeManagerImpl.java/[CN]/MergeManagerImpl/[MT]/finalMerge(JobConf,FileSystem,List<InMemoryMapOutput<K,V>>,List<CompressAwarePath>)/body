@@ -24,7 +24,7 @@
       final Writer<K,V> writer=new Writer<K,V>(job,fs,outputPath,keyClass,valueClass,codec,null);
       try {
         Merger.writeFile(rIter,writer,reporter,job);
-        onDiskMapOutputs.add(outputPath);
+        onDiskMapOutputs.add(new CompressAwarePath(outputPath,writer.getRawLength()));
       }
  catch (      IOException e) {
         if (null != outputPath) {
@@ -51,11 +51,14 @@
   }
   List<Segment<K,V>> diskSegments=new ArrayList<Segment<K,V>>();
   long onDiskBytes=inMemToDiskBytes;
-  Path[] onDisk=onDiskMapOutputs.toArray(new Path[onDiskMapOutputs.size()]);
-  for (  Path file : onDisk) {
-    onDiskBytes+=fs.getFileStatus(file).getLen();
-    LOG.debug("Disk file: " + file + " Length is "+ fs.getFileStatus(file).getLen());
-    diskSegments.add(new Segment<K,V>(job,fs,file,codec,keepInputs,(file.toString().endsWith(Task.MERGED_OUTPUT_PREFIX) ? null : mergedMapOutputsCounter)));
+  long rawBytes=inMemToDiskBytes;
+  CompressAwarePath[] onDisk=onDiskMapOutputs.toArray(new CompressAwarePath[onDiskMapOutputs.size()]);
+  for (  CompressAwarePath file : onDisk) {
+    long fileLength=fs.getFileStatus(file).getLen();
+    onDiskBytes+=fileLength;
+    rawBytes+=(file.getRawDataLength() > 0) ? file.getRawDataLength() : fileLength;
+    LOG.debug("Disk file: " + file + " Length is "+ fileLength);
+    diskSegments.add(new Segment<K,V>(job,fs,file,codec,keepInputs,(file.toString().endsWith(Task.MERGED_OUTPUT_PREFIX) ? null : mergedMapOutputsCounter),file.getRawDataLength()));
   }
   LOG.info("Merging " + onDisk.length + " files, "+ onDiskBytes+ " bytes from disk");
   Collections.sort(diskSegments,new Comparator<Segment<K,V>>(){
@@ -80,7 +83,7 @@
     if (0 == finalSegments.size()) {
       return diskMerge;
     }
-    finalSegments.add(new Segment<K,V>(new RawKVIteratorReader(diskMerge,onDiskBytes),true));
+    finalSegments.add(new Segment<K,V>(new RawKVIteratorReader(diskMerge,onDiskBytes),true,rawBytes));
   }
   return Merger.merge(job,fs,keyClass,valueClass,finalSegments,finalSegments.size(),tmpDir,comparator,reporter,spilledRecordsCounter,null,null);
 }
