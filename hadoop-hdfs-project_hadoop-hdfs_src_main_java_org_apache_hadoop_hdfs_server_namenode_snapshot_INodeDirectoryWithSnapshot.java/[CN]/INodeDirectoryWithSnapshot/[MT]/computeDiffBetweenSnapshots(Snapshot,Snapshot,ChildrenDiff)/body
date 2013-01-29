@@ -1,0 +1,49 @@
+{
+  Snapshot earlierSnapshot=fromSnapshot;
+  Snapshot laterSnapshot=toSnapshot;
+  if (fromSnapshot == null || (toSnapshot != null && Snapshot.ID_COMPARATOR.compare(fromSnapshot,toSnapshot) > 0)) {
+    earlierSnapshot=toSnapshot;
+    laterSnapshot=fromSnapshot;
+  }
+  int earlierDiffIndex=Collections.binarySearch(diffs,earlierSnapshot);
+  if (earlierDiffIndex < 0 && (-earlierDiffIndex - 1) == diffs.size()) {
+    return false;
+  }
+  int laterDiffIndex=diffs.size();
+  if (laterSnapshot != null) {
+    laterDiffIndex=Collections.binarySearch(diffs,laterSnapshot);
+    if (laterDiffIndex == -1 || laterDiffIndex == 0) {
+      return false;
+    }
+  }
+  earlierDiffIndex=earlierDiffIndex < 0 ? (-earlierDiffIndex - 1) : earlierDiffIndex;
+  laterDiffIndex=laterDiffIndex < 0 ? (-laterDiffIndex - 1) : laterDiffIndex;
+  boolean dirMetadataChanged=false;
+  INodeDirectory dirCopy=null;
+  for (int i=earlierDiffIndex; i < laterDiffIndex; i++) {
+    SnapshotDiff sdiff=diffs.get(i);
+    diff.combinePosterior(sdiff.diff,null);
+    if (dirMetadataChanged == false && sdiff.snapshotINode != null) {
+      if (dirCopy == null) {
+        dirCopy=sdiff.snapshotINode;
+      }
+ else {
+        if (!dirCopy.metadataEquals(sdiff.snapshotINode)) {
+          dirMetadataChanged=true;
+        }
+      }
+    }
+  }
+  if (!diff.isEmpty() || dirMetadataChanged) {
+    return true;
+  }
+ else   if (dirCopy != null) {
+    for (int i=laterDiffIndex; i < diffs.size(); i++) {
+      if (diffs.get(i).snapshotINode != null && !dirCopy.metadataEquals(diffs.get(i).snapshotINode)) {
+        return true;
+      }
+    }
+    return !dirCopy.metadataEquals(this);
+  }
+  return false;
+}
