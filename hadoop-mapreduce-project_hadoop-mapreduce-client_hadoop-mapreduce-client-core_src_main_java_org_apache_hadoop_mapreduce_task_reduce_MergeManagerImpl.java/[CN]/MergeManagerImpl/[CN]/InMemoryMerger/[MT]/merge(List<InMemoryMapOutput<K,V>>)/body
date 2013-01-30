@@ -10,6 +10,7 @@
   Path outputPath=mapOutputFile.getInputFileForWrite(mapTaskId,mergeOutputSize).suffix(Task.MERGED_OUTPUT_PREFIX);
   Writer<K,V> writer=new Writer<K,V>(jobConf,rfs,outputPath,(Class<K>)jobConf.getMapOutputKeyClass(),(Class<V>)jobConf.getMapOutputValueClass(),codec,null);
   RawKeyValueIterator rIter=null;
+  CompressAwarePath compressAwarePath;
   try {
     LOG.info("Initiating in-memory merge with " + noInMemorySegments + " segments...");
     rIter=Merger.merge(jobConf,rfs,(Class<K>)jobConf.getMapOutputKeyClass(),(Class<V>)jobConf.getMapOutputValueClass(),inMemorySegments,inMemorySegments.size(),new Path(reduceId.toString()),(RawComparator<K>)jobConf.getOutputKeyComparator(),reporter,spilledRecordsCounter,null,null);
@@ -20,6 +21,7 @@
       combineCollector.setWriter(writer);
       combineAndSpill(rIter,reduceCombineInputCounter);
     }
+    compressAwarePath=new CompressAwarePath(outputPath,writer.getRawLength());
     writer.close();
     LOG.info(reduceId + " Merge of the " + noInMemorySegments+ " files in-memory complete."+ " Local file is "+ outputPath+ " of size "+ localFS.getFileStatus(outputPath).getLen());
   }
@@ -27,5 +29,5 @@
     localFS.delete(outputPath,true);
     throw e;
   }
-  closeOnDiskFile(outputPath);
+  closeOnDiskFile(compressAwarePath);
 }
