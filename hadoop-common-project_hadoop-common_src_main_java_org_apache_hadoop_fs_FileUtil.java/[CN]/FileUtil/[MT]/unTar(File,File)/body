@@ -4,11 +4,28 @@
       throw new IOException("Mkdirs failed to create " + untarDir);
     }
   }
+  StringBuilder untarCommand=new StringBuilder();
   boolean gzipped=inFile.toString().endsWith("gz");
-  if (Shell.WINDOWS) {
-    unTarUsingJava(inFile,untarDir,gzipped);
+  if (gzipped) {
+    untarCommand.append(" gzip -dc '");
+    untarCommand.append(FileUtil.makeShellPath(inFile));
+    untarCommand.append("' | (");
+  }
+  untarCommand.append("cd '");
+  untarCommand.append(FileUtil.makeShellPath(untarDir));
+  untarCommand.append("' ; ");
+  untarCommand.append("tar -xf ");
+  if (gzipped) {
+    untarCommand.append(" -)");
   }
  else {
-    unTarUsingTar(inFile,untarDir,gzipped);
+    untarCommand.append(FileUtil.makeShellPath(inFile));
+  }
+  String[] shellCmd={"bash","-c",untarCommand.toString()};
+  ShellCommandExecutor shexec=new ShellCommandExecutor(shellCmd);
+  shexec.execute();
+  int exitcode=shexec.getExitCode();
+  if (exitcode != 0) {
+    throw new IOException("Error untarring file " + inFile + ". Tar process exited with exit code "+ exitcode);
   }
 }
