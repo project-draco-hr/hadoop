@@ -22,48 +22,44 @@
         isAssignable=false;
       }
     }
-    boolean blackListed=false;
-    ContainerRequest assigned=null;
-    if (isAssignable) {
-      String allocatedHost=allocated.getNodeId().getHost();
-      blackListed=isNodeBlacklisted(allocatedHost);
-      if (blackListed) {
-        LOG.info("Got allocated container on a blacklisted " + " host " + allocatedHost + ". Releasing container "+ allocated);
-        ContainerRequest toBeReplacedReq=getContainerReqToReplace(allocated);
-        if (toBeReplacedReq != null) {
-          LOG.info("Placing a new container request for task attempt " + toBeReplacedReq.attemptID);
-          ContainerRequest newReq=getFilteredContainerRequest(toBeReplacedReq);
-          decContainerReq(toBeReplacedReq);
-          if (toBeReplacedReq.attemptID.getTaskId().getTaskType() == TaskType.MAP) {
-            maps.put(newReq.attemptID,newReq);
-          }
  else {
-            reduces.put(newReq.attemptID,newReq);
-          }
-          addContainerReq(newReq);
+      LOG.warn("Container allocated at unwanted priority: " + priority + ". Returning to RM...");
+      isAssignable=false;
+    }
+    if (!isAssignable) {
+      containerNotAssigned(allocated);
+      it.remove();
+      continue;
+    }
+    String allocatedHost=allocated.getNodeId().getHost();
+    if (isNodeBlacklisted(allocatedHost)) {
+      LOG.info("Got allocated container on a blacklisted " + " host " + allocatedHost + ". Releasing container "+ allocated);
+      ContainerRequest toBeReplacedReq=getContainerReqToReplace(allocated);
+      if (toBeReplacedReq != null) {
+        LOG.info("Placing a new container request for task attempt " + toBeReplacedReq.attemptID);
+        ContainerRequest newReq=getFilteredContainerRequest(toBeReplacedReq);
+        decContainerReq(toBeReplacedReq);
+        if (toBeReplacedReq.attemptID.getTaskId().getTaskType() == TaskType.MAP) {
+          maps.put(newReq.attemptID,newReq);
         }
  else {
-          LOG.info("Could not map allocated container to a valid request." + " Releasing allocated container " + allocated);
+          reduces.put(newReq.attemptID,newReq);
         }
+        addContainerReq(newReq);
       }
  else {
-        assigned=assign(allocated);
-        if (assigned != null) {
-          decContainerReq(assigned);
-          eventHandler.handle(new TaskAttemptContainerAssignedEvent(assigned.attemptID,allocated,applicationACLs));
-          assignedRequests.add(allocated,assigned.attemptID);
-          if (LOG.isDebugEnabled()) {
-            LOG.info("Assigned container (" + allocated + ") "+ " to task "+ assigned.attemptID+ " on node "+ allocated.getNodeId().toString());
-          }
-        }
- else {
-          LOG.info("Releasing unassigned and invalid container " + allocated + ". RM has gone crazy, someone go look!"+ " Hey RM, if you are so rich, go donate to non-profits!");
-        }
+        LOG.info("Could not map allocated container to a valid request." + " Releasing allocated container " + allocated);
       }
+      containerNotAssigned(allocated);
+      it.remove();
+      continue;
     }
-    if (blackListed || assigned == null) {
-      containersReleased++;
-      release(allocated.getId());
-    }
+  }
+  assignContainers(allocatedContainers);
+  it=allocatedContainers.iterator();
+  while (it.hasNext()) {
+    Container allocated=it.next();
+    LOG.info("Releasing unassigned and invalid container " + allocated + ". RM may have assignment issues");
+    containerNotAssigned(allocated);
   }
 }
