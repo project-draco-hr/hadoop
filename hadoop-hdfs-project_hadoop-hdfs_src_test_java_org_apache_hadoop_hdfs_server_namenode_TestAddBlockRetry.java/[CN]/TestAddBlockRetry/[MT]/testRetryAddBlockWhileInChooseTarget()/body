@@ -1,0 +1,35 @@
+{
+  final String src="/testRetryAddBlockWhileInChooseTarget";
+  FSNamesystem ns=cluster.getNamesystem();
+  BlockManager spyBM=spy(ns.getBlockManager());
+  final NamenodeProtocols nn=cluster.getNameNodeRpc();
+  Class<? extends FSNamesystem> nsClass=ns.getClass();
+  Field bmField=nsClass.getDeclaredField("blockManager");
+  bmField.setAccessible(true);
+  bmField.set(ns,spyBM);
+  doAnswer(new Answer<DatanodeDescriptor[]>(){
+    @Override public DatanodeDescriptor[] answer(    InvocationOnMock invocation) throws Throwable {
+      LOG.info("chooseTarget for " + src);
+      DatanodeDescriptor[] ret=(DatanodeDescriptor[])invocation.callRealMethod();
+      count++;
+      if (count == 1) {
+        LOG.info("Starting second addBlock for " + src);
+        nn.addBlock(src,"clientName",null,null);
+        LocatedBlocks lbs=nn.getBlockLocations(src,0,Long.MAX_VALUE);
+        assertEquals("Must be one block",1,lbs.getLocatedBlocks().size());
+        lb2=lbs.get(0);
+        assertEquals("Wrong replication",REPLICATION,lb2.getLocations().length);
+      }
+      return ret;
+    }
+  }
+).when(spyBM).chooseTarget(Mockito.anyString(),Mockito.anyInt(),Mockito.<DatanodeDescriptor>any(),Mockito.<HashMap<Node,Node>>any(),Mockito.anyLong());
+  nn.create(src,FsPermission.getFileDefault(),"clientName",new EnumSetWritable<CreateFlag>(EnumSet.of(CreateFlag.CREATE)),true,(short)3,1024);
+  LOG.info("Starting first addBlock for " + src);
+  nn.addBlock(src,"clientName",null,null);
+  LocatedBlocks lbs=nn.getBlockLocations(src,0,Long.MAX_VALUE);
+  assertEquals("Must be one block",1,lbs.getLocatedBlocks().size());
+  lb1=lbs.get(0);
+  assertEquals("Wrong replication",REPLICATION,lb1.getLocations().length);
+  assertEquals("Blocks are not equal",lb1.getBlock(),lb2.getBlock());
+}
