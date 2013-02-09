@@ -1,0 +1,34 @@
+{
+  Configuration conf=new Configuration();
+  conf.setClass(YarnConfiguration.IPC_RPC_IMPL,YarnBadRPC.class,YarnRPC.class);
+  RMDelegationTokenSecretManager secretManager=mock(RMDelegationTokenSecretManager.class);
+  RMDelegationTokenIdentifier.Renewer.setSecretManager(secretManager,rmAddr);
+  RMDelegationTokenIdentifier ident=new RMDelegationTokenIdentifier(new Text("owner"),new Text("renewer"),null);
+  Token<RMDelegationTokenIdentifier> token=new Token<RMDelegationTokenIdentifier>(ident,secretManager);
+  SecurityUtil.setTokenService(token,serviceAddr);
+  if (shouldShortCircuit) {
+    token.renew(conf);
+    verify(secretManager).renewToken(eq(token),eq("renewer"));
+    reset(secretManager);
+    token.cancel(conf);
+    verify(secretManager).cancelToken(eq(token),eq("renewer"));
+  }
+ else {
+    try {
+      token.renew(conf);
+      fail();
+    }
+ catch (    RuntimeException e) {
+      assertEquals("getProxy",e.getMessage());
+    }
+    verify(secretManager,never()).renewToken(any(Token.class),anyString());
+    try {
+      token.cancel(conf);
+      fail();
+    }
+ catch (    RuntimeException e) {
+      assertEquals("getProxy",e.getMessage());
+    }
+    verify(secretManager,never()).cancelToken(any(Token.class),anyString());
+  }
+}
