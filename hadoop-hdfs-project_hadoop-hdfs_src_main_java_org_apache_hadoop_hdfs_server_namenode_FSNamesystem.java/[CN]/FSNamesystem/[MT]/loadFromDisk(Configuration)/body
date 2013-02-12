@@ -1,5 +1,19 @@
 {
-  Collection<URI> namespaceDirs=FSNamesystem.getNamespaceDirs(conf);
-  List<URI> namespaceEditsDirs=FSNamesystem.getNamespaceEditsDirs(conf);
-  return loadFromDisk(conf,namespaceDirs,namespaceEditsDirs);
+  checkConfiguration(conf);
+  FSImage fsImage=new FSImage(conf,FSNamesystem.getNamespaceDirs(conf),FSNamesystem.getNamespaceEditsDirs(conf));
+  FSNamesystem namesystem=new FSNamesystem(conf,fsImage);
+  StartupOption startOpt=NameNode.getStartupOption(conf);
+  if (startOpt == StartupOption.RECOVER) {
+    namesystem.setSafeMode(SafeModeAction.SAFEMODE_ENTER);
+  }
+  long loadStart=now();
+  String nameserviceId=DFSUtil.getNamenodeNameServiceId(conf);
+  namesystem.loadFSImage(startOpt,fsImage,HAUtil.isHAEnabled(conf,nameserviceId));
+  long timeTakenToLoadFSImage=now() - loadStart;
+  LOG.info("Finished loading FSImage in " + timeTakenToLoadFSImage + " msecs");
+  NameNodeMetrics nnMetrics=NameNode.getNameNodeMetrics();
+  if (nnMetrics != null) {
+    nnMetrics.setFsImageLoadTime((int)timeTakenToLoadFSImage);
+  }
+  return namesystem;
 }
