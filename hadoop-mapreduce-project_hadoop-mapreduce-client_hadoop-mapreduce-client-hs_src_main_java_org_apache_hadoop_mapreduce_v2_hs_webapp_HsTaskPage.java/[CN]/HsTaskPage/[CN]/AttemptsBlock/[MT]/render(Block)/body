@@ -25,6 +25,7 @@
   }
   headRow.th("Elapsed Time").th(".note","Note");
   TBODY<TABLE<Hamlet>> tbody=headRow._()._().tbody();
+  StringBuilder attemptsTableData=new StringBuilder("[\n");
   for (  TaskAttempt ta : getTaskAttempts()) {
     String taid=MRApps.toString(ta.getID());
     String nodeHttpAddr=ta.getNodeHttpAddress();
@@ -47,25 +48,21 @@
     }
     long attemptElapsed=Times.elapsed(attemptStartTime,attemptFinishTime,false);
     int sortId=ta.getID().getId() + (ta.getID().getTaskId().getId() * 10000);
-    TR<TBODY<TABLE<Hamlet>>> row=tbody.tr();
-    TD<TR<TBODY<TABLE<Hamlet>>>> td=row.td();
-    td.br().$title(String.valueOf(sortId))._()._(taid)._().td(ta.getState().toString()).td().a(".nodelink",HttpConfig.getSchemePrefix() + nodeHttpAddr,nodeRackName + "/" + nodeHttpAddr);
-    td._();
-    row.td().a(".logslink",url("logs",nodeIdString,containerIdString,taid,app.getJob().getUserName()),"logs")._();
-    row.td().br().$title(String.valueOf(attemptStartTime))._()._(Times.format(attemptStartTime))._();
+    attemptsTableData.append("[\"").append(sortId + " ").append(taid).append("\",\"").append(ta.getState().toString()).append("\",\"").append("<a class='nodelink' href='" + HttpConfig.getSchemePrefix() + nodeHttpAddr+ "'>").append(nodeRackName + "/" + nodeHttpAddr+ "</a>\",\"").append("<a class='logslink' href='").append(url("logs",nodeIdString,containerIdString,taid,app.getJob().getUserName())).append("'>logs</a>\",\"").append(attemptStartTime).append("\",\"");
     if (type == TaskType.REDUCE) {
-      row.td().br().$title(String.valueOf(shuffleFinishTime))._()._(Times.format(shuffleFinishTime))._();
-      row.td().br().$title(String.valueOf(sortFinishTime))._()._(Times.format(sortFinishTime))._();
+      attemptsTableData.append(shuffleFinishTime).append("\",\"").append(sortFinishTime).append("\",\"");
     }
-    row.td().br().$title(String.valueOf(attemptFinishTime))._()._(Times.format(attemptFinishTime))._();
+    attemptsTableData.append(attemptFinishTime).append("\",\"");
     if (type == TaskType.REDUCE) {
-      row.td().br().$title(String.valueOf(elapsedShuffleTime))._()._(formatTime(elapsedShuffleTime))._();
-      row.td().br().$title(String.valueOf(elapsedSortTime))._()._(formatTime(elapsedSortTime))._();
-      row.td().br().$title(String.valueOf(elapsedReduceTime))._()._(formatTime(elapsedReduceTime))._();
+      attemptsTableData.append(elapsedShuffleTime).append("\",\"").append(elapsedSortTime).append("\",\"").append(elapsedReduceTime).append("\",\"");
     }
-    row.td().br().$title(String.valueOf(attemptElapsed))._()._(formatTime(attemptElapsed))._().td(".note",Joiner.on('\n').join(ta.getDiagnostics()));
-    row._();
+    attemptsTableData.append(attemptElapsed).append("\",\"").append(StringEscapeUtils.escapeJavaScript(StringEscapeUtils.escapeHtml(Joiner.on('\n').join(ta.getDiagnostics())))).append("\"],\n");
   }
+  if (attemptsTableData.charAt(attemptsTableData.length() - 2) == ',') {
+    attemptsTableData.delete(attemptsTableData.length() - 2,attemptsTableData.length() - 1);
+  }
+  attemptsTableData.append("]");
+  html.script().$type("text/javascript")._("var attemptsTableData=" + attemptsTableData)._();
   TR<TFOOT<TABLE<Hamlet>>> footRow=tbody._().tfoot().tr();
   footRow.th().input("search_init").$type(InputType.text).$name("attempt_name").$value("Attempt")._()._().th().input("search_init").$type(InputType.text).$name("attempt_state").$value("State")._()._().th().input("search_init").$type(InputType.text).$name("attempt_node").$value("Node")._()._().th().input("search_init").$type(InputType.text).$name("attempt_node").$value("Logs")._()._().th().input("search_init").$type(InputType.text).$name("attempt_start_time").$value("Start Time")._()._();
   if (type == TaskType.REDUCE) {
