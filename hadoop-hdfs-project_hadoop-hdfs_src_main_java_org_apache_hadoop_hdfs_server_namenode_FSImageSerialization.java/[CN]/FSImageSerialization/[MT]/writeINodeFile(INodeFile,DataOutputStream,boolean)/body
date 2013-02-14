@@ -1,31 +1,21 @@
 {
-  byte[] name=node.getLocalNameBytes();
-  out.writeShort(name.length);
-  out.write(name);
-  INodeFile fileINode=node;
-  out.writeShort(fileINode.getFileReplication());
-  out.writeLong(fileINode.getModificationTime());
-  out.writeLong(fileINode.getAccessTime());
-  out.writeLong(fileINode.getPreferredBlockSize());
-  if (writeBlock) {
-    Block[] blocks=fileINode.getBlocks();
-    out.writeInt(blocks.length);
-    out.writeBoolean(true);
-    for (    Block blk : blocks)     blk.write(out);
-  }
+  writeLocalName(file,out);
+  out.writeShort(file.getFileReplication());
+  out.writeLong(file.getModificationTime());
+  out.writeLong(file.getAccessTime());
+  out.writeLong(file.getPreferredBlockSize());
+  writeBlocks(file.getBlocks(),out);
+  SnapshotFSImageFormat.saveFileDiffList(file,out);
+  if (writeUnderConstruction) {
+    if (file instanceof INodeFileUnderConstruction) {
+      out.writeBoolean(true);
+      final INodeFileUnderConstruction uc=(INodeFileUnderConstruction)file;
+      writeString(uc.getClientName(),out);
+      writeString(uc.getClientMachine(),out);
+    }
  else {
-    out.writeInt(0);
-    out.writeBoolean(false);
+      out.writeBoolean(false);
+    }
   }
-  if (node instanceof INodeFileWithSnapshot) {
-    out.writeLong(node.computeFileSize(true,null));
-    out.writeBoolean(false);
-  }
- else {
-    out.writeLong(-1);
-    out.writeBoolean(node instanceof FileWithSnapshot);
-  }
-  FsPermission filePerm=TL_DATA.get().FILE_PERM;
-  filePerm.fromShort(fileINode.getFsPermissionShort());
-  PermissionStatus.write(out,fileINode.getUserName(),fileINode.getGroupName(),filePerm);
+  writePermissionStatus(file,out);
 }
