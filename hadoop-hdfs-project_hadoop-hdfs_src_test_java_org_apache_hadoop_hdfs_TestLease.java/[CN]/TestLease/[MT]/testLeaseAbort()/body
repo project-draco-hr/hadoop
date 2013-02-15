@@ -13,7 +13,20 @@
     FSDataOutputStream d_out=createFsOut(dfs,dirString + "d");
     doThrow(new RemoteException(InvalidToken.class.getName(),"Your token is worthless")).when(spyNN).renewLease(anyString());
     LeaseRenewer originalRenewer=dfs.getLeaseRenewer();
-    dfs.lastLeaseRenewal=Time.now() - 300000;
+    dfs.lastLeaseRenewal=Time.now() - HdfsConstants.LEASE_SOFTLIMIT_PERIOD - 1000;
+    try {
+      dfs.renewLease();
+    }
+ catch (    IOException e) {
+    }
+    try {
+      d_out.write(buf,0,1024);
+      LOG.info("Write worked beyond the soft limit as expected.");
+    }
+ catch (    IOException e) {
+      Assert.fail("Write failed.");
+    }
+    dfs.lastLeaseRenewal=Time.now() - HdfsConstants.LEASE_HARDLIMIT_PERIOD - 1000;
     dfs.renewLease();
     try {
       d_out.write(buf,0,1024);
