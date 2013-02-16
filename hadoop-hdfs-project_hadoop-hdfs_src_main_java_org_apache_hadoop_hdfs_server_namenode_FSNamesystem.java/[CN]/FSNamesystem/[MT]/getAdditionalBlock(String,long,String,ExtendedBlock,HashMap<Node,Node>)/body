@@ -1,0 +1,48 @@
+{
+  long blockSize;
+  int replication;
+  DatanodeDescriptor clientNode=null;
+  if (NameNode.stateChangeLog.isDebugEnabled()) {
+    NameNode.stateChangeLog.debug("BLOCK* NameSystem.getAdditionalBlock: file " + src + " for "+ clientName);
+  }
+  readLock();
+  try {
+    LocatedBlock[] onRetryBlock=new LocatedBlock[1];
+    final INode[] inodes=analyzeFileState(src,fileId,clientName,previous,onRetryBlock).getINodes();
+    final INodeFileUnderConstruction pendingFile=(INodeFileUnderConstruction)inodes[inodes.length - 1];
+    if (onRetryBlock[0] != null) {
+      return onRetryBlock[0];
+    }
+    blockSize=pendingFile.getPreferredBlockSize();
+    clientNode=pendingFile.getClientNode();
+    replication=pendingFile.getBlockReplication();
+  }
+  finally {
+    readUnlock();
+  }
+  final DatanodeDescriptor targets[]=getBlockManager().chooseTarget(src,replication,clientNode,excludedNodes,blockSize);
+  Block newBlock=null;
+  long offset;
+  writeLock();
+  try {
+    LocatedBlock[] onRetryBlock=new LocatedBlock[1];
+    INodesInPath inodesInPath=analyzeFileState(src,fileId,clientName,previous,onRetryBlock);
+    INode[] inodes=inodesInPath.getINodes();
+    final INodeFileUnderConstruction pendingFile=(INodeFileUnderConstruction)inodes[inodes.length - 1];
+    if (onRetryBlock[0] != null) {
+      return onRetryBlock[0];
+    }
+    commitOrCompleteLastBlock(pendingFile,ExtendedBlock.getLocalBlock(previous));
+    newBlock=createNewBlock();
+    saveAllocatedBlock(src,inodesInPath,newBlock,targets);
+    dir.persistBlocks(src,pendingFile);
+    offset=pendingFile.computeFileSize(true);
+  }
+  finally {
+    writeUnlock();
+  }
+  if (persistBlocks) {
+    getEditLog().logSync();
+  }
+  return makeLocatedBlock(newBlock,targets,offset);
+}
