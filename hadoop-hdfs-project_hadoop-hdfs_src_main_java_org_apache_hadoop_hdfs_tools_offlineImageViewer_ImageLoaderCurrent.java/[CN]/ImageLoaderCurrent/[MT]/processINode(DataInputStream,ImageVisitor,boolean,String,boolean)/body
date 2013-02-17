@@ -1,4 +1,5 @@
 {
+  boolean supportSnapshot=LayoutVersion.supports(Feature.SNAPSHOT,imageVersion);
   v.visitEnclosingElement(ImageElement.INODE);
   String pathName=FSImageSerialization.readString(in);
   if (parentName != null) {
@@ -14,11 +15,33 @@
   v.visit(ImageElement.BLOCK_SIZE,in.readLong());
   int numBlocks=in.readInt();
   processBlocks(in,v,numBlocks,skipBlocks);
-  if (numBlocks > 0 || numBlocks == -1) {
+  if (numBlocks > 0) {
+    if (supportSnapshot) {
+      processFileDiffList(in,v,parentName);
+      if (isSnapshotCopy) {
+        boolean underConstruction=in.readBoolean();
+        if (underConstruction) {
+          v.visit(ImageElement.CLIENT_NAME,FSImageSerialization.readString(in));
+          v.visit(ImageElement.CLIENT_MACHINE,FSImageSerialization.readString(in));
+        }
+      }
+    }
+  }
+ else   if (numBlocks == -1) {
     v.visit(ImageElement.NS_QUOTA,numBlocks == -1 ? in.readLong() : -1);
     if (LayoutVersion.supports(Feature.DISKSPACE_QUOTA,imageVersion))     v.visit(ImageElement.DS_QUOTA,numBlocks == -1 ? in.readLong() : -1);
+    if (supportSnapshot) {
+      boolean snapshottable=in.readBoolean();
+      if (!snapshottable) {
+        boolean withSnapshot=in.readBoolean();
+        v.visit(ImageElement.IS_WITHSNAPSHOT_DIR,Boolean.toString(withSnapshot));
+      }
+ else {
+        v.visit(ImageElement.IS_SNAPSHOTTABLE_DIR,Boolean.toString(snapshottable));
+      }
+    }
   }
-  if (numBlocks == -2) {
+ else   if (numBlocks == -2) {
     v.visit(ImageElement.SYMLINK,Text.readString(in));
   }
   processPermission(in,v);
