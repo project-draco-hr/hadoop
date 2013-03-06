@@ -1,11 +1,37 @@
 {
-  String cmd="ln -s " + target + " "+ linkname;
-  Process p=Runtime.getRuntime().exec(cmd,null);
-  int returnVal=-1;
+  File targetFile=new File(target);
+  File linkFile=new File(linkname);
+  if (Shell.WINDOWS && !Shell.isJava7OrAbove() && targetFile.isFile()) {
+    try {
+      LOG.info("FileUtil#symlink: On Java6, copying file instead " + linkname + " -> "+ target);
+      org.apache.commons.io.FileUtils.copyFile(targetFile,linkFile);
+    }
+ catch (    IOException ex) {
+      LOG.warn("FileUtil#symlink failed to copy the file with error: " + ex.getMessage());
+      return 1;
+    }
+    return 0;
+  }
+  String[] cmd=Shell.getSymlinkCommand(targetFile.getPath(),linkFile.getPath());
+  ShellCommandExecutor shExec=new ShellCommandExecutor(cmd);
   try {
-    returnVal=p.waitFor();
+    shExec.execute();
   }
- catch (  InterruptedException e) {
+ catch (  Shell.ExitCodeException ec) {
+    int returnVal=ec.getExitCode();
+    if (Shell.WINDOWS && returnVal == SYMLINK_NO_PRIVILEGE) {
+      LOG.warn("Fail to create symbolic links on Windows. " + "The default security settings in Windows disallow non-elevated " + "administrators and all non-administrators from creating symbolic links. "+ "This behavior can be changed in the Local Security Policy management console");
+    }
+ else     if (returnVal != 0) {
+      LOG.warn("Command '" + StringUtils.join(" ",cmd) + "' failed "+ returnVal+ " with: "+ ec.getMessage());
+    }
+    return returnVal;
   }
-  return returnVal;
+catch (  IOException e) {
+    if (LOG.isDebugEnabled()) {
+      LOG.debug("Error while create symlink " + linkname + " to "+ target+ "."+ " Exception: "+ StringUtils.stringifyException(e));
+    }
+    throw e;
+  }
+  return shExec.getExitCode();
 }

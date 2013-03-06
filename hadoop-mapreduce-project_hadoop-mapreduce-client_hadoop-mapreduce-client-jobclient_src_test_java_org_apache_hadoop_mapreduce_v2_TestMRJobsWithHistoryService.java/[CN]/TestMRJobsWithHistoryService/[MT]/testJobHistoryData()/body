@@ -12,10 +12,19 @@
   Counters counterMR=job.getCounters();
   JobId jobId=TypeConverter.toYarn(job.getJobID());
   ApplicationId appID=jobId.getAppId();
+  int pollElapsed=0;
   while (true) {
     Thread.sleep(1000);
-    if (mrCluster.getResourceManager().getRMContext().getRMApps().get(appID).getState().equals(RMAppState.FINISHED))     break;
+    pollElapsed+=1000;
+    if (TERMINAL_RM_APP_STATES.contains(mrCluster.getResourceManager().getRMContext().getRMApps().get(appID).getState())) {
+      break;
+    }
+    if (pollElapsed >= 60000) {
+      LOG.warn("application did not reach terminal state within 60 seconds");
+      break;
+    }
   }
+  Assert.assertEquals(RMAppState.FINISHED,mrCluster.getResourceManager().getRMContext().getRMApps().get(appID).getState());
   Counters counterHS=job.getCounters();
   LOG.info("CounterHS " + counterHS);
   LOG.info("CounterMR " + counterMR);
