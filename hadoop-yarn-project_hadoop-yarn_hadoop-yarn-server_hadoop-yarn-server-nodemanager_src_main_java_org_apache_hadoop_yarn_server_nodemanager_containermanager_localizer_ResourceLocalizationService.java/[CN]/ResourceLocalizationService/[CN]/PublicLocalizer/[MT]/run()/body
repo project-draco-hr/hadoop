@@ -19,16 +19,18 @@ synchronized (attempts) {
  catch (        ExecutionException e) {
           LOG.info("Failed to download rsrc " + assoc.getResource(),e.getCause());
           dispatcher.getEventHandler().handle(new ContainerResourceFailedEvent(assoc.getContext().getContainerId(),assoc.getResource().getRequest(),e.getCause()));
+          List<LocalizerResourceRequestEvent> reqs;
 synchronized (attempts) {
             LocalResourceRequest req=assoc.getResource().getRequest();
-            List<LocalizerResourceRequestEvent> reqs=attempts.get(req);
+            reqs=attempts.get(req);
             if (null == reqs) {
               LOG.error("Missing pending list for " + req);
               return;
             }
-            if (reqs.isEmpty()) {
-              attempts.remove(req);
-            }
+            attempts.remove(req);
+          }
+          for (          LocalizerResourceRequestEvent reqEvent : reqs) {
+            dispatcher.getEventHandler().handle(new ContainerResourceFailedEvent(reqEvent.getContext().getContainerId(),reqEvent.getResource().getRequest(),e.getCause()));
           }
         }
 catch (        CancellationException e) {

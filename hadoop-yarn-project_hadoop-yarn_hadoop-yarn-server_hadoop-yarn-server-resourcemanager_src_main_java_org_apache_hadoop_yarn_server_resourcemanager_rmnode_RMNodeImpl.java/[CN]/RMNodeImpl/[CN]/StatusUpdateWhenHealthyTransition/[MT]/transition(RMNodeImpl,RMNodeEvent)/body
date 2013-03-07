@@ -4,6 +4,8 @@
   NodeHealthStatus remoteNodeHealthStatus=statusEvent.getNodeHealthStatus();
   rmNode.setNodeHealthStatus(remoteNodeHealthStatus);
   if (!remoteNodeHealthStatus.getIsNodeHealthy()) {
+    LOG.info("Node " + rmNode.nodeId + " reported UNHEALTHY with details: "+ remoteNodeHealthStatus.getHealthReport());
+    rmNode.nodeUpdateQueue.clear();
     rmNode.context.getDispatcher().getEventHandler().handle(new NodeRemovedSchedulerEvent(rmNode));
     rmNode.context.getDispatcher().getEventHandler().handle(new NodesListManagerEvent(NodesListManagerEventType.NODE_UNUSABLE,rmNode));
     rmNode.updateMetricsForDeactivatedNode(NodeState.UNHEALTHY);
@@ -32,9 +34,13 @@
       completedContainers.add(remoteContainer);
     }
   }
-  rmNode.context.getDispatcher().getEventHandler().handle(new NodeUpdateSchedulerEvent(rmNode,newlyLaunchedContainers,completedContainers));
+  if (newlyLaunchedContainers.size() != 0 || completedContainers.size() != 0) {
+    rmNode.nodeUpdateQueue.add(new UpdatedContainerInfo(newlyLaunchedContainers,completedContainers));
+  }
+  if (rmNode.nextHeartBeat) {
+    rmNode.nextHeartBeat=false;
+    rmNode.context.getDispatcher().getEventHandler().handle(new NodeUpdateSchedulerEvent(rmNode));
+  }
   rmNode.context.getDelegationTokenRenewer().updateKeepAliveApplications(statusEvent.getKeepAliveAppIds());
-  rmNode.containersToClean.clear();
-  rmNode.finishedApplications.clear();
   return NodeState.RUNNING;
 }

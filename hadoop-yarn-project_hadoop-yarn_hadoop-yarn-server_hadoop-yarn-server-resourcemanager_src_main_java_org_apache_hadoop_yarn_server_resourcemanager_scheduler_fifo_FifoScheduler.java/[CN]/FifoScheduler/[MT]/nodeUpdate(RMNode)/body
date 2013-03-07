@@ -1,0 +1,24 @@
+{
+  FiCaSchedulerNode node=getNode(rmNode.getNodeID());
+  List<UpdatedContainerInfo> containerInfoList=rmNode.pullContainerUpdates();
+  List<ContainerStatus> newlyLaunchedContainers=new ArrayList<ContainerStatus>();
+  List<ContainerStatus> completedContainers=new ArrayList<ContainerStatus>();
+  for (  UpdatedContainerInfo containerInfo : containerInfoList) {
+    newlyLaunchedContainers.addAll(containerInfo.getNewlyLaunchedContainers());
+    completedContainers.addAll(containerInfo.getCompletedContainers());
+  }
+  for (  ContainerStatus launchedContainer : newlyLaunchedContainers) {
+    containerLaunchedOnNode(launchedContainer.getContainerId(),node);
+  }
+  for (  ContainerStatus completedContainer : completedContainers) {
+    ContainerId containerId=completedContainer.getContainerId();
+    LOG.debug("Container FINISHED: " + containerId);
+    containerCompleted(getRMContainer(containerId),completedContainer,RMContainerEventType.FINISHED);
+  }
+  if (Resources.greaterThanOrEqual(resourceCalculator,clusterResource,node.getAvailableResource(),minimumAllocation)) {
+    LOG.debug("Node heartbeat " + rmNode.getNodeID() + " available resource = "+ node.getAvailableResource());
+    assignContainers(node);
+    LOG.debug("Node after allocation " + rmNode.getNodeID() + " resource = "+ node.getAvailableResource());
+  }
+  metrics.setAvailableResourcesToQueue(Resources.subtract(clusterResource,usedResource));
+}
