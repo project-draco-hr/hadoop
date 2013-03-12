@@ -8,7 +8,6 @@
   }
   Set<TaskAttemptID> remaining=new HashSet<TaskAttemptID>(maps);
   DataInputStream input;
-  boolean connectSucceeded=false;
   try {
     URL url=getMapOutputURL(host,maps);
     HttpURLConnection connection=openConnection(url);
@@ -17,7 +16,6 @@
     connection.addRequestProperty(SecureShuffleUtils.HTTP_HEADER_URL_HASH,encHash);
     connection.setReadTimeout(readTimeout);
     connect(connection,connectionTimeout);
-    connectSucceeded=true;
     input=new DataInputStream(connection.getInputStream());
     int rc=connection.getResponseCode();
     if (rc != HttpURLConnection.HTTP_OK) {
@@ -35,14 +33,8 @@
     boolean connectExcpt=ie instanceof ConnectException;
     ioErrs.increment(1);
     LOG.warn("Failed to connect to " + host + " with "+ remaining.size()+ " map outputs",ie);
-    if (!connectSucceeded) {
-      for (      TaskAttemptID left : remaining) {
-        scheduler.copyFailed(left,host,connectSucceeded,connectExcpt);
-      }
-    }
- else {
-      TaskAttemptID firstMap=maps.get(0);
-      scheduler.copyFailed(firstMap,host,connectSucceeded,connectExcpt);
+    for (    TaskAttemptID left : remaining) {
+      scheduler.copyFailed(left,host,false,connectExcpt);
     }
     for (    TaskAttemptID left : remaining) {
       scheduler.putBackKnownMapOutput(host,left);
