@@ -1,13 +1,21 @@
 {
   for (int attempt=0; attempt < 2; attempt++) {
-    if (attempt == 0) {
+    boolean isReadOp=(attempt == 0);
+    if (isReadOp) {
+      checkOperation(OperationCategory.READ);
       readLock();
     }
  else {
+      checkOperation(OperationCategory.WRITE);
       writeLock();
     }
     try {
-      checkOperation(OperationCategory.READ);
+      if (isReadOp) {
+        checkOperation(OperationCategory.READ);
+      }
+ else {
+        checkOperation(OperationCategory.WRITE);
+      }
       if (isInSafeMode()) {
         doAccessTime=false;
       }
@@ -15,7 +23,7 @@
       final INodeFile inode=INodeFile.valueOf(dir.getINode(src),src);
       if (doAccessTime && isAccessTimeSupported()) {
         if (now <= inode.getAccessTime() + getAccessTimePrecision()) {
-          if (attempt == 0) {
+          if (isReadOp) {
             continue;
           }
         }
@@ -24,7 +32,7 @@
       return blockManager.createLocatedBlocks(inode.getBlocks(),inode.computeFileSize(false),inode.isUnderConstruction(),offset,length,needBlockToken);
     }
   finally {
-      if (attempt == 0) {
+      if (isReadOp) {
         readUnlock();
       }
  else {
