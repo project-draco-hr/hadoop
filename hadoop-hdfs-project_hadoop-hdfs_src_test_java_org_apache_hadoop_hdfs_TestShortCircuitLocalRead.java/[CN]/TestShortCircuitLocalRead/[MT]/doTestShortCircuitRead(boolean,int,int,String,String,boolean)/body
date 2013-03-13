@@ -1,9 +1,8 @@
 {
-  int size=blockSize;
   Configuration conf=new Configuration();
   conf.setBoolean(DFSConfigKeys.DFS_CLIENT_READ_SHORTCIRCUIT_KEY,true);
-  conf.setBoolean(DFSConfigKeys.DFS_CLIENT_READ_SHORTCIRCUIT_SKIP_CHECKSUM_KEY,false);
-  conf.set(DFSConfigKeys.DFS_BLOCK_LOCAL_PATH_ACCESS_USER_KEY,getCurrentUser());
+  conf.setBoolean(DFSConfigKeys.DFS_CLIENT_READ_SHORTCIRCUIT_SKIP_CHECKSUM_KEY,ignoreChecksum);
+  conf.set(DFSConfigKeys.DFS_BLOCK_LOCAL_PATH_ACCESS_USER_KEY,shortCircuitUser);
   if (simulatedStorage) {
     SimulatedFSDataset.setFactory(conf);
   }
@@ -12,18 +11,14 @@
   try {
     Path path=new Path("/");
     assertTrue("/ should be a directory",fs.getFileStatus(path).isDirectory() == true);
-    byte[] fileData=AppendTestUtil.randomBytes(seed,size * 3);
-    Path file1=new Path("filelocal.dat");
+    byte[] fileData=AppendTestUtil.randomBytes(seed,size);
+    Path file1=fs.makeQualified(new Path("filelocal.dat"));
     FSDataOutputStream stm=createFile(fs,file1,1);
     stm.write(fileData);
     stm.close();
-    FSDataInputStream instm=fs.open(file1);
-    byte[] actual=new byte[fileData.length];
-    int nread=instm.read(actual,0,3);
-    long skipped=2 * size + 3;
-    instm.seek(skipped);
-    nread=instm.read(actual,(int)(skipped + nread),3);
-    instm.close();
+    URI uri=cluster.getURI();
+    checkFileContent(uri,file1,fileData,readOffset,readingUser,conf,shortCircuitFails);
+    checkFileContentDirect(uri,file1,fileData,readOffset,readingUser,conf,shortCircuitFails);
   }
   finally {
     fs.close();
