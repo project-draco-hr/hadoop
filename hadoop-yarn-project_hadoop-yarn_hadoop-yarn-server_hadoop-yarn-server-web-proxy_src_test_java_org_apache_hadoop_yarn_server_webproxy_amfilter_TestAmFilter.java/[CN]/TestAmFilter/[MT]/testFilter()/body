@@ -1,0 +1,42 @@
+{
+  Map<String,String> params=new HashMap<String,String>();
+  params.put(AmIpFilter.PROXY_HOST,proxyHost);
+  params.put(AmIpFilter.PROXY_URI_BASE,proxyUri);
+  FilterConfig config=new DummyFilterConfig(params);
+  FilterChain chain=new FilterChain(){
+    @Override public void doFilter(    ServletRequest servletRequest,    ServletResponse servletResponse) throws IOException, ServletException {
+      doFilterRequest=servletRequest.getClass().getName();
+      if (servletRequest instanceof AmIpServletRequestWrapper) {
+        servletWrapper=(AmIpServletRequestWrapper)servletRequest;
+      }
+    }
+  }
+;
+  AmIpFilter testFilter=new AmIpFilter();
+  testFilter.init(config);
+  HttpServletResponseForTest response=new HttpServletResponseForTest();
+  ServletRequest failRequest=Mockito.mock(ServletRequest.class);
+  try {
+    testFilter.doFilter(failRequest,response,chain);
+    fail();
+  }
+ catch (  ServletException e) {
+    assertEquals("This filter only works for HTTP/HTTPS",e.getMessage());
+  }
+  HttpServletRequest request=Mockito.mock(HttpServletRequest.class);
+  Mockito.when(request.getRemoteAddr()).thenReturn("redirect");
+  Mockito.when(request.getRequestURI()).thenReturn("/redirect");
+  testFilter.doFilter(request,response,chain);
+  assertEquals("http://bogus/redirect",response.getRedirect());
+  Mockito.when(request.getRemoteAddr()).thenReturn("127.0.0.1");
+  testFilter.doFilter(request,response,chain);
+  assertTrue(doFilterRequest.contains("javax.servlet.http.HttpServletRequest"));
+  Cookie[] cookies=new Cookie[1];
+  cookies[0]=new Cookie(WebAppProxyServlet.PROXY_USER_COOKIE_NAME,"user");
+  Mockito.when(request.getCookies()).thenReturn(cookies);
+  testFilter.doFilter(request,response,chain);
+  assertEquals("org.apache.hadoop.yarn.server.webproxy.amfilter.AmIpServletRequestWrapper",doFilterRequest);
+  assertEquals("user",servletWrapper.getUserPrincipal().getName());
+  assertEquals("user",servletWrapper.getRemoteUser());
+  assertFalse(servletWrapper.isUserInRole(""));
+}
