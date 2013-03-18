@@ -10,46 +10,73 @@
     nodeReg.setIpAddr(ip);
     nodeReg.setPeerHostName(hostname);
   }
-  nodeReg.setExportedKeys(blockManager.getBlockKeys());
-  if (!inHostsList(nodeReg)) {
-    throw new DisallowedDatanodeException(nodeReg);
-  }
-  NameNode.stateChangeLog.info("BLOCK* registerDatanode: from " + nodeReg + " storage "+ nodeReg.getStorageID());
-  DatanodeDescriptor nodeS=datanodeMap.get(nodeReg.getStorageID());
-  DatanodeDescriptor nodeN=host2DatanodeMap.getDatanodeByXferAddr(nodeReg.getIpAddr(),nodeReg.getXferPort());
-  if (nodeN != null && nodeN != nodeS) {
-    NameNode.LOG.info("BLOCK* registerDatanode: " + nodeN);
-    removeDatanode(nodeN);
-    wipeDatanode(nodeN);
-    nodeN=null;
-  }
-  if (nodeS != null) {
-    if (nodeN == nodeS) {
+  try {
+    nodeReg.setExportedKeys(blockManager.getBlockKeys());
+    if (!inHostsList(nodeReg)) {
+      throw new DisallowedDatanodeException(nodeReg);
+    }
+    NameNode.stateChangeLog.info("BLOCK* registerDatanode: from " + nodeReg + " storage "+ nodeReg.getStorageID());
+    DatanodeDescriptor nodeS=datanodeMap.get(nodeReg.getStorageID());
+    DatanodeDescriptor nodeN=host2DatanodeMap.getDatanodeByXferAddr(nodeReg.getIpAddr(),nodeReg.getXferPort());
+    if (nodeN != null && nodeN != nodeS) {
+      NameNode.LOG.info("BLOCK* registerDatanode: " + nodeN);
+      removeDatanode(nodeN);
+      wipeDatanode(nodeN);
+      nodeN=null;
+    }
+    if (nodeS != null) {
+      if (nodeN == nodeS) {
+        if (NameNode.stateChangeLog.isDebugEnabled()) {
+          NameNode.stateChangeLog.debug("BLOCK* registerDatanode: " + "node restarted.");
+        }
+      }
+ else {
+        NameNode.stateChangeLog.info("BLOCK* registerDatanode: " + nodeS + " is replaced by "+ nodeReg+ " with the same storageID "+ nodeReg.getStorageID());
+      }
+      boolean success=false;
+      try {
+        getNetworkTopology().remove(nodeS);
+        nodeS.updateRegInfo(nodeReg);
+        nodeS.setDisallowed(false);
+        resolveNetworkLocation(nodeS);
+        getNetworkTopology().add(nodeS);
+        heartbeatManager.register(nodeS);
+        checkDecommissioning(nodeS);
+        success=true;
+      }
+  finally {
+        if (!success) {
+          removeDatanode(nodeS);
+          wipeDatanode(nodeS);
+        }
+      }
+      return;
+    }
+    if ("".equals(nodeReg.getStorageID())) {
+      nodeReg.setStorageID(newStorageID());
       if (NameNode.stateChangeLog.isDebugEnabled()) {
-        NameNode.stateChangeLog.debug("BLOCK* registerDatanode: " + "node restarted.");
+        NameNode.stateChangeLog.debug("BLOCK* NameSystem.registerDatanode: " + "new storageID " + nodeReg.getStorageID() + " assigned.");
       }
     }
- else {
-      NameNode.stateChangeLog.info("BLOCK* registerDatanode: " + nodeS + " is replaced by "+ nodeReg+ " with the same storageID "+ nodeReg.getStorageID());
+    DatanodeDescriptor nodeDescr=new DatanodeDescriptor(nodeReg,NetworkTopology.DEFAULT_RACK);
+    boolean success=false;
+    try {
+      resolveNetworkLocation(nodeDescr);
+      networktopology.add(nodeDescr);
+      addDatanode(nodeDescr);
+      checkDecommissioning(nodeDescr);
+      heartbeatManager.addDatanode(nodeDescr);
+      success=true;
     }
-    getNetworkTopology().remove(nodeS);
-    nodeS.updateRegInfo(nodeReg);
-    nodeS.setDisallowed(false);
-    resolveNetworkLocation(nodeS);
-    getNetworkTopology().add(nodeS);
-    heartbeatManager.register(nodeS);
-    checkDecommissioning(nodeS);
-    return;
-  }
-  if ("".equals(nodeReg.getStorageID())) {
-    nodeReg.setStorageID(newStorageID());
-    if (NameNode.stateChangeLog.isDebugEnabled()) {
-      NameNode.stateChangeLog.debug("BLOCK* NameSystem.registerDatanode: " + "new storageID " + nodeReg.getStorageID() + " assigned.");
+  finally {
+      if (!success) {
+        removeDatanode(nodeDescr);
+        wipeDatanode(nodeDescr);
+      }
     }
   }
-  DatanodeDescriptor nodeDescr=new DatanodeDescriptor(nodeReg,NetworkTopology.DEFAULT_RACK);
-  resolveNetworkLocation(nodeDescr);
-  addDatanode(nodeDescr);
-  checkDecommissioning(nodeDescr);
-  heartbeatManager.addDatanode(nodeDescr);
+ catch (  InvalidTopologyException e) {
+    dnsToSwitchMapping.reloadCachedMappings();
+    throw e;
+  }
 }
