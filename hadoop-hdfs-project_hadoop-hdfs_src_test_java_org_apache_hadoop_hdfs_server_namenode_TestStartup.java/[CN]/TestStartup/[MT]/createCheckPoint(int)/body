@@ -1,0 +1,31 @@
+{
+  LOG.info("--starting mini cluster");
+  MiniDFSCluster cluster=null;
+  SecondaryNameNode sn=null;
+  try {
+    cluster=new MiniDFSCluster.Builder(config).manageDataDfsDirs(false).manageNameDfsDirs(false).build();
+    cluster.waitActive();
+    LOG.info("--starting Secondary Node");
+    sn=new SecondaryNameNode(config);
+    assertNotNull(sn);
+    for (int i=0; i < count; i++) {
+      FileSystem fileSys=cluster.getFileSystem();
+      Path p=new Path("t" + i);
+      DFSTestUtil.createFile(fileSys,p,fileSize,fileSize,blockSize,(short)1,seed);
+      LOG.info("--file " + p.toString() + " created");
+      LOG.info("--doing checkpoint");
+      sn.doCheckpoint();
+      LOG.info("--done checkpoint");
+    }
+  }
+ catch (  IOException e) {
+    fail(StringUtils.stringifyException(e));
+    System.err.println("checkpoint failed");
+    throw e;
+  }
+ finally {
+    if (sn != null)     sn.shutdown();
+    if (cluster != null)     cluster.shutdown();
+    LOG.info("--cluster shutdown");
+  }
+}

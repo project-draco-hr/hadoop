@@ -8,10 +8,12 @@
   NNStorage storage=originalImage.getStorage();
   FSImage spyImage=spy(originalImage);
   fsn.dir.fsImage=spyImage;
+  FileSystem fs=FileSystem.getLocal(conf);
   File rootDir=storage.getStorageDir(0).getRoot();
-  rootDir.setExecutable(false);
-  rootDir.setWritable(false);
-  rootDir.setReadable(false);
+  Path rootPath=new Path(rootDir.getPath(),"current");
+  final FsPermission permissionNone=new FsPermission((short)0);
+  final FsPermission permissionAll=new FsPermission(FsAction.ALL,FsAction.READ_EXECUTE,FsAction.READ_EXECUTE);
+  fs.setPermission(rootPath,permissionNone);
   try {
     doAnEdit(fsn,1);
     fsn.setSafeMode(SafeModeAction.SAFEMODE_ENTER);
@@ -19,9 +21,7 @@
     fsn.saveNamespace();
     LOG.info("First savenamespace sucessful.");
     assertTrue("Savenamespace should have marked one directory as bad." + " But found " + storage.getRemovedStorageDirs().size() + " bad directories.",storage.getRemovedStorageDirs().size() == 1);
-    rootDir.setExecutable(true);
-    rootDir.setWritable(true);
-    rootDir.setReadable(true);
+    fs.setPermission(rootPath,permissionAll);
     LOG.info("Doing the second savenamespace.");
     fsn.saveNamespace();
     LOG.warn("Second savenamespace sucessful.");
@@ -38,9 +38,7 @@
   }
   finally {
     if (rootDir.exists()) {
-      rootDir.setExecutable(true);
-      rootDir.setWritable(true);
-      rootDir.setReadable(true);
+      fs.setPermission(rootPath,permissionAll);
     }
     if (fsn != null) {
       try {

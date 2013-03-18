@@ -1,0 +1,41 @@
+{
+  Configuration conf=new HdfsConfiguration();
+  FSDataOutputStream fos=null;
+  SecondaryNameNode secondary=null;
+  MiniDFSCluster cluster=null;
+  FileSystem fs=null;
+  NameNode namenode=null;
+  try {
+    cluster=new MiniDFSCluster.Builder(conf).numDataNodes(numDatanodes).build();
+    cluster.waitActive();
+    namenode=cluster.getNameNode();
+    fs=cluster.getFileSystem();
+    secondary=startSecondaryNameNode(conf);
+    fos=fs.create(new Path("tmpfile0"));
+    fos.write(new byte[]{0,1,2,3});
+    secondary.doCheckpoint();
+    fos.write(new byte[]{0,1,2,3});
+    fos.hsync();
+    Mockito.doThrow(new IOException("Injecting failure after MD5Rename")).when(faultInjector).afterMD5Rename();
+    try {
+      secondary.doCheckpoint();
+      fail("Fault injection failed.");
+    }
+ catch (    IOException ioe) {
+    }
+    Mockito.reset(faultInjector);
+    cluster.restartNameNode();
+  }
+  finally {
+    if (secondary != null) {
+      secondary.shutdown();
+    }
+    if (fs != null) {
+      fs.close();
+    }
+    if (cluster != null) {
+      cluster.shutdown();
+    }
+    Mockito.reset(faultInjector);
+  }
+}
