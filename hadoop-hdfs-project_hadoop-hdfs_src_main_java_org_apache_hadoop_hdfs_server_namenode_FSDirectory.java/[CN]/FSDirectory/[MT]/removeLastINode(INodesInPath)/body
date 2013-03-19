@@ -1,13 +1,19 @@
 {
-  final Snapshot latestSnapshot=inodesInPath.getLatestSnapshot();
-  final INode[] inodes=inodesInPath.getINodes();
-  final int pos=inodes.length - 1;
-  final INodeDirectory parent=inodes[pos - 1].asDirectory();
-  final boolean removed=parent.removeChild(inodes[pos],latestSnapshot);
-  if (removed && latestSnapshot == null) {
-    inodesInPath.setINode(pos - 1,inodes[pos].getParent());
-    final Quota.Counts counts=inodes[pos].computeQuotaUsage();
-    updateCountNoQuotaCheck(inodesInPath,pos,-counts.get(Quota.NAMESPACE),-counts.get(Quota.DISKSPACE));
+  final Snapshot latestSnapshot=iip.getLatestSnapshot();
+  final INode last=iip.getLastINode();
+  final INodeDirectory parent=iip.getINode(-2).asDirectory();
+  if (!parent.removeChild(last,latestSnapshot)) {
+    return -1;
   }
-  return removed ? inodes[pos] : null;
+  if (parent != last.getParent()) {
+    iip.setINode(-2,last.getParent());
+  }
+  if (latestSnapshot == null) {
+    final Quota.Counts counts=last.computeQuotaUsage();
+    updateCountNoQuotaCheck(iip,iip.getINodes().length - 1,-counts.get(Quota.NAMESPACE),-counts.get(Quota.DISKSPACE));
+    if (INodeReference.tryRemoveReference(last) > 0) {
+      return 0;
+    }
+  }
+  return 1;
 }
