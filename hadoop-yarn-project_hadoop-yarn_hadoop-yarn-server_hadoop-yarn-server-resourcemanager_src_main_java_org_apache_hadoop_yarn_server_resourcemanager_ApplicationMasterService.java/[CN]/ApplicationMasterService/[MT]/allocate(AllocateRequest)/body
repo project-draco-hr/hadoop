@@ -2,21 +2,17 @@
   ApplicationAttemptId appAttemptId=request.getApplicationAttemptId();
   authorizeRequest(appAttemptId);
   this.amLivelinessMonitor.receivedPing(appAttemptId);
-  AllocateResponse allocateResponse=recordFactory.newRecordInstance(AllocateResponse.class);
-  AMResponse lastResponse=responseMap.get(appAttemptId);
+  AllocateResponse lastResponse=responseMap.get(appAttemptId);
   if (lastResponse == null) {
     LOG.error("AppAttemptId doesnt exist in cache " + appAttemptId);
-    allocateResponse.setAMResponse(reboot);
-    return allocateResponse;
+    return reboot;
   }
   if ((request.getResponseId() + 1) == lastResponse.getResponseId()) {
-    allocateResponse.setAMResponse(lastResponse);
-    return allocateResponse;
+    return lastResponse;
   }
  else   if (request.getResponseId() + 1 < lastResponse.getResponseId()) {
     LOG.error("Invalid responseid from appAttemptId " + appAttemptId);
-    allocateResponse.setAMResponse(reboot);
-    return allocateResponse;
+    return reboot;
   }
 synchronized (lastResponse) {
     this.rmContext.getDispatcher().getEventHandler().handle(new RMAppAttemptStatusupdateEvent(appAttemptId,request.getProgress()));
@@ -25,7 +21,7 @@ synchronized (lastResponse) {
     Allocation allocation=this.rScheduler.allocate(appAttemptId,ask,release);
     RMApp app=this.rmContext.getRMApps().get(appAttemptId.getApplicationId());
     RMAppAttempt appAttempt=app.getRMAppAttempt(appAttemptId);
-    AMResponse response=recordFactory.newRecordInstance(AMResponse.class);
+    AllocateResponse allocateResponse=recordFactory.newRecordInstance(AllocateResponse.class);
     List<RMNode> updatedNodes=new ArrayList<RMNode>();
     if (app.pullRMNodeUpdates(updatedNodes) > 0) {
       List<NodeReport> updatedNodeReports=new ArrayList<NodeReport>();
@@ -40,21 +36,19 @@ synchronized (lastResponse) {
         NodeReport report=BuilderUtils.newNodeReport(rmNode.getNodeID(),rmNode.getState(),rmNode.getHttpAddress(),rmNode.getRackName(),used,rmNode.getTotalCapability(),numContainers,rmNode.getNodeHealthStatus());
         updatedNodeReports.add(report);
       }
-      response.setUpdatedNodes(updatedNodeReports);
+      allocateResponse.setUpdatedNodes(updatedNodeReports);
     }
-    response.setAllocatedContainers(allocation.getContainers());
-    response.setCompletedContainersStatuses(appAttempt.pullJustFinishedContainers());
-    response.setResponseId(lastResponse.getResponseId() + 1);
-    response.setAvailableResources(allocation.getResourceLimit());
-    AMResponse oldResponse=responseMap.put(appAttemptId,response);
+    allocateResponse.setAllocatedContainers(allocation.getContainers());
+    allocateResponse.setCompletedContainersStatuses(appAttempt.pullJustFinishedContainers());
+    allocateResponse.setResponseId(lastResponse.getResponseId() + 1);
+    allocateResponse.setAvailableResources(allocation.getResourceLimit());
+    AllocateResponse oldResponse=responseMap.put(appAttemptId,allocateResponse);
     if (oldResponse == null) {
       responseMap.remove(appAttemptId);
       String message="App Attempt removed from the cache during allocate" + appAttemptId;
       LOG.error(message);
-      allocateResponse.setAMResponse(reboot);
-      return allocateResponse;
+      return reboot;
     }
-    allocateResponse.setAMResponse(response);
     allocateResponse.setNumClusterNodes(this.rScheduler.getNumClusterNodes());
     return allocateResponse;
   }
