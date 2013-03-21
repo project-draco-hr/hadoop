@@ -4,10 +4,13 @@
   }
   touch();
   try {
+    int totalLen=in.readInt();
     RpcResponseHeaderProto header=RpcResponseHeaderProto.parseDelimitedFrom(in);
     if (header == null) {
       throw new IOException("Response is null.");
     }
+    int headerLen=header.getSerializedSize();
+    headerLen+=CodedOutputStream.computeRawVarint32Size(headerLen);
     int callId=header.getCallId();
     if (LOG.isDebugEnabled())     LOG.debug(getName() + " got value #" + callId);
     Call call=calls.get(callId);
@@ -17,8 +20,17 @@
       value.readFields(in);
       call.setRpcResponse(value);
       calls.remove(callId);
+      if (call.getRpcResponse() instanceof ProtobufRpcEngine.RpcWrapper) {
+        ProtobufRpcEngine.RpcWrapper resWrapper=(ProtobufRpcEngine.RpcWrapper)call.getRpcResponse();
+        if (totalLen != headerLen + resWrapper.getLength()) {
+          throw new RpcClientException("RPC response length mismatch on rpc success");
+        }
+      }
     }
  else {
+      if (totalLen != headerLen) {
+        throw new RpcClientException("RPC response length mismatch on rpc error");
+      }
       final String exceptionClassName=header.hasExceptionClassName() ? header.getExceptionClassName() : "ServerDidNotSetExceptionClassName";
       final String errorMsg=header.hasErrorMsg() ? header.getErrorMsg() : "ServerDidNotSetErrorMsg";
       RemoteException re=new RemoteException(exceptionClassName,errorMsg);
