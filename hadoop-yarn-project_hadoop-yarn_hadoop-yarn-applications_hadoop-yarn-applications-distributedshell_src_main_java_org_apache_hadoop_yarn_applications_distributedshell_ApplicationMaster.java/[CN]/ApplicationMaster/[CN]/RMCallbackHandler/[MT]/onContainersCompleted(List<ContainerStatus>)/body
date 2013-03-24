@@ -1,0 +1,33 @@
+{
+  LOG.info("Got response from RM for container ask, completedCnt=" + completedContainers.size());
+  for (  ContainerStatus containerStatus : completedContainers) {
+    LOG.info("Got container status for containerID=" + containerStatus.getContainerId() + ", state="+ containerStatus.getState()+ ", exitStatus="+ containerStatus.getExitStatus()+ ", diagnostics="+ containerStatus.getDiagnostics());
+    assert(containerStatus.getState() == ContainerState.COMPLETE);
+    int exitStatus=containerStatus.getExitStatus();
+    if (0 != exitStatus) {
+      if (YarnConfiguration.ABORTED_CONTAINER_EXIT_STATUS != exitStatus) {
+        numCompletedContainers.incrementAndGet();
+        numFailedContainers.incrementAndGet();
+      }
+ else {
+        numAllocatedContainers.decrementAndGet();
+        numRequestedContainers.decrementAndGet();
+      }
+    }
+ else {
+      numCompletedContainers.incrementAndGet();
+      LOG.info("Container completed successfully." + ", containerId=" + containerStatus.getContainerId());
+    }
+  }
+  int askCount=numTotalContainers - numRequestedContainers.get();
+  numRequestedContainers.addAndGet(askCount);
+  if (askCount > 0) {
+    ContainerRequest containerAsk=setupContainerAskForRM(askCount);
+    resourceManager.addContainerRequest(containerAsk);
+  }
+  float progress=(float)numCompletedContainers.get() / numTotalContainers;
+  resourceManager.setProgress(progress);
+  if (numCompletedContainers.get() == numTotalContainers) {
+    done=true;
+  }
+}
