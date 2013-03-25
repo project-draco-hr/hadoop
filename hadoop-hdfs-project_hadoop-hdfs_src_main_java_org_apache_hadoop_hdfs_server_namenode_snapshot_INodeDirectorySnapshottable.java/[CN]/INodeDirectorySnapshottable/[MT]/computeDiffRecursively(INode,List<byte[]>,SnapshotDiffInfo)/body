@@ -1,19 +1,22 @@
 {
   ChildrenDiff diff=new ChildrenDiff();
+  byte[][] relativePath=parentPath.toArray(new byte[parentPath.size()][]);
   if (node.isDirectory()) {
     INodeDirectory dir=node.asDirectory();
     if (dir instanceof INodeDirectoryWithSnapshot) {
       INodeDirectoryWithSnapshot sdir=(INodeDirectoryWithSnapshot)dir;
       boolean change=sdir.computeDiffBetweenSnapshots(diffReport.from,diffReport.to,diff);
       if (change) {
-        diffReport.addDirDiff(sdir,diff);
+        diffReport.addDirDiff(sdir,relativePath,diff);
       }
     }
     ReadOnlyList<INode> children=dir.getChildrenList(diffReport.isFromEarlier() ? diffReport.to : diffReport.from);
     for (    INode child : children) {
       final byte[] name=child.getLocalNameBytes();
       if (diff.searchIndex(ListType.CREATED,name) < 0 && diff.searchIndex(ListType.DELETED,name) < 0) {
-        computeDiffRecursively(child,diffReport);
+        parentPath.add(name);
+        computeDiffRecursively(child,parentPath,diffReport);
+        parentPath.remove(parentPath.size() - 1);
       }
     }
   }
@@ -23,7 +26,7 @@
     Snapshot laterSnapshot=diffReport.isFromEarlier() ? diffReport.to : diffReport.from;
     boolean change=file.getDiffs().changedBetweenSnapshots(earlierSnapshot,laterSnapshot);
     if (change) {
-      diffReport.addFileDiff(file.asINodeFile());
+      diffReport.addFileDiff(file.asINodeFile(),relativePath);
     }
   }
 }
