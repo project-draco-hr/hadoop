@@ -1,0 +1,25 @@
+{
+  System.setProperty(MRJobConfig.TASK_LOG_DIR,"testString");
+  assertEquals(TaskLog.getMRv2LogDir(),"testString");
+  TaskAttemptID taid=mock(TaskAttemptID.class);
+  JobID jid=new JobID("job",1);
+  when(taid.getJobID()).thenReturn(jid);
+  when(taid.toString()).thenReturn("JobId");
+  File f=TaskLog.getTaskLogFile(taid,true,LogName.STDOUT);
+  assertTrue(f.getAbsolutePath().endsWith("testString/stdout"));
+  File indexFile=TaskLog.getIndexFile(taid,true);
+  if (!indexFile.getParentFile().exists()) {
+    indexFile.getParentFile().mkdirs();
+  }
+  indexFile.delete();
+  indexFile.createNewFile();
+  TaskLog.syncLogs("location",taid,true);
+  assertTrue(indexFile.getAbsolutePath().endsWith("userlogs/job_job_0001/JobId.cleanup/log.index"));
+  f=TaskLog.getRealTaskLogFileLocation(taid,true,LogName.DEBUGOUT);
+  if (f != null) {
+    assertTrue(f.getAbsolutePath().endsWith("location/debugout"));
+    FileUtils.copyFile(indexFile,f);
+  }
+  assertTrue(TaskLog.obtainLogDirOwner(taid).length() > 0);
+  assertTrue(readTaskLog(TaskLog.LogName.DEBUGOUT,taid,true).length() > 0);
+}
