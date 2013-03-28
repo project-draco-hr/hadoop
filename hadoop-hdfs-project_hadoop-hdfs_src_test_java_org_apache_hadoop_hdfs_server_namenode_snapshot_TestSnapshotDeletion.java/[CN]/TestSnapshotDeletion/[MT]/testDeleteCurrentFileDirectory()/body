@@ -12,7 +12,16 @@
   DFSTestUtil.createFile(hdfs,metaChangeFile2,BLOCKSIZE,REPLICATION,seed);
   hdfs.delete(deleteDir,true);
   SnapshotTestHelper.createSnapshot(hdfs,dir,"s0");
+  Path tempDir=new Path(dir,"tempdir");
+  Path tempFile=new Path(tempDir,"tempfile");
+  DFSTestUtil.createFile(hdfs,tempFile,BLOCKSIZE,REPLICATION,seed);
+  final INodeFile temp=TestSnapshotBlocksMap.assertBlockCollection(tempFile.toString(),1,fsdir,blockmanager);
+  BlockInfo[] blocks=temp.getBlocks();
+  hdfs.delete(tempDir,true);
   checkQuotaUsageComputation(dir,9L,BLOCKSIZE * REPLICATION * 3);
+  for (  BlockInfo b : blocks) {
+    assertNull(blockmanager.getBlockCollection(b));
+  }
   Path newFileAfterS0=new Path(subsub,"newFile");
   DFSTestUtil.createFile(hdfs,newFileAfterS0,BLOCKSIZE,REPLICATION,seed);
   hdfs.setReplication(metaChangeFile1,REPLICATION_1);
@@ -31,17 +40,24 @@
   INode noChangeFileSCopy=children.get(1);
   assertEquals(noChangeFile.getName(),noChangeFileSCopy.getLocalName());
   assertEquals(INodeFile.class,noChangeFileSCopy.getClass());
+  TestSnapshotBlocksMap.assertBlockCollection(new Path(snapshotNoChangeDir,noChangeFileSCopy.getLocalName()).toString(),1,fsdir,blockmanager);
   INodeFileWithSnapshot metaChangeFile2SCopy=(INodeFileWithSnapshot)children.get(0);
   assertEquals(metaChangeFile2.getName(),metaChangeFile2SCopy.getLocalName());
   assertEquals(INodeFileWithSnapshot.class,metaChangeFile2SCopy.getClass());
+  TestSnapshotBlocksMap.assertBlockCollection(new Path(snapshotNoChangeDir,metaChangeFile2SCopy.getLocalName()).toString(),1,fsdir,blockmanager);
   assertEquals(REPLICATION_1,metaChangeFile2SCopy.getFileReplication(null));
   assertEquals(REPLICATION_1,metaChangeFile2SCopy.getFileReplication(snapshot1));
   assertEquals(REPLICATION,metaChangeFile2SCopy.getFileReplication(snapshot0));
   Path newFile=new Path(sub,"newFile");
   DFSTestUtil.createFile(hdfs,newFile,BLOCKSIZE,REPLICATION,seed);
+  final INodeFile newFileNode=TestSnapshotBlocksMap.assertBlockCollection(newFile.toString(),1,fsdir,blockmanager);
+  blocks=newFileNode.getBlocks();
   checkQuotaUsageComputation(dir,18L,BLOCKSIZE * REPLICATION * 5);
   hdfs.delete(sub,true);
-  checkQuotaUsageComputation(dir,20L,BLOCKSIZE * REPLICATION * 5);
+  checkQuotaUsageComputation(dir,19L,BLOCKSIZE * REPLICATION * 4);
+  for (  BlockInfo b : blocks) {
+    assertNull(blockmanager.getBlockCollection(b));
+  }
   Path snapshotSub=SnapshotTestHelper.getSnapshotPath(dir,"s1",sub.getName());
   INodeDirectoryWithSnapshot snapshotNode4Sub=(INodeDirectoryWithSnapshot)fsdir.getINode(snapshotSub.toString());
   assertEquals(INodeDirectoryWithSnapshot.class,snapshotNode4Sub.getClass());

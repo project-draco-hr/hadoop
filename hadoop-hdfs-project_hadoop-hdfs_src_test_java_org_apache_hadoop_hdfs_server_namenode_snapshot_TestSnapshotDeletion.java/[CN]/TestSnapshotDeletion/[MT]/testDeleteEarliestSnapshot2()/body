@@ -7,6 +7,8 @@
   DFSTestUtil.createFile(hdfs,noChangeFile,BLOCKSIZE,REPLICATION,seed);
   DFSTestUtil.createFile(hdfs,metaChangeFile,BLOCKSIZE,REPLICATION,seed);
   DFSTestUtil.createFile(hdfs,toDeleteFile,BLOCKSIZE,REPLICATION,seed);
+  final INodeFile toDeleteFileNode=TestSnapshotBlocksMap.assertBlockCollection(toDeleteFile.toString(),1,fsdir,blockmanager);
+  BlockInfo[] blocks=toDeleteFileNode.getBlocks();
   SnapshotTestHelper.createSnapshot(hdfs,dir,"s0");
   checkQuotaUsageComputation(dir,8,3 * BLOCKSIZE * REPLICATION);
   hdfs.delete(toDeleteFile,true);
@@ -18,6 +20,9 @@
   checkQuotaUsageComputation(dir,12,3 * BLOCKSIZE * REPLICATION);
   hdfs.deleteSnapshot(dir,"s0");
   checkQuotaUsageComputation(dir,7,2 * BLOCKSIZE * REPLICATION - BLOCKSIZE);
+  for (  BlockInfo b : blocks) {
+    assertNull(blockmanager.getBlockCollection(b));
+  }
   final INodeDirectorySnapshottable dirNode=(INodeDirectorySnapshottable)fsdir.getINode(dir.toString());
   Snapshot snapshot0=dirNode.getSnapshot(DFSUtil.string2Bytes("s0"));
   assertNull(snapshot0);
@@ -30,11 +35,13 @@
   assertEquals(INodeDirectory.class,noChangeDirNode.getClass());
   final INodeFile noChangeFileNode=(INodeFile)fsdir.getINode(noChangeFile.toString());
   assertEquals(INodeFile.class,noChangeFileNode.getClass());
+  TestSnapshotBlocksMap.assertBlockCollection(noChangeFile.toString(),1,fsdir,blockmanager);
   FileStatus status=hdfs.getFileStatus(metaChangeDir);
   assertEquals("unknown",status.getOwner());
   assertEquals("unknown",status.getGroup());
   status=hdfs.getFileStatus(metaChangeFile);
   assertEquals(REPLICATION_1,status.getReplication());
+  TestSnapshotBlocksMap.assertBlockCollection(metaChangeFile.toString(),1,fsdir,blockmanager);
   try {
     status=hdfs.getFileStatus(toDeleteFile);
     fail("should throw FileNotFoundException");
