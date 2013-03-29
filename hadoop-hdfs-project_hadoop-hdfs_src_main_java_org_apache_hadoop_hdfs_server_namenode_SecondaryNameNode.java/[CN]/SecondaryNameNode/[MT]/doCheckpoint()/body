@@ -14,8 +14,15 @@
   sig.validateStorageInfo(checkpointImage);
   CheckpointFaultInjector.getInstance().afterSecondaryCallsRollEditLog();
   RemoteEditLogManifest manifest=namenode.getEditLogManifest(sig.mostRecentCheckpointTxId + 1);
-  loadImage|=downloadCheckpointFiles(fsName,checkpointImage,sig,manifest);
-  doMerge(sig,manifest,loadImage,checkpointImage,namesystem);
+  loadImage|=downloadCheckpointFiles(fsName,checkpointImage,sig,manifest) | checkpointImage.hasMergeError();
+  try {
+    doMerge(sig,manifest,loadImage,checkpointImage,namesystem);
+  }
+ catch (  IOException ioe) {
+    checkpointImage.setMergeError();
+    throw ioe;
+  }
+  checkpointImage.clearMergeError();
   long txid=checkpointImage.getLastAppliedTxId();
   TransferFsImage.uploadImageFromStorage(fsName,getImageListenAddress(),dstStorage,txid);
   CheckpointFaultInjector.getInstance().afterSecondaryUploadsNewImage();

@@ -1,0 +1,21 @@
+{
+  FSImage spyImage1=NameNodeAdapter.spyOnFsImage(nn1);
+  DelayAnswer answerer=new DelayAnswer(LOG);
+  Mockito.doAnswer(answerer).when(spyImage1).saveNamespace(Mockito.any(FSNamesystem.class),Mockito.any(Canceler.class));
+  doEdits(0,2000);
+  nn0.getRpcServer().rollEditLog();
+  answerer.waitForCall();
+  answerer.proceed();
+  assertTrue("SBN is not performing checkpoint but it should be.",answerer.getFireCount() == 1 && answerer.getResultCount() == 0);
+  ThreadUtil.sleepAtLeastIgnoreInterrupts(1000);
+  try {
+    nn1.getRpcServer().getFileInfo("/");
+    fail("Should have thrown StandbyException, but instead succeeded.");
+  }
+ catch (  StandbyException se) {
+    GenericTestUtils.assertExceptionContains("is not supported",se);
+  }
+  assertTrue("SBN should have still been checkpointing.",answerer.getFireCount() == 1 && answerer.getResultCount() == 0);
+  answerer.waitForResult();
+  assertTrue("SBN should have finished checkpointing.",answerer.getFireCount() == 1 && answerer.getResultCount() == 1);
+}

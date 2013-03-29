@@ -1,30 +1,28 @@
 {
   HdfsFileStatus resultingStat=null;
+  FSPermissionChecker pc=getPermissionChecker();
+  checkOperation(OperationCategory.WRITE);
   writeLock();
   try {
     checkOperation(OperationCategory.WRITE);
     if (isInSafeMode()) {
       throw new SafeModeException("Cannot set owner for " + src,safeMode);
     }
-    FSPermissionChecker pc=checkOwner(src);
-    if (!pc.isSuper) {
-      if (username != null && !pc.user.equals(username)) {
-        throw new AccessControlException("Non-super user cannot change owner.");
+    checkOwner(pc,src);
+    if (!pc.isSuperUser()) {
+      if (username != null && !pc.getUser().equals(username)) {
+        throw new AccessControlException("Non-super user cannot change owner");
       }
       if (group != null && !pc.containsGroup(group)) {
-        throw new AccessControlException("User does not belong to " + group + " .");
+        throw new AccessControlException("User does not belong to " + group);
       }
     }
     dir.setOwner(src,username,group);
-    if (isAuditEnabled() && isExternalInvocation()) {
-      resultingStat=dir.getFileInfo(src,false);
-    }
+    resultingStat=getAuditFileInfo(src,false);
   }
   finally {
     writeUnlock();
   }
   getEditLog().logSync();
-  if (isAuditEnabled() && isExternalInvocation()) {
-    logAuditEvent(UserGroupInformation.getCurrentUser(),getRemoteIp(),"setOwner",src,null,resultingStat);
-  }
+  logAuditEvent(true,"setOwner",src,null,resultingStat);
 }

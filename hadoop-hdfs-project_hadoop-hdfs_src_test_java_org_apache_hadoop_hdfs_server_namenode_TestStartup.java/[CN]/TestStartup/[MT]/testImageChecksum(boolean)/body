@@ -9,23 +9,22 @@
     cluster.waitActive();
     FileSystem fs=cluster.getFileSystem();
     fs.mkdirs(new Path("/test"));
-    File nameDir=new File(cluster.getNameDirs(0).iterator().next().getPath());
-    File dfsDir=nameDir.getParentFile();
-    assertEquals(dfsDir.getName(),"dfs");
     LOG.info("Shutting down cluster #1");
     cluster.shutdown();
     cluster=null;
-    File imageFile=new File(nameDir,"current/" + NNStorage.getImageFileName(0));
-    MD5FileUtils.saveMD5File(imageFile,new MD5Hash(new byte[16]));
+    corruptFSImageMD5(true);
+    final LogVerificationAppender appender=new LogVerificationAppender();
+    final Logger logger=Logger.getRootLogger();
+    logger.addAppender(appender);
     LOG.info("\n===========================================\n" + "Starting same cluster after simulated crash");
     try {
       cluster=new MiniDFSCluster.Builder(config).numDataNodes(0).format(false).build();
       fail("Should not have successfully started with corrupt image");
     }
  catch (    IOException ioe) {
-      if (!ioe.getCause().getMessage().contains("is corrupt with MD5")) {
-        throw ioe;
-      }
+      GenericTestUtils.assertExceptionContains("Failed to load an FSImage file!",ioe);
+      int md5failures=appender.countExceptionsWithMessage(" is corrupt with MD5 checksum of ");
+      assertEquals(2,md5failures);
     }
   }
   finally {
