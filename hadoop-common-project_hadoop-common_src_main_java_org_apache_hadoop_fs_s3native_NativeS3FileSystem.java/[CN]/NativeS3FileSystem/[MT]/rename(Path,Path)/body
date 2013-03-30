@@ -1,17 +1,30 @@
 {
   String srcKey=pathToKey(makeAbsolute(src));
+  final String debugPreamble="Renaming '" + src + "' to '"+ dst+ "' - ";
   if (srcKey.length() == 0) {
+    if (LOG.isDebugEnabled()) {
+      LOG.debug(debugPreamble + "returning false as cannot rename the root of a filesystem");
+    }
     return false;
   }
-  final String debugPreamble="Renaming '" + src + "' to '"+ dst+ "' - ";
-  String dstKey;
+  boolean srcIsFile;
+  try {
+    srcIsFile=getFileStatus(src).isFile();
+  }
+ catch (  FileNotFoundException e) {
+    if (LOG.isDebugEnabled()) {
+      LOG.debug(debugPreamble + "returning false as src does not exist");
+    }
+    return false;
+  }
+  String dstKey=pathToKey(makeAbsolute(dst));
   try {
     boolean dstIsFile=getFileStatus(dst).isFile();
     if (dstIsFile) {
       if (LOG.isDebugEnabled()) {
-        LOG.debug(debugPreamble + "returning false as dst is an already existing file");
+        LOG.debug(debugPreamble + "returning without rename as dst is an already existing file");
       }
-      return false;
+      return srcKey.equals(dstKey);
     }
  else {
       if (LOG.isDebugEnabled()) {
@@ -24,7 +37,6 @@
     if (LOG.isDebugEnabled()) {
       LOG.debug(debugPreamble + "using dst as output destination");
     }
-    dstKey=pathToKey(makeAbsolute(dst));
     try {
       if (getFileStatus(dst.getParent()).isFile()) {
         if (LOG.isDebugEnabled()) {
@@ -40,15 +52,11 @@
       return false;
     }
   }
-  boolean srcIsFile;
-  try {
-    srcIsFile=getFileStatus(src).isFile();
-  }
- catch (  FileNotFoundException e) {
+  if (srcKey.equals(dstKey)) {
     if (LOG.isDebugEnabled()) {
-      LOG.debug(debugPreamble + "returning false as src does not exist");
+      LOG.debug(debugPreamble + "renamingToSelf; returning true");
     }
-    return false;
+    return true;
   }
   if (srcIsFile) {
     if (LOG.isDebugEnabled()) {
@@ -60,6 +68,12 @@
  else {
     if (LOG.isDebugEnabled()) {
       LOG.debug(debugPreamble + "src is directory, so copying contents");
+    }
+    if (dstKey.startsWith(srcKey + "/")) {
+      if (LOG.isDebugEnabled()) {
+        LOG.debug(debugPreamble + "cannot rename a directory to a subdirectory of self");
+      }
+      return false;
     }
     store.storeEmptyFile(dstKey + FOLDER_SUFFIX);
     List<String> keysToDelete=new ArrayList<String>();

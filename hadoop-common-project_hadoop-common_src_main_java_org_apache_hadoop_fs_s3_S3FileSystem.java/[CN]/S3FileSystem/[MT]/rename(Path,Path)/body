@@ -1,22 +1,82 @@
 {
   Path absoluteSrc=makeAbsolute(src);
+  final String debugPreamble="Renaming '" + src + "' to '"+ dst+ "' - ";
   INode srcINode=store.retrieveINode(absoluteSrc);
+  boolean debugEnabled=LOG.isDebugEnabled();
   if (srcINode == null) {
+    if (debugEnabled) {
+      LOG.debug(debugPreamble + "returning false as src does not exist");
+    }
     return false;
   }
   Path absoluteDst=makeAbsolute(dst);
-  INode dstINode=store.retrieveINode(absoluteDst);
-  if (dstINode != null && dstINode.isDirectory()) {
-    absoluteDst=new Path(absoluteDst,absoluteSrc.getName());
-    dstINode=store.retrieveINode(absoluteDst);
-  }
-  if (dstINode != null) {
-    return false;
-  }
   Path dstParent=absoluteDst.getParent();
   if (dstParent != null) {
     INode dstParentINode=store.retrieveINode(dstParent);
-    if (dstParentINode == null || dstParentINode.isFile()) {
+    if (dstParentINode == null) {
+      if (debugEnabled) {
+        LOG.debug(debugPreamble + "returning false as dst parent does not exist");
+      }
+      return false;
+    }
+    if (dstParentINode.isFile()) {
+      if (debugEnabled) {
+        LOG.debug(debugPreamble + "returning false as dst parent exists and is a file");
+      }
+      return false;
+    }
+  }
+  boolean srcIsFile=srcINode.isFile();
+  INode dstINode=store.retrieveINode(absoluteDst);
+  boolean destExists=dstINode != null;
+  boolean destIsDir=destExists && !dstINode.isFile();
+  if (srcIsFile) {
+    if (destExists) {
+      if (destIsDir) {
+        if (debugEnabled) {
+          LOG.debug(debugPreamble + "copying src file under dest dir to " + absoluteDst);
+        }
+        absoluteDst=new Path(absoluteDst,absoluteSrc.getName());
+      }
+ else {
+        boolean renamingOnToSelf=absoluteSrc.equals(absoluteDst);
+        if (debugEnabled) {
+          LOG.debug(debugPreamble + "copying file onto file, outcome is " + renamingOnToSelf);
+        }
+        return renamingOnToSelf;
+      }
+    }
+ else {
+      if (debugEnabled) {
+        LOG.debug(debugPreamble + "copying file onto file");
+      }
+    }
+  }
+ else {
+    if (destExists) {
+      if (!destIsDir) {
+        if (debugEnabled) {
+          LOG.debug(debugPreamble + "returning false as src is a directory, but not dest");
+        }
+        return false;
+      }
+ else {
+        absoluteDst=new Path(absoluteDst,absoluteSrc.getName());
+        if (debugEnabled) {
+          LOG.debug(debugPreamble + "copying src dir under dest dir to " + absoluteDst);
+        }
+      }
+    }
+    if (absoluteSrc.equals(absoluteDst)) {
+      if (debugEnabled) {
+        LOG.debug(debugPreamble + "Dest==source && isDir -failing");
+      }
+      return false;
+    }
+    if (absoluteDst.toString().startsWith(absoluteSrc.toString() + "/")) {
+      if (debugEnabled) {
+        LOG.debug(debugPreamble + "dst is equal to or under src dir -failing");
+      }
       return false;
     }
   }
