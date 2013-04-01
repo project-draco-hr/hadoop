@@ -1,16 +1,57 @@
 {
-  this.resourceTracker=getRMClient();
-  LOG.info("Connecting to ResourceManager at " + this.rmAddress);
+  Configuration conf=getConfig();
+  long rmConnectWaitMS=conf.getInt(YarnConfiguration.RESOURCEMANAGER_CONNECT_WAIT_SECS,YarnConfiguration.DEFAULT_RESOURCEMANAGER_CONNECT_WAIT_SECS) * 1000;
+  long rmConnectionRetryIntervalMS=conf.getLong(YarnConfiguration.RESOURCEMANAGER_CONNECT_RETRY_INTERVAL_SECS,YarnConfiguration.DEFAULT_RESOURCEMANAGER_CONNECT_RETRY_INTERVAL_SECS) * 1000;
+  if (rmConnectionRetryIntervalMS < 0) {
+    throw new YarnException("Invalid Configuration. " + YarnConfiguration.RESOURCEMANAGER_CONNECT_RETRY_INTERVAL_SECS + " should not be negative.");
+  }
+  boolean waitForEver=(rmConnectWaitMS == -1000);
+  if (!waitForEver) {
+    if (rmConnectWaitMS < 0) {
+      throw new YarnException("Invalid Configuration. " + YarnConfiguration.RESOURCEMANAGER_CONNECT_WAIT_SECS + " can be -1, but can not be other negative numbers");
+    }
+    if (rmConnectWaitMS < rmConnectionRetryIntervalMS) {
+      LOG.warn(YarnConfiguration.RESOURCEMANAGER_CONNECT_WAIT_SECS + " is smaller than " + YarnConfiguration.RESOURCEMANAGER_CONNECT_RETRY_INTERVAL_SECS+ ". Only try connect once.");
+      rmConnectWaitMS=0;
+    }
+  }
+  int rmRetryCount=0;
+  long waitStartTime=System.currentTimeMillis();
   RegisterNodeManagerRequest request=recordFactory.newRecordInstance(RegisterNodeManagerRequest.class);
   request.setHttpPort(this.httpPort);
   request.setResource(this.totalResource);
   request.setNodeId(this.nodeId);
-  RegistrationResponse regResponse=this.resourceTracker.registerNodeManager(request).getRegistrationResponse();
-  if (NodeAction.SHUTDOWN.equals(regResponse.getNodeAction())) {
+  RegisterNodeManagerResponse regNMResponse;
+  while (true) {
+    try {
+      rmRetryCount++;
+      LOG.info("Connecting to ResourceManager at " + this.rmAddress + ". current no. of attempts is "+ rmRetryCount);
+      this.resourceTracker=getRMClient();
+      regNMResponse=this.resourceTracker.registerNodeManager(request);
+      break;
+    }
+ catch (    Throwable e) {
+      LOG.warn("Trying to connect to ResourceManager, " + "current no. of failed attempts is " + rmRetryCount);
+      if (System.currentTimeMillis() - waitStartTime < rmConnectWaitMS || waitForEver) {
+        try {
+          LOG.info("Sleeping for " + rmConnectionRetryIntervalMS / 1000 + " seconds before next connection retry to RM");
+          Thread.sleep(rmConnectionRetryIntervalMS);
+        }
+ catch (        InterruptedException ex) {
+        }
+      }
+ else {
+        String errorMessage="Failed to Connect to RM, " + "no. of failed attempts is " + rmRetryCount;
+        LOG.error(errorMessage,e);
+        throw new YarnException(errorMessage,e);
+      }
+    }
+  }
+  if (NodeAction.SHUTDOWN.equals(regNMResponse.getNodeAction())) {
     throw new YarnException("Recieved SHUTDOWN signal from Resourcemanager ,Registration of NodeManager failed");
   }
   if (UserGroupInformation.isSecurityEnabled()) {
-    MasterKey masterKey=regResponse.getMasterKey();
+    MasterKey masterKey=regNMResponse.getMasterKey();
     LOG.info("Security enabled - updating secret keys now");
     if (masterKey != null) {
       this.context.getContainerTokenSecretManager().setMasterKey(masterKey);

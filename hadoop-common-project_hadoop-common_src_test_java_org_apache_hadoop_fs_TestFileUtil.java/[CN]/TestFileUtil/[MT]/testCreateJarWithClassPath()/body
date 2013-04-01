@@ -1,0 +1,49 @@
+{
+  Assert.assertFalse(tmp.exists());
+  Assert.assertTrue(tmp.mkdirs());
+  List<File> wildcardMatches=Arrays.asList(new File(tmp,"wildcard1.jar"),new File(tmp,"wildcard2.jar"),new File(tmp,"wildcard3.JAR"),new File(tmp,"wildcard4.JAR"));
+  for (  File wildcardMatch : wildcardMatches) {
+    Assert.assertTrue("failure creating file: " + wildcardMatch,wildcardMatch.createNewFile());
+  }
+  Assert.assertTrue(new File(tmp,"text.txt").createNewFile());
+  Assert.assertTrue(new File(tmp,"executable.exe").createNewFile());
+  Assert.assertTrue(new File(tmp,"README").createNewFile());
+  String wildcardPath=tmp.getCanonicalPath() + File.separator + "*";
+  List<String> classPaths=Arrays.asList("cp1.jar","cp2.jar",wildcardPath,"cp3.jar");
+  String inputClassPath=StringUtils.join(File.pathSeparator,classPaths);
+  String classPathJar=FileUtil.createJarWithClassPath(inputClassPath,new Path(tmp.getCanonicalPath()));
+  JarFile jarFile=null;
+  try {
+    jarFile=new JarFile(classPathJar);
+    Manifest jarManifest=jarFile.getManifest();
+    Assert.assertNotNull(jarManifest);
+    Attributes mainAttributes=jarManifest.getMainAttributes();
+    Assert.assertNotNull(mainAttributes);
+    Assert.assertTrue(mainAttributes.containsKey(Attributes.Name.CLASS_PATH));
+    String classPathAttr=mainAttributes.getValue(Attributes.Name.CLASS_PATH);
+    Assert.assertNotNull(classPathAttr);
+    List<String> expectedClassPaths=new ArrayList<String>();
+    for (    String classPath : classPaths) {
+      if (!wildcardPath.equals(classPath)) {
+        expectedClassPaths.add(new File(classPath).toURI().toURL().toExternalForm());
+      }
+ else {
+        for (        File wildcardMatch : wildcardMatches) {
+          expectedClassPaths.add(wildcardMatch.toURI().toURL().toExternalForm());
+        }
+      }
+    }
+    List<String> actualClassPaths=Arrays.asList(classPathAttr.split(" "));
+    Assert.assertEquals(expectedClassPaths,actualClassPaths);
+  }
+  finally {
+    if (jarFile != null) {
+      try {
+        jarFile.close();
+      }
+ catch (      IOException e) {
+        LOG.warn("exception closing jarFile: " + classPathJar,e);
+      }
+    }
+  }
+}

@@ -18,11 +18,13 @@
   lfs.util().copy(nmPrivateContainerScriptPath,launchDst);
   Path tokenDst=new Path(containerWorkDir,ContainerLaunch.FINAL_CONTAINER_TOKENS_FILE);
   lfs.util().copy(nmPrivateTokensPath,tokenDst);
-  Path wrapperScriptDst=new Path(containerWorkDir,WRAPPER_LAUNCH_SCRIPT);
-  DataOutputStream wrapperScriptOutStream=lfs.create(wrapperScriptDst,EnumSet.of(CREATE,OVERWRITE));
+  LocalWrapperScriptBuilder sb=Shell.WINDOWS ? new WindowsLocalWrapperScriptBuilder(containerIdStr,containerWorkDir) : new UnixLocalWrapperScriptBuilder(containerWorkDir);
+  if (Shell.WINDOWS && sb.getWrapperScriptPath().toString().length() > WIN_MAX_PATH) {
+    throw new IOException(String.format("Cannot launch container using script at path %s, because it exceeds " + "the maximum supported path length of %d characters.  Consider " + "configuring shorter directories in %s.",sb.getWrapperScriptPath(),WIN_MAX_PATH,YarnConfiguration.NM_LOCAL_DIRS));
+  }
   Path pidFile=getPidFilePath(containerId);
   if (pidFile != null) {
-    writeLocalWrapperScript(wrapperScriptOutStream,launchDst.toUri().getPath().toString(),pidFile.toString());
+    sb.writeLocalWrapperScript(launchDst,pidFile);
   }
  else {
     LOG.info("Container " + containerIdStr + " was marked as inactive. Returning terminated error");
@@ -31,8 +33,8 @@
   ShellCommandExecutor shExec=null;
   try {
     lfs.setPermission(launchDst,ContainerExecutor.TASK_LAUNCH_SCRIPT_PERMISSION);
-    lfs.setPermission(wrapperScriptDst,ContainerExecutor.TASK_LAUNCH_SCRIPT_PERMISSION);
-    String[] command={"bash",wrapperScriptDst.toUri().getPath().toString()};
+    lfs.setPermission(sb.getWrapperScriptPath(),ContainerExecutor.TASK_LAUNCH_SCRIPT_PERMISSION);
+    String[] command=getRunCommand(sb.getWrapperScriptPath().toString(),containerIdStr,this.getConf());
     LOG.info("launchContainer: " + Arrays.toString(command));
     shExec=new ShellCommandExecutor(command,new File(containerWorkDir.toUri().getPath()),container.getLaunchContext().getEnvironment());
     if (isContainerActive(containerId)) {

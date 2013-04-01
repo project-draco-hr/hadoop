@@ -31,7 +31,13 @@
     taskCredentials.writeTokenStorageToStream(containerTokens_dob);
     taskCredentialsBuffer=ByteBuffer.wrap(containerTokens_dob.getData(),0,containerTokens_dob.getLength());
     LOG.info("Putting shuffle token in serviceData");
-    serviceData.put(ShuffleHandler.MAPREDUCE_SHUFFLE_SERVICEID,ShuffleHandler.serializeServiceData(jobToken));
+    byte[] shuffleSecret=TokenCache.getShuffleSecretKey(credentials);
+    if (shuffleSecret == null) {
+      LOG.warn("Cannot locate shuffle secret in credentials." + " Using job token as shuffle secret.");
+      shuffleSecret=jobToken.getPassword();
+    }
+    Token<JobTokenIdentifier> shuffleToken=new Token<JobTokenIdentifier>(jobToken.getIdentifier(),shuffleSecret,jobToken.getKind(),jobToken.getService());
+    serviceData.put(ShuffleHandler.MAPREDUCE_SHUFFLE_SERVICEID,ShuffleHandler.serializeServiceData(shuffleToken));
     Apps.addToEnvironment(environment,Environment.CLASSPATH.name(),getInitialClasspath(conf));
     if (initialAppClasspath != null) {
       Apps.addToEnvironment(environment,Environment.APP_CLASSPATH.name(),initialAppClasspath);

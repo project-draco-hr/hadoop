@@ -1,0 +1,56 @@
+{
+  Configuration conf=new Configuration();
+  conf.setInt(ShuffleHandler.SHUFFLE_PORT_CONFIG_KEY,0);
+  conf.setInt(ShuffleHandler.MAX_SHUFFLE_CONNECTIONS,3);
+  ShuffleHandler shuffleHandler=new ShuffleHandler(){
+    @Override protected Shuffle getShuffle(    Configuration conf){
+      return new Shuffle(conf){
+        @Override protected void verifyRequest(        String appid,        ChannelHandlerContext ctx,        HttpRequest request,        HttpResponse response,        URL requestUri) throws IOException {
+        }
+        @Override protected ChannelFuture sendMapOutput(        ChannelHandlerContext ctx,        Channel ch,        String user,        String jobId,        String mapId,        int reduce) throws IOException {
+          ShuffleHeader header=new ShuffleHeader("dummy_header",5678,5678,1);
+          DataOutputBuffer dob=new DataOutputBuffer();
+          header.write(dob);
+          ch.write(wrappedBuffer(dob.getData(),0,dob.getLength()));
+          dob=new DataOutputBuffer();
+          for (int i=0; i < 100000; ++i) {
+            header.write(dob);
+          }
+          return ch.write(wrappedBuffer(dob.getData(),0,dob.getLength()));
+        }
+      }
+;
+    }
+  }
+;
+  shuffleHandler.init(conf);
+  shuffleHandler.start();
+  int connAttempts=3;
+  HttpURLConnection conns[]=new HttpURLConnection[connAttempts];
+  for (int i=0; i < connAttempts; i++) {
+    String URLstring="http://127.0.0.1:" + shuffleHandler.getConfig().get(ShuffleHandler.SHUFFLE_PORT_CONFIG_KEY) + "/mapOutput?job=job_12345_1&reduce=1&map=attempt_12345_1_m_"+ i+ "_0";
+    URL url=new URL(URLstring);
+    conns[i]=(HttpURLConnection)url.openConnection();
+  }
+  for (int i=0; i < connAttempts; i++) {
+    conns[i].connect();
+  }
+  conns[0].getInputStream();
+  int rc=conns[0].getResponseCode();
+  Assert.assertEquals(HttpURLConnection.HTTP_OK,rc);
+  conns[1].getInputStream();
+  rc=conns[1].getResponseCode();
+  Assert.assertEquals(HttpURLConnection.HTTP_OK,rc);
+  try {
+    conns[2].getInputStream();
+    rc=conns[2].getResponseCode();
+    Assert.fail("Expected a SocketException");
+  }
+ catch (  SocketException se) {
+    LOG.info("Expected - connection should not be open");
+  }
+catch (  Exception e) {
+    Assert.fail("Expected a SocketException");
+  }
+  shuffleHandler.stop();
+}

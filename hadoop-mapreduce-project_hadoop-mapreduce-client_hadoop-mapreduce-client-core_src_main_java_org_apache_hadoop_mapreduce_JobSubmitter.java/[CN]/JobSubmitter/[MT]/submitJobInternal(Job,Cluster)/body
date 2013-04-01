@@ -19,6 +19,18 @@
     LOG.debug("Configuring job " + jobId + " with "+ submitJobDir+ " as the submit dir");
     TokenCache.obtainTokensForNamenodes(job.getCredentials(),new Path[]{submitJobDir},conf);
     populateTokenCache(conf,job.getCredentials());
+    if (TokenCache.getShuffleSecretKey(job.getCredentials()) == null) {
+      KeyGenerator keyGen;
+      try {
+        keyGen=KeyGenerator.getInstance(SHUFFLE_KEYGEN_ALGORITHM);
+        keyGen.init(SHUFFLE_KEY_LENGTH);
+      }
+ catch (      NoSuchAlgorithmException e) {
+        throw new IOException("Error generating shuffle secret key",e);
+      }
+      SecretKey shuffleKey=keyGen.generateKey();
+      TokenCache.setShuffleSecretKey(shuffleKey.getEncoded(),job.getCredentials());
+    }
     copyAndConfigureFiles(job,submitJobDir);
     Path submitJobFile=JobSubmissionFiles.getJobConfPath(submitJobDir);
     LOG.debug("Creating splits at " + jtFs.makeQualified(submitJobDir));

@@ -1,0 +1,37 @@
+{
+  Configuration conf=new Configuration();
+  List<ContainerStatus> completed1=Arrays.asList(BuilderUtils.newContainerStatus(BuilderUtils.newContainerId(0,0,0,0),ContainerState.COMPLETE,"",0));
+  List<Container> allocated1=Arrays.asList(BuilderUtils.newContainer(null,null,null,null,null,null));
+  final AllocateResponse response1=createAllocateResponse(new ArrayList<ContainerStatus>(),allocated1);
+  final AllocateResponse response2=createAllocateResponse(completed1,new ArrayList<Container>());
+  final AllocateResponse emptyResponse=createAllocateResponse(new ArrayList<ContainerStatus>(),new ArrayList<Container>());
+  TestCallbackHandler callbackHandler=new TestCallbackHandler();
+  AMRMClient client=mock(AMRMClient.class);
+  final AtomicBoolean secondHeartbeatReceived=new AtomicBoolean(false);
+  when(client.allocate(anyFloat())).thenReturn(response1).thenAnswer(new Answer<AllocateResponse>(){
+    @Override public AllocateResponse answer(    InvocationOnMock invocation) throws Throwable {
+      secondHeartbeatReceived.set(true);
+      return response2;
+    }
+  }
+).thenReturn(emptyResponse);
+  when(client.registerApplicationMaster(anyString(),anyInt(),anyString())).thenReturn(null);
+  AMRMClientAsync asyncClient=new AMRMClientAsync(client,20,callbackHandler);
+  asyncClient.init(conf);
+  asyncClient.start();
+  asyncClient.registerApplicationMaster("localhost",1234,null);
+  while (!secondHeartbeatReceived.get()) {
+    Thread.sleep(10);
+  }
+  Assert.assertEquals(null,callbackHandler.takeCompletedContainers());
+  while (callbackHandler.takeAllocatedContainers() == null) {
+    Assert.assertEquals(null,callbackHandler.takeCompletedContainers());
+    Thread.sleep(10);
+  }
+  while (callbackHandler.takeCompletedContainers() == null) {
+    Thread.sleep(10);
+  }
+  asyncClient.stop();
+  Assert.assertEquals(null,callbackHandler.takeAllocatedContainers());
+  Assert.assertEquals(null,callbackHandler.takeCompletedContainers());
+}

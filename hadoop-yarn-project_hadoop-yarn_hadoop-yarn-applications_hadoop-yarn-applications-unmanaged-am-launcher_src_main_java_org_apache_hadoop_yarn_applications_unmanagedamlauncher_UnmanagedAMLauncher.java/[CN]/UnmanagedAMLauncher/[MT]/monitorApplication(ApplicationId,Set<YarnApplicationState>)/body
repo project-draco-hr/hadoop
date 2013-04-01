@@ -1,4 +1,17 @@
 {
+  long foundAMCompletedTime=0;
+  final int timeToWaitMS=10000;
+  StringBuilder expectedFinalState=new StringBuilder();
+  boolean first=true;
+  for (  YarnApplicationState state : finalState) {
+    if (first) {
+      first=false;
+      expectedFinalState.append(state.name());
+    }
+ else {
+      expectedFinalState.append("," + state.name());
+    }
+  }
   while (true) {
     try {
       Thread.sleep(1000);
@@ -11,6 +24,15 @@
     YarnApplicationState state=report.getYarnApplicationState();
     if (finalState.contains(state)) {
       return report;
+    }
+    if (amCompleted) {
+      if (foundAMCompletedTime == 0) {
+        foundAMCompletedTime=System.currentTimeMillis();
+      }
+ else       if ((System.currentTimeMillis() - foundAMCompletedTime) > timeToWaitMS) {
+        LOG.warn("Waited " + timeToWaitMS / 1000 + " seconds after process completed for AppReport" + " to reach desired final state. Not waiting anymore." + "CurrentState = " + state + ", ExpectedStates = " + expectedFinalState.toString());
+        throw new RuntimeException("Failed to receive final expected state" + " in ApplicationReport" + ", CurrentState=" + state + ", ExpectedStates="+ expectedFinalState.toString());
+      }
     }
   }
 }

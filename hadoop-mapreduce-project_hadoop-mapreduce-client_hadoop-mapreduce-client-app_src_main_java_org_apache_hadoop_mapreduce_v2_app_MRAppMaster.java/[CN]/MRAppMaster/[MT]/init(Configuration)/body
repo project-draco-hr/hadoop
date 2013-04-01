@@ -1,9 +1,8 @@
 {
   conf.setBoolean(Dispatcher.DISPATCHER_EXIT_ON_ERROR_KEY,true);
   downloadTokensAndSetupUGI(conf);
-  int numAMRetries=conf.getInt(YarnConfiguration.RM_AM_MAX_RETRIES,YarnConfiguration.DEFAULT_RM_AM_MAX_RETRIES);
-  isLastAMRetry=appAttemptID.getAttemptId() >= numAMRetries;
-  LOG.info("AM Retries: " + numAMRetries + " attempt num: "+ appAttemptID.getAttemptId()+ " is last retry: "+ isLastAMRetry);
+  isLastAMRetry=appAttemptID.getAttemptId() >= maxAppAttempts;
+  LOG.info("The specific max attempts: " + maxAppAttempts + " for application: "+ appAttemptID.getApplicationId().getId()+ ". Attempt num: "+ appAttemptID.getAttemptId()+ " is last retry: "+ isLastAMRetry);
   context=new RunningAppContext(conf);
   appName=conf.get(MRJobConfig.JOB_NAME,"<missing app name>");
   conf.setInt(MRJobConfig.APPLICATION_ATTEMPT_ID,appAttemptID.getAttemptId());
@@ -28,6 +27,7 @@
     boolean commitFailure=fs.exists(endCommitFailureFile);
     if (!stagingExists) {
       isLastAMRetry=true;
+      LOG.info("Attempt num: " + appAttemptID.getAttemptId() + " is last retry: "+ isLastAMRetry+ " because the staging dir doesn't exist.");
       errorHappenedShutDown=true;
       forcedState=JobStateInternal.ERROR;
       shutDownMessage="Staging dir does not exist " + stagingDir;
@@ -36,6 +36,7 @@
  else     if (commitStarted) {
       errorHappenedShutDown=true;
       isLastAMRetry=true;
+      LOG.info("Attempt num: " + appAttemptID.getAttemptId() + " is last retry: "+ isLastAMRetry+ " because a commit was started.");
       copyHistory=true;
       if (commitSuccess) {
         shutDownMessage="We crashed after successfully committing. Recovering.";
@@ -81,7 +82,8 @@
     committer=createOutputCommitter(conf);
     boolean recoveryEnabled=conf.getBoolean(MRJobConfig.MR_AM_JOB_RECOVERY_ENABLE,true);
     boolean recoverySupportedByCommitter=committer.isRecoverySupported();
-    if (recoveryEnabled && recoverySupportedByCommitter && appAttemptID.getAttemptId() > 1) {
+    boolean shuffleKeyValidForRecovery=(numReduceTasks > 0 && TokenCache.getShuffleSecretKey(fsTokens) != null);
+    if (recoveryEnabled && recoverySupportedByCommitter && shuffleKeyValidForRecovery&& appAttemptID.getAttemptId() > 1) {
       LOG.info("Recovery is enabled. " + "Will try to recover from previous life on best effort basis.");
       recoveryServ=createRecoveryService(context);
       addIfService(recoveryServ);
@@ -90,7 +92,7 @@
       inRecovery=true;
     }
  else {
-      LOG.info("Not starting RecoveryService: recoveryEnabled: " + recoveryEnabled + " recoverySupportedByCommitter: "+ recoverySupportedByCommitter+ " ApplicationAttemptID: "+ appAttemptID.getAttemptId());
+      LOG.info("Not starting RecoveryService: recoveryEnabled: " + recoveryEnabled + " recoverySupportedByCommitter: "+ recoverySupportedByCommitter+ " shuffleKeyValidForRecovery: "+ shuffleKeyValidForRecovery+ " ApplicationAttemptID: "+ appAttemptID.getAttemptId());
       dispatcher=createDispatcher();
       addIfService(dispatcher);
     }

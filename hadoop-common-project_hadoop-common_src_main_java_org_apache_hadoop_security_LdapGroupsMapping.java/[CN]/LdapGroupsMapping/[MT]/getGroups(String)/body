@@ -1,22 +1,28 @@
 {
-  List<String> groups=new ArrayList<String>();
+  List<String> emptyResults=new ArrayList<String>();
   try {
-    DirContext ctx=getDirContext();
-    NamingEnumeration<SearchResult> results=ctx.search(baseDN,userSearchFilter,new Object[]{user},SEARCH_CONTROLS);
-    if (results.hasMoreElements()) {
-      SearchResult result=results.nextElement();
-      String userDn=result.getNameInNamespace();
-      NamingEnumeration<SearchResult> groupResults=ctx.search(baseDN,"(&" + groupSearchFilter + "("+ groupMemberAttr+ "={0}))",new Object[]{userDn},SEARCH_CONTROLS);
-      while (groupResults.hasMoreElements()) {
-        SearchResult groupResult=groupResults.nextElement();
-        Attribute groupName=groupResult.getAttributes().get(groupNameAttr);
-        groups.add(groupName.get().toString());
-      }
+    return doGetGroups(user);
+  }
+ catch (  CommunicationException e) {
+    LOG.warn("Connection is closed, will try to reconnect");
+  }
+catch (  NamingException e) {
+    LOG.warn("Exception trying to get groups for user " + user,e);
+    return emptyResults;
+  }
+  int retryCount=0;
+  while (retryCount++ < RECONNECT_RETRY_COUNT) {
+    this.ctx=null;
+    try {
+      return doGetGroups(user);
+    }
+ catch (    CommunicationException e) {
+      LOG.warn("Connection being closed, reconnecting failed, retryCount = " + retryCount);
+    }
+catch (    NamingException e) {
+      LOG.warn("Exception trying to get groups for user " + user,e);
+      return emptyResults;
     }
   }
- catch (  NamingException e) {
-    LOG.warn("Exception trying to get groups for user " + user,e);
-    return new ArrayList<String>();
-  }
-  return groups;
+  return emptyResults;
 }
