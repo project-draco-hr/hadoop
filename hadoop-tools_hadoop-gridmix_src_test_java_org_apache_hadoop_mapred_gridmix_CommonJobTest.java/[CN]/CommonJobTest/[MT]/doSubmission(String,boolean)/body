@@ -1,0 +1,45 @@
+{
+  final Path in=new Path("foo").makeQualified(GridmixTestUtils.dfs.getUri(),GridmixTestUtils.dfs.getWorkingDirectory());
+  final Path out=GridmixTestUtils.DEST.makeQualified(GridmixTestUtils.dfs.getUri(),GridmixTestUtils.dfs.getWorkingDirectory());
+  final Path root=new Path(workspace.getAbsolutePath());
+  if (!workspace.exists()) {
+    assertTrue(workspace.mkdirs());
+  }
+  Configuration conf=null;
+  try {
+    ArrayList<String> argsList=new ArrayList<String>();
+    argsList.add("-D" + FilePool.GRIDMIX_MIN_FILE + "=0");
+    argsList.add("-D" + Gridmix.GRIDMIX_USR_RSV + "="+ EchoUserResolver.class.getName());
+    if (jobCreatorName != null) {
+      argsList.add("-D" + JobCreator.GRIDMIX_JOB_TYPE + "="+ jobCreatorName);
+    }
+    if (!defaultOutputPath) {
+      argsList.add("-D" + Gridmix.GRIDMIX_OUT_DIR + "="+ out);
+    }
+    argsList.add("-generate");
+    argsList.add(String.valueOf(GENDATA) + "m");
+    argsList.add(in.toString());
+    argsList.add("-");
+    String[] argv=argsList.toArray(new String[argsList.size()]);
+    DebugGridmix client=new DebugGridmix();
+    conf=GridmixTestUtils.mrvl.getConfig();
+    CompressionEmulationUtil.setCompressionEmulationEnabled(conf,true);
+    conf.setEnum(GridmixJobSubmissionPolicy.JOB_SUBMISSION_POLICY,policy);
+    conf.setBoolean(GridmixJob.GRIDMIX_USE_QUEUE_IN_TRACE,true);
+    UserGroupInformation ugi=UserGroupInformation.getLoginUser();
+    conf.set(MRJobConfig.USER_NAME,ugi.getUserName());
+    GridmixTestUtils.dfs.mkdirs(root,new FsPermission((short)777));
+    GridmixTestUtils.dfs.setPermission(root,new FsPermission((short)777));
+    int res=ToolRunner.run(conf,client,argv);
+    assertEquals("Client exited with nonzero status",0,res);
+    client.checkMonitor();
+  }
+ catch (  Exception e) {
+    e.printStackTrace();
+  }
+ finally {
+    in.getFileSystem(conf).delete(in,true);
+    out.getFileSystem(conf).delete(out,true);
+    root.getFileSystem(conf).delete(root,true);
+  }
+}

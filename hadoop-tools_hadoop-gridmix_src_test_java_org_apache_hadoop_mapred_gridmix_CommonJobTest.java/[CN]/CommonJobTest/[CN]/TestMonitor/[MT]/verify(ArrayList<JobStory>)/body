@@ -1,0 +1,50 @@
+{
+  assertEquals("Bad job count",expected,retiredJobs.size());
+  final ArrayList<Job> succeeded=new ArrayList<Job>();
+  assertEquals("Bad job count",expected,retiredJobs.drainTo(succeeded));
+  final HashMap<String,JobStory> sub=new HashMap<String,JobStory>();
+  for (  JobStory spec : submitted) {
+    sub.put(spec.getJobID().toString(),spec);
+  }
+  for (  Job job : succeeded) {
+    final String jobName=job.getJobName();
+    Configuration configuration=job.getConfiguration();
+    if (GenerateData.JOB_NAME.equals(jobName)) {
+      RemoteIterator<LocatedFileStatus> rit=GridmixTestUtils.dfs.listFiles(new Path("/"),true);
+      while (rit.hasNext()) {
+        System.out.println(rit.next().toString());
+      }
+      final Path in=new Path("foo").makeQualified(GridmixTestUtils.dfs.getUri(),GridmixTestUtils.dfs.getWorkingDirectory());
+      final ContentSummary generated=GridmixTestUtils.dfs.getContentSummary(in);
+      assertEquals(550000,generated.getLength(),10000);
+      Counter counter=job.getCounters().getGroup("org.apache.hadoop.mapreduce.FileSystemCounter").findCounter("HDFS_BYTES_WRITTEN");
+      assertEquals(generated.getLength(),counter.getValue());
+      continue;
+    }
+ else     if (GenerateDistCacheData.JOB_NAME.equals(jobName)) {
+      continue;
+    }
+    final String originalJobId=configuration.get(Gridmix.ORIGINAL_JOB_ID);
+    final JobStory spec=sub.get(originalJobId);
+    assertNotNull("No spec for " + jobName,spec);
+    assertNotNull("No counters for " + jobName,job.getCounters());
+    final String originalJobName=spec.getName();
+    System.out.println("originalJobName=" + originalJobName + ";GridmixJobName="+ jobName+ ";originalJobID="+ originalJobId);
+    assertTrue("Original job name is wrong.",originalJobName.equals(configuration.get(Gridmix.ORIGINAL_JOB_NAME)));
+    int seqNumLength=6;
+    String jobSeqNum=new DecimalFormat("000000").format(configuration.getInt(GridmixJob.GRIDMIX_JOB_SEQ,-1));
+    assertTrue(originalJobName.substring(originalJobName.length() - seqNumLength).equals(jobSeqNum));
+    assertTrue("Gridmix job name is not in the expected format.",jobName.equals(GridmixJob.JOB_NAME_PREFIX + jobSeqNum));
+    final FileStatus stat=GridmixTestUtils.dfs.getFileStatus(new Path(GridmixTestUtils.DEST,"" + Integer.valueOf(jobSeqNum)));
+    assertEquals("Wrong owner for " + jobName,spec.getUser(),stat.getOwner());
+    final int nMaps=spec.getNumberMaps();
+    final int nReds=spec.getNumberReduces();
+    final JobClient client=new JobClient(GridmixTestUtils.mrvl.getConfig());
+    final TaskReport[] mReports=client.getMapTaskReports(JobID.downgrade(job.getJobID()));
+    assertEquals("Mismatched map count",nMaps,mReports.length);
+    check(TaskType.MAP,spec,mReports,0,0,SLOPBYTES,nReds);
+    final TaskReport[] rReports=client.getReduceTaskReports(JobID.downgrade(job.getJobID()));
+    assertEquals("Mismatched reduce count",nReds,rReports.length);
+    check(TaskType.REDUCE,spec,rReports,nMaps * SLOPBYTES,2 * nMaps,0,0);
+  }
+}
