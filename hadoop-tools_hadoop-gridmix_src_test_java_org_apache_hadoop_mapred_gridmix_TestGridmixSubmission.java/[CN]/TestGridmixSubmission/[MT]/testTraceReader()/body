@@ -1,0 +1,34 @@
+{
+  Configuration conf=new Configuration();
+  FileSystem lfs=FileSystem.getLocal(conf);
+  Path rootInputDir=new Path(System.getProperty("src.test.data"));
+  rootInputDir=rootInputDir.makeQualified(lfs.getUri(),lfs.getWorkingDirectory());
+  Path rootTempDir=new Path(System.getProperty("test.build.data",System.getProperty("java.io.tmpdir")),"testTraceReader");
+  rootTempDir=rootTempDir.makeQualified(lfs.getUri(),lfs.getWorkingDirectory());
+  Path inputFile=new Path(rootInputDir,"wordcount.json.gz");
+  Path tempFile=new Path(rootTempDir,"gridmix3-wc.json");
+  InputStream origStdIn=System.in;
+  InputStream tmpIs=null;
+  try {
+    DebugGridmix dgm=new DebugGridmix();
+    JobStoryProducer jsp=dgm.createJobStoryProducer(inputFile.toString(),conf);
+    LOG.info("Verifying JobStory from compressed trace...");
+    verifyWordCountJobStory(jsp.getNextJob());
+    expandGzippedTrace(lfs,inputFile,tempFile);
+    jsp=dgm.createJobStoryProducer(tempFile.toString(),conf);
+    LOG.info("Verifying JobStory from uncompressed trace...");
+    verifyWordCountJobStory(jsp.getNextJob());
+    tmpIs=lfs.open(tempFile);
+    System.setIn(tmpIs);
+    LOG.info("Verifying JobStory from trace in standard input...");
+    jsp=dgm.createJobStoryProducer("-",conf);
+    verifyWordCountJobStory(jsp.getNextJob());
+  }
+  finally {
+    System.setIn(origStdIn);
+    if (tmpIs != null) {
+      tmpIs.close();
+    }
+    lfs.delete(rootTempDir,true);
+  }
+}

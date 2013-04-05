@@ -4,9 +4,6 @@
       int lastHeartBeatID=0;
       while (!isStopped) {
         try {
-synchronized (heartbeatMonitor) {
-            heartbeatMonitor.wait(heartBeatInterval);
-          }
           NodeStatus nodeStatus=getNodeStatus();
           nodeStatus.setResponseId(lastHeartBeatID);
           NodeHeartbeatRequest request=recordFactory.newRecordInstance(NodeHeartbeatRequest.class);
@@ -15,6 +12,8 @@ synchronized (heartbeatMonitor) {
             request.setLastKnownMasterKey(NodeStatusUpdaterImpl.this.context.getContainerTokenSecretManager().getCurrentKey());
           }
           NodeHeartbeatResponse response=resourceTracker.nodeHeartbeat(request);
+          previousHeartBeatSucceeded=true;
+          nextHeartBeatInterval=response.getNextHeartBeatInterval();
           if (isSecurityEnabled()) {
             MasterKey updatedMasterKey=response.getMasterKey();
             if (updatedMasterKey != null) {
@@ -43,7 +42,18 @@ synchronized (heartbeatMonitor) {
           }
         }
  catch (        Throwable e) {
+          previousHeartBeatSucceeded=false;
           LOG.error("Caught exception in status-updater",e);
+        }
+ finally {
+synchronized (heartbeatMonitor) {
+            nextHeartBeatInterval=nextHeartBeatInterval <= 0 ? YarnConfiguration.DEFAULT_RM_NM_HEARTBEAT_INTERVAL_MS : nextHeartBeatInterval;
+            try {
+              heartbeatMonitor.wait(nextHeartBeatInterval);
+            }
+ catch (            InterruptedException e) {
+            }
+          }
         }
       }
     }

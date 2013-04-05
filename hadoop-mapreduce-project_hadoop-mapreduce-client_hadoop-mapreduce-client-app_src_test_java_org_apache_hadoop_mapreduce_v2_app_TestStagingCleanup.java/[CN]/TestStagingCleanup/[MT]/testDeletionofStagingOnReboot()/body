@@ -1,0 +1,21 @@
+{
+  conf.set(MRJobConfig.MAPREDUCE_JOB_DIR,stagingJobDir);
+  fs=mock(FileSystem.class);
+  when(fs.delete(any(Path.class),anyBoolean())).thenReturn(true);
+  String user=UserGroupInformation.getCurrentUser().getShortUserName();
+  Path stagingDir=MRApps.getStagingAreaDir(conf,user);
+  when(fs.exists(stagingDir)).thenReturn(true);
+  ApplicationAttemptId attemptId=recordFactory.newRecordInstance(ApplicationAttemptId.class);
+  attemptId.setAttemptId(1);
+  ApplicationId appId=recordFactory.newRecordInstance(ApplicationId.class);
+  appId.setClusterTimestamp(System.currentTimeMillis());
+  appId.setId(0);
+  attemptId.setApplicationId(appId);
+  ContainerAllocator mockAlloc=mock(ContainerAllocator.class);
+  MRAppMaster appMaster=new TestMRApp(attemptId,mockAlloc,JobStateInternal.REBOOT,MRJobConfig.DEFAULT_MR_AM_MAX_ATTEMPTS);
+  appMaster.init(conf);
+  appMaster.start();
+  appMaster.shutDownJob();
+  Assert.assertEquals(true,((TestMRApp)appMaster).getTestIsLastAMRetry());
+  verify(fs).delete(stagingJobPath,true);
+}
