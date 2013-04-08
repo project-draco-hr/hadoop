@@ -4,6 +4,9 @@
       int lastHeartBeatID=0;
       while (!isStopped) {
         try {
+          NodeHeartbeatResponse response=null;
+          int rmRetryCount=0;
+          long waitStartTime=System.currentTimeMillis();
           NodeStatus nodeStatus=getNodeStatus();
           nodeStatus.setResponseId(lastHeartBeatID);
           NodeHeartbeatRequest request=recordFactory.newRecordInstance(NodeHeartbeatRequest.class);
@@ -11,8 +14,29 @@
           if (isSecurityEnabled()) {
             request.setLastKnownMasterKey(NodeStatusUpdaterImpl.this.context.getContainerTokenSecretManager().getCurrentKey());
           }
-          NodeHeartbeatResponse response=resourceTracker.nodeHeartbeat(request);
-          previousHeartBeatSucceeded=true;
+          while (!isStopped) {
+            try {
+              rmRetryCount++;
+              response=resourceTracker.nodeHeartbeat(request);
+              break;
+            }
+ catch (            Throwable e) {
+              LOG.warn("Trying to heartbeat to ResourceManager, " + "current no. of failed attempts is " + rmRetryCount);
+              if (System.currentTimeMillis() - waitStartTime < rmConnectWaitMS || waitForEver) {
+                try {
+                  LOG.info("Sleeping for " + rmConnectionRetryIntervalMS / 1000 + " seconds before next heartbeat to RM");
+                  Thread.sleep(rmConnectionRetryIntervalMS);
+                }
+ catch (                InterruptedException ex) {
+                }
+              }
+ else {
+                String errorMessage="Failed to heartbeat to RM, " + "no. of failed attempts is " + rmRetryCount;
+                LOG.error(errorMessage,e);
+                throw new YarnException(errorMessage,e);
+              }
+            }
+          }
           nextHeartBeatInterval=response.getNextHeartBeatInterval();
           if (isSecurityEnabled()) {
             MasterKey updatedMasterKey=response.getMasterKey();
@@ -41,8 +65,11 @@
             dispatcher.getEventHandler().handle(new CMgrCompletedAppsEvent(appsToCleanup));
           }
         }
- catch (        Throwable e) {
-          previousHeartBeatSucceeded=false;
+ catch (        YarnException e) {
+          dispatcher.getEventHandler().handle(new NodeManagerEvent(NodeManagerEventType.SHUTDOWN));
+          throw e;
+        }
+catch (        Throwable e) {
           LOG.error("Caught exception in status-updater",e);
         }
  finally {
