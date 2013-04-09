@@ -4,7 +4,17 @@
     LocalResource next=findNextResource();
     if (next != null) {
       response.setLocalizerAction(LocalizerAction.LIVE);
-      response.addResource(next);
+      try {
+        ArrayList<ResourceLocalizationSpec> rsrcs=new ArrayList<ResourceLocalizationSpec>();
+        ResourceLocalizationSpec rsrc=NodeManagerBuilderUtils.newResourceLocalizationSpec(next,getPathForLocalization(next));
+        rsrcs.add(rsrc);
+        response.setResourceSpecs(rsrcs);
+      }
+ catch (      IOException e) {
+        LOG.error("local path for PRIVATE localization could not be found." + "Disks might have failed.",e);
+      }
+catch (      URISyntaxException e) {
+      }
     }
  else     if (pending.isEmpty()) {
       response.setLocalizerAction(LocalizerAction.DIE);
@@ -14,6 +24,7 @@
     }
     return response;
   }
+  ArrayList<ResourceLocalizationSpec> rsrcs=new ArrayList<ResourceLocalizationSpec>();
   for (  LocalResourceStatus stat : remoteResourceStatuses) {
     LocalResource rsrc=stat.getResource();
     LocalResourceRequest req=null;
@@ -31,6 +42,7 @@ switch (stat.getStatus()) {
 case FETCH_SUCCESS:
       try {
         assoc.getResource().handle(new ResourceLocalizedEvent(req,ConverterUtils.getPathFromYarnURL(stat.getLocalPath()),stat.getLocalSize()));
+        localizationCompleted(stat);
       }
  catch (      URISyntaxException e) {
       }
@@ -41,7 +53,15 @@ case FETCH_SUCCESS:
   response.setLocalizerAction(LocalizerAction.LIVE);
 LocalResource next=findNextResource();
 if (next != null) {
-response.addResource(next);
+try {
+  ResourceLocalizationSpec resource=NodeManagerBuilderUtils.newResourceLocalizationSpec(next,getPathForLocalization(next));
+  rsrcs.add(resource);
+}
+ catch (IOException e) {
+  LOG.error("local path for PRIVATE localization could not be " + "found. Disks might have failed.",e);
+}
+catch (URISyntaxException e) {
+}
 }
 break;
 case FETCH_PENDING:
@@ -51,6 +71,7 @@ case FETCH_FAILURE:
 LOG.info("DEBUG: FAILED " + req,stat.getException());
 assoc.getResource().unlock();
 response.setLocalizerAction(LocalizerAction.DIE);
+localizationCompleted(stat);
 dispatcher.getEventHandler().handle(new ContainerResourceFailedEvent(context.getContainerId(),req,stat.getException()));
 break;
 default :
@@ -60,5 +81,6 @@ dispatcher.getEventHandler().handle(new ContainerResourceFailedEvent(context.get
 break;
 }
 }
+response.setResourceSpecs(rsrcs);
 return response;
 }

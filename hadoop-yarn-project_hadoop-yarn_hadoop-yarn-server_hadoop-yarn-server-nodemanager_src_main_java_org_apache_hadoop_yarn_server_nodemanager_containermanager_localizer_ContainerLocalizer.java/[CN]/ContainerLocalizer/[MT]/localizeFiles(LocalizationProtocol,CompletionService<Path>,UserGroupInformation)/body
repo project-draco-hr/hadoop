@@ -5,29 +5,17 @@
       LocalizerHeartbeatResponse response=nodemanager.heartbeat(status);
 switch (response.getLocalizerAction()) {
 case LIVE:
-        List<LocalResource> newResources=response.getAllResources();
-      for (      LocalResource r : newResources) {
-        if (!pendingResources.containsKey(r)) {
-          final LocalDirAllocator lda;
-switch (r.getVisibility()) {
-default :
-            LOG.warn("Unknown visibility: " + r.getVisibility() + ", Using userDirs");
-case PUBLIC:
-case PRIVATE:
-          lda=userDirs;
-        break;
-case APPLICATION:
-      lda=appDirs;
+        List<ResourceLocalizationSpec> newRsrcs=response.getResourceSpecs();
+      for (      ResourceLocalizationSpec newRsrc : newRsrcs) {
+        if (!pendingResources.containsKey(newRsrc.getResource())) {
+          pendingResources.put(newRsrc.getResource(),cs.submit(download(new Path(newRsrc.getDestinationDirectory().getFile()),newRsrc.getResource(),ugi)));
+        }
+      }
     break;
-}
-pendingResources.put(r,cs.submit(download(lda,r,ugi)));
-}
-}
-break;
 case DIE:
-for (Future<Path> pending : pendingResources.values()) {
-pending.cancel(true);
-}
+  for (  Future<Path> pending : pendingResources.values()) {
+    pending.cancel(true);
+  }
 status=createStatus();
 try {
 nodemanager.heartbeat(status);
