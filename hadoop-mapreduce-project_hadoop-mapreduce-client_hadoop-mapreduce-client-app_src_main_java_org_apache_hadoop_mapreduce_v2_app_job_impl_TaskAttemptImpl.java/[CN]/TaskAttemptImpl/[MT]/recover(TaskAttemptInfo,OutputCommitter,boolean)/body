@@ -1,0 +1,78 @@
+{
+  containerID=taInfo.getContainerId();
+  containerNodeId=ConverterUtils.toNodeId(taInfo.getHostname() + ":" + taInfo.getPort());
+  containerMgrAddress=StringInterner.weakIntern(containerNodeId.toString());
+  nodeHttpAddress=StringInterner.weakIntern(taInfo.getHostname() + ":" + taInfo.getHttpPort());
+  computeRackAndLocality();
+  launchTime=taInfo.getStartTime();
+  finishTime=(taInfo.getFinishTime() != -1) ? taInfo.getFinishTime() : clock.getTime();
+  shufflePort=taInfo.getShufflePort();
+  trackerName=taInfo.getHostname();
+  httpPort=taInfo.getHttpPort();
+  sendLaunchedEvents();
+  reportedStatus.id=attemptId;
+  reportedStatus.progress=1.0f;
+  reportedStatus.counters=taInfo.getCounters();
+  reportedStatus.stateString=taInfo.getState();
+  reportedStatus.phase=Phase.CLEANUP;
+  reportedStatus.mapFinishTime=taInfo.getMapFinishTime();
+  reportedStatus.shuffleFinishTime=taInfo.getShuffleFinishTime();
+  reportedStatus.sortFinishTime=taInfo.getSortFinishTime();
+  addDiagnosticInfo(taInfo.getError());
+  boolean needToClean=false;
+  String recoveredState=taInfo.getTaskStatus();
+  if (recoverOutput && TaskAttemptState.SUCCEEDED.toString().equals(recoveredState)) {
+    TaskAttemptContext tac=new TaskAttemptContextImpl(conf,TypeConverter.fromYarn(attemptId));
+    try {
+      committer.recoverTask(tac);
+      LOG.info("Recovered output from task attempt " + attemptId);
+    }
+ catch (    Exception e) {
+      LOG.error("Unable to recover task attempt " + attemptId,e);
+      LOG.info("Task attempt " + attemptId + " will be recovered as KILLED");
+      recoveredState=TaskAttemptState.KILLED.toString();
+      needToClean=true;
+    }
+  }
+  TaskAttemptStateInternal attemptState;
+  if (TaskAttemptState.SUCCEEDED.toString().equals(recoveredState)) {
+    attemptState=TaskAttemptStateInternal.SUCCEEDED;
+    reportedStatus.taskState=TaskAttemptState.SUCCEEDED;
+    eventHandler.handle(createJobCounterUpdateEventTASucceeded(this));
+    logAttemptFinishedEvent(attemptState);
+  }
+ else   if (TaskAttemptState.FAILED.toString().equals(recoveredState)) {
+    attemptState=TaskAttemptStateInternal.FAILED;
+    reportedStatus.taskState=TaskAttemptState.FAILED;
+    eventHandler.handle(createJobCounterUpdateEventTAFailed(this,false));
+    TaskAttemptUnsuccessfulCompletionEvent tauce=createTaskAttemptUnsuccessfulCompletionEvent(this,TaskAttemptStateInternal.FAILED);
+    eventHandler.handle(new JobHistoryEvent(attemptId.getTaskId().getJobId(),tauce));
+  }
+ else {
+    if (!TaskAttemptState.KILLED.toString().equals(recoveredState)) {
+      if (String.valueOf(recoveredState).isEmpty()) {
+        LOG.info("TaskAttempt" + attemptId + " had not completed, recovering as KILLED");
+      }
+ else {
+        LOG.warn("TaskAttempt " + attemptId + " found in unexpected state "+ recoveredState+ ", recovering as KILLED");
+      }
+      addDiagnosticInfo("Killed during application recovery");
+      needToClean=true;
+    }
+    attemptState=TaskAttemptStateInternal.KILLED;
+    reportedStatus.taskState=TaskAttemptState.KILLED;
+    eventHandler.handle(createJobCounterUpdateEventTAKilled(this,false));
+    TaskAttemptUnsuccessfulCompletionEvent tauce=createTaskAttemptUnsuccessfulCompletionEvent(this,TaskAttemptStateInternal.KILLED);
+    eventHandler.handle(new JobHistoryEvent(attemptId.getTaskId().getJobId(),tauce));
+  }
+  if (needToClean) {
+    TaskAttemptContext tac=new TaskAttemptContextImpl(conf,TypeConverter.fromYarn(attemptId));
+    try {
+      committer.abortTask(tac);
+    }
+ catch (    Exception e) {
+      LOG.warn("Task cleanup failed for attempt " + attemptId,e);
+    }
+  }
+  return attemptState;
+}
