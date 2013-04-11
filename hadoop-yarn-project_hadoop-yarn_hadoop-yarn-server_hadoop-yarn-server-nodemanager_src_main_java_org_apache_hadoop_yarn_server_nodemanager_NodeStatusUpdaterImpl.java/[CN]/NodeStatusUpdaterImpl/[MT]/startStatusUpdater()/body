@@ -1,5 +1,5 @@
 {
-  new Thread("Node Status Updater"){
+  statusUpdaterRunnable=new Runnable(){
     @Override @SuppressWarnings("unchecked") public void run(){
       int lastHeartBeatID=0;
       while (!isStopped) {
@@ -7,7 +7,7 @@
           NodeHeartbeatResponse response=null;
           int rmRetryCount=0;
           long waitStartTime=System.currentTimeMillis();
-          NodeStatus nodeStatus=getNodeStatus();
+          NodeStatus nodeStatus=getNodeStatusAndUpdateContainersInContext();
           nodeStatus.setResponseId(lastHeartBeatID);
           NodeHeartbeatRequest request=recordFactory.newRecordInstance(NodeHeartbeatRequest.class);
           request.setNodeStatus(nodeStatus);
@@ -49,9 +49,9 @@
             dispatcher.getEventHandler().handle(new NodeManagerEvent(NodeManagerEventType.SHUTDOWN));
             break;
           }
-          if (response.getNodeAction() == NodeAction.REBOOT) {
+          if (response.getNodeAction() == NodeAction.RESYNC) {
             LOG.info("Node is out of sync with ResourceManager," + " hence rebooting.");
-            dispatcher.getEventHandler().handle(new NodeManagerEvent(NodeManagerEventType.REBOOT));
+            dispatcher.getEventHandler().handle(new NodeManagerEvent(NodeManagerEventType.RESYNC));
             break;
           }
           lastHeartBeatID=response.getResponseId();
@@ -85,5 +85,7 @@ synchronized (heartbeatMonitor) {
       }
     }
   }
-.start();
+;
+  statusUpdater=new Thread(statusUpdaterRunnable,"Node Status Updater");
+  statusUpdater.start();
 }
