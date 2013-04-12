@@ -6,6 +6,7 @@
   conf.set(YarnConfiguration.RECOVERY_ENABLED,"true");
   conf.set(YarnConfiguration.RM_STORE,"org.apache.hadoop.yarn.server.resourcemanager.recovery.MemoryRMStateStore");
   conf.set(YarnConfiguration.RM_SCHEDULER,"org.apache.hadoop.yarn.server.resourcemanager.scheduler.fair.FairScheduler");
+  conf.setInt(YarnConfiguration.RM_AM_MAX_ATTEMPTS,5);
   MemoryRMStateStore memStore=new MemoryRMStateStore();
   memStore.init(conf);
   RMState rmState=memStore.getState();
@@ -55,7 +56,7 @@
   Assert.assertNotNull(appState);
   Assert.assertEquals(0,appState.getAttemptCount());
   Assert.assertEquals(appState.getApplicationSubmissionContext().getApplicationId(),app2.getApplicationSubmissionContext().getApplicationId());
-  RMApp appUnmanaged=rm1.submitApp(200,"someApp","someUser",null,true,null);
+  RMApp appUnmanaged=rm1.submitApp(200,"someApp","someUser",null,true,null,conf.getInt(YarnConfiguration.RM_AM_MAX_ATTEMPTS,YarnConfiguration.DEFAULT_RM_AM_MAX_ATTEMPTS));
   ApplicationAttemptId unmanagedAttemptId=appUnmanaged.getCurrentAppAttempt().getAppAttemptId();
   ApplicationId unmanagedAppId=appUnmanaged.getApplicationId();
   appState=rmAppState.get(unmanagedAppId);
@@ -83,15 +84,15 @@
   AllocateResponse allocResponse=am1.allocate(new ArrayList<ResourceRequest>(),new ArrayList<ContainerId>());
   Assert.assertTrue(allocResponse.getReboot());
   NodeHeartbeatResponse hbResponse=nm1.nodeHeartbeat(true);
-  Assert.assertEquals(NodeAction.REBOOT,hbResponse.getNodeAction());
+  Assert.assertEquals(NodeAction.RESYNC,hbResponse.getNodeAction());
   hbResponse=nm2.nodeHeartbeat(true);
-  Assert.assertEquals(NodeAction.REBOOT,hbResponse.getNodeAction());
+  Assert.assertEquals(NodeAction.RESYNC,hbResponse.getNodeAction());
   nm1=rm2.registerNode("h1:1234",15120);
   nm2=rm2.registerNode("h2:5678",15120);
   hbResponse=nm1.nodeHeartbeat(true);
-  Assert.assertTrue(NodeAction.REBOOT != hbResponse.getNodeAction());
+  Assert.assertTrue(NodeAction.RESYNC != hbResponse.getNodeAction());
   hbResponse=nm2.nodeHeartbeat(true);
-  Assert.assertTrue(NodeAction.REBOOT != hbResponse.getNodeAction());
+  Assert.assertTrue(NodeAction.RESYNC != hbResponse.getNodeAction());
   attempt1=loadedApp1.getCurrentAppAttempt();
   attemptId1=attempt1.getAppAttemptId();
   rm2.waitForState(attemptId1,RMAppAttemptState.ALLOCATED);

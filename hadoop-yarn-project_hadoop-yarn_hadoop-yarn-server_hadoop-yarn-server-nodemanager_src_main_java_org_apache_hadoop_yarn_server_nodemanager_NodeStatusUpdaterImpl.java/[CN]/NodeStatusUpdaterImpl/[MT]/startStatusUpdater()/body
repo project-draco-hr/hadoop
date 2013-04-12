@@ -1,20 +1,43 @@
 {
-  new Thread("Node Status Updater"){
+  statusUpdaterRunnable=new Runnable(){
     @Override @SuppressWarnings("unchecked") public void run(){
       int lastHeartBeatID=0;
       while (!isStopped) {
         try {
-synchronized (heartbeatMonitor) {
-            heartbeatMonitor.wait(heartBeatInterval);
-          }
-          NodeStatus nodeStatus=getNodeStatus();
+          NodeHeartbeatResponse response=null;
+          int rmRetryCount=0;
+          long waitStartTime=System.currentTimeMillis();
+          NodeStatus nodeStatus=getNodeStatusAndUpdateContainersInContext();
           nodeStatus.setResponseId(lastHeartBeatID);
           NodeHeartbeatRequest request=recordFactory.newRecordInstance(NodeHeartbeatRequest.class);
           request.setNodeStatus(nodeStatus);
           if (isSecurityEnabled()) {
             request.setLastKnownMasterKey(NodeStatusUpdaterImpl.this.context.getContainerTokenSecretManager().getCurrentKey());
           }
-          NodeHeartbeatResponse response=resourceTracker.nodeHeartbeat(request);
+          while (!isStopped) {
+            try {
+              rmRetryCount++;
+              response=resourceTracker.nodeHeartbeat(request);
+              break;
+            }
+ catch (            Throwable e) {
+              LOG.warn("Trying to heartbeat to ResourceManager, " + "current no. of failed attempts is " + rmRetryCount);
+              if (System.currentTimeMillis() - waitStartTime < rmConnectWaitMS || waitForEver) {
+                try {
+                  LOG.info("Sleeping for " + rmConnectionRetryIntervalMS / 1000 + " seconds before next heartbeat to RM");
+                  Thread.sleep(rmConnectionRetryIntervalMS);
+                }
+ catch (                InterruptedException ex) {
+                }
+              }
+ else {
+                String errorMessage="Failed to heartbeat to RM, " + "no. of failed attempts is " + rmRetryCount;
+                LOG.error(errorMessage,e);
+                throw new YarnException(errorMessage,e);
+              }
+            }
+          }
+          nextHeartBeatInterval=response.getNextHeartBeatInterval();
           if (isSecurityEnabled()) {
             MasterKey updatedMasterKey=response.getMasterKey();
             if (updatedMasterKey != null) {
@@ -26,9 +49,9 @@ synchronized (heartbeatMonitor) {
             dispatcher.getEventHandler().handle(new NodeManagerEvent(NodeManagerEventType.SHUTDOWN));
             break;
           }
-          if (response.getNodeAction() == NodeAction.REBOOT) {
+          if (response.getNodeAction() == NodeAction.RESYNC) {
             LOG.info("Node is out of sync with ResourceManager," + " hence rebooting.");
-            dispatcher.getEventHandler().handle(new NodeManagerEvent(NodeManagerEventType.REBOOT));
+            dispatcher.getEventHandler().handle(new NodeManagerEvent(NodeManagerEventType.RESYNC));
             break;
           }
           lastHeartBeatID=response.getResponseId();
@@ -42,11 +65,27 @@ synchronized (heartbeatMonitor) {
             dispatcher.getEventHandler().handle(new CMgrCompletedAppsEvent(appsToCleanup));
           }
         }
- catch (        Throwable e) {
+ catch (        YarnException e) {
+          dispatcher.getEventHandler().handle(new NodeManagerEvent(NodeManagerEventType.SHUTDOWN));
+          throw e;
+        }
+catch (        Throwable e) {
           LOG.error("Caught exception in status-updater",e);
+        }
+ finally {
+synchronized (heartbeatMonitor) {
+            nextHeartBeatInterval=nextHeartBeatInterval <= 0 ? YarnConfiguration.DEFAULT_RM_NM_HEARTBEAT_INTERVAL_MS : nextHeartBeatInterval;
+            try {
+              heartbeatMonitor.wait(nextHeartBeatInterval);
+            }
+ catch (            InterruptedException e) {
+            }
+          }
         }
       }
     }
   }
-.start();
+;
+  statusUpdater=new Thread(statusUpdaterRunnable,"Node Status Updater");
+  statusUpdater.start();
 }

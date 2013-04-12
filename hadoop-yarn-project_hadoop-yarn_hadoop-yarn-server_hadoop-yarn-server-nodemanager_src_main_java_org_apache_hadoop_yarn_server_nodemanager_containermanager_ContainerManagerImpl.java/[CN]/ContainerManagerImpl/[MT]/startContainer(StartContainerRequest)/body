@@ -1,9 +1,10 @@
 {
   ContainerLaunchContext launchContext=request.getContainerLaunchContext();
-  ContainerId containerID=launchContext.getContainerId();
+  org.apache.hadoop.yarn.api.records.Container lauchContainer=request.getContainer();
+  ContainerId containerID=lauchContainer.getId();
   String containerIDStr=containerID.toString();
   UserGroupInformation remoteUgi=getRemoteUgi(containerIDStr);
-  authorizeRequest(containerIDStr,launchContext,remoteUgi);
+  authorizeRequest(containerIDStr,launchContext,lauchContainer,remoteUgi);
   LOG.info("Start request for " + containerIDStr + " by user "+ launchContext.getUser());
   ByteBuffer tokens=launchContext.getContainerTokens();
   Credentials credentials=new Credentials();
@@ -23,7 +24,7 @@
       throw RPCUtil.getRemoteException(e);
     }
   }
-  Container container=new ContainerImpl(getConfig(),this.dispatcher,launchContext,credentials,metrics);
+  Container container=new ContainerImpl(getConfig(),this.dispatcher,launchContext,lauchContainer,credentials,metrics);
   ApplicationId applicationID=containerID.getApplicationAttemptId().getApplicationId();
   if (context.getContainers().putIfAbsent(containerID,container) != null) {
     NMAuditLogger.logFailure(launchContext.getUser(),AuditConstants.START_CONTAINER,"ContainerManagerImpl","Container already running on this node!",applicationID,containerID);
@@ -43,6 +44,6 @@
   StartContainerResponse response=recordFactory.newRecordInstance(StartContainerResponse.class);
   response.addAllServiceResponse(auxiliaryServices.getMeta());
   metrics.launchedContainer();
-  metrics.allocateContainer(launchContext.getResource());
+  metrics.allocateContainer(lauchContainer.getResource());
   return response;
 }

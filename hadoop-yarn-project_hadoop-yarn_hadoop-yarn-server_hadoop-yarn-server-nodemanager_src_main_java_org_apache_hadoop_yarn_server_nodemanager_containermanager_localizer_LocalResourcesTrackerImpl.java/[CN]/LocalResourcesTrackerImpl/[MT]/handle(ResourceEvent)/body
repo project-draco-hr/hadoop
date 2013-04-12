@@ -2,23 +2,33 @@
   LocalResourceRequest req=event.getLocalResourceRequest();
   LocalizedResource rsrc=localrsrc.get(req);
 switch (event.getType()) {
-case REQUEST:
 case LOCALIZED:
-    if (rsrc != null && (!isResourcePresent(rsrc))) {
-      LOG.info("Resource " + rsrc.getLocalPath() + " is missing, localizing it again");
-      localrsrc.remove(req);
-      rsrc=null;
+    if (useLocalCacheDirectoryManager) {
+      inProgressLocalResourcesMap.remove(req);
     }
-  if (null == rsrc) {
-    rsrc=new LocalizedResource(req,dispatcher);
-    localrsrc.put(req,rsrc);
-  }
+  break;
+case REQUEST:
+if (rsrc != null && (!isResourcePresent(rsrc))) {
+  LOG.info("Resource " + rsrc.getLocalPath() + " is missing, localizing it again");
+  localrsrc.remove(req);
+  decrementFileCountForLocalCacheDirectory(req,rsrc);
+  rsrc=null;
+}
+if (null == rsrc) {
+rsrc=new LocalizedResource(req,dispatcher);
+localrsrc.put(req,rsrc);
+}
 break;
 case RELEASE:
 if (null == rsrc) {
-LOG.info("Release unknown rsrc null (discard)");
+ResourceReleaseEvent relEvent=(ResourceReleaseEvent)event;
+LOG.info("Container " + relEvent.getContainer() + " sent RELEASE event on a resource request "+ req+ " not present in cache.");
 return;
 }
+break;
+case LOCALIZATION_FAILED:
+decrementFileCountForLocalCacheDirectory(req,null);
+localrsrc.remove(req);
 break;
 }
 rsrc.handle(event);

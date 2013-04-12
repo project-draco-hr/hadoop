@@ -6,16 +6,15 @@
     cluster=new MiniDFSCluster.Builder(conf).numDataNodes(1).build();
     cluster.waitActive();
     FSNamesystem fsn=cluster.getNamesystem();
-    long lastId=fsn.getLastInodeId();
-    assertTrue(lastId == 1001);
+    assertTrue(fsn.getLastInodeId() == 1001);
     FileSystem fs=cluster.getFileSystem();
     Path path=new Path("/test1");
     assertTrue(fs.mkdirs(path));
     assertTrue(fsn.getLastInodeId() == 1002);
-    NamenodeProtocols nnrpc=cluster.getNameNodeRpc();
-    HdfsFileStatus fileStatus=nnrpc.create("/test1/file",new FsPermission((short)0755),"client",new EnumSetWritable<CreateFlag>(EnumSet.of(CreateFlag.CREATE)),true,(short)1,128 * 1024 * 1024L);
+    int fileLen=1024;
+    Path filePath=new Path("/test1/file");
+    DFSTestUtil.createFile(fs,filePath,fileLen,(short)1,0);
     assertTrue(fsn.getLastInodeId() == 1003);
-    assertTrue(fileStatus.getFileId() == 1003);
     Path renamedPath=new Path("/test2");
     fs.rename(path,renamedPath);
     assertTrue(fsn.getLastInodeId() == 1003);
@@ -23,7 +22,23 @@
     cluster.waitActive();
     cluster.restartNameNode();
     cluster.waitActive();
+    fsn=cluster.getNamesystem();
     assertTrue(fsn.getLastInodeId() == 1003);
+    DFSTestUtil.createFile(fs,new Path("/test2/file2"),fileLen,(short)1,0);
+    long id=fsn.getLastInodeId();
+    assertTrue(id == 1004);
+    fs.delete(new Path("/test2"),true);
+    FSDataOutputStream outStream=fs.create(new Path("/test3/file"));
+    assertTrue(outStream != null);
+    assertTrue(fsn.getLastInodeId() == 1006);
+    fsn.enterSafeMode(false);
+    fsn.saveNamespace();
+    fsn.leaveSafeMode();
+    outStream.close();
+    cluster.restartNameNode();
+    cluster.waitActive();
+    fsn=cluster.getNamesystem();
+    assertTrue(fsn.getLastInodeId() == 1006);
   }
   finally {
     if (cluster != null) {

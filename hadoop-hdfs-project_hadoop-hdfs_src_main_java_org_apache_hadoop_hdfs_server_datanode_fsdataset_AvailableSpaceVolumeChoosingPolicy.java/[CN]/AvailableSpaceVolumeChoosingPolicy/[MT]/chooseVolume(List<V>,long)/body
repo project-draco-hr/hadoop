@@ -1,0 +1,34 @@
+{
+  if (volumes.size() < 1) {
+    throw new DiskOutOfSpaceException("No more available volumes");
+  }
+  AvailableSpaceVolumeList volumesWithSpaces=new AvailableSpaceVolumeList(volumes);
+  if (volumesWithSpaces.areAllVolumesWithinFreeSpaceThreshold()) {
+    V volume=roundRobinPolicyBalanced.chooseVolume(volumes,replicaSize);
+    if (LOG.isDebugEnabled()) {
+      LOG.debug("All volumes are within the configured free space balance " + "threshold. Selecting " + volume + " for write of block size "+ replicaSize);
+    }
+    return volume;
+  }
+ else {
+    V volume=null;
+    long mostAvailableAmongLowVolumes=volumesWithSpaces.getMostAvailableSpaceAmongVolumesWithLowAvailableSpace();
+    List<V> highAvailableVolumes=extractVolumesFromPairs(volumesWithSpaces.getVolumesWithHighAvailableSpace());
+    List<V> lowAvailableVolumes=extractVolumesFromPairs(volumesWithSpaces.getVolumesWithLowAvailableSpace());
+    float preferencePercentScaler=(highAvailableVolumes.size() * balancedPreferencePercent) + (lowAvailableVolumes.size() * (1 - balancedPreferencePercent));
+    float scaledPreferencePercent=(highAvailableVolumes.size() * balancedPreferencePercent) / preferencePercentScaler;
+    if (mostAvailableAmongLowVolumes < replicaSize || RAND.nextFloat() < scaledPreferencePercent) {
+      volume=roundRobinPolicyHighAvailable.chooseVolume(highAvailableVolumes,replicaSize);
+      if (LOG.isDebugEnabled()) {
+        LOG.debug("Volumes are imbalanced. Selecting " + volume + " from high available space volumes for write of block size "+ replicaSize);
+      }
+    }
+ else {
+      volume=roundRobinPolicyLowAvailable.chooseVolume(lowAvailableVolumes,replicaSize);
+      if (LOG.isDebugEnabled()) {
+        LOG.debug("Volumes are imbalanced. Selecting " + volume + " from low available space volumes for write of block size "+ replicaSize);
+      }
+    }
+    return volume;
+  }
+}

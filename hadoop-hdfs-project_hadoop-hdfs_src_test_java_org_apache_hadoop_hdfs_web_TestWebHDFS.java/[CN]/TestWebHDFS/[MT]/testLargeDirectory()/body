@@ -1,0 +1,29 @@
+{
+  final Configuration conf=WebHdfsTestUtil.createConf();
+  final int listLimit=2;
+  conf.setInt(DFSConfigKeys.DFS_LIST_LIMIT,listLimit);
+  FsPermission.setUMask(conf,new FsPermission((short)0077));
+  final MiniDFSCluster cluster=new MiniDFSCluster.Builder(conf).numDataNodes(3).build();
+  try {
+    cluster.waitActive();
+    WebHdfsTestUtil.getWebHdfsFileSystem(conf).setPermission(new Path("/"),new FsPermission(FsAction.ALL,FsAction.ALL,FsAction.ALL));
+    UserGroupInformation.setLoginUser(UserGroupInformation.createUserForTesting("not-superuser",new String[]{"not-supergroup"}));
+    UserGroupInformation.createUserForTesting("me",new String[]{"my-group"}).doAs(new PrivilegedExceptionAction<Void>(){
+      @Override public Void run() throws IOException, URISyntaxException {
+        FileSystem fs=WebHdfsTestUtil.getWebHdfsFileSystem(conf);
+        Path d=new Path("/my-dir");
+        Assert.assertTrue(fs.mkdirs(d));
+        for (int i=0; i < listLimit * 3; i++) {
+          Path p=new Path(d,"file-" + i);
+          Assert.assertTrue(fs.createNewFile(p));
+        }
+        Assert.assertEquals(listLimit * 3,fs.listStatus(d).length);
+        return null;
+      }
+    }
+);
+  }
+  finally {
+    cluster.shutdown();
+  }
+}

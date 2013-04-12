@@ -1,0 +1,74 @@
+{
+  LOG.info("Recovering task " + taskId + " from prior app attempt, status was "+ taskInfo.getTaskStatus());
+  scheduledTime=taskInfo.getStartTime();
+  sendTaskStartedEvent();
+  Collection<TaskAttemptInfo> attemptInfos=taskInfo.getAllTaskAttempts().values();
+  if (attemptInfos.size() > 0) {
+    metrics.launchedTask(this);
+  }
+  int savedNextAttemptNumber=nextAttemptNumber;
+  ArrayList<TaskAttemptInfo> taInfos=new ArrayList<TaskAttemptInfo>(taskInfo.getAllTaskAttempts().values());
+  Collections.sort(taInfos,TA_INFO_COMPARATOR);
+  for (  TaskAttemptInfo taInfo : taInfos) {
+    nextAttemptNumber=taInfo.getAttemptId().getId();
+    TaskAttemptImpl attempt=addAttempt(Avataar.VIRGIN);
+    attempt.handle(new TaskAttemptRecoverEvent(attempt.getID(),taInfo,committer,recoverTaskOutput));
+    finishedAttempts.add(attempt.getID());
+    TaskAttemptCompletionEventStatus taces=null;
+    TaskAttemptState attemptState=attempt.getState();
+switch (attemptState) {
+case FAILED:
+      taces=TaskAttemptCompletionEventStatus.FAILED;
+    break;
+case KILLED:
+  taces=TaskAttemptCompletionEventStatus.KILLED;
+break;
+case SUCCEEDED:
+taces=TaskAttemptCompletionEventStatus.SUCCEEDED;
+break;
+default :
+throw new IllegalStateException("Unexpected attempt state during recovery: " + attemptState);
+}
+if (attemptState == TaskAttemptState.FAILED) {
+failedAttempts.add(attempt.getID());
+if (failedAttempts.size() >= maxAttempts) {
+taces=TaskAttemptCompletionEventStatus.TIPFAILED;
+}
+}
+if (successfulAttempt == null) {
+handleTaskAttemptCompletion(attempt.getID(),taces);
+if (attemptState == TaskAttemptState.SUCCEEDED) {
+successfulAttempt=attempt.getID();
+}
+}
+}
+nextAttemptNumber=savedNextAttemptNumber;
+TaskStateInternal taskState=TaskStateInternal.valueOf(taskInfo.getTaskStatus());
+switch (taskState) {
+case SUCCEEDED:
+if (successfulAttempt != null) {
+sendTaskSucceededEvents();
+}
+ else {
+LOG.info("Missing successful attempt for task " + taskId + ", recovering as RUNNING");
+taskState=TaskStateInternal.RUNNING;
+metrics.runningTask(this);
+addAndScheduleAttempt(Avataar.VIRGIN);
+}
+break;
+case FAILED:
+case KILLED:
+{
+if (taskState == TaskStateInternal.KILLED && attemptInfos.size() == 0) {
+metrics.endWaitingTask(this);
+}
+TaskFailedEvent tfe=new TaskFailedEvent(taskInfo.getTaskId(),taskInfo.getFinishTime(),taskInfo.getTaskType(),taskInfo.getError(),taskInfo.getTaskStatus(),taskInfo.getFailedDueToAttemptId(),taskInfo.getCounters());
+eventHandler.handle(new JobHistoryEvent(taskId.getJobId(),tfe));
+eventHandler.handle(new JobTaskEvent(taskId,getExternalState(taskState)));
+break;
+}
+default :
+throw new java.lang.AssertionError("Unexpected recovered task state: " + taskState);
+}
+return taskState;
+}

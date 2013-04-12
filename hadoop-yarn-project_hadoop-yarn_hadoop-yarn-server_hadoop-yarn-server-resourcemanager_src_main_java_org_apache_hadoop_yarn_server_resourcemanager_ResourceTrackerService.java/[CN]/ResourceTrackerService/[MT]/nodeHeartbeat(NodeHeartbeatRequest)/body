@@ -4,7 +4,7 @@
   RMNode rmNode=this.rmContext.getRMNodes().get(nodeId);
   if (rmNode == null) {
     LOG.info("Node not found rebooting " + remoteNodeStatus.getNodeId());
-    return reboot;
+    return resync;
   }
   this.nmLivelinessMonitor.receivedPing(nodeId);
   if (!this.nodesListManager.isValidNode(rmNode.getHostName())) {
@@ -12,7 +12,6 @@
     this.rmContext.getDispatcher().getEventHandler().handle(new RMNodeEvent(nodeId,RMNodeEventType.DECOMMISSION));
     return shutDown;
   }
-  NodeHeartbeatResponse nodeHeartBeatResponse=recordFactory.newRecordInstance(NodeHeartbeatResponse.class);
   NodeHeartbeatResponse lastNodeHeartbeatResponse=rmNode.getLastNodeHeartBeatResponse();
   if (remoteNodeStatus.getResponseId() + 1 == lastNodeHeartbeatResponse.getResponseId()) {
     LOG.info("Received duplicate heartbeat from node " + rmNode.getNodeAddress());
@@ -21,11 +20,10 @@
  else   if (remoteNodeStatus.getResponseId() + 1 < lastNodeHeartbeatResponse.getResponseId()) {
     LOG.info("Too far behind rm response id:" + lastNodeHeartbeatResponse.getResponseId() + " nm response id:"+ remoteNodeStatus.getResponseId());
     this.rmContext.getDispatcher().getEventHandler().handle(new RMNodeEvent(nodeId,RMNodeEventType.REBOOTING));
-    return reboot;
+    return resync;
   }
-  nodeHeartBeatResponse.setResponseId(lastNodeHeartbeatResponse.getResponseId() + 1);
+  NodeHeartbeatResponse nodeHeartBeatResponse=YarnServerBuilderUtils.newNodeHeartbeatResponse(lastNodeHeartbeatResponse.getResponseId() + 1,NodeAction.NORMAL,null,null,null,nextHeartBeatInterval);
   rmNode.updateNodeHeartbeatResponseForCleanup(nodeHeartBeatResponse);
-  nodeHeartBeatResponse.setNodeAction(NodeAction.NORMAL);
   if (isSecurityEnabled()) {
     boolean shouldSendMasterKey=false;
     MasterKey nextMasterKeyForNode=this.containerTokenSecretManager.getNextKey();
