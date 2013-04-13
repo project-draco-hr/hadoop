@@ -1,0 +1,23 @@
+{
+  if (appAttemptID.getAttemptId() == 1) {
+    return;
+  }
+  boolean recoveryEnabled=getConfig().getBoolean(MRJobConfig.MR_AM_JOB_RECOVERY_ENABLE,MRJobConfig.MR_AM_JOB_RECOVERY_ENABLE_DEFAULT);
+  boolean recoverySupportedByCommitter=committer != null && committer.isRecoverySupported();
+  int numReduceTasks=getConfig().getInt(MRJobConfig.NUM_REDUCES,0);
+  boolean shuffleKeyValidForRecovery=(numReduceTasks > 0 && TokenCache.getShuffleSecretKey(fsTokens) != null);
+  if (recoveryEnabled && recoverySupportedByCommitter && shuffleKeyValidForRecovery) {
+    LOG.info("Recovery is enabled. " + "Will try to recover from previous life on best effort basis.");
+    try {
+      parsePreviousJobHistory();
+    }
+ catch (    IOException e) {
+      LOG.warn("Unable to parse prior job history, aborting recovery",e);
+      amInfos.addAll(readJustAMInfos());
+    }
+  }
+ else {
+    LOG.info("Will not try to recover. recoveryEnabled: " + recoveryEnabled + " recoverySupportedByCommitter: "+ recoverySupportedByCommitter+ " shuffleKeyValidForRecovery: "+ shuffleKeyValidForRecovery+ " ApplicationAttemptID: "+ appAttemptID.getAttemptId());
+    amInfos.addAll(readJustAMInfos());
+  }
+}

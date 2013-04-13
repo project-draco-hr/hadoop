@@ -1,0 +1,75 @@
+{
+  final String TEST_PATH=new File(sockDir.getDir(),"testAsyncCloseDuringIO(" + closeDuringWrite + ")").getAbsolutePath();
+  final DomainSocket serv=DomainSocket.bindAndListen(TEST_PATH);
+  ExecutorService exeServ=Executors.newFixedThreadPool(2);
+  Callable<Void> serverCallable=new Callable<Void>(){
+    public Void call(){
+      DomainSocket serverConn=null;
+      try {
+        serverConn=serv.accept();
+        byte buf[]=new byte[100];
+        for (int i=0; i < buf.length; i++) {
+          buf[i]=0;
+        }
+        if (closeDuringWrite) {
+          try {
+            while (true) {
+              serverConn.getOutputStream().write(buf);
+            }
+          }
+ catch (          IOException e) {
+          }
+        }
+ else {
+          do {
+            ;
+          }
+ while (serverConn.getInputStream().read(buf,0,buf.length) != -1);
+        }
+      }
+ catch (      IOException e) {
+        throw new RuntimeException("unexpected IOException",e);
+      }
+ finally {
+        IOUtils.cleanup(DomainSocket.LOG,serverConn);
+      }
+      return null;
+    }
+  }
+;
+  Future<Void> serverFuture=exeServ.submit(serverCallable);
+  final DomainSocket clientConn=DomainSocket.connect(serv.getPath());
+  Callable<Void> clientCallable=new Callable<Void>(){
+    public Void call(){
+      byte buf[]=new byte[100];
+      for (int i=0; i < buf.length; i++) {
+        buf[i]=0;
+      }
+      try {
+        if (closeDuringWrite) {
+          while (true) {
+            clientConn.getOutputStream().write(buf);
+          }
+        }
+ else {
+          while (true) {
+            clientConn.getInputStream().read(buf,0,buf.length);
+          }
+        }
+      }
+ catch (      ClosedChannelException e) {
+        return null;
+      }
+catch (      IOException e) {
+        throw new RuntimeException("unexpected IOException",e);
+      }
+    }
+  }
+;
+  Future<Void> clientFuture=exeServ.submit(clientCallable);
+  Thread.sleep(500);
+  clientConn.close();
+  serv.close();
+  clientFuture.get(2,TimeUnit.MINUTES);
+  serverFuture.get(2,TimeUnit.MINUTES);
+}

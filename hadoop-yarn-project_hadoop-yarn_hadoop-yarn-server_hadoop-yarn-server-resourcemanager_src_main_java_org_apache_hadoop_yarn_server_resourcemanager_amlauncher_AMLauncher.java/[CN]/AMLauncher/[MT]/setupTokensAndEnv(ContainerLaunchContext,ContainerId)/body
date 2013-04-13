@@ -1,0 +1,34 @@
+{
+  Map<String,String> environment=container.getEnvironment();
+  environment.put(ApplicationConstants.APPLICATION_WEB_PROXY_BASE_ENV,application.getWebProxyBase());
+  environment.put(ApplicationConstants.AM_CONTAINER_ID_ENV,containerID.toString());
+  environment.put(ApplicationConstants.NM_HOST_ENV,masterContainer.getNodeId().getHost());
+  environment.put(ApplicationConstants.NM_PORT_ENV,String.valueOf(masterContainer.getNodeId().getPort()));
+  String parts[]=masterContainer.getNodeHttpAddress().split(":");
+  environment.put(ApplicationConstants.NM_HTTP_PORT_ENV,parts[1]);
+  ApplicationId applicationId=application.getAppAttemptId().getApplicationId();
+  environment.put(ApplicationConstants.APP_SUBMIT_TIME_ENV,String.valueOf(rmContext.getRMApps().get(applicationId).getSubmitTime()));
+  environment.put(ApplicationConstants.MAX_APP_ATTEMPTS_ENV,String.valueOf(rmContext.getRMApps().get(applicationId).getMaxAppAttempts()));
+  if (UserGroupInformation.isSecurityEnabled()) {
+    Credentials credentials=new Credentials();
+    DataInputByteBuffer dibb=new DataInputByteBuffer();
+    if (container.getContainerTokens() != null) {
+      dibb.reset(container.getContainerTokens());
+      credentials.readTokenStorageStream(dibb);
+    }
+    ApplicationTokenIdentifier id=new ApplicationTokenIdentifier(application.getAppAttemptId());
+    Token<ApplicationTokenIdentifier> token=new Token<ApplicationTokenIdentifier>(id,this.rmContext.getApplicationTokenSecretManager());
+    InetSocketAddress serviceAddr=conf.getSocketAddr(YarnConfiguration.RM_SCHEDULER_ADDRESS,YarnConfiguration.DEFAULT_RM_SCHEDULER_ADDRESS,YarnConfiguration.DEFAULT_RM_SCHEDULER_PORT);
+    SecurityUtil.setTokenService(token,serviceAddr);
+    String appMasterTokenEncoded=token.encodeToUrlString();
+    LOG.debug("Putting appMaster token in env : " + token);
+    environment.put(ApplicationConstants.APPLICATION_MASTER_TOKEN_ENV_NAME,appMasterTokenEncoded);
+    credentials.addToken(token.getService(),token);
+    DataOutputBuffer dob=new DataOutputBuffer();
+    credentials.writeTokenStorageToStream(dob);
+    container.setContainerTokens(ByteBuffer.wrap(dob.getData(),0,dob.getLength()));
+    SecretKey clientSecretKey=this.rmContext.getClientToAMTokenSecretManager().getMasterKey(application.getAppAttemptId());
+    String encoded=Base64.encodeBase64URLSafeString(clientSecretKey.getEncoded());
+    environment.put(ApplicationConstants.APPLICATION_CLIENT_SECRET_ENV_NAME,encoded);
+  }
+}

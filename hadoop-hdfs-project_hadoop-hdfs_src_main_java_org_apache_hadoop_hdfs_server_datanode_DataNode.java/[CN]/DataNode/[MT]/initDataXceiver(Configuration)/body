@@ -1,17 +1,22 @@
 {
-  ServerSocket ss;
-  if (secureResources == null) {
-    InetSocketAddress addr=DataNode.getStreamingAddr(conf);
-    ss=(dnConf.socketWriteTimeout > 0) ? ServerSocketChannel.open().socket() : new ServerSocket();
-    Server.bind(ss,addr,0);
+  TcpPeerServer tcpPeerServer;
+  if (secureResources != null) {
+    tcpPeerServer=new TcpPeerServer(secureResources);
   }
  else {
-    ss=secureResources.getStreamingSocket();
+    tcpPeerServer=new TcpPeerServer(dnConf.socketWriteTimeout,DataNode.getStreamingAddr(conf));
   }
-  ss.setReceiveBufferSize(HdfsConstants.DEFAULT_DATA_SOCKET_SIZE);
-  streamingAddr=new InetSocketAddress(ss.getInetAddress().getHostAddress(),ss.getLocalPort());
+  tcpPeerServer.setReceiveBufferSize(HdfsConstants.DEFAULT_DATA_SOCKET_SIZE);
+  streamingAddr=tcpPeerServer.getStreamingAddr();
   LOG.info("Opened streaming server at " + streamingAddr);
   this.threadGroup=new ThreadGroup("dataXceiverServer");
-  this.dataXceiverServer=new Daemon(threadGroup,new DataXceiverServer(ss,conf,this));
+  this.dataXceiverServer=new Daemon(threadGroup,new DataXceiverServer(tcpPeerServer,conf,this));
   this.threadGroup.setDaemon(true);
+  if (conf.getBoolean(DFSConfigKeys.DFS_CLIENT_READ_SHORTCIRCUIT_KEY,DFSConfigKeys.DFS_CLIENT_READ_SHORTCIRCUIT_DEFAULT) || conf.getBoolean(DFSConfigKeys.DFS_CLIENT_DOMAIN_SOCKET_DATA_TRAFFIC,DFSConfigKeys.DFS_CLIENT_DOMAIN_SOCKET_DATA_TRAFFIC_DEFAULT)) {
+    DomainPeerServer domainPeerServer=getDomainPeerServer(conf,streamingAddr.getPort());
+    if (domainPeerServer != null) {
+      this.localDataXceiverServer=new Daemon(threadGroup,new DataXceiverServer(domainPeerServer,conf,this));
+      LOG.info("Listening on UNIX domain socket: " + domainPeerServer.getBindPath());
+    }
+  }
 }

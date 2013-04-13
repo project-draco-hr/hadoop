@@ -1,14 +1,27 @@
 {
+  if (NameNode.stateChangeLog.isDebugEnabled()) {
+    NameNode.stateChangeLog.debug("DIR* NameSystem.createSymlink: target=" + target + " link="+ link);
+  }
   HdfsFileStatus resultingStat=null;
   FSPermissionChecker pc=getPermissionChecker();
   checkOperation(OperationCategory.WRITE);
   writeLock();
   try {
     checkOperation(OperationCategory.WRITE);
+    if (isInSafeMode()) {
+      throw new SafeModeException("Cannot create symlink " + link,safeMode);
+    }
     if (!createParent) {
       verifyParentDir(link);
     }
-    createSymlinkInternal(pc,target,link,dirPerms,createParent);
+    if (!dir.isValidToCreate(link)) {
+      throw new IOException("failed to create link " + link + " either because the filename is invalid or the file exists");
+    }
+    if (isPermissionEnabled) {
+      checkAncestorAccess(pc,link,FsAction.WRITE);
+    }
+    checkFsObjectLimit();
+    dir.addSymlink(link,target,dirPerms,createParent);
     resultingStat=getAuditFileInfo(link,false);
   }
   finally {
