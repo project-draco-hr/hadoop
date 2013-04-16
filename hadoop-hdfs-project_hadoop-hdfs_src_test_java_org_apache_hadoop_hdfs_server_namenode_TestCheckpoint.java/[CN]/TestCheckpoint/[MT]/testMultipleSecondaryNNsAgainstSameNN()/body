@@ -1,8 +1,9 @@
 {
   Configuration conf=new HdfsConfiguration();
-  MiniDFSCluster cluster=new MiniDFSCluster.Builder(conf).numDataNodes(0).format(true).build();
+  MiniDFSCluster cluster=null;
   SecondaryNameNode secondary1=null, secondary2=null;
   try {
+    cluster=new MiniDFSCluster.Builder(conf).numDataNodes(0).format(true).build();
     secondary1=startSecondaryNameNode(conf,1);
     secondary2=startSecondaryNameNode(conf,2);
     CheckpointStorage spyImage1=spyOnSecondaryImage(secondary1);
@@ -20,14 +21,17 @@
     assertNNHasCheckpoints(cluster,ImmutableList.of(2,4));
     secondary2.doCheckpoint();
     assertEquals(6,storage.getMostRecentCheckpointTxId());
+    assertParallelFilesInvariant(cluster,ImmutableList.of(secondary1,secondary2));
+    assertNNHasCheckpoints(cluster,ImmutableList.of(4,6));
   }
   finally {
     cleanup(secondary1);
+    secondary1=null;
     cleanup(secondary2);
+    secondary2=null;
     if (cluster != null) {
       cluster.shutdown();
+      cluster=null;
     }
   }
-  assertParallelFilesInvariant(cluster,ImmutableList.of(secondary1,secondary2));
-  assertNNHasCheckpoints(cluster,ImmutableList.of(4,6));
 }

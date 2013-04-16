@@ -1,12 +1,15 @@
 {
   Configuration conf=new HdfsConfiguration();
   Path file1=new Path("checkpoint-doSendFailTest-doSendFailTest.dat");
-  MiniDFSCluster cluster=new MiniDFSCluster.Builder(conf).numDataNodes(numDatanodes).build();
-  cluster.waitActive();
-  FileSystem fileSys=cluster.getFileSystem();
+  MiniDFSCluster cluster=null;
+  FileSystem fileSys=null;
+  SecondaryNameNode secondary=null;
   try {
+    cluster=new MiniDFSCluster.Builder(conf).numDataNodes(numDatanodes).build();
+    cluster.waitActive();
+    fileSys=cluster.getFileSystem();
     assertTrue(!fileSys.exists(file1));
-    SecondaryNameNode secondary=startSecondaryNameNode(conf);
+    secondary=startSecondaryNameNode(conf);
     try {
       secondary.doCheckpoint();
       fail("Did not get expected exception");
@@ -16,14 +19,17 @@
     }
     Mockito.reset(faultInjector);
     secondary.shutdown();
+    secondary=null;
     secondary=startSecondaryNameNode(conf);
     secondary.doCheckpoint();
-    secondary.shutdown();
     DFSTestUtil.createFile(fileSys,file1,fileSize,fileSize,blockSize,replication,seed);
     checkFile(fileSys,file1,replication);
   }
   finally {
     fileSys.close();
-    cluster.shutdown();
+    cleanup(secondary);
+    secondary=null;
+    cleanup(cluster);
+    cluster=null;
   }
 }

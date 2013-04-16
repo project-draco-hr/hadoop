@@ -4,41 +4,48 @@
   Configuration conf=new HdfsConfiguration();
   conf.set(DFSConfigKeys.DFS_NAMENODE_SECONDARY_HTTP_ADDRESS_KEY,"0.0.0.0:0");
   replication=(short)conf.getInt(DFSConfigKeys.DFS_REPLICATION_KEY,3);
-  MiniDFSCluster cluster=new MiniDFSCluster.Builder(conf).numDataNodes(numDatanodes).build();
-  cluster.waitActive();
-  FileSystem fileSys=cluster.getFileSystem();
+  MiniDFSCluster cluster=null;
+  FileSystem fileSys=null;
+  SecondaryNameNode secondary=null;
   try {
+    cluster=new MiniDFSCluster.Builder(conf).numDataNodes(numDatanodes).build();
+    cluster.waitActive();
+    fileSys=cluster.getFileSystem();
     assertTrue(!fileSys.exists(file1));
     assertTrue(!fileSys.exists(file2));
     DFSTestUtil.createFile(fileSys,file1,fileSize,fileSize,blockSize,replication,seed);
     checkFile(fileSys,file1,replication);
-    SecondaryNameNode secondary=startSecondaryNameNode(conf);
+    secondary=startSecondaryNameNode(conf);
     secondary.doCheckpoint();
-    secondary.shutdown();
   }
   finally {
     fileSys.close();
-    cluster.shutdown();
+    cleanup(secondary);
+    secondary=null;
+    cleanup(cluster);
+    cluster=null;
   }
-  cluster=new MiniDFSCluster.Builder(conf).numDataNodes(numDatanodes).format(false).build();
-  cluster.waitActive();
-  fileSys=cluster.getFileSystem();
   Path tmpDir=new Path("/tmp_tmp");
   try {
+    cluster=new MiniDFSCluster.Builder(conf).numDataNodes(numDatanodes).format(false).build();
+    cluster.waitActive();
+    fileSys=cluster.getFileSystem();
     checkFile(fileSys,file1,replication);
     cleanupFile(fileSys,file1);
     DFSTestUtil.createFile(fileSys,file2,fileSize,fileSize,blockSize,replication,seed);
     checkFile(fileSys,file2,replication);
-    SecondaryNameNode secondary=startSecondaryNameNode(conf);
+    secondary=startSecondaryNameNode(conf);
     secondary.doCheckpoint();
     fileSys.delete(tmpDir,true);
     fileSys.mkdirs(tmpDir);
     secondary.doCheckpoint();
-    secondary.shutdown();
   }
   finally {
     fileSys.close();
-    cluster.shutdown();
+    cleanup(secondary);
+    secondary=null;
+    cleanup(cluster);
+    cluster=null;
   }
   cluster=new MiniDFSCluster.Builder(conf).numDataNodes(numDatanodes).format(false).build();
   cluster.waitActive();
@@ -51,5 +58,6 @@
   finally {
     fileSys.close();
     cluster.shutdown();
+    cluster=null;
   }
 }

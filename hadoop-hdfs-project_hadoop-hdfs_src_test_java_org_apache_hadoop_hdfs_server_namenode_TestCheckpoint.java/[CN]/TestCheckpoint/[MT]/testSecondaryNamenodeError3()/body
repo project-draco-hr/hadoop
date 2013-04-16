@@ -2,12 +2,15 @@
   LOG.info("Starting testSecondaryNamenodeError3");
   Configuration conf=new HdfsConfiguration();
   Path file1=new Path("checkpointzz.dat");
-  MiniDFSCluster cluster=new MiniDFSCluster.Builder(conf).numDataNodes(numDatanodes).build();
-  cluster.waitActive();
-  FileSystem fileSys=cluster.getFileSystem();
+  MiniDFSCluster cluster=null;
+  FileSystem fileSys=null;
+  SecondaryNameNode secondary=null;
   try {
+    cluster=new MiniDFSCluster.Builder(conf).numDataNodes(numDatanodes).build();
+    cluster.waitActive();
+    fileSys=cluster.getFileSystem();
     assertTrue(!fileSys.exists(file1));
-    SecondaryNameNode secondary=startSecondaryNameNode(conf);
+    secondary=startSecondaryNameNode(conf);
     Mockito.doThrow(new IOException("Injecting failure after rolling edit logs")).when(faultInjector).afterSecondaryCallsRollEditLog();
     try {
       secondary.doCheckpoint();
@@ -19,26 +22,31 @@
     secondary.shutdown();
     secondary=startSecondaryNameNode(conf);
     secondary.doCheckpoint();
-    secondary.shutdown();
     DFSTestUtil.createFile(fileSys,file1,fileSize,fileSize,blockSize,replication,seed);
     checkFile(fileSys,file1,replication);
   }
   finally {
     fileSys.close();
-    cluster.shutdown();
+    cleanup(secondary);
+    secondary=null;
+    cleanup(cluster);
+    cluster=null;
   }
-  cluster=new MiniDFSCluster.Builder(conf).numDataNodes(numDatanodes).format(false).build();
-  cluster.waitActive();
-  fileSys=cluster.getFileSystem();
   try {
+    cluster=new MiniDFSCluster.Builder(conf).numDataNodes(numDatanodes).format(false).build();
+    cluster.waitActive();
+    fileSys=cluster.getFileSystem();
     checkFile(fileSys,file1,replication);
     cleanupFile(fileSys,file1);
-    SecondaryNameNode secondary=startSecondaryNameNode(conf);
+    secondary=startSecondaryNameNode(conf);
     secondary.doCheckpoint();
     secondary.shutdown();
   }
   finally {
     fileSys.close();
-    cluster.shutdown();
+    cleanup(secondary);
+    secondary=null;
+    cleanup(cluster);
+    cluster=null;
   }
 }
