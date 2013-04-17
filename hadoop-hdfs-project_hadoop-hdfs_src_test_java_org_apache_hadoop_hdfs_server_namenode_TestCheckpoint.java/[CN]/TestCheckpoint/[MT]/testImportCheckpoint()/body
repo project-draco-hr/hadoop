@@ -2,18 +2,18 @@
   Configuration conf=new HdfsConfiguration();
   Path testPath=new Path("/testfile");
   SecondaryNameNode snn=null;
-  MiniDFSCluster cluster=new MiniDFSCluster.Builder(conf).numDataNodes(0).build();
-  Collection<URI> nameDirs=cluster.getNameDirs(0);
+  MiniDFSCluster cluster=null;
+  Collection<URI> nameDirs=null;
   try {
+    cluster=new MiniDFSCluster.Builder(conf).numDataNodes(0).build();
+    nameDirs=cluster.getNameDirs(0);
     cluster.getFileSystem().mkdirs(testPath);
     snn=startSecondaryNameNode(conf);
     snn.doCheckpoint();
   }
   finally {
-    if (snn != null) {
-      snn.shutdown();
-    }
-    cluster.shutdown();
+    cleanup(snn);
+    cleanup(cluster);
     cluster=null;
   }
   LOG.info("Trying to import checkpoint when the NameNode already " + "contains an image. This should fail.");
@@ -25,10 +25,8 @@
     GenericTestUtils.assertExceptionContains("NameNode already contains an image",ioe);
   }
  finally {
-    if (cluster != null) {
-      cluster.shutdown();
-      cluster=null;
-    }
+    cleanup(cluster);
+    cluster=null;
   }
   LOG.info("Removing NN storage contents");
   for (  URI uri : nameDirs) {
@@ -43,8 +41,7 @@
     FSImageTestUtil.assertNNHasCheckpoints(cluster,Ints.asList(3));
   }
   finally {
-    if (cluster != null) {
-      cluster.shutdown();
-    }
+    cleanup(cluster);
+    cluster=null;
   }
 }

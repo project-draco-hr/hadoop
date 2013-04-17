@@ -1,0 +1,23 @@
+{
+  try {
+    deleteState();
+    createSourceDataWithDifferentBlockSize();
+    FileSystem fs=cluster.getFileSystem();
+    CopyMapper copyMapper=new CopyMapper();
+    StubContext stubContext=new StubContext(getConfiguration(),null,0);
+    Mapper<Text,FileStatus,Text,Text>.Context context=stubContext.getContext();
+    Configuration configuration=context.getConfiguration();
+    EnumSet<DistCpOptions.FileAttribute> fileAttributes=EnumSet.noneOf(DistCpOptions.FileAttribute.class);
+    configuration.set(DistCpOptionSwitch.PRESERVE_STATUS.getConfigLabel(),DistCpUtils.packAttributes(fileAttributes));
+    copyMapper.setup(context);
+    for (    Path path : pathList) {
+      final FileStatus fileStatus=fs.getFileStatus(path);
+      copyMapper.map(new Text(DistCpUtils.getRelativePath(new Path(SOURCE_PATH),path)),fileStatus,context);
+    }
+    Assert.fail("Copy should have failed because of block-size difference.");
+  }
+ catch (  Exception exception) {
+    Assert.assertTrue("Failure exception should have suggested the use of -pb.",exception.getCause().getCause().getMessage().contains("pb"));
+    Assert.assertTrue("Failure exception should have suggested the use of -skipCrc.",exception.getCause().getCause().getMessage().contains("skipCrc"));
+  }
+}
