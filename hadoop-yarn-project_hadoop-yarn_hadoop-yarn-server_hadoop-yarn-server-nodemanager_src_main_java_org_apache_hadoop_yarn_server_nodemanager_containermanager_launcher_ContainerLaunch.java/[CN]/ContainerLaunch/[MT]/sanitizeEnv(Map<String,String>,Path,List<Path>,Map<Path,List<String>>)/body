@@ -8,15 +8,28 @@
   if (!Shell.WINDOWS) {
     environment.put("JVM_PID","$$");
   }
-  if (Shell.WINDOWS) {
-    String inputClassPath=environment.get(Environment.CLASSPATH.name());
-    if (inputClassPath != null && !inputClassPath.isEmpty()) {
-      environment.put(Environment.CLASSPATH.name(),FileUtil.createJarWithClassPath(inputClassPath,pwd));
-    }
-  }
   String[] whitelist=conf.get(YarnConfiguration.NM_ENV_WHITELIST,YarnConfiguration.DEFAULT_NM_ENV_WHITELIST).split(",");
   for (  String whitelistEnvVariable : whitelist) {
     putEnvIfAbsent(environment,whitelistEnvVariable.trim());
   }
   Apps.setEnvFromInputString(environment,conf.get(YarnConfiguration.NM_ADMIN_USER_ENV,YarnConfiguration.DEFAULT_NM_ADMIN_USER_ENV));
+  if (Shell.WINDOWS) {
+    String inputClassPath=environment.get(Environment.CLASSPATH.name());
+    if (inputClassPath != null && !inputClassPath.isEmpty()) {
+      StringBuilder newClassPath=new StringBuilder(inputClassPath);
+      for (      Map.Entry<Path,List<String>> entry : resources.entrySet()) {
+        boolean targetIsDirectory=new File(entry.getKey().toUri().getPath()).isDirectory();
+        for (        String linkName : entry.getValue()) {
+          newClassPath.append(File.pathSeparator).append(pwd.toString()).append(Path.SEPARATOR).append(linkName);
+          if (targetIsDirectory) {
+            newClassPath.append(Path.SEPARATOR);
+          }
+        }
+      }
+      Map<String,String> mergedEnv=new HashMap<String,String>(System.getenv());
+      mergedEnv.putAll(environment);
+      String classPathJar=FileUtil.createJarWithClassPath(newClassPath.toString(),pwd,mergedEnv);
+      environment.put(Environment.CLASSPATH.name(),classPathJar);
+    }
+  }
 }
