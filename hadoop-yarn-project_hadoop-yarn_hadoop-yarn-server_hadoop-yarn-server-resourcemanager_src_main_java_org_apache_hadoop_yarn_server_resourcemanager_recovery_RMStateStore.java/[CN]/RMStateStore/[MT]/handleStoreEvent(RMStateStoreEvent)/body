@@ -1,36 +1,57 @@
 {
 switch (event.getType()) {
-case STORE_APP_ATTEMPT:
+case STORE_APP:
 {
-      ApplicationAttemptState attemptState=((RMStateStoreAppAttemptEvent)event).getAppAttemptState();
+      ApplicationState apptState=((RMStateStoreAppEvent)event).getAppState();
       Exception storedException=null;
-      ApplicationAttemptStateDataPBImpl attemptStateData=new ApplicationAttemptStateDataPBImpl();
-      attemptStateData.setAttemptId(attemptState.getAttemptId());
-      attemptStateData.setMasterContainer(attemptState.getMasterContainer());
-      LOG.info("Storing info for attempt: " + attemptState.getAttemptId());
+      ApplicationStateDataPBImpl appStateData=new ApplicationStateDataPBImpl();
+      appStateData.setSubmitTime(apptState.getSubmitTime());
+      appStateData.setApplicationSubmissionContext(apptState.getApplicationSubmissionContext());
+      ApplicationId appId=apptState.getApplicationSubmissionContext().getApplicationId();
+      LOG.info("Storing info for app: " + appId);
       try {
-        storeApplicationAttemptState(attemptState.getAttemptId().toString(),attemptStateData);
+        storeApplicationState(appId.toString(),appStateData);
       }
  catch (      Exception e) {
-        LOG.error("Error storing appAttempt: " + attemptState.getAttemptId(),e);
+        LOG.error("Error storing app: " + appId,e);
         storedException=e;
       }
  finally {
-        notifyDoneStoringApplicationAttempt(attemptState.getAttemptId(),storedException);
+        notifyDoneStoringApplication(appId,storedException);
       }
     }
   break;
-case REMOVE_APP:
+case STORE_APP_ATTEMPT:
 {
-  ApplicationState appState=((RMStateStoreRemoveAppEvent)event).getAppState();
-  ApplicationId appId=appState.getAppId();
-  LOG.info("Removing info for app: " + appId);
+  ApplicationAttemptState attemptState=((RMStateStoreAppAttemptEvent)event).getAppAttemptState();
+  Exception storedException=null;
+  ApplicationAttemptStateDataPBImpl attemptStateData=new ApplicationAttemptStateDataPBImpl();
+  attemptStateData.setAttemptId(attemptState.getAttemptId());
+  attemptStateData.setMasterContainer(attemptState.getMasterContainer());
+  LOG.info("Storing info for attempt: " + attemptState.getAttemptId());
   try {
-    removeApplicationState(appState);
+    storeApplicationAttemptState(attemptState.getAttemptId().toString(),attemptStateData);
   }
  catch (  Exception e) {
-    LOG.error("Error removing app: " + appId,e);
+    LOG.error("Error storing appAttempt: " + attemptState.getAttemptId(),e);
+    storedException=e;
   }
+ finally {
+    notifyDoneStoringApplicationAttempt(attemptState.getAttemptId(),storedException);
+  }
+}
+break;
+case REMOVE_APP:
+{
+ApplicationState appState=((RMStateStoreRemoveAppEvent)event).getAppState();
+ApplicationId appId=appState.getAppId();
+LOG.info("Removing info for app: " + appId);
+try {
+removeApplicationState(appState);
+}
+ catch (Exception e) {
+LOG.error("Error removing app: " + appId,e);
+}
 }
 break;
 default :
