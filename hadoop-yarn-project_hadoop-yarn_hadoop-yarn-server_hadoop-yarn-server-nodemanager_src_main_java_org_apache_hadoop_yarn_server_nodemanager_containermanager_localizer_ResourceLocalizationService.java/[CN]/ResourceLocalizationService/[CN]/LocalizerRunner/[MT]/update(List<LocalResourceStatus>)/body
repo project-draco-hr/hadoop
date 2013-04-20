@@ -47,19 +47,21 @@ case FETCH_SUCCESS:
       }
  catch (      URISyntaxException e) {
       }
-    if (pending.isEmpty()) {
-      response.setLocalizerAction(LocalizerAction.DIE);
-      break;
-    }
-  response.setLocalizerAction(LocalizerAction.LIVE);
+    assoc.getResource().unlock();
+  scheduled.remove(req);
+if (pending.isEmpty()) {
+  response.setLocalizerAction(LocalizerAction.DIE);
+  break;
+}
+response.setLocalizerAction(LocalizerAction.LIVE);
 LocalResource next=findNextResource();
 if (next != null) {
 try {
-  ResourceLocalizationSpec resource=NodeManagerBuilderUtils.newResourceLocalizationSpec(next,getPathForLocalization(next));
-  rsrcs.add(resource);
+ResourceLocalizationSpec resource=NodeManagerBuilderUtils.newResourceLocalizationSpec(next,getPathForLocalization(next));
+rsrcs.add(resource);
 }
  catch (IOException e) {
-  LOG.error("local path for PRIVATE localization could not be " + "found. Disks might have failed.",e);
+LOG.error("local path for PRIVATE localization could not be " + "found. Disks might have failed.",e);
 }
 catch (URISyntaxException e) {
 }
@@ -70,9 +72,10 @@ response.setLocalizerAction(LocalizerAction.LIVE);
 break;
 case FETCH_FAILURE:
 LOG.info("DEBUG: FAILED " + req,stat.getException());
-assoc.getResource().unlock();
 response.setLocalizerAction(LocalizerAction.DIE);
 getLocalResourcesTracker(req.getVisibility(),user,applicationId).handle(new ResourceFailedLocalizationEvent(req,stat.getException()));
+assoc.getResource().unlock();
+scheduled.remove(req);
 break;
 default :
 LOG.info("Unknown status: " + stat.getStatus());
