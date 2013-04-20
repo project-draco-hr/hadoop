@@ -1,5 +1,19 @@
 {
   containerManager.start();
+  File processStartFile=new File(tmpDir,"pid.txt").getAbsoluteFile();
+  File scriptFile=new File(tmpDir,"testscript.sh");
+  PrintWriter writer=new PrintWriter(new FileOutputStream(scriptFile));
+  writer.println("#!/bin/bash\n\n");
+  writer.println("echo \"Running testscript for delayed kill\"");
+  writer.println("hello=\"Got SIGTERM\"");
+  writer.println("umask 0");
+  writer.println("trap \"echo $hello >> " + processStartFile + "\" SIGTERM");
+  writer.println("echo \"Writing pid to start file\"");
+  writer.println("echo $$ >> " + processStartFile);
+  writer.println("while true; do\nsleep 1s;\ndone");
+  writer.close();
+  scriptFile.setExecutable(true);
+  ContainerLaunchContext containerLaunchContext=recordFactory.newRecordInstance(ContainerLaunchContext.class);
   Container mockContainer=mock(Container.class);
   ApplicationId appId=recordFactory.newRecordInstance(ApplicationId.class);
   appId.setClusterTimestamp(1);
@@ -9,28 +23,6 @@
   appAttemptId.setAttemptId(1);
   ContainerId cId=recordFactory.newRecordInstance(ContainerId.class);
   cId.setApplicationAttemptId(appAttemptId);
-  File processStartFile=new File(tmpDir,"pid.txt").getAbsoluteFile();
-  File scriptFile=Shell.appendScriptExtension(tmpDir,"testscript");
-  PrintWriter writer=new PrintWriter(new FileOutputStream(scriptFile));
-  if (Shell.WINDOWS) {
-    writer.println("@echo \"Running testscript for delayed kill\"");
-    writer.println("@echo \"Writing pid to start file\"");
-    writer.println("@echo " + cId + "> "+ processStartFile);
-    writer.println("@ping -n 100 127.0.0.1 >nul");
-  }
- else {
-    writer.println("#!/bin/bash\n\n");
-    writer.println("echo \"Running testscript for delayed kill\"");
-    writer.println("hello=\"Got SIGTERM\"");
-    writer.println("umask 0");
-    writer.println("trap \"echo $hello >> " + processStartFile + "\" SIGTERM");
-    writer.println("echo \"Writing pid to start file\"");
-    writer.println("echo $$ >> " + processStartFile);
-    writer.println("while true; do\nsleep 1s;\ndone");
-  }
-  writer.close();
-  scriptFile.setExecutable(true);
-  ContainerLaunchContext containerLaunchContext=recordFactory.newRecordInstance(ContainerLaunchContext.class);
   when(mockContainer.getId()).thenReturn(cId);
   containerLaunchContext.setUser(user);
   URL resource_alpha=ConverterUtils.getYarnUrlFromPath(localFS.makeQualified(new Path(scriptFile.getAbsolutePath())));
@@ -45,7 +37,8 @@
   localResources.put(destinationFile,rsrc_alpha);
   containerLaunchContext.setLocalResources(localResources);
   containerLaunchContext.setUser(containerLaunchContext.getUser());
-  List<String> commands=Arrays.asList(Shell.getRunScriptCommand(scriptFile));
+  List<String> commands=new ArrayList<String>();
+  commands.add(scriptFile.getAbsolutePath());
   containerLaunchContext.setCommands(commands);
   when(mockContainer.getResource()).thenReturn(BuilderUtils.newResource(1024,1));
   StartContainerRequest startRequest=recordFactory.newRecordInstance(StartContainerRequest.class);
@@ -66,23 +59,18 @@
   gcsRequest.setContainerId(cId);
   ContainerStatus containerStatus=containerManager.getContainerStatus(gcsRequest).getStatus();
   Assert.assertEquals(ExitCode.FORCE_KILLED.getExitCode(),containerStatus.getExitStatus());
-  if (Shell.WINDOWS) {
-    Assert.assertFalse("Process is still alive!",DefaultContainerExecutor.containerIsAlive(cId.toString()));
-  }
- else {
-    BufferedReader reader=new BufferedReader(new FileReader(processStartFile));
-    boolean foundSigTermMessage=false;
-    while (true) {
-      String line=reader.readLine();
-      if (line == null) {
-        break;
-      }
-      if (line.contains("SIGTERM")) {
-        foundSigTermMessage=true;
-        break;
-      }
+  BufferedReader reader=new BufferedReader(new FileReader(processStartFile));
+  boolean foundSigTermMessage=false;
+  while (true) {
+    String line=reader.readLine();
+    if (line == null) {
+      break;
     }
-    Assert.assertTrue("Did not find sigterm message",foundSigTermMessage);
-    reader.close();
+    if (line.contains("SIGTERM")) {
+      foundSigTermMessage=true;
+      break;
+    }
   }
+  Assert.assertTrue("Did not find sigterm message",foundSigTermMessage);
+  reader.close();
 }
