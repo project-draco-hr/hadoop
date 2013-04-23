@@ -1,39 +1,44 @@
 {
-  visitor.start(inputStream.getVersion());
-  while (true) {
-    try {
-      FSEditLogOp op=inputStream.readOp();
-      if (op == null)       break;
-      if (fixTxIds) {
-        if (nextTxId <= 0) {
-          nextTxId=op.getTransactionId();
+  try {
+    visitor.start(inputStream.getVersion());
+    while (true) {
+      try {
+        FSEditLogOp op=inputStream.readOp();
+        if (op == null)         break;
+        if (fixTxIds) {
           if (nextTxId <= 0) {
-            nextTxId=1;
+            nextTxId=op.getTransactionId();
+            if (nextTxId <= 0) {
+              nextTxId=1;
+            }
           }
+          op.setTransactionId(nextTxId);
+          nextTxId++;
         }
-        op.setTransactionId(nextTxId);
-        nextTxId++;
+        visitor.visitOp(op);
       }
-      visitor.visitOp(op);
-    }
- catch (    IOException e) {
-      if (!recoveryMode) {
-        LOG.error("Got IOException at position " + inputStream.getPosition());
-        visitor.close(e);
-        throw e;
+ catch (      IOException e) {
+        if (!recoveryMode) {
+          LOG.error("Got IOException at position " + inputStream.getPosition());
+          visitor.close(e);
+          throw e;
+        }
+        LOG.error("Got IOException while reading stream!  Resyncing.",e);
+        inputStream.resync();
       }
-      LOG.error("Got IOException while reading stream!  Resyncing.",e);
-      inputStream.resync();
-    }
-catch (    RuntimeException e) {
-      if (!recoveryMode) {
-        LOG.error("Got RuntimeException at position " + inputStream.getPosition());
-        visitor.close(e);
-        throw e;
+catch (      RuntimeException e) {
+        if (!recoveryMode) {
+          LOG.error("Got RuntimeException at position " + inputStream.getPosition());
+          visitor.close(e);
+          throw e;
+        }
+        LOG.error("Got RuntimeException while reading stream!  Resyncing.",e);
+        inputStream.resync();
       }
-      LOG.error("Got RuntimeException while reading stream!  Resyncing.",e);
-      inputStream.resync();
     }
+    visitor.close(null);
   }
-  visitor.close(null);
+  finally {
+    IOUtils.cleanup(LOG,inputStream);
+  }
 }
