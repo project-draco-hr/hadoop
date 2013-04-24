@@ -2,16 +2,21 @@
   final Configuration conf=getTestConfiguration();
   conf.setBoolean(DFSConfigKeys.DFS_HDFS_BLOCKS_METADATA_ENABLED,true);
   final MiniDFSCluster cluster=new MiniDFSCluster.Builder(conf).numDataNodes(2).build();
-  cluster.getDataNodes();
-  DistributedFileSystem fs=cluster.getFileSystem();
-  Path tmpFile=new Path("/tmpfile1.dat");
-  DFSTestUtil.createFile(fs,tmpFile,1024,(short)2,0xDEADDEADl);
-  BlockLocation[] blockLocs=fs.getFileBlockLocations(tmpFile,0,1024);
-  cluster.stopDataNode(0);
-  BlockStorageLocation[] locs=fs.getFileBlockStorageLocations(Arrays.asList(blockLocs));
-  assertEquals("Expected one HdfsBlockLocation for one 1-block file",1,locs.length);
-  for (  BlockStorageLocation l : locs) {
-    assertEquals("Expected two replicas for each block",2,l.getVolumeIds().length);
-    assertTrue("Expected one valid and one invalid replica",(l.getVolumeIds()[0].isValid()) ^ (l.getVolumeIds()[1].isValid()));
+  try {
+    cluster.getDataNodes();
+    DistributedFileSystem fs=cluster.getFileSystem();
+    Path tmpFile=new Path("/tmpfile1.dat");
+    DFSTestUtil.createFile(fs,tmpFile,1024,(short)2,0xDEADDEADl);
+    BlockLocation[] blockLocs=fs.getFileBlockLocations(tmpFile,0,1024);
+    cluster.stopDataNode(0);
+    BlockStorageLocation[] locs=fs.getFileBlockStorageLocations(Arrays.asList(blockLocs));
+    assertEquals("Expected one HdfsBlockLocation for one 1-block file",1,locs.length);
+    for (    BlockStorageLocation l : locs) {
+      assertEquals("Expected two replicas for each block",2,l.getVolumeIds().length);
+      assertTrue("Expected one valid and one invalid replica",(l.getVolumeIds()[0].isValid()) ^ (l.getVolumeIds()[1].isValid()));
+    }
+  }
+  finally {
+    cluster.shutdown();
   }
 }

@@ -1,0 +1,24 @@
+{
+  Configuration conf=new Configuration();
+  conf.setLong(YarnConfiguration.YARN_CLIENT_APP_SUBMISSION_POLL_INTERVAL_MS,100);
+  final YarnClient client=new MockYarnClient();
+  client.init(conf);
+  client.start();
+  YarnApplicationState[] exitStates=new YarnApplicationState[]{YarnApplicationState.SUBMITTED,YarnApplicationState.ACCEPTED,YarnApplicationState.RUNNING,YarnApplicationState.FINISHED,YarnApplicationState.FAILED,YarnApplicationState.KILLED};
+  for (int i=0; i < exitStates.length; ++i) {
+    ApplicationSubmissionContext context=mock(ApplicationSubmissionContext.class);
+    ApplicationId applicationId=Records.newRecord(ApplicationId.class);
+    applicationId.setClusterTimestamp(System.currentTimeMillis());
+    applicationId.setId(i);
+    when(context.getApplicationId()).thenReturn(applicationId);
+    ((MockYarnClient)client).setYarnApplicationState(exitStates[i]);
+    try {
+      client.submitApplication(context);
+    }
+ catch (    YarnRemoteException e) {
+      Assert.fail("Exception is not expected.");
+    }
+    verify(((MockYarnClient)client).mockReport,times(4 * i + 4)).getYarnApplicationState();
+  }
+  client.stop();
+}
