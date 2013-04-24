@@ -6,17 +6,27 @@
  */
     @Override public void process(    INode inode){
       if (inode != null) {
-        if (INodeReference.tryRemoveReference(inode) <= 0) {
-          inode.computeQuotaUsage(counts,false);
-          inode.destroyAndCollectBlocks(collectedBlocks,removedINodes);
-        }
- else {
-          try {
-            counts.add(inode.cleanSubtree(posterior.snapshot,null,collectedBlocks,removedINodes));
+        inode.computeQuotaUsage(counts,false);
+        inode.destroyAndCollectBlocks(collectedBlocks,removedINodes);
+        boolean handleRef=false;
+        if (inode.isReference()) {
+          INodeReference.WithCount wc=(INodeReference.WithCount)inode.asReference().getReferredINode();
+          if (wc.getReferenceCount() > 0) {
+            handleRef=true;
           }
- catch (          QuotaExceededException e) {
-            String error="should not have QuotaExceededException while deleting snapshot";
-            LOG.error(error,e);
+        }
+        if (handleRef) {
+          final Snapshot postSnapshot=posterior.snapshot;
+          if (inode instanceof INodeReference.DstReference) {
+            destroyDstSnapshot(inode,postSnapshot,null,collectedBlocks,removedINodes);
+          }
+ else           if (inode instanceof INodeReference.WithName) {
+            try {
+              inode.cleanSubtree(postSnapshot,null,collectedBlocks,removedINodes);
+            }
+ catch (            QuotaExceededException e) {
+              LOG.error("Error: should not throw QuotaExceededException",e);
+            }
           }
         }
       }
