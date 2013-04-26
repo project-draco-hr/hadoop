@@ -1,6 +1,6 @@
 {
   MyContainerManager containerManager=new MyContainerManager();
-  final MockRM rm=new MockRMWithAMS(new Configuration(),containerManager);
+  final MockRM rm=new MockRMWithAMS(confWithSecurityEnabled,containerManager);
   rm.start();
   MockNM nm1=rm.registerNode("localhost:1234",5120);
   Map<ApplicationAccessType,String> acls=new HashMap<ApplicationAccessType,String>(2);
@@ -8,22 +8,23 @@
   RMApp app=rm.submitApp(1024,"appname","appuser",acls);
   nm1.nodeHeartbeat(true);
   int waitCount=0;
-  while (containerManager.amContainerEnv == null && waitCount++ < 20) {
+  while (containerManager.amTokens == null && waitCount++ < 20) {
     LOG.info("Waiting for AM Launch to happen..");
     Thread.sleep(1000);
   }
-  Assert.assertNotNull(containerManager.amContainerEnv);
+  Assert.assertNotNull(containerManager.amTokens);
   RMAppAttempt attempt=app.getCurrentAppAttempt();
   ApplicationAttemptId applicationAttemptId=attempt.getAppAttemptId();
   waitForLaunchedState(attempt);
   final Configuration conf=rm.getConfig();
   final YarnRPC rpc=YarnRPC.create(conf);
   UserGroupInformation currentUser=UserGroupInformation.createRemoteUser(applicationAttemptId.toString());
-  String tokenURLEncodedStr=containerManager.amContainerEnv.get(ApplicationConstants.APPLICATION_MASTER_TOKEN_ENV_NAME);
-  LOG.info("AppMasterToken is " + tokenURLEncodedStr);
-  Token<? extends TokenIdentifier> token=new Token<TokenIdentifier>();
-  token.decodeFromUrlString(tokenURLEncodedStr);
-  currentUser.addToken(token);
+  Credentials credentials=new Credentials();
+  DataInputByteBuffer buf=new DataInputByteBuffer();
+  containerManager.amTokens.rewind();
+  buf.reset(containerManager.amTokens);
+  credentials.readTokenStorageStream(buf);
+  currentUser.addCredentials(credentials);
   AMRMProtocol client=currentUser.doAs(new PrivilegedAction<AMRMProtocol>(){
     @Override public AMRMProtocol run(){
       return (AMRMProtocol)rpc.getProxy(AMRMProtocol.class,rm.getApplicationMasterService().getBindAddress(),conf);
