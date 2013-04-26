@@ -1,0 +1,45 @@
+{
+  JobConf job=new JobConf(defaultConf);
+  Random random=new Random();
+  long seed=random.nextLong();
+  LOG.info("seed = " + seed);
+  random.setSeed(seed);
+  localFs.delete(workDir,true);
+  FileInputFormat.setInputPaths(job,workDir);
+  final int length=10000;
+  final int numFiles=10;
+  createFiles(length,numFiles,random);
+  CombineTextInputFormat format=new CombineTextInputFormat();
+  LongWritable key=new LongWritable();
+  Text value=new Text();
+  for (int i=0; i < 3; i++) {
+    int numSplits=random.nextInt(length / 20) + 1;
+    LOG.info("splitting: requesting = " + numSplits);
+    InputSplit[] splits=format.getSplits(job,numSplits);
+    LOG.info("splitting: got =        " + splits.length);
+    assertEquals("We got more than one splits!",1,splits.length);
+    InputSplit split=splits[0];
+    assertEquals("It should be CombineFileSplit",CombineFileSplit.class,split.getClass());
+    BitSet bits=new BitSet(length);
+    LOG.debug("split= " + split);
+    RecordReader<LongWritable,Text> reader=format.getRecordReader(split,job,voidReporter);
+    try {
+      int count=0;
+      while (reader.next(key,value)) {
+        int v=Integer.parseInt(value.toString());
+        LOG.debug("read " + v);
+        if (bits.get(v)) {
+          LOG.warn("conflict with " + v + " at position "+ reader.getPos());
+        }
+        assertFalse("Key in multiple partitions.",bits.get(v));
+        bits.set(v);
+        count++;
+      }
+      LOG.info("splits=" + split + " count="+ count);
+    }
+  finally {
+      reader.close();
+    }
+    assertEquals("Some keys in no partition.",length,bits.cardinality());
+  }
+}

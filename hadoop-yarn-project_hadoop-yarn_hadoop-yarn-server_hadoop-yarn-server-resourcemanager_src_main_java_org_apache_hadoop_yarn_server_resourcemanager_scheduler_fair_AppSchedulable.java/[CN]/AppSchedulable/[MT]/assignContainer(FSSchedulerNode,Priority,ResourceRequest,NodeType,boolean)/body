@@ -1,0 +1,33 @@
+{
+  Resource capability=request.getCapability();
+  Resource available=node.getAvailableResource();
+  Container container=null;
+  if (reserved) {
+    container=node.getReservedContainer().getContainer();
+  }
+ else {
+    container=createContainer(app,node,capability,priority);
+  }
+  int availableContainers=available.getMemory() / capability.getMemory();
+  if (availableContainers > 0) {
+    RMContainer allocatedContainer=app.allocate(type,node,priority,request,container);
+    if (allocatedContainer == null) {
+      if (reserved) {
+        unreserve(priority,node);
+      }
+      return Resources.none();
+    }
+ else {
+      getMetrics().setAvailableResourcesToQueue(scheduler.getClusterCapacity());
+    }
+    if (reserved) {
+      unreserve(priority,node);
+    }
+    node.allocateContainer(app.getApplicationId(),allocatedContainer);
+    return container.getResource();
+  }
+ else {
+    reserve(priority,node,container,reserved);
+    return FairScheduler.CONTAINER_RESERVED;
+  }
+}
