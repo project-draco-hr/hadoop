@@ -1,0 +1,49 @@
+{
+  NodeStatusUpdater nodeStatusUpdater=mock(NodeStatusUpdater.class);
+  when(nodeStatusUpdater.getRMIdentifier()).thenReturn((long)1234);
+  containerManager=new ContainerManagerImpl(context,exec,delSrvc,nodeStatusUpdater,metrics,new ApplicationACLsManager(conf),dirsHandler){
+    @Override public void setBlockNewContainerRequests(    boolean blockNewContainerRequests){
+    }
+  }
+;
+  containerManager.init(conf);
+  containerManager.start();
+  ContainerLaunchContext containerLaunchContext=recordFactory.newRecordInstance(ContainerLaunchContext.class);
+  ContainerId cId1=createContainerId();
+  ContainerId cId2=createContainerId();
+  containerLaunchContext.setUser(user);
+  containerLaunchContext.setLocalResources(new HashMap<String,LocalResource>());
+  containerLaunchContext.setUser(containerLaunchContext.getUser());
+  Resource mockResource=mock(Resource.class);
+  Container mockContainer1=mock(Container.class);
+  when(mockContainer1.getId()).thenReturn(cId1);
+  when(mockContainer1.getRMIdentifer()).thenReturn((long)ResourceManagerConstants.RM_INVALID_IDENTIFIER);
+  StartContainerRequest startRequest1=recordFactory.newRecordInstance(StartContainerRequest.class);
+  startRequest1.setContainerLaunchContext(containerLaunchContext);
+  startRequest1.setContainer(mockContainer1);
+  boolean catchException=false;
+  try {
+    containerManager.startContainer(startRequest1);
+  }
+ catch (  YarnRemoteException e) {
+    catchException=true;
+    Assert.assertTrue(e.getMessage().contains("Container " + cId1 + " rejected as it is allocated by a previous RM"));
+    Assert.assertTrue(e.getRemoteTrace().contains(InvalidContainerException.class.getName()));
+  }
+  Assert.assertTrue(catchException);
+  Container mockContainer2=mock(Container.class);
+  when(mockContainer2.getId()).thenReturn(cId2);
+  when(mockContainer2.getRMIdentifer()).thenReturn((long)1234);
+  when(mockContainer2.getResource()).thenReturn(mockResource);
+  StartContainerRequest startRequest2=recordFactory.newRecordInstance(StartContainerRequest.class);
+  startRequest2.setContainerLaunchContext(containerLaunchContext);
+  startRequest2.setContainer(mockContainer2);
+  boolean noException=true;
+  try {
+    containerManager.startContainer(startRequest2);
+  }
+ catch (  YarnRemoteException e) {
+    noException=false;
+  }
+  Assert.assertTrue(noException);
+}

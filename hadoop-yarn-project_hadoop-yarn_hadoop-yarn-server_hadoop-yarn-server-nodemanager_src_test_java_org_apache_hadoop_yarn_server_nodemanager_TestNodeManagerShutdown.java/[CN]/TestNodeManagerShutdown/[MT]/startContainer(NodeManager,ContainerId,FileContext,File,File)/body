@@ -1,0 +1,35 @@
+{
+  ContainerManagerImpl containerManager=nm.getContainerManager();
+  File scriptFile=createUnhaltingScriptFile(cId,scriptFileDir,processStartFile);
+  ContainerLaunchContext containerLaunchContext=recordFactory.newRecordInstance(ContainerLaunchContext.class);
+  Container mockContainer=mock(Container.class);
+  when(mockContainer.getId()).thenReturn(cId);
+  NodeId nodeId=BuilderUtils.newNodeId("localhost",1234);
+  when(mockContainer.getNodeId()).thenReturn(nodeId);
+  when(mockContainer.getNodeHttpAddress()).thenReturn("localhost:12345");
+  containerLaunchContext.setUser(user);
+  URL localResourceUri=ConverterUtils.getYarnUrlFromPath(localFS.makeQualified(new Path(scriptFile.getAbsolutePath())));
+  LocalResource localResource=recordFactory.newRecordInstance(LocalResource.class);
+  localResource.setResource(localResourceUri);
+  localResource.setSize(-1);
+  localResource.setVisibility(LocalResourceVisibility.APPLICATION);
+  localResource.setType(LocalResourceType.FILE);
+  localResource.setTimestamp(scriptFile.lastModified());
+  String destinationFile="dest_file";
+  Map<String,LocalResource> localResources=new HashMap<String,LocalResource>();
+  localResources.put(destinationFile,localResource);
+  containerLaunchContext.setLocalResources(localResources);
+  containerLaunchContext.setUser(containerLaunchContext.getUser());
+  List<String> commands=Arrays.asList(Shell.getRunScriptCommand(scriptFile));
+  containerLaunchContext.setCommands(commands);
+  Resource resource=BuilderUtils.newResource(1024,1);
+  when(mockContainer.getResource()).thenReturn(resource);
+  StartContainerRequest startRequest=recordFactory.newRecordInstance(StartContainerRequest.class);
+  startRequest.setContainerLaunchContext(containerLaunchContext);
+  startRequest.setContainer(mockContainer);
+  containerManager.startContainer(startRequest);
+  GetContainerStatusRequest request=recordFactory.newRecordInstance(GetContainerStatusRequest.class);
+  request.setContainerId(cId);
+  ContainerStatus containerStatus=containerManager.getContainerStatus(request).getStatus();
+  Assert.assertEquals(ContainerState.RUNNING,containerStatus.getState());
+}

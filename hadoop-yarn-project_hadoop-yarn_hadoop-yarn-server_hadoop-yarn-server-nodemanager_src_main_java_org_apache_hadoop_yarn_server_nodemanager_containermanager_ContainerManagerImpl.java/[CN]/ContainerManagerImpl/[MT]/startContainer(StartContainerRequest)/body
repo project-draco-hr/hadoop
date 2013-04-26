@@ -1,10 +1,18 @@
 {
+  if (blockNewContainerRequests.get()) {
+    throw RPCUtil.getRemoteException(new NMNotYetReadyException("Rejecting new containers as NodeManager has not" + " yet connected with ResourceManager"));
+  }
   ContainerLaunchContext launchContext=request.getContainerLaunchContext();
   org.apache.hadoop.yarn.api.records.Container lauchContainer=request.getContainer();
   ContainerId containerID=lauchContainer.getId();
   String containerIDStr=containerID.toString();
   UserGroupInformation remoteUgi=getRemoteUgi(containerIDStr);
   authorizeRequest(containerIDStr,launchContext,lauchContainer,remoteUgi);
+  if (lauchContainer.getRMIdentifer() != nodeStatusUpdater.getRMIdentifier()) {
+    String msg="\nContainer " + containerIDStr + " rejected as it is allocated by a previous RM";
+    LOG.error(msg);
+    throw RPCUtil.getRemoteException(new InvalidContainerException(msg));
+  }
   LOG.info("Start request for " + containerIDStr + " by user "+ launchContext.getUser());
   ByteBuffer tokens=launchContext.getContainerTokens();
   Credentials credentials=new Credentials();
