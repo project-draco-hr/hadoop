@@ -1,0 +1,20 @@
+{
+  MockRM rm=new MockRM(conf);
+  rm.start();
+  MockNM nm1=rm.registerNode("h1:1234",6 * GB);
+  RMApp app1=rm.submitApp(2048);
+  nm1.nodeHeartbeat(true);
+  RMAppAttempt attempt1=app1.getCurrentAppAttempt();
+  MockAM am1=rm.sendAMLaunched(attempt1.getAppAttemptId());
+  am1.registerAppAttempt();
+  am1.addRequests(new String[]{"h1"},GB,1,1);
+  AllocateResponse alloc1Response=am1.schedule();
+  nm1.nodeHeartbeat(true);
+  while (alloc1Response.getAllocatedContainers().size() < 1) {
+    LOG.info("Waiting for containers to be created for app 1...");
+    Thread.sleep(1000);
+    alloc1Response=am1.schedule();
+  }
+  Assert.assertEquals(rm.clusterTimeStamp,alloc1Response.getAllocatedContainers().get(0).getRMIdentifer());
+  rm.stop();
+}
