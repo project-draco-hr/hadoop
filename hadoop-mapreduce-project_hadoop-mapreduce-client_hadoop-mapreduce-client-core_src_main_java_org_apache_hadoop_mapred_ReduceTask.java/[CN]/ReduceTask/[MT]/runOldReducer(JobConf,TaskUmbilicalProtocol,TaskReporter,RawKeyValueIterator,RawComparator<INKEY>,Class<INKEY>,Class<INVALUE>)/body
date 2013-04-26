@@ -1,11 +1,10 @@
 {
   Reducer<INKEY,INVALUE,OUTKEY,OUTVALUE> reducer=ReflectionUtils.newInstance(job.getReducerClass(),job);
   String finalName=getOutputName(getPartition());
-  RecordWriter<OUTKEY,OUTVALUE> out=new OldTrackingRecordWriter<OUTKEY,OUTVALUE>(this,job,reporter,finalName);
-  final RecordWriter<OUTKEY,OUTVALUE> finalOut=out;
+  final RecordWriter<OUTKEY,OUTVALUE> out=new OldTrackingRecordWriter<OUTKEY,OUTVALUE>(this,job,reporter,finalName);
   OutputCollector<OUTKEY,OUTVALUE> collector=new OutputCollector<OUTKEY,OUTVALUE>(){
     public void collect(    OUTKEY key,    OUTVALUE value) throws IOException {
-      finalOut.write(key,value);
+      out.write(key,value);
       reporter.progress();
     }
   }
@@ -24,12 +23,19 @@
       values.informReduceProgress();
     }
     reducer.close();
-    reducer=null;
     out.close(reporter);
-    out=null;
   }
-  finally {
-    IOUtils.cleanup(LOG,reducer);
-    closeQuietly(out,reporter);
+ catch (  IOException ioe) {
+    try {
+      reducer.close();
+    }
+ catch (    IOException ignored) {
+    }
+    try {
+      out.close(reporter);
+    }
+ catch (    IOException ignored) {
+    }
+    throw ioe;
   }
 }

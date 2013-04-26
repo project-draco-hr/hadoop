@@ -1,16 +1,16 @@
 {
   MyContainerManager containerManager=new MyContainerManager();
-  MockRM rm=new MockRMWithAMS(confWithSecurityEnabled,containerManager);
+  MockRM rm=new MockRMWithAMS(new Configuration(),containerManager);
   rm.start();
   MockNM nm1=rm.registerNode("localhost:1234",5120);
   RMApp app=rm.submitApp(1024);
   nm1.nodeHeartbeat(true);
   int waitCount=0;
-  while (containerManager.amTokens == null && waitCount++ < 20) {
+  while (containerManager.amContainerEnv == null && waitCount++ < 20) {
     LOG.info("Waiting for AM Launch to happen..");
     Thread.sleep(1000);
   }
-  Assert.assertNotNull(containerManager.amTokens);
+  Assert.assertNotNull(containerManager.amContainerEnv);
   RMAppAttempt attempt=app.getCurrentAppAttempt();
   ApplicationAttemptId applicationAttemptId=attempt.getAppAttemptId();
   waitForLaunchedState(attempt);
@@ -18,6 +18,11 @@
   final YarnRPC rpc=YarnRPC.create(conf);
   final InetSocketAddress serviceAddr=conf.getSocketAddr(YarnConfiguration.RM_SCHEDULER_ADDRESS,YarnConfiguration.DEFAULT_RM_SCHEDULER_ADDRESS,YarnConfiguration.DEFAULT_RM_SCHEDULER_PORT);
   UserGroupInformation currentUser=UserGroupInformation.createRemoteUser(applicationAttemptId.toString());
+  String tokenURLEncodedStr=containerManager.amContainerEnv.get(ApplicationConstants.APPLICATION_MASTER_TOKEN_ENV_NAME);
+  LOG.info("AppMasterToken is " + tokenURLEncodedStr);
+  Token<? extends TokenIdentifier> token=new Token<TokenIdentifier>();
+  token.decodeFromUrlString(tokenURLEncodedStr);
+  currentUser.addToken(token);
   AMRMProtocol client=currentUser.doAs(new PrivilegedAction<AMRMProtocol>(){
     @Override public AMRMProtocol run(){
       return (AMRMProtocol)rpc.getProxy(AMRMProtocol.class,serviceAddr,conf);
@@ -25,27 +30,6 @@
   }
 );
   RegisterApplicationMasterRequest request=Records.newRecord(RegisterApplicationMasterRequest.class);
-  request.setApplicationAttemptId(applicationAttemptId);
-  try {
-    client.registerApplicationMaster(request);
-    Assert.fail("Should fail with authorization error");
-  }
- catch (  Exception e) {
-    Assert.assertTrue(e.getCause().getMessage().contains("SIMPLE authentication is not enabled.  " + "Available:[KERBEROS, DIGEST]"));
-  }
-  Credentials credentials=new Credentials();
-  DataInputByteBuffer buf=new DataInputByteBuffer();
-  containerManager.amTokens.rewind();
-  buf.reset(containerManager.amTokens);
-  credentials.readTokenStorageStream(buf);
-  currentUser.addCredentials(credentials);
-  client=currentUser.doAs(new PrivilegedAction<AMRMProtocol>(){
-    @Override public AMRMProtocol run(){
-      return (AMRMProtocol)rpc.getProxy(AMRMProtocol.class,serviceAddr,conf);
-    }
-  }
-);
-  request=Records.newRecord(RegisterApplicationMasterRequest.class);
   ApplicationAttemptId otherAppAttemptId=BuilderUtils.newApplicationAttemptId(applicationAttemptId.getApplicationId(),42);
   request.setApplicationAttemptId(otherAppAttemptId);
   try {
