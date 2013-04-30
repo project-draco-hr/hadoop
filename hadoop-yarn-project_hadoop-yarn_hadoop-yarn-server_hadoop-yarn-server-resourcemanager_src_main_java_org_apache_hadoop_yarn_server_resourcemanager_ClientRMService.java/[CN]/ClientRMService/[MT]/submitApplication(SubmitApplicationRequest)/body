@@ -1,31 +1,37 @@
 {
   ApplicationSubmissionContext submissionContext=request.getApplicationSubmissionContext();
   ApplicationId applicationId=submissionContext.getApplicationId();
-  String user=submissionContext.getAMContainerSpec().getUser();
+  String user=null;
   try {
     user=UserGroupInformation.getCurrentUser().getShortUserName();
-    if (rmContext.getRMApps().get(applicationId) != null) {
-      throw new IOException("Application with id " + applicationId + " is already present! Cannot add a duplicate!");
-    }
     submissionContext.getAMContainerSpec().setUser(user);
-    if (!submissionContext.getUnmanagedAM()) {
-      ResourceRequest amReq=BuilderUtils.newResourceRequest(RMAppAttemptImpl.AM_CONTAINER_PRIORITY,ResourceRequest.ANY,submissionContext.getResource(),1);
-      try {
-        SchedulerUtils.validateResourceRequest(amReq,scheduler.getMaximumResourceCapability());
-      }
- catch (      InvalidResourceRequestException e) {
-        LOG.warn("RM app submission failed in validating AM resource request" + " for application " + applicationId,e);
-        throw RPCUtil.getRemoteException(e);
-      }
-    }
-    rmAppManager.handle(new RMAppManagerSubmitEvent(submissionContext,System.currentTimeMillis()));
+  }
+ catch (  IOException ie) {
+    LOG.warn("Unable to get the current user.",ie);
+    RMAuditLogger.logFailure(user,AuditConstants.SUBMIT_APP_REQUEST,ie.getMessage(),"ClientRMService","Exception in submitting application",applicationId);
+    throw RPCUtil.getRemoteException(ie);
+  }
+  if (rmContext.getRMApps().get(applicationId) != null) {
+    String message="Application with id " + applicationId + " is already present! Cannot add a duplicate!";
+    LOG.warn(message);
+    RMAuditLogger.logFailure(user,AuditConstants.SUBMIT_APP_REQUEST,message,"ClientRMService","Exception in submitting application",applicationId);
+    throw RPCUtil.getRemoteException(message);
+  }
+  if (submissionContext.getQueue() == null) {
+    submissionContext.setQueue(YarnConfiguration.DEFAULT_QUEUE_NAME);
+  }
+  if (submissionContext.getApplicationName() == null) {
+    submissionContext.setApplicationName(YarnConfiguration.DEFAULT_APPLICATION_NAME);
+  }
+  try {
+    rmAppManager.submitApplication(submissionContext,System.currentTimeMillis(),false);
     LOG.info("Application with id " + applicationId.getId() + " submitted by user "+ user);
     RMAuditLogger.logSuccess(user,AuditConstants.SUBMIT_APP_REQUEST,"ClientRMService",applicationId);
   }
- catch (  IOException ie) {
-    LOG.info("Exception in submitting application",ie);
-    RMAuditLogger.logFailure(user,AuditConstants.SUBMIT_APP_REQUEST,ie.getMessage(),"ClientRMService","Exception in submitting application",applicationId);
-    throw RPCUtil.getRemoteException(ie);
+ catch (  YarnRemoteException e) {
+    LOG.info("Exception in submitting application with id " + applicationId.getId(),e);
+    RMAuditLogger.logFailure(user,AuditConstants.SUBMIT_APP_REQUEST,e.getMessage(),"ClientRMService","Exception in submitting application",applicationId);
+    throw e;
   }
   SubmitApplicationResponse response=recordFactory.newRecordInstance(SubmitApplicationResponse.class);
   return response;
