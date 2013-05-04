@@ -3,22 +3,26 @@
   RpcRequestHeaderProto header=RpcRequestHeaderProto.parseDelimitedFrom(dis);
   if (LOG.isDebugEnabled())   LOG.debug(" got #" + header.getCallId());
   if (!header.hasRpcOp()) {
-    throw new IOException(" IPC Server: No rpc op in rpcRequestHeader");
+    String err=" IPC Server: No rpc op in rpcRequestHeader";
+    respondBadRpcHeader(new Call(header.getCallId(),null,this),RpcServerException.class.getName(),err);
+    throw new RpcServerException(err);
   }
   if (header.getRpcOp() != RpcRequestHeaderProto.OperationProto.RPC_FINAL_PACKET) {
-    throw new IOException("IPC Server does not implement operation" + header.getRpcOp());
+    String err="IPC Server does not implement rpc header operation" + header.getRpcOp();
+    respondBadRpcHeader(new Call(header.getCallId(),null,this),RpcServerException.class.getName(),err);
+    throw new RpcServerException(err);
   }
   if (!header.hasRpcKind()) {
-    throw new IOException(" IPC Server: No rpc kind in rpcRequestHeader");
+    String err=" IPC Server: No rpc kind in rpcRequestHeader";
+    respondBadRpcHeader(new Call(header.getCallId(),null,this),RpcServerException.class.getName(),err);
+    throw new RpcServerException(err);
   }
   Class<? extends Writable> rpcRequestClass=getRpcRequestWrapper(header.getRpcKind());
   if (rpcRequestClass == null) {
     LOG.warn("Unknown rpc kind " + header.getRpcKind() + " from client "+ getHostAddress());
-    final Call readParamsFailedCall=new Call(header.getCallId(),null,this);
-    ByteArrayOutputStream responseBuffer=new ByteArrayOutputStream();
-    setupResponse(responseBuffer,readParamsFailedCall,RpcStatusProto.FATAL,null,IOException.class.getName(),"Unknown rpc kind " + header.getRpcKind());
-    responder.doRespond(readParamsFailedCall);
-    return;
+    final String err="Unknown rpc kind in rpc header" + header.getRpcKind();
+    respondBadRpcHeader(new Call(header.getCallId(),null,this),RpcServerException.class.getName(),err);
+    throw new RpcServerException(err);
   }
   Writable rpcRequest;
   try {
@@ -29,9 +33,10 @@
     LOG.warn("Unable to read call parameters for client " + getHostAddress() + "on connection protocol "+ this.protocolName+ " for rpcKind "+ header.getRpcKind(),t);
     final Call readParamsFailedCall=new Call(header.getCallId(),null,this);
     ByteArrayOutputStream responseBuffer=new ByteArrayOutputStream();
-    setupResponse(responseBuffer,readParamsFailedCall,RpcStatusProto.FATAL,null,t.getClass().getName(),"IPC server unable to read call parameters: " + t.getMessage());
+    String err="IPC server unable to read call parameters: " + t.getMessage();
+    setupResponse(responseBuffer,readParamsFailedCall,RpcStatusProto.FATAL,RpcErrorCodeProto.FATAL_DESERIALIZING_REQUEST,null,t.getClass().getName(),err);
     responder.doRespond(readParamsFailedCall);
-    return;
+    throw new RpcServerException(err,t);
   }
   Call call=new Call(header.getCallId(),rpcRequest,this,ProtoUtil.convert(header.getRpcKind()));
   callQueue.put(call);

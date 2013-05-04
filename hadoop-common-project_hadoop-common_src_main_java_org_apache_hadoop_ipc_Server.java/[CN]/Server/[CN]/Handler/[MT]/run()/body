@@ -10,6 +10,8 @@
       }
       String errorClass=null;
       String error=null;
+      RpcStatusProto returnStatus=RpcStatusProto.SUCCESS;
+      RpcErrorCodeProto detailedErr=null;
       Writable value=null;
       CurCall.set(call);
       try {
@@ -39,6 +41,15 @@
  else {
           LOG.info(logMsg,e);
         }
+        if (e instanceof RpcServerException) {
+          RpcServerException rse=((RpcServerException)e);
+          returnStatus=rse.getRpcStatusProto();
+          detailedErr=rse.getRpcErrorCodeProto();
+        }
+ else {
+          returnStatus=RpcStatusProto.ERROR;
+          detailedErr=RpcErrorCodeProto.ERROR_APPLICATION;
+        }
         errorClass=e.getClass().getName();
         error=StringUtils.stringifyException(e);
         String exceptionHdr=errorClass + ": ";
@@ -48,7 +59,7 @@
       }
       CurCall.set(null);
 synchronized (call.connection.responseQueue) {
-        setupResponse(buf,call,(error == null) ? RpcStatusProto.SUCCESS : RpcStatusProto.ERROR,value,errorClass,error);
+        setupResponse(buf,call,returnStatus,detailedErr,value,errorClass,error);
         if (buf.size() > maxRespSize) {
           LOG.warn("Large response size " + buf.size() + " for call "+ call.toString());
           buf=new ByteArrayOutputStream(INITIAL_RESP_BUF_SIZE);
