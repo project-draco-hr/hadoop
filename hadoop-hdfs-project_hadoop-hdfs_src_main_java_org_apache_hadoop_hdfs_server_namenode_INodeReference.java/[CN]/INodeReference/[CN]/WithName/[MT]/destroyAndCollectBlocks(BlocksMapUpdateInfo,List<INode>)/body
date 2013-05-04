@@ -1,0 +1,23 @@
+{
+  if (removeReference(this) <= 0) {
+    getReferredINode().destroyAndCollectBlocks(collectedBlocks,removedINodes);
+  }
+ else {
+    Snapshot prior=getPriorSnapshot(this);
+    INode referred=getReferredINode().asReference().getReferredINode();
+    Snapshot snapshot=getSelfSnapshot();
+    if (snapshot != null) {
+      Preconditions.checkState(prior == null || snapshot.getId() > prior.getId());
+      try {
+        Quota.Counts counts=referred.cleanSubtree(snapshot,prior,collectedBlocks,removedINodes);
+        INodeReference ref=getReferredINode().getParentReference();
+        if (ref != null) {
+          ref.addSpaceConsumed(-counts.get(Quota.NAMESPACE),-counts.get(Quota.DISKSPACE),true,Snapshot.INVALID_ID);
+        }
+      }
+ catch (      QuotaExceededException e) {
+        LOG.error("should not exceed quota while snapshot deletion",e);
+      }
+    }
+  }
+}

@@ -1,0 +1,30 @@
+{
+  Preconditions.checkArgument(prior != null);
+  if (inode.isReference()) {
+    if (inode instanceof INodeReference.WithName) {
+      inode.cleanSubtree(snapshot,prior,collectedBlocks,removedINodes);
+    }
+ else {
+      destroyDstSubtree(inode.asReference().getReferredINode(),snapshot,prior,collectedBlocks,removedINodes);
+    }
+  }
+ else   if (inode.isFile() && snapshot != null) {
+    inode.cleanSubtree(snapshot,prior,collectedBlocks,removedINodes);
+  }
+ else   if (inode.isDirectory()) {
+    if (inode instanceof INodeDirectoryWithSnapshot) {
+      INodeDirectoryWithSnapshot sdir=(INodeDirectoryWithSnapshot)inode;
+      DirectoryDiffList diffList=sdir.getDiffs();
+      if (snapshot != null) {
+        diffList.deleteSnapshotDiff(snapshot,prior,sdir,collectedBlocks,removedINodes);
+      }
+      DirectoryDiff priorDiff=diffList.getDiff(prior);
+      if (priorDiff != null && priorDiff.getSnapshot().equals(prior)) {
+        priorDiff.diff.destroyCreatedList(sdir,collectedBlocks,removedINodes);
+      }
+    }
+    for (    INode child : inode.asDirectory().getChildrenList(prior)) {
+      destroyDstSubtree(child,snapshot,prior,collectedBlocks,removedINodes);
+    }
+  }
+}
