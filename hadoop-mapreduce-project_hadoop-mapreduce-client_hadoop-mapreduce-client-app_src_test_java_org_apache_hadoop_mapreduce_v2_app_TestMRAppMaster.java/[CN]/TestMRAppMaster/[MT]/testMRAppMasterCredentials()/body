@@ -1,0 +1,36 @@
+{
+  Logger rootLogger=LogManager.getRootLogger();
+  rootLogger.setLevel(Level.DEBUG);
+  Credentials credentials=new Credentials();
+  byte[] identifier="MyIdentifier".getBytes();
+  byte[] password="MyPassword".getBytes();
+  Text kind=new Text("MyTokenKind");
+  Text service=new Text("host:port");
+  Token<? extends TokenIdentifier> myToken=new Token<TokenIdentifier>(identifier,password,kind,service);
+  Text tokenAlias=new Text("myToken");
+  credentials.addToken(tokenAlias,myToken);
+  Token<? extends TokenIdentifier> storedToken=credentials.getToken(tokenAlias);
+  YarnConfiguration conf=new YarnConfiguration();
+  Path tokenFilePath=new Path(testDir.getAbsolutePath(),"tokens-file");
+  Map<String,String> newEnv=new HashMap<String,String>();
+  newEnv.put(UserGroupInformation.HADOOP_TOKEN_FILE_LOCATION,tokenFilePath.toUri().getPath());
+  setNewEnvironmentHack(newEnv);
+  credentials.writeTokenStorageFile(tokenFilePath,conf);
+  ApplicationId appId=BuilderUtils.newApplicationId(12345,56);
+  ApplicationAttemptId applicationAttemptId=BuilderUtils.newApplicationAttemptId(appId,1);
+  ContainerId containerId=BuilderUtils.newContainerId(applicationAttemptId,546);
+  String userName=UserGroupInformation.getCurrentUser().getShortUserName();
+  File stagingDir=new File(MRApps.getStagingAreaDir(conf,userName).toString());
+  stagingDir.mkdirs();
+  UserGroupInformation.setLoginUser(null);
+  MRAppMasterTest appMaster=new MRAppMasterTest(applicationAttemptId,containerId,"host",-1,-1,System.currentTimeMillis(),1,false,true);
+  MRAppMaster.initAndStartAppMaster(appMaster,conf,userName);
+  Credentials appMasterCreds=appMaster.credentials;
+  Assert.assertNotNull(appMasterCreds);
+  Token<? extends TokenIdentifier> usedToken=appMasterCreds.getToken(tokenAlias);
+  Assert.assertNotNull(usedToken);
+  Assert.assertEquals("MyIdentifier",new String(storedToken.getIdentifier()));
+  Assert.assertEquals("MyPassword",new String(storedToken.getPassword()));
+  Assert.assertEquals("MyTokenKind",storedToken.getKind().toString());
+  Assert.assertEquals("host:port",storedToken.getService().toString());
+}

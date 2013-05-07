@@ -1,34 +1,34 @@
 {
-  try {
-    Invocation call=(Invocation)rpcRequest;
-    if (server.verbose)     log("Call: " + call);
-    if (call.getRpcVersion() != writableRpcVersion) {
-      throw new IOException("WritableRpc version mismatch, client side version=" + call.getRpcVersion() + ", server side version="+ writableRpcVersion);
+  Invocation call=(Invocation)rpcRequest;
+  if (server.verbose)   log("Call: " + call);
+  if (call.getRpcVersion() != writableRpcVersion) {
+    throw new RpcServerException("WritableRpc version mismatch, client side version=" + call.getRpcVersion() + ", server side version="+ writableRpcVersion);
+  }
+  long clientVersion=call.getProtocolVersion();
+  final String protoName;
+  ProtoClassProtoImpl protocolImpl;
+  if (call.declaringClassProtocolName.equals(VersionedProtocol.class.getName())) {
+    VerProtocolImpl highest=server.getHighestSupportedProtocol(RPC.RpcKind.RPC_WRITABLE,protocolName);
+    if (highest == null) {
+      throw new RpcServerException("Unknown protocol: " + protocolName);
     }
-    long clientVersion=call.getProtocolVersion();
-    final String protoName;
-    ProtoClassProtoImpl protocolImpl;
-    if (call.declaringClassProtocolName.equals(VersionedProtocol.class.getName())) {
-      VerProtocolImpl highest=server.getHighestSupportedProtocol(RPC.RpcKind.RPC_WRITABLE,protocolName);
+    protocolImpl=highest.protocolTarget;
+  }
+ else {
+    protoName=call.declaringClassProtocolName;
+    ProtoNameVer pv=new ProtoNameVer(call.declaringClassProtocolName,clientVersion);
+    protocolImpl=server.getProtocolImplMap(RPC.RpcKind.RPC_WRITABLE).get(pv);
+    if (protocolImpl == null) {
+      VerProtocolImpl highest=server.getHighestSupportedProtocol(RPC.RpcKind.RPC_WRITABLE,protoName);
       if (highest == null) {
-        throw new IOException("Unknown protocol: " + protocolName);
+        throw new RpcServerException("Unknown protocol: " + protoName);
       }
-      protocolImpl=highest.protocolTarget;
-    }
  else {
-      protoName=call.declaringClassProtocolName;
-      ProtoNameVer pv=new ProtoNameVer(call.declaringClassProtocolName,clientVersion);
-      protocolImpl=server.getProtocolImplMap(RPC.RpcKind.RPC_WRITABLE).get(pv);
-      if (protocolImpl == null) {
-        VerProtocolImpl highest=server.getHighestSupportedProtocol(RPC.RpcKind.RPC_WRITABLE,protoName);
-        if (highest == null) {
-          throw new IOException("Unknown protocol: " + protoName);
-        }
- else {
-          throw new RPC.VersionMismatch(protoName,clientVersion,highest.version);
-        }
+        throw new RPC.VersionMismatch(protoName,clientVersion,highest.version);
       }
     }
+  }
+  try {
     long startTime=Time.now();
     Method method=protocolImpl.protocolClass.getMethod(call.getMethodName(),call.getParameterClasses());
     method.setAccessible(true);
