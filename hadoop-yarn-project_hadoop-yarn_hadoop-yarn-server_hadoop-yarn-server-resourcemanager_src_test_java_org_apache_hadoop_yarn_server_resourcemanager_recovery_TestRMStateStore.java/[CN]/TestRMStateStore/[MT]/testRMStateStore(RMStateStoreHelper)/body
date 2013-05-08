@@ -1,19 +1,28 @@
 {
   long submitTime=System.currentTimeMillis();
+  Configuration conf=new YarnConfiguration();
   RMStateStore store=stateStoreHelper.getRMStateStore();
   TestDispatcher dispatcher=new TestDispatcher();
   store.setDispatcher(dispatcher);
+  ApplicationTokenSecretManager appTokenMgr=new ApplicationTokenSecretManager(conf);
+  ClientToAMTokenSecretManagerInRM clientTokenMgr=new ClientToAMTokenSecretManagerInRM();
   ApplicationAttemptId attemptId1=ConverterUtils.toApplicationAttemptId("appattempt_1352994193343_0001_000001");
   ApplicationId appId1=attemptId1.getApplicationId();
   storeApp(store,appId1,submitTime);
-  ContainerId containerId1=storeAttempt(store,attemptId1,"container_1352994193343_0001_01_000001",dispatcher);
+  List<Token<?>> appAttemptToken1=generateTokens(attemptId1,appTokenMgr,clientTokenMgr,conf);
+  HashSet<Token<?>> attemptTokenSet1=new HashSet<Token<?>>();
+  attemptTokenSet1.addAll(appAttemptToken1);
+  ContainerId containerId1=storeAttempt(store,attemptId1,"container_1352994193343_0001_01_000001",(Token<ApplicationTokenIdentifier>)(appAttemptToken1.get(0)),(Token<ClientTokenIdentifier>)(appAttemptToken1.get(1)),dispatcher);
   String appAttemptIdStr2="appattempt_1352994193343_0001_000002";
   ApplicationAttemptId attemptId2=ConverterUtils.toApplicationAttemptId(appAttemptIdStr2);
-  ContainerId containerId2=storeAttempt(store,attemptId2,"container_1352994193343_0001_02_000001",dispatcher);
+  List<Token<?>> appAttemptToken2=generateTokens(attemptId2,appTokenMgr,clientTokenMgr,conf);
+  HashSet<Token<?>> attemptTokenSet2=new HashSet<Token<?>>();
+  attemptTokenSet2.addAll(appAttemptToken2);
+  ContainerId containerId2=storeAttempt(store,attemptId2,"container_1352994193343_0001_02_000001",(Token<ApplicationTokenIdentifier>)(appAttemptToken2.get(0)),(Token<ClientTokenIdentifier>)(appAttemptToken2.get(1)),dispatcher);
   ApplicationAttemptId attemptIdRemoved=ConverterUtils.toApplicationAttemptId("appattempt_1352994193343_0002_000001");
   ApplicationId appIdRemoved=attemptIdRemoved.getApplicationId();
   storeApp(store,appIdRemoved,submitTime);
-  storeAttempt(store,attemptIdRemoved,"container_1352994193343_0002_01_000001",dispatcher);
+  storeAttempt(store,attemptIdRemoved,"container_1352994193343_0002_01_000001",null,null,dispatcher);
   RMApp mockRemovedApp=mock(RMApp.class);
   HashMap<ApplicationAttemptId,RMAppAttempt> attempts=new HashMap<ApplicationAttemptId,RMAppAttempt>();
   ApplicationSubmissionContext context=new ApplicationSubmissionContextPBImpl();
@@ -40,10 +49,16 @@
   assertNotNull(attemptState);
   assertEquals(attemptId1,attemptState.getAttemptId());
   assertEquals(containerId1,attemptState.getMasterContainer().getId());
+  HashSet<Token<?>> savedTokens=new HashSet<Token<?>>();
+  savedTokens.addAll(attemptState.getAppAttemptTokens().getAllTokens());
+  assertEquals(attemptTokenSet1,savedTokens);
   attemptState=appState.getAttempt(attemptId2);
   assertNotNull(attemptState);
   assertEquals(attemptId2,attemptState.getAttemptId());
   assertEquals(containerId2,attemptState.getMasterContainer().getId());
+  savedTokens.clear();
+  savedTokens.addAll(attemptState.getAppAttemptTokens().getAllTokens());
+  assertEquals(attemptTokenSet2,savedTokens);
   assertTrue(stateStoreHelper.isFinalStateValid());
   store.close();
 }
