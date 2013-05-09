@@ -1,7 +1,11 @@
 {
   Configuration conf=createConfiguration();
+  conf.setLong(FairSchedulerConfiguration.PREEMPTION_INTERVAL,5000);
+  conf.setLong(FairSchedulerConfiguration.WAIT_TIME_BEFORE_KILL,10000);
   conf.set(FairSchedulerConfiguration.ALLOCATION_FILE + ".allocation.file",ALLOC_FILE);
   scheduler.reinitialize(conf,resourceManager.getRMContext());
+  MockClock clock=new MockClock();
+  scheduler.setClock(clock);
   PrintWriter out=new PrintWriter(new FileWriter(ALLOC_FILE));
   out.println("<?xml version=\"1.0\"?>");
   out.println("<allocations>");
@@ -61,10 +65,16 @@
   scheduler.preemptResources(scheduler.getQueueManager().getLeafQueues(),Resources.createResource(2 * 1024));
   assertEquals(1,scheduler.applications.get(app1).getLiveContainers().size());
   assertEquals(1,scheduler.applications.get(app2).getLiveContainers().size());
-  assertEquals(0,scheduler.applications.get(app3).getLiveContainers().size());
   assertEquals(1,scheduler.applications.get(app4).getLiveContainers().size());
   assertEquals(1,scheduler.applications.get(app5).getLiveContainers().size());
+  assertTrue(!Collections.disjoint(scheduler.applications.get(app3).getLiveContainers(),scheduler.applications.get(app3).getPreemptionContainers()));
+  assertTrue(!Collections.disjoint(scheduler.applications.get(app6).getLiveContainers(),scheduler.applications.get(app6).getPreemptionContainers()));
+  clock.tick(15);
+  scheduler.preemptResources(scheduler.getQueueManager().getLeafQueues(),Resources.createResource(2 * 1024));
   assertEquals(0,scheduler.applications.get(app6).getLiveContainers().size());
+  assertEquals(0,scheduler.applications.get(app3).getLiveContainers().size());
+  scheduler.preemptResources(scheduler.getQueueManager().getLeafQueues(),Resources.createResource(2 * 1024));
+  clock.tick(15);
   scheduler.preemptResources(scheduler.getQueueManager().getLeafQueues(),Resources.createResource(2 * 1024));
   assertEquals(1,scheduler.applications.get(app1).getLiveContainers().size());
   assertEquals(0,scheduler.applications.get(app2).getLiveContainers().size());
