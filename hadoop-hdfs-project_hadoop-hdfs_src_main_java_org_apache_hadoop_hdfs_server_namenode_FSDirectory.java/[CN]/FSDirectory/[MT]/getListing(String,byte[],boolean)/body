@@ -2,20 +2,25 @@
   String srcs=normalizePath(src);
   readLock();
   try {
-    INode targetNode=rootDir.getNode(srcs,true);
+    if (srcs.endsWith(HdfsConstants.SEPARATOR_DOT_SNAPSHOT_DIR)) {
+      return getSnapshotsListing(srcs,startAfter);
+    }
+    final INodesInPath inodesInPath=rootDir.getLastINodeInPath(srcs,true);
+    final Snapshot snapshot=inodesInPath.getPathSnapshot();
+    final INode targetNode=inodesInPath.getINode(0);
     if (targetNode == null)     return null;
     if (!targetNode.isDirectory()) {
-      return new DirectoryListing(new HdfsFileStatus[]{createFileStatus(HdfsFileStatus.EMPTY_NAME,targetNode,needLocation)},0);
+      return new DirectoryListing(new HdfsFileStatus[]{createFileStatus(HdfsFileStatus.EMPTY_NAME,targetNode,needLocation,snapshot)},0);
     }
-    INodeDirectory dirInode=(INodeDirectory)targetNode;
-    List<INode> contents=dirInode.getChildrenList();
-    int startChild=dirInode.nextChild(startAfter);
+    final INodeDirectory dirInode=targetNode.asDirectory();
+    final ReadOnlyList<INode> contents=dirInode.getChildrenList(snapshot);
+    int startChild=INodeDirectory.nextChild(contents,startAfter);
     int totalNumChildren=contents.size();
     int numOfListing=Math.min(totalNumChildren - startChild,this.lsLimit);
     HdfsFileStatus listing[]=new HdfsFileStatus[numOfListing];
     for (int i=0; i < numOfListing; i++) {
       INode cur=contents.get(startChild + i);
-      listing[i]=createFileStatus(cur.getLocalNameBytes(),cur,needLocation);
+      listing[i]=createFileStatus(cur.getLocalNameBytes(),cur,needLocation,snapshot);
     }
     return new DirectoryListing(listing,totalNumChildren - startChild - numOfListing);
   }

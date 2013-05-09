@@ -1,0 +1,77 @@
+{
+  boolean supportSnapshot=LayoutVersion.supports(Feature.SNAPSHOT,imageVersion);
+  boolean supportInodeId=LayoutVersion.supports(Feature.ADD_INODE_ID,imageVersion);
+  v.visitEnclosingElement(ImageElement.INODE);
+  String pathName=FSImageSerialization.readString(in);
+  if (parentName != null) {
+    pathName="/" + pathName;
+    if (!"/".equals(parentName)) {
+      pathName=parentName + pathName;
+    }
+  }
+  long inodeId=INodeId.GRANDFATHER_INODE_ID;
+  v.visit(ImageElement.INODE_PATH,pathName);
+  if (supportInodeId) {
+    inodeId=in.readLong();
+    v.visit(ImageElement.INODE_ID,inodeId);
+  }
+  v.visit(ImageElement.REPLICATION,in.readShort());
+  v.visit(ImageElement.MODIFICATION_TIME,formatDate(in.readLong()));
+  if (LayoutVersion.supports(Feature.FILE_ACCESS_TIME,imageVersion))   v.visit(ImageElement.ACCESS_TIME,formatDate(in.readLong()));
+  v.visit(ImageElement.BLOCK_SIZE,in.readLong());
+  int numBlocks=in.readInt();
+  processBlocks(in,v,numBlocks,skipBlocks);
+  if (numBlocks > 0) {
+    if (supportSnapshot) {
+      processFileDiffList(in,v,parentName);
+      if (isSnapshotCopy) {
+        boolean underConstruction=in.readBoolean();
+        if (underConstruction) {
+          v.visit(ImageElement.CLIENT_NAME,FSImageSerialization.readString(in));
+          v.visit(ImageElement.CLIENT_MACHINE,FSImageSerialization.readString(in));
+        }
+      }
+    }
+  }
+ else   if (numBlocks == -1) {
+    if (supportSnapshot && supportInodeId) {
+      dirNodeMap.put(inodeId,pathName);
+    }
+    v.visit(ImageElement.NS_QUOTA,numBlocks == -1 ? in.readLong() : -1);
+    if (LayoutVersion.supports(Feature.DISKSPACE_QUOTA,imageVersion))     v.visit(ImageElement.DS_QUOTA,numBlocks == -1 ? in.readLong() : -1);
+    if (supportSnapshot) {
+      boolean snapshottable=in.readBoolean();
+      if (!snapshottable) {
+        boolean withSnapshot=in.readBoolean();
+        v.visit(ImageElement.IS_WITHSNAPSHOT_DIR,Boolean.toString(withSnapshot));
+      }
+ else {
+        v.visit(ImageElement.IS_SNAPSHOTTABLE_DIR,Boolean.toString(snapshottable));
+      }
+    }
+  }
+ else   if (numBlocks == -2) {
+    v.visit(ImageElement.SYMLINK,Text.readString(in));
+  }
+ else   if (numBlocks == -3) {
+    final boolean isWithName=in.readBoolean();
+    int snapshotId=in.readInt();
+    if (isWithName) {
+      v.visit(ImageElement.SNAPSHOT_LAST_SNAPSHOT_ID,snapshotId);
+    }
+ else {
+      v.visit(ImageElement.SNAPSHOT_DST_SNAPSHOT_ID,snapshotId);
+    }
+    final boolean firstReferred=in.readBoolean();
+    if (firstReferred) {
+      v.visitEnclosingElement(ImageElement.SNAPSHOT_REF_INODE);
+      processINode(in,v,skipBlocks,parentName,isSnapshotCopy);
+      v.leaveEnclosingElement();
+    }
+ else {
+      v.visit(ImageElement.SNAPSHOT_REF_INODE_ID,in.readLong());
+    }
+  }
+  processPermission(in,v);
+  v.leaveEnclosingElement();
+}

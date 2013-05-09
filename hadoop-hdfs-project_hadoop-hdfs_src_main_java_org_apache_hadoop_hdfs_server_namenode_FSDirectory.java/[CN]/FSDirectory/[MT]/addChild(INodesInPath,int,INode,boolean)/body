@@ -1,23 +1,30 @@
 {
-  final INode[] inodes=inodesInPath.getINodes();
+  final INode[] inodes=iip.getINodes();
   if (pos == 1 && inodes[0] == rootDir && isReservedName(child)) {
     throw new HadoopIllegalArgumentException("File name \"" + child.getLocalName() + "\" is reserved and cannot "+ "be created. If this is during upgrade change the name of the "+ "existing file or directory to another name before upgrading "+ "to the new release.");
   }
   if (checkQuota) {
-    verifyFsLimits(inodes,pos,child);
+    verifyMaxComponentLength(child.getLocalNameBytes(),inodes,pos);
+    verifyMaxDirItems(inodes,pos);
   }
-  INode.DirCounts counts=new INode.DirCounts();
-  child.spaceConsumedInTree(counts);
-  updateCount(inodesInPath,pos,counts.getNsCount(),counts.getDsCount(),checkQuota);
-  if (inodes[pos - 1] == null) {
-    throw new NullPointerException("Panic: parent does not exist");
+  verifyINodeName(child.getLocalNameBytes());
+  final Quota.Counts counts=child.computeQuotaUsage();
+  updateCount(iip,pos,counts.get(Quota.NAMESPACE),counts.get(Quota.DISKSPACE),checkQuota);
+  final INodeDirectory parent=inodes[pos - 1].asDirectory();
+  boolean added=false;
+  try {
+    added=parent.addChild(child,true,iip.getLatestSnapshot(),inodeMap);
   }
-  final boolean added=((INodeDirectory)inodes[pos - 1]).addChild(child,true);
+ catch (  QuotaExceededException e) {
+    updateCountNoQuotaCheck(iip,pos,-counts.get(Quota.NAMESPACE),-counts.get(Quota.DISKSPACE));
+    throw e;
+  }
   if (!added) {
-    updateCount(inodesInPath,pos,-counts.getNsCount(),-counts.getDsCount(),true);
+    updateCountNoQuotaCheck(iip,pos,-counts.get(Quota.NAMESPACE),-counts.get(Quota.DISKSPACE));
   }
  else {
-    inodeMap.put(child);
+    iip.setINode(pos - 1,child.getParent());
+    addToInodeMap(child);
   }
   return added;
 }

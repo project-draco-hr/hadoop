@@ -1,0 +1,31 @@
+{
+  final String name="s" + s;
+  File fsnBefore=dumpTree2File(name + "_before");
+  File imageFile=saveFSImageToTempFile();
+  long numSdirBefore=fsn.getNumSnapshottableDirs();
+  long numSnapshotBefore=fsn.getNumSnapshots();
+  SnapshottableDirectoryStatus[] dirBefore=hdfs.getSnapshottableDirListing();
+  cluster.shutdown();
+  File fsnBetween=dumpTree2File(name + "_between");
+  SnapshotTestHelper.compareDumpedTreeInFile(fsnBefore,fsnBetween,true);
+  cluster=new MiniDFSCluster.Builder(conf).format(true).numDataNodes(REPLICATION).build();
+  cluster.waitActive();
+  fsn=cluster.getNamesystem();
+  hdfs=cluster.getFileSystem();
+  loadFSImageFromTempFile(imageFile);
+  File fsnAfter=dumpTree2File(name + "_after");
+  SnapshotTestHelper.compareDumpedTreeInFile(fsnBefore,fsnAfter,true);
+  long numSdirAfter=fsn.getNumSnapshottableDirs();
+  long numSnapshotAfter=fsn.getNumSnapshots();
+  SnapshottableDirectoryStatus[] dirAfter=hdfs.getSnapshottableDirListing();
+  Assert.assertEquals(numSdirBefore,numSdirAfter);
+  Assert.assertEquals(numSnapshotBefore,numSnapshotAfter);
+  Assert.assertEquals(dirBefore.length,dirAfter.length);
+  List<String> pathListBefore=new ArrayList<String>();
+  for (  SnapshottableDirectoryStatus sBefore : dirBefore) {
+    pathListBefore.add(sBefore.getFullPath().toString());
+  }
+  for (  SnapshottableDirectoryStatus sAfter : dirAfter) {
+    Assert.assertTrue(pathListBefore.contains(sAfter.getFullPath().toString()));
+  }
+}

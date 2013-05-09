@@ -1,0 +1,60 @@
+{
+  Path noChangeDir=new Path(sub,"noChangeDir");
+  Path noChangeFile=new Path(noChangeDir,"noChangeFile");
+  Path metaChangeFile=new Path(noChangeDir,"metaChangeFile");
+  Path metaChangeDir=new Path(noChangeDir,"metaChangeDir");
+  Path toDeleteFile=new Path(metaChangeDir,"toDeleteFile");
+  DFSTestUtil.createFile(hdfs,noChangeFile,BLOCKSIZE,REPLICATION,seed);
+  DFSTestUtil.createFile(hdfs,metaChangeFile,BLOCKSIZE,REPLICATION,seed);
+  DFSTestUtil.createFile(hdfs,toDeleteFile,BLOCKSIZE,REPLICATION,seed);
+  final INodeFile toDeleteFileNode=TestSnapshotBlocksMap.assertBlockCollection(toDeleteFile.toString(),1,fsdir,blockmanager);
+  BlockInfo[] blocks=toDeleteFileNode.getBlocks();
+  SnapshotTestHelper.createSnapshot(hdfs,dir,"s0");
+  checkQuotaUsageComputation(dir,8,3 * BLOCKSIZE * REPLICATION);
+  hdfs.delete(toDeleteFile,true);
+  checkQuotaUsageComputation(dir,10,3 * BLOCKSIZE * REPLICATION);
+  hdfs.setReplication(metaChangeFile,REPLICATION_1);
+  hdfs.setOwner(metaChangeDir,"unknown","unknown");
+  checkQuotaUsageComputation(dir,11,3 * BLOCKSIZE * REPLICATION);
+  hdfs.createSnapshot(dir,"s1");
+  checkQuotaUsageComputation(dir,12,3 * BLOCKSIZE * REPLICATION);
+  hdfs.deleteSnapshot(dir,"s0");
+  checkQuotaUsageComputation(dir,7,2 * BLOCKSIZE * REPLICATION - BLOCKSIZE);
+  for (  BlockInfo b : blocks) {
+    assertNull(blockmanager.getBlockCollection(b));
+  }
+  final INodeDirectorySnapshottable dirNode=(INodeDirectorySnapshottable)fsdir.getINode(dir.toString());
+  Snapshot snapshot0=dirNode.getSnapshot(DFSUtil.string2Bytes("s0"));
+  assertNull(snapshot0);
+  DirectoryDiffList diffList=dirNode.getDiffs();
+  assertEquals(1,diffList.asList().size());
+  assertEquals("s1",diffList.getLast().snapshot.getRoot().getLocalName());
+  diffList=((INodeDirectoryWithSnapshot)fsdir.getINode(metaChangeDir.toString())).getDiffs();
+  assertEquals(0,diffList.asList().size());
+  final INodeDirectory noChangeDirNode=(INodeDirectory)fsdir.getINode(noChangeDir.toString());
+  assertEquals(INodeDirectory.class,noChangeDirNode.getClass());
+  final INodeFile noChangeFileNode=(INodeFile)fsdir.getINode(noChangeFile.toString());
+  assertEquals(INodeFile.class,noChangeFileNode.getClass());
+  TestSnapshotBlocksMap.assertBlockCollection(noChangeFile.toString(),1,fsdir,blockmanager);
+  FileStatus status=hdfs.getFileStatus(metaChangeDir);
+  assertEquals("unknown",status.getOwner());
+  assertEquals("unknown",status.getGroup());
+  status=hdfs.getFileStatus(metaChangeFile);
+  assertEquals(REPLICATION_1,status.getReplication());
+  TestSnapshotBlocksMap.assertBlockCollection(metaChangeFile.toString(),1,fsdir,blockmanager);
+  try {
+    status=hdfs.getFileStatus(toDeleteFile);
+    fail("should throw FileNotFoundException");
+  }
+ catch (  FileNotFoundException e) {
+    GenericTestUtils.assertExceptionContains("File does not exist: " + toDeleteFile.toString(),e);
+  }
+  final Path toDeleteFileInSnapshot=SnapshotTestHelper.getSnapshotPath(dir,"s0",toDeleteFile.toString().substring(dir.toString().length()));
+  try {
+    status=hdfs.getFileStatus(toDeleteFileInSnapshot);
+    fail("should throw FileNotFoundException");
+  }
+ catch (  FileNotFoundException e) {
+    GenericTestUtils.assertExceptionContains("File does not exist: " + toDeleteFileInSnapshot.toString(),e);
+  }
+}

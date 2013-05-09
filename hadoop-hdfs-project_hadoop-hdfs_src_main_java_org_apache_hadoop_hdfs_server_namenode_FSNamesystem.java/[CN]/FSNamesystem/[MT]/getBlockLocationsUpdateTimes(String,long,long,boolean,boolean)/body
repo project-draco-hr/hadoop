@@ -25,17 +25,19 @@
       if (isInSafeMode()) {
         doAccessTime=false;
       }
-      long now=now();
-      final INodeFile inode=INodeFile.valueOf(dir.getINode(src),src);
-      if (doAccessTime && isAccessTimeSupported()) {
+      final INodesInPath iip=dir.getLastINodeInPath(src);
+      final INodeFile inode=INodeFile.valueOf(iip.getLastINode(),src);
+      if (!iip.isSnapshot() && doAccessTime && isAccessTimeSupported()) {
+        final long now=now();
         if (now > inode.getAccessTime() + getAccessTimePrecision()) {
           if (isReadOp) {
             continue;
           }
-          dir.setTimes(src,inode,-1,now,false);
+          dir.setTimes(src,inode,-1,now,false,iip.getLatestSnapshot());
         }
       }
-      return blockManager.createLocatedBlocks(inode.getBlocks(),inode.computeFileSize(false),inode.isUnderConstruction(),offset,length,needBlockToken);
+      final long fileSize=iip.getPathSnapshot() != null ? inode.computeFileSize(iip.getPathSnapshot()) : inode.computeFileSizeNotIncludingLastUcBlock();
+      return blockManager.createLocatedBlocks(inode.getBlocks(),fileSize,inode.isUnderConstruction(),offset,length,needBlockToken);
     }
   finally {
       if (isReadOp) {

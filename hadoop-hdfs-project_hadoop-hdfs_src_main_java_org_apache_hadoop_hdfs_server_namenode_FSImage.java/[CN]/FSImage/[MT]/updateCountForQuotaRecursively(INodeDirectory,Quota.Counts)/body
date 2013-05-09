@@ -1,0 +1,24 @@
+{
+  final long parentNamespace=counts.get(Quota.NAMESPACE);
+  final long parentDiskspace=counts.get(Quota.DISKSPACE);
+  dir.computeQuotaUsage4CurrentDirectory(counts);
+  for (  INode child : dir.getChildrenList(null)) {
+    if (child.isDirectory()) {
+      updateCountForQuotaRecursively(child.asDirectory(),counts);
+    }
+ else {
+      child.computeQuotaUsage(counts,false);
+    }
+  }
+  if (dir.isQuotaSet()) {
+    final long namespace=counts.get(Quota.NAMESPACE) - parentNamespace;
+    if (Quota.isViolated(dir.getNsQuota(),namespace)) {
+      LOG.error("BUG: Namespace quota violation in image for " + dir.getFullPathName() + " quota = "+ dir.getNsQuota()+ " < consumed = "+ namespace);
+    }
+    final long diskspace=counts.get(Quota.DISKSPACE) - parentDiskspace;
+    if (Quota.isViolated(dir.getDsQuota(),diskspace)) {
+      LOG.error("BUG: Diskspace quota violation in image for " + dir.getFullPathName() + " quota = "+ dir.getDsQuota()+ " < consumed = "+ diskspace);
+    }
+    ((INodeDirectoryWithQuota)dir).setSpaceConsumed(namespace,diskspace);
+  }
+}

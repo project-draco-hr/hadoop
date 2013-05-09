@@ -1,0 +1,78 @@
+{
+  final int imgVersion=getLayoutVersion();
+  if (LayoutVersion.supports(Feature.SNAPSHOT,imgVersion)) {
+    namesystem.getFSDirectory().verifyINodeName(localName);
+  }
+  long inodeId=LayoutVersion.supports(Feature.ADD_INODE_ID,imgVersion) ? in.readLong() : namesystem.allocateNewInodeId();
+  final short replication=namesystem.getBlockManager().adjustReplication(in.readShort());
+  final long modificationTime=in.readLong();
+  long atime=0;
+  if (LayoutVersion.supports(Feature.FILE_ACCESS_TIME,imgVersion)) {
+    atime=in.readLong();
+  }
+  final long blockSize=in.readLong();
+  final int numBlocks=in.readInt();
+  if (numBlocks >= 0) {
+    BlockInfo[] blocks=null;
+    if (numBlocks >= 0) {
+      blocks=new BlockInfo[numBlocks];
+      for (int j=0; j < numBlocks; j++) {
+        blocks[j]=new BlockInfo(replication);
+        blocks[j].readFields(in);
+      }
+    }
+    String clientName="";
+    String clientMachine="";
+    boolean underConstruction=false;
+    FileDiffList fileDiffs=null;
+    if (LayoutVersion.supports(Feature.SNAPSHOT,imgVersion)) {
+      fileDiffs=SnapshotFSImageFormat.loadFileDiffList(in,this);
+      if (isSnapshotINode) {
+        underConstruction=in.readBoolean();
+        if (underConstruction) {
+          clientName=FSImageSerialization.readString(in);
+          clientMachine=FSImageSerialization.readString(in);
+        }
+      }
+    }
+    final PermissionStatus permissions=PermissionStatus.read(in);
+    final INodeFile file=new INodeFile(inodeId,localName,permissions,modificationTime,atime,blocks,replication,blockSize);
+    return fileDiffs != null ? new INodeFileWithSnapshot(file,fileDiffs) : underConstruction ? new INodeFileUnderConstruction(file,clientName,clientMachine,null) : file;
+  }
+ else   if (numBlocks == -1) {
+    final long nsQuota=in.readLong();
+    long dsQuota=-1L;
+    if (LayoutVersion.supports(Feature.DISKSPACE_QUOTA,imgVersion)) {
+      dsQuota=in.readLong();
+    }
+    boolean snapshottable=false;
+    boolean withSnapshot=false;
+    if (LayoutVersion.supports(Feature.SNAPSHOT,imgVersion)) {
+      snapshottable=in.readBoolean();
+      if (!snapshottable) {
+        withSnapshot=in.readBoolean();
+      }
+    }
+    final PermissionStatus permissions=PermissionStatus.read(in);
+    final INodeDirectory dir=nsQuota >= 0 || dsQuota >= 0 ? new INodeDirectoryWithQuota(inodeId,localName,permissions,modificationTime,nsQuota,dsQuota) : new INodeDirectory(inodeId,localName,permissions,modificationTime);
+    return snapshottable ? new INodeDirectorySnapshottable(dir) : withSnapshot ? new INodeDirectoryWithSnapshot(dir) : dir;
+  }
+ else   if (numBlocks == -2) {
+    final String symlink=Text.readString(in);
+    final PermissionStatus permissions=PermissionStatus.read(in);
+    return new INodeSymlink(inodeId,localName,permissions,modificationTime,atime,symlink);
+  }
+ else   if (numBlocks == -3) {
+    final boolean isWithName=in.readBoolean();
+    int snapshotId=in.readInt();
+    final INodeReference.WithCount withCount=referenceMap.loadINodeReferenceWithCount(isSnapshotINode,in,this);
+    if (isWithName) {
+      return new INodeReference.WithName(null,withCount,localName,snapshotId);
+    }
+ else {
+      final INodeReference ref=new INodeReference.DstReference(null,withCount,snapshotId);
+      return ref;
+    }
+  }
+  throw new IOException("Unknown inode type: numBlocks=" + numBlocks);
+}

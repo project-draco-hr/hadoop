@@ -1,0 +1,34 @@
+{
+  final FSPermissionChecker pc=getPermissionChecker();
+  writeLock();
+  final String snapshotPath;
+  try {
+    checkOperation(OperationCategory.WRITE);
+    if (isInSafeMode()) {
+      throw new SafeModeException("Cannot create snapshot for " + snapshotRoot,safeMode);
+    }
+    if (isPermissionEnabled) {
+      checkOwner(pc,snapshotRoot);
+    }
+    if (snapshotName == null || snapshotName.isEmpty()) {
+      snapshotName=Snapshot.generateDefaultSnapshotName();
+    }
+    dir.verifySnapshotName(snapshotName,snapshotRoot);
+    dir.writeLock();
+    try {
+      snapshotPath=snapshotManager.createSnapshot(snapshotRoot,snapshotName);
+    }
+  finally {
+      dir.writeUnlock();
+    }
+    getEditLog().logCreateSnapshot(snapshotRoot,snapshotName);
+  }
+  finally {
+    writeUnlock();
+  }
+  getEditLog().logSync();
+  if (auditLog.isInfoEnabled() && isExternalInvocation()) {
+    logAuditEvent(true,"createSnapshot",snapshotRoot,snapshotPath,null);
+  }
+  return snapshotPath;
+}

@@ -1,0 +1,25 @@
+{
+  final FSPermissionChecker pc=getPermissionChecker();
+  writeLock();
+  try {
+    checkOperation(OperationCategory.WRITE);
+    if (isInSafeMode()) {
+      throw new SafeModeException("Cannot rename snapshot for " + path,safeMode);
+    }
+    if (isPermissionEnabled) {
+      checkOwner(pc,path);
+    }
+    dir.verifySnapshotName(snapshotNewName,path);
+    snapshotManager.renameSnapshot(path,snapshotOldName,snapshotNewName);
+    getEditLog().logRenameSnapshot(path,snapshotOldName,snapshotNewName);
+  }
+  finally {
+    writeUnlock();
+  }
+  getEditLog().logSync();
+  if (auditLog.isInfoEnabled() && isExternalInvocation()) {
+    String oldSnapshotRoot=Snapshot.getSnapshotPath(path,snapshotOldName);
+    String newSnapshotRoot=Snapshot.getSnapshotPath(path,snapshotNewName);
+    logAuditEvent(true,"renameSnapshot",oldSnapshotRoot,newSnapshotRoot,null);
+  }
+}

@@ -1,0 +1,34 @@
+{
+  if (NameNode.stateChangeLog.isDebugEnabled()) {
+    NameNode.stateChangeLog.debug("DIR* FSDirectory.delete: " + src);
+  }
+  waitForReady();
+  long now=now();
+  final long filesRemoved;
+  writeLock();
+  try {
+    final INodesInPath inodesInPath=rootDir.getINodesInPath4Write(normalizePath(src),false);
+    if (!deleteAllowed(inodesInPath,src)) {
+      filesRemoved=-1;
+    }
+ else {
+      final INode targetNode=inodesInPath.getLastINode();
+      List<INodeDirectorySnapshottable> snapshottableDirs=new ArrayList<INodeDirectorySnapshottable>();
+      checkSnapshot(targetNode,snapshottableDirs);
+      filesRemoved=unprotectedDelete(inodesInPath,collectedBlocks,removedINodes,now);
+      if (snapshottableDirs.size() > 0) {
+        namesystem.removeSnapshottableDirs(snapshottableDirs);
+      }
+    }
+  }
+  finally {
+    writeUnlock();
+  }
+  if (filesRemoved < 0) {
+    return false;
+  }
+  fsImage.getEditLog().logDelete(src,now);
+  incrDeletedFileCount(filesRemoved);
+  getFSNamesystem().removePathAndBlocks(src,null,null);
+  return true;
+}

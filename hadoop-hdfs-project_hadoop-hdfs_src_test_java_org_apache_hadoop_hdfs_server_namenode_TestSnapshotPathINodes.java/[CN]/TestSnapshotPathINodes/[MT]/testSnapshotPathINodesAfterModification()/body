@@ -1,0 +1,34 @@
+{
+  DFSTestUtil.createFile(hdfs,file1,1024,REPLICATION,seed);
+  String[] names=INode.getPathNames(file1.toString());
+  byte[][] components=INode.getPathComponents(names);
+  INodesInPath nodesInPath=INodesInPath.resolve(fsdir.rootDir,components);
+  INode[] inodes=nodesInPath.getINodes();
+  assertEquals(inodes.length,components.length);
+  assertSnapshot(nodesInPath,false,s4,-1);
+  assertEquals(inodes[components.length - 1].getFullPathName(),file1.toString());
+  hdfs.allowSnapshot(sub1);
+  hdfs.createSnapshot(sub1,"s3");
+  DFSTestUtil.appendFile(hdfs,file1,"the content for appending");
+  String snapshotPath=sub1.toString() + "/.snapshot/s3/file1";
+  names=INode.getPathNames(snapshotPath);
+  components=INode.getPathComponents(names);
+  INodesInPath ssNodesInPath=INodesInPath.resolve(fsdir.rootDir,components);
+  INode[] ssInodes=ssNodesInPath.getINodes();
+  assertEquals(ssInodes.length,components.length - 1);
+  final Snapshot s3=getSnapshot(ssNodesInPath,"s3");
+  assertSnapshot(ssNodesInPath,true,s3,3);
+  INode snapshotFileNode=ssInodes[ssInodes.length - 1];
+  assertEquals(snapshotFileNode.getLocalName(),file1.getName());
+  assertTrue(snapshotFileNode instanceof INodeFileWithSnapshot);
+  assertEquals(inodes[inodes.length - 1].getModificationTime(),snapshotFileNode.getModificationTime(ssNodesInPath.getPathSnapshot()));
+  names=INode.getPathNames(file1.toString());
+  components=INode.getPathComponents(names);
+  INodesInPath newNodesInPath=INodesInPath.resolve(fsdir.rootDir,components);
+  assertSnapshot(newNodesInPath,false,s3,-1);
+  INode[] newInodes=newNodesInPath.getINodes();
+  assertEquals(newInodes.length,components.length);
+  final int last=components.length - 1;
+  assertEquals(newInodes[last].getFullPathName(),file1.toString());
+  Assert.assertFalse(inodes[last].getModificationTime() == newInodes[last].getModificationTime());
+}

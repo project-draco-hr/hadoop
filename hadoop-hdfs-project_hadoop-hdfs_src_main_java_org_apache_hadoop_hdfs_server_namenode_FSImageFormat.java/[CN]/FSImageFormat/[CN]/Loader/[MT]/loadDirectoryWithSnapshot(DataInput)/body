@@ -1,0 +1,22 @@
+{
+  long inodeId=in.readLong();
+  final INodeDirectory parent=this.namesystem.dir.getInode(inodeId).asDirectory();
+  boolean toLoadSubtree=referenceMap.toProcessSubtree(parent.getId());
+  if (!toLoadSubtree) {
+    return;
+  }
+  int numSnapshots=in.readInt();
+  if (numSnapshots >= 0) {
+    final INodeDirectorySnapshottable snapshottableParent=INodeDirectorySnapshottable.valueOf(parent,parent.getLocalName());
+    if (snapshottableParent.getParent() != null) {
+      this.namesystem.getSnapshotManager().addSnapshottable(snapshottableParent);
+    }
+    SnapshotFSImageFormat.loadSnapshotList(snapshottableParent,numSnapshots,in,this);
+  }
+  loadChildren(parent,in);
+  SnapshotFSImageFormat.loadDirectoryDiffList(parent,in,this);
+  int numSubTree=in.readInt();
+  for (int i=0; i < numSubTree; i++) {
+    loadDirectoryWithSnapshot(in);
+  }
+}

@@ -1,0 +1,80 @@
+{
+  Preconditions.checkArgument(startingDir.compareTo(components[0]) == 0);
+  INode curNode=startingDir;
+  final INodesInPath existing=new INodesInPath(components,numOfINodes);
+  int count=0;
+  int index=numOfINodes - components.length;
+  if (index > 0) {
+    index=0;
+  }
+  while (count < components.length && curNode != null) {
+    final boolean lastComp=(count == components.length - 1);
+    if (index >= 0) {
+      existing.addNode(curNode);
+    }
+    final boolean isRef=curNode.isReference();
+    final boolean isDir=curNode.isDirectory();
+    final INodeDirectory dir=isDir ? curNode.asDirectory() : null;
+    if (!isRef && isDir && dir instanceof INodeDirectoryWithSnapshot) {
+      if (!existing.isSnapshot()) {
+        existing.updateLatestSnapshot(((INodeDirectoryWithSnapshot)dir).getLastSnapshot());
+      }
+    }
+ else     if (isRef && isDir && !lastComp) {
+      if (!existing.isSnapshot()) {
+        int dstSnapshotId=curNode.asReference().getDstSnapshotId();
+        Snapshot latest=existing.getLatestSnapshot();
+        if (latest == null || dstSnapshotId >= latest.getId()) {
+          Snapshot lastSnapshot=null;
+          if (curNode.isDirectory() && curNode.asDirectory() instanceof INodeDirectoryWithSnapshot) {
+            lastSnapshot=((INodeDirectoryWithSnapshot)curNode.asDirectory()).getLastSnapshot();
+          }
+          existing.setSnapshot(lastSnapshot);
+        }
+      }
+    }
+    if (curNode.isSymlink() && (!lastComp || (lastComp && resolveLink))) {
+      final String path=constructPath(components,0,components.length);
+      final String preceding=constructPath(components,0,count);
+      final String remainder=constructPath(components,count + 1,components.length);
+      final String link=DFSUtil.bytes2String(components[count]);
+      final String target=curNode.asSymlink().getSymlinkString();
+      if (LOG.isDebugEnabled()) {
+        LOG.debug("UnresolvedPathException " + " path: " + path + " preceding: "+ preceding+ " count: "+ count+ " link: "+ link+ " target: "+ target+ " remainder: "+ remainder);
+      }
+      throw new UnresolvedPathException(path,preceding,remainder,target);
+    }
+    if (lastComp || !isDir) {
+      break;
+    }
+    final byte[] childName=components[count + 1];
+    if (isDotSnapshotDir(childName) && isDir && dir instanceof INodeDirectoryWithSnapshot) {
+      count++;
+      index++;
+      existing.isSnapshot=true;
+      if (index >= 0) {
+        existing.capacity--;
+      }
+      if (count == components.length - 1) {
+        break;
+      }
+      final Snapshot s=((INodeDirectorySnapshottable)dir).getSnapshot(components[count + 1]);
+      if (s == null) {
+        curNode=null;
+      }
+ else {
+        curNode=s.getRoot();
+        existing.setSnapshot(s);
+      }
+      if (index >= -1) {
+        existing.snapshotRootIndex=existing.numNonNull;
+      }
+    }
+ else {
+      curNode=dir.getChild(childName,existing.getPathSnapshot());
+    }
+    count++;
+    index++;
+  }
+  return existing;
+}
