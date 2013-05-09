@@ -18,20 +18,35 @@
   }
   Collections.sort(runningContainers,new Comparator<RMContainer>(){
     public int compare(    RMContainer c1,    RMContainer c2){
-      return c2.getContainer().getPriority().compareTo(c1.getContainer().getPriority());
+      int ret=c2.getContainer().getPriority().compareTo(c1.getContainer().getPriority());
+      if (ret == 0) {
+        return c2.getContainerId().compareTo(c1.getContainerId());
+      }
+      return ret;
     }
   }
 );
-  for (  RMContainer container : runningContainers) {
+  Iterator<RMContainer> warnedIter=warnedContainers.iterator();
+  Set<RMContainer> preemptedThisRound=new HashSet<RMContainer>();
+  while (warnedIter.hasNext()) {
+    RMContainer container=warnedIter.next();
+    if (container.getState() == RMContainerState.RUNNING && Resources.greaterThan(RESOURCE_CALCULATOR,clusterCapacity,toPreempt,Resources.none())) {
+      warnOrKillContainer(container,apps.get(container),queues.get(container));
+      preemptedThisRound.add(container);
+      Resources.subtractFrom(toPreempt,container.getContainer().getResource());
+    }
+ else {
+      warnedIter.remove();
+    }
+  }
+  Iterator<RMContainer> runningIter=runningContainers.iterator();
+  while (runningIter.hasNext() && Resources.greaterThan(RESOURCE_CALCULATOR,clusterCapacity,toPreempt,Resources.none())) {
+    RMContainer container=runningIter.next();
     FSLeafQueue sched=queues.get(container);
-    if (Resources.greaterThan(RESOURCE_CALCULATOR,clusterCapacity,sched.getResourceUsage(),sched.getFairShare())) {
-      LOG.info("Preempting container (prio=" + container.getContainer().getPriority() + "res="+ container.getContainer().getResource()+ ") from queue "+ sched.getName());
-      ContainerStatus status=SchedulerUtils.createAbnormalContainerStatus(container.getContainerId(),SchedulerUtils.PREEMPTED_CONTAINER);
-      completedContainer(container,status,RMContainerEventType.KILL);
-      toPreempt=Resources.subtract(toPreempt,container.getContainer().getResource());
-      if (Resources.lessThanOrEqual(RESOURCE_CALCULATOR,clusterCapacity,toPreempt,Resources.none())) {
-        break;
-      }
+    if (!preemptedThisRound.contains(container) && Resources.greaterThan(RESOURCE_CALCULATOR,clusterCapacity,sched.getResourceUsage(),sched.getFairShare())) {
+      warnOrKillContainer(container,apps.get(container),sched);
+      warnedContainers.add(container);
+      Resources.subtractFrom(toPreempt,container.getContainer().getResource());
     }
   }
 }
