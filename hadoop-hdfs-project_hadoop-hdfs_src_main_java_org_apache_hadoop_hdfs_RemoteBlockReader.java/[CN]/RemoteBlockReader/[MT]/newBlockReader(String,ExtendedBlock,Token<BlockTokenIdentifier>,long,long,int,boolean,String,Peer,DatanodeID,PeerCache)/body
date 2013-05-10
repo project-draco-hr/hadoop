@@ -1,0 +1,14 @@
+{
+  final DataOutputStream out=new DataOutputStream(new BufferedOutputStream(peer.getOutputStream()));
+  new Sender(out).readBlock(block,blockToken,clientName,startOffset,len,verifyChecksum);
+  DataInputStream in=new DataInputStream(new BufferedInputStream(peer.getInputStream(),bufferSize));
+  BlockOpResponseProto status=BlockOpResponseProto.parseFrom(PBHelper.vintPrefixed(in));
+  RemoteBlockReader2.checkSuccess(status,peer,block,file);
+  ReadOpChecksumInfoProto checksumInfo=status.getReadOpChecksumInfo();
+  DataChecksum checksum=DataTransferProtoUtil.fromProto(checksumInfo.getChecksum());
+  long firstChunkOffset=checksumInfo.getChunkOffset();
+  if (firstChunkOffset < 0 || firstChunkOffset > startOffset || firstChunkOffset <= (startOffset - checksum.getBytesPerChecksum())) {
+    throw new IOException("BlockReader: error in first chunk offset (" + firstChunkOffset + ") startOffset is "+ startOffset+ " for file "+ file);
+  }
+  return new RemoteBlockReader(file,block.getBlockPoolId(),block.getBlockId(),in,checksum,verifyChecksum,startOffset,firstChunkOffset,len,peer,datanodeID,peerCache);
+}
