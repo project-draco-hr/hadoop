@@ -1,33 +1,18 @@
 {
-  FSDataOutputStream outFile=null;
-  try {
-    byte[] bytes=new byte[len];
-    Path tarPath=new Path(p.toString());
-    outFile=files.create(tarPath,EnumSet.of(CREATE,OVERWRITE));
-    r.nextBytes(bytes);
-    outFile.write(bytes);
-  }
-  finally {
-    if (outFile != null)     outFile.close();
-  }
-  StringBuffer zipCommand=new StringBuffer();
-  URI u=new URI(p.getParent().toString());
-  zipCommand.append("cd '");
-  zipCommand.append(FileUtil.makeShellPath(u.getPath().toString()));
-  zipCommand.append("' ; ");
-  zipCommand.append("gzip " + p.getName());
-  String[] shellCmd={"bash","-c",zipCommand.toString()};
-  ShellCommandExecutor shexec=new ShellCommandExecutor(shellCmd);
-  shexec.execute();
-  int exitcode=shexec.getExitCode();
-  if (exitcode != 0) {
-    throw new IOException("Error untarring file " + p + ". Tar process exited with exit code "+ exitcode);
-  }
+  byte[] bytes=new byte[len];
+  r.nextBytes(bytes);
+  File archiveFile=new File(p.toUri().getPath() + ".zip");
+  archiveFile.createNewFile();
+  ZipOutputStream out=new ZipOutputStream(new FileOutputStream(archiveFile));
+  out.putNextEntry(new ZipEntry(p.getName()));
+  out.write(bytes);
+  out.closeEntry();
+  out.close();
   LocalResource ret=recordFactory.newRecordInstance(LocalResource.class);
   ret.setResource(ConverterUtils.getYarnUrlFromPath(new Path(p.toString() + ".zip")));
   ret.setSize(len);
   ret.setType(LocalResourceType.ARCHIVE);
   ret.setVisibility(vis);
-  ret.setTimestamp(files.getFileStatus(new Path(p.toString() + ".gz")).getModificationTime());
+  ret.setTimestamp(files.getFileStatus(new Path(p.toString() + ".zip")).getModificationTime());
   return ret;
 }
