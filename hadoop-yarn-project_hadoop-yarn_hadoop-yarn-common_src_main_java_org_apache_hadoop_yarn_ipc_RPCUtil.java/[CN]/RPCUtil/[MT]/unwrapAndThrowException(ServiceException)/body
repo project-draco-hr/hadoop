@@ -1,33 +1,33 @@
 {
-  if (se.getCause() instanceof RemoteException) {
-    try {
-      RemoteException re=(RemoteException)se.getCause();
-      Class<?> realClass=Class.forName(re.getClassName());
+  Throwable cause=se.getCause();
+  if (cause == null) {
+    throw new IOException(se);
+  }
+ else {
+    if (cause instanceof RemoteException) {
+      RemoteException re=(RemoteException)cause;
+      Class<?> realClass=null;
+      try {
+        realClass=Class.forName(re.getClassName());
+      }
+ catch (      ClassNotFoundException cnf) {
+        throw instantiateException(YarnRemoteException.class,re);
+      }
       if (YarnRemoteException.class.isAssignableFrom(realClass)) {
-        Constructor<? extends YarnRemoteException> cn=realClass.asSubclass(YarnRemoteException.class).getConstructor(String.class);
-        cn.setAccessible(true);
-        YarnRemoteException ex=cn.newInstance(re.getMessage());
-        ex.initCause(re);
-        return ex;
+        throw instantiateException(realClass.asSubclass(YarnRemoteException.class),re);
+      }
+ else       if (IOException.class.isAssignableFrom(realClass)) {
+        throw instantiateException(realClass.asSubclass(IOException.class),re);
       }
  else {
-        throw new IOException((RemoteException)se.getCause());
+        throw re;
       }
     }
- catch (    IOException e1) {
-      throw new UndeclaredThrowableException(e1);
+ else     if (cause instanceof IOException) {
+      throw (IOException)cause;
     }
-catch (    Exception ex) {
-      throw new UndeclaredThrowableException((RemoteException)se.getCause());
-    }
-  }
- else   if (se.getCause() instanceof YarnRemoteException) {
-    return (YarnRemoteException)se.getCause();
-  }
- else   if (se.getCause() instanceof UndeclaredThrowableException) {
-    throw (UndeclaredThrowableException)se.getCause();
-  }
  else {
-    throw new UndeclaredThrowableException(se);
+      throw new IOException(se);
+    }
   }
 }
