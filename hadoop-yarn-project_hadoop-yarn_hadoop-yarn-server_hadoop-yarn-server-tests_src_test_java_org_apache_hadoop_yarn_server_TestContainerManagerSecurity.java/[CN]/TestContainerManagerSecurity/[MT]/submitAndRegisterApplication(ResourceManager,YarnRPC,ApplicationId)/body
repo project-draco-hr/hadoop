@@ -26,12 +26,14 @@
   Assert.assertEquals(RMAppAttemptState.LAUNCHED,state);
   UserGroupInformation currentUser=UserGroupInformation.createRemoteUser(appAttempt.getAppAttemptId().toString());
   final InetSocketAddress schedulerAddr=resourceManager.getApplicationMasterService().getBindAddress();
-  ApplicationTokenIdentifier appTokenIdentifier=new ApplicationTokenIdentifier(appAttempt.getAppAttemptId());
-  ApplicationTokenSecretManager appTokenSecretManager=new ApplicationTokenSecretManager(conf);
-  appTokenSecretManager.setMasterKey(resourceManager.getApplicationTokenSecretManager().getMasterKey());
-  Token<ApplicationTokenIdentifier> appToken=new Token<ApplicationTokenIdentifier>(appTokenIdentifier,appTokenSecretManager);
-  SecurityUtil.setTokenService(appToken,schedulerAddr);
-  currentUser.addToken(appToken);
+  if (UserGroupInformation.isSecurityEnabled()) {
+    ApplicationTokenIdentifier appTokenIdentifier=new ApplicationTokenIdentifier(appAttempt.getAppAttemptId());
+    ApplicationTokenSecretManager appTokenSecretManager=new ApplicationTokenSecretManager(conf);
+    appTokenSecretManager.setMasterKey(resourceManager.getApplicationTokenSecretManager().getMasterKey());
+    Token<ApplicationTokenIdentifier> appToken=new Token<ApplicationTokenIdentifier>(appTokenIdentifier,appTokenSecretManager);
+    SecurityUtil.setTokenService(appToken,schedulerAddr);
+    currentUser.addToken(appToken);
+  }
   AMRMProtocol scheduler=currentUser.doAs(new PrivilegedAction<AMRMProtocol>(){
     @Override public AMRMProtocol run(){
       return (AMRMProtocol)yarnRPC.getProxy(AMRMProtocol.class,schedulerAddr,conf);

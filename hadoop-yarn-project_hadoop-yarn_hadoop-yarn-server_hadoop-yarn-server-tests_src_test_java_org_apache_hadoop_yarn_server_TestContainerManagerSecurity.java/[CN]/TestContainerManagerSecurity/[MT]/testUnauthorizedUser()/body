@@ -19,9 +19,9 @@
     @Override public ContainerManager run(){
       ContainerManager client=(ContainerManager)yarnRPC.getProxy(ContainerManager.class,NetUtils.createSocketAddr(allocatedContainer.getNodeId().toString()),conf);
       LOG.info("Going to contact NM:  unauthorized request");
-      callWithIllegalContainerID(client,tokenId);
-      callWithIllegalResource(client,tokenId);
-      callWithIllegalUserName(client,tokenId);
+      callWithIllegalContainerID(client,tokenId,allocatedContainer);
+      callWithIllegalResource(client,tokenId,allocatedContainer);
+      callWithIllegalUserName(client,tokenId,allocatedContainer);
       return client;
     }
   }
@@ -29,8 +29,8 @@
   RPC.stopProxy(client);
   unauthorizedUser=UserGroupInformation.createRemoteUser(containerID.toString());
   RMContainerTokenSecretManager containerTokenSecreteManager=resourceManager.getRMContainerTokenSecretManager();
-  final ContainerTokenIdentifier newTokenId=new ContainerTokenIdentifier(tokenId.getContainerID(),tokenId.getNmHostAddress(),"testUser",tokenId.getResource(),System.currentTimeMillis() - 1,containerTokenSecreteManager.getCurrentKey().getKeyId());
-  byte[] passowrd=containerTokenSecreteManager.createPassword(newTokenId);
+  final ContainerTokenIdentifier newTokenId=new ContainerTokenIdentifier(tokenId.getContainerID(),tokenId.getNmHostAddress(),tokenId.getApplicationSubmitter(),tokenId.getResource(),System.currentTimeMillis() - 1,containerTokenSecreteManager.getCurrentKey().getKeyId());
+  final byte[] passowrd=containerTokenSecreteManager.createPassword(newTokenId);
   token=new Token<ContainerTokenIdentifier>(newTokenId.getBytes(),passowrd,new Text(containerToken.getKind()),new Text(containerToken.getService()));
   unauthorizedUser.addToken(token);
   unauthorizedUser.doAs(new PrivilegedAction<Void>(){
@@ -38,10 +38,10 @@
       ContainerManager client=(ContainerManager)yarnRPC.getProxy(ContainerManager.class,NetUtils.createSocketAddr(allocatedContainer.getNodeId().toString()),conf);
       LOG.info("Going to contact NM with expired token");
       ContainerLaunchContext context=createContainerLaunchContextForTest(newTokenId);
-      Container container=BuilderUtils.newContainer(newTokenId.getContainerID(),null,null,BuilderUtils.newResource(newTokenId.getResource().getMemory(),newTokenId.getResource().getVirtualCores()),null,null,0);
       StartContainerRequest request=Records.newRecord(StartContainerRequest.class);
       request.setContainerLaunchContext(context);
-      request.setContainer(container);
+      allocatedContainer.setContainerToken(BuilderUtils.newContainerToken(allocatedContainer.getNodeId(),passowrd,newTokenId));
+      request.setContainer(allocatedContainer);
       try {
         client.startContainer(request);
         fail("Connection initiation with expired " + "token is expected to fail.");

@@ -1,13 +1,13 @@
 {
   nm=new MyNodeManager();
   nm.start();
+  final ContainerManager containerManager=nm.getContainerManager();
   createFiles(nmLocalDir.getAbsolutePath(),ContainerLocalizer.FILECACHE,100);
   localResourceDir.mkdirs();
-  ContainerManagerImpl containerManager=nm.getContainerManager();
   ContainerLaunchContext containerLaunchContext=Records.newRecord(ContainerLaunchContext.class);
   ContainerId cId=createContainerId();
-  org.apache.hadoop.yarn.api.records.Container mockContainer=mock(org.apache.hadoop.yarn.api.records.Container.class);
-  when(mockContainer.getId()).thenReturn(cId);
+  org.apache.hadoop.yarn.api.records.Container mockContainer=Records.newRecord(org.apache.hadoop.yarn.api.records.Container.class);
+  mockContainer.setId(cId);
   containerLaunchContext.setUser(user);
   URL localResourceUri=ConverterUtils.getYarnUrlFromPath(localFS.makeQualified(new Path(localResourceDir.getAbsolutePath())));
   LocalResource localResource=Records.newRecord(LocalResource.class);
@@ -20,16 +20,26 @@
   Map<String,LocalResource> localResources=new HashMap<String,LocalResource>();
   localResources.put(destinationFile,localResource);
   containerLaunchContext.setLocalResources(localResources);
-  containerLaunchContext.setUser(containerLaunchContext.getUser());
   List<String> commands=new ArrayList<String>();
   containerLaunchContext.setCommands(commands);
   Resource resource=Records.newRecord(Resource.class);
   resource.setMemory(1024);
-  when(mockContainer.getResource()).thenReturn(resource);
-  StartContainerRequest startRequest=Records.newRecord(StartContainerRequest.class);
+  mockContainer.setResource(resource);
+  NodeId nodeId=BuilderUtils.newNodeId("127.0.0.1",12345);
+  mockContainer.setContainerToken(nm.getNMContext().getContainerTokenSecretManager().createContainerToken(cId,nodeId,user,resource));
+  mockContainer.setNodeHttpAddress("127.0.0.1");
+  mockContainer.setNodeId(nodeId);
+  final StartContainerRequest startRequest=Records.newRecord(StartContainerRequest.class);
   startRequest.setContainerLaunchContext(containerLaunchContext);
   startRequest.setContainer(mockContainer);
-  containerManager.startContainer(startRequest);
+  final UserGroupInformation currentUser=UserGroupInformation.createRemoteUser(cId.toString());
+  currentUser.doAs(new PrivilegedExceptionAction<Void>(){
+    @Override public Void run() throws YarnRemoteException, IOException {
+      containerManager.startContainer(startRequest);
+      return null;
+    }
+  }
+);
   GetContainerStatusRequest request=Records.newRecord(GetContainerStatusRequest.class);
   request.setContainerId(cId);
   Container container=nm.getNMContext().getContainers().get(request.getContainerId());

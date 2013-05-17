@@ -1,13 +1,12 @@
 {
-  ContainerManagerImpl containerManager=nm.getContainerManager();
   File scriptFile=createUnhaltingScriptFile(cId,scriptFileDir,processStartFile);
   ContainerLaunchContext containerLaunchContext=recordFactory.newRecordInstance(ContainerLaunchContext.class);
-  Container mockContainer=mock(Container.class);
-  when(mockContainer.getId()).thenReturn(cId);
+  Container mockContainer=new ContainerPBImpl();
+  mockContainer.setId(cId);
   NodeId nodeId=BuilderUtils.newNodeId("localhost",1234);
-  when(mockContainer.getNodeId()).thenReturn(nodeId);
-  when(mockContainer.getNodeHttpAddress()).thenReturn("localhost:12345");
-  containerLaunchContext.setUser(user);
+  mockContainer.setNodeId(nodeId);
+  mockContainer.setNodeHttpAddress("localhost:12345");
+  containerLaunchContext.setUser(cId.toString());
   URL localResourceUri=ConverterUtils.getYarnUrlFromPath(localFS.makeQualified(new Path(scriptFile.getAbsolutePath())));
   LocalResource localResource=recordFactory.newRecordInstance(LocalResource.class);
   localResource.setResource(localResourceUri);
@@ -23,10 +22,21 @@
   List<String> commands=Arrays.asList(Shell.getRunScriptCommand(scriptFile));
   containerLaunchContext.setCommands(commands);
   Resource resource=BuilderUtils.newResource(1024,1);
-  when(mockContainer.getResource()).thenReturn(resource);
+  mockContainer.setResource(resource);
+  mockContainer.setContainerToken(getContainerToken(nm,cId,nodeId,cId.toString(),resource));
   StartContainerRequest startRequest=recordFactory.newRecordInstance(StartContainerRequest.class);
   startRequest.setContainerLaunchContext(containerLaunchContext);
   startRequest.setContainer(mockContainer);
+  UserGroupInformation currentUser=UserGroupInformation.createRemoteUser(cId.toString());
+  ContainerManager containerManager=currentUser.doAs(new PrivilegedAction<ContainerManager>(){
+    @Override public ContainerManager run(){
+      Configuration conf=new Configuration();
+      YarnRPC rpc=YarnRPC.create(conf);
+      InetSocketAddress containerManagerBindAddress=NetUtils.createSocketAddrForHost("127.0.0.1",12345);
+      return (ContainerManager)rpc.getProxy(ContainerManager.class,containerManagerBindAddress,conf);
+    }
+  }
+);
   containerManager.startContainer(startRequest);
   GetContainerStatusRequest request=recordFactory.newRecordInstance(GetContainerStatusRequest.class);
   request.setContainerId(cId);

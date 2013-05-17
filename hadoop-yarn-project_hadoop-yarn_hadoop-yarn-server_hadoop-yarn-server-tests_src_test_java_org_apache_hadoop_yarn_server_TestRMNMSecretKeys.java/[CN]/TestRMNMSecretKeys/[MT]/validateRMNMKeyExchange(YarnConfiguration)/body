@@ -1,0 +1,41 @@
+{
+  final DrainDispatcher dispatcher=new DrainDispatcher();
+  ResourceManager rm=new ResourceManager(){
+    @Override protected void doSecureLogin() throws IOException {
+    }
+    @Override protected Dispatcher createDispatcher(){
+      return dispatcher;
+    }
+  }
+;
+  rm.init(conf);
+  rm.start();
+  MockNM nm=new MockNM("host:1234",3072,rm.getResourceTrackerService());
+  RegisterNodeManagerResponse registrationResponse=nm.registerNode();
+  MasterKey masterKey=registrationResponse.getMasterKey();
+  Assert.assertNotNull("Registration should cause a key-update!",masterKey);
+  dispatcher.await();
+  NodeHeartbeatResponse response=nm.nodeHeartbeat(true);
+  Assert.assertNull("First heartbeat after registration shouldn't get any key updates!",response.getMasterKey());
+  dispatcher.await();
+  response=nm.nodeHeartbeat(true);
+  Assert.assertNull("Even second heartbeat after registration shouldn't get any key updates!",response.getMasterKey());
+  dispatcher.await();
+  RMContainerTokenSecretManager secretManager=rm.getRMContainerTokenSecretManager();
+  secretManager.rollMasterKey();
+  response=nm.nodeHeartbeat(true);
+  Assert.assertNotNull("Heartbeats after roll-over and before activation should not err out.",response.getMasterKey());
+  Assert.assertEquals("Roll-over should have incremented the key-id only by one!",masterKey.getKeyId() + 1,response.getMasterKey().getKeyId());
+  dispatcher.await();
+  response=nm.nodeHeartbeat(true);
+  Assert.assertNull("Second heartbeat after roll-over shouldn't get any key updates!",response.getMasterKey());
+  dispatcher.await();
+  secretManager.activateNextMasterKey();
+  response=nm.nodeHeartbeat(true);
+  Assert.assertNull("Activation shouldn't cause any key updates!",response.getMasterKey());
+  dispatcher.await();
+  response=nm.nodeHeartbeat(true);
+  Assert.assertNull("Even second heartbeat after activation shouldn't get any key updates!",response.getMasterKey());
+  dispatcher.await();
+  rm.stop();
+}

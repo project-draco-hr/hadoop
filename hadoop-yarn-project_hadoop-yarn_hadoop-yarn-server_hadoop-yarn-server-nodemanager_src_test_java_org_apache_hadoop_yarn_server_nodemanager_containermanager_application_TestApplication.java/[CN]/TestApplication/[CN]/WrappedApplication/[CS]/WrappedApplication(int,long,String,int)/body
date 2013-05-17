@@ -1,6 +1,7 @@
 {
+  Configuration conf=new Configuration();
   dispatcher=new DrainDispatcher();
-  dispatcher.init(new Configuration());
+  dispatcher.init(conf);
   localizerBus=mock(EventHandler.class);
   launcherBus=mock(EventHandler.class);
   monitorBus=mock(EventHandler.class);
@@ -14,12 +15,20 @@
   dispatcher.register(ContainerEventType.class,containerBus);
   dispatcher.register(LogHandlerEventType.class,logAggregationBus);
   context=mock(Context.class);
+  when(context.getContainerTokenSecretManager()).thenReturn(new NMContainerTokenSecretManager(conf));
+  MasterKey masterKey=new MasterKeyPBImpl();
+  masterKey.setKeyId(123);
+  masterKey.setBytes(ByteBuffer.wrap(new byte[]{(new Integer(123).byteValue())}));
+  context.getContainerTokenSecretManager().setMasterKey(masterKey);
   this.user=user;
   this.appId=BuilderUtils.newApplicationId(timestamp,id);
   app=new ApplicationImpl(dispatcher,new ApplicationACLsManager(new Configuration()),this.user,appId,null,context);
   containers=new ArrayList<Container>();
   for (int i=0; i < numContainers; i++) {
-    containers.add(createMockedContainer(this.appId,i));
+    Container container=createMockedContainer(this.appId,i);
+    containers.add(container);
+    context.getContainerTokenSecretManager().startContainerSuccessful(new ContainerTokenIdentifier(container.getContainer().getId(),"","",null,System.currentTimeMillis() + 1000,masterKey.getKeyId()));
+    Assert.assertFalse(context.getContainerTokenSecretManager().isValidStartContainerRequest(container.getContainer().getId()));
   }
   dispatcher.start();
 }
