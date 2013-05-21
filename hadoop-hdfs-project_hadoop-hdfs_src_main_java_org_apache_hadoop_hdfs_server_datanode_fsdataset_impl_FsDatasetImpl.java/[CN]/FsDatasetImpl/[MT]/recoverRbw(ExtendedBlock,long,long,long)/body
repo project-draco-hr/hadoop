@@ -12,8 +12,16 @@
   if (replicaGenerationStamp < b.getGenerationStamp() || replicaGenerationStamp > newGS) {
     throw new ReplicaNotFoundException(ReplicaNotFoundException.UNEXPECTED_GS_REPLICA + b + ". Expected GS range is ["+ b.getGenerationStamp()+ ", "+ newGS+ "].");
   }
-  if (rbw.getBytesAcked() < minBytesRcvd || rbw.getNumBytes() > maxBytesRcvd) {
-    throw new ReplicaNotFoundException("Unmatched length replica " + replicaInfo + ": BytesAcked = "+ rbw.getBytesAcked()+ " BytesRcvd = "+ rbw.getNumBytes()+ " are not in the range of ["+ minBytesRcvd+ ", "+ maxBytesRcvd+ "].");
+  long bytesAcked=rbw.getBytesAcked();
+  long numBytes=rbw.getNumBytes();
+  if (bytesAcked < minBytesRcvd || numBytes > maxBytesRcvd) {
+    throw new ReplicaNotFoundException("Unmatched length replica " + replicaInfo + ": BytesAcked = "+ bytesAcked+ " BytesRcvd = "+ numBytes+ " are not in the range of ["+ minBytesRcvd+ ", "+ maxBytesRcvd+ "].");
+  }
+  if (numBytes > bytesAcked) {
+    final File replicafile=rbw.getBlockFile();
+    truncateBlock(replicafile,rbw.getMetaFile(),numBytes,bytesAcked);
+    rbw.setNumBytes(bytesAcked);
+    rbw.setLastChecksumAndDataLen(bytesAcked,null);
   }
   bumpReplicaGS(rbw,newGS);
   return rbw;

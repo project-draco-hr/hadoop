@@ -23,8 +23,8 @@
   if (replicaInfo.getNumBytes() < offsetInBlock) {
     replicaInfo.setNumBytes(offsetInBlock);
   }
-  if (responder != null && !syncBlock) {
-    ((PacketResponder)responder.getRunnable()).enqueue(seqno,lastPacketInBlock,offsetInBlock);
+  if (responder != null && !syncBlock && !shouldVerifyChecksum()) {
+    ((PacketResponder)responder.getRunnable()).enqueue(seqno,lastPacketInBlock,offsetInBlock,Status.SUCCESS);
   }
   if (mirrorOut != null && !mirrorError) {
     try {
@@ -50,8 +50,21 @@
     if (checksumBuf.capacity() != checksumLen) {
       throw new IOException("Length of checksums in packet " + checksumBuf.capacity() + " does not match calculated checksum "+ "length "+ checksumLen);
     }
-    if (mirrorOut == null || isDatanode || needsChecksumTranslation) {
-      verifyChunks(dataBuf,checksumBuf);
+    if (shouldVerifyChecksum()) {
+      try {
+        verifyChunks(dataBuf,checksumBuf);
+      }
+ catch (      IOException ioe) {
+        if (responder != null) {
+          try {
+            ((PacketResponder)responder.getRunnable()).enqueue(seqno,lastPacketInBlock,offsetInBlock,Status.ERROR_CHECKSUM);
+            Thread.sleep(3000);
+          }
+ catch (          InterruptedException e) {
+          }
+        }
+        throw new IOException("Terminating due to a checksum error." + ioe);
+      }
       if (needsChecksumTranslation) {
         translateChunks(dataBuf,checksumBuf);
       }
@@ -99,8 +112,8 @@
       throw iex;
     }
   }
-  if (responder != null && syncBlock) {
-    ((PacketResponder)responder.getRunnable()).enqueue(seqno,lastPacketInBlock,offsetInBlock);
+  if (responder != null && (syncBlock || shouldVerifyChecksum())) {
+    ((PacketResponder)responder.getRunnable()).enqueue(seqno,lastPacketInBlock,offsetInBlock,Status.SUCCESS);
   }
   if (throttler != null) {
     throttler.throttle(len);
