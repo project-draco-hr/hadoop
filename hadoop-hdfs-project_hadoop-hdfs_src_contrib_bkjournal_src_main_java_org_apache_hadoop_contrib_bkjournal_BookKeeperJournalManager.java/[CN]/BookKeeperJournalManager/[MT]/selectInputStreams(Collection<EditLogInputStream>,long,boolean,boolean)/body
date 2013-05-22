@@ -1,0 +1,38 @@
+{
+  List<EditLogLedgerMetadata> currentLedgerList=getLedgerList(fromTxId,inProgressOk);
+  try {
+    BookKeeperEditLogInputStream elis=null;
+    for (    EditLogLedgerMetadata l : currentLedgerList) {
+      long lastTxId=l.getLastTxId();
+      if (l.isInProgress()) {
+        lastTxId=recoverLastTxId(l,false);
+      }
+      if (fromTxId >= l.getFirstTxId() && fromTxId <= lastTxId) {
+        LedgerHandle h;
+        if (l.isInProgress()) {
+          h=bkc.openLedgerNoRecovery(l.getLedgerId(),BookKeeper.DigestType.MAC,digestpw.getBytes());
+        }
+ else {
+          h=bkc.openLedger(l.getLedgerId(),BookKeeper.DigestType.MAC,digestpw.getBytes());
+        }
+        elis=new BookKeeperEditLogInputStream(h,l);
+        elis.skipTo(fromTxId);
+      }
+ else {
+        return;
+      }
+      streams.add(elis);
+      if (elis.getLastTxId() == HdfsConstants.INVALID_TXID) {
+        return;
+      }
+      fromTxId=elis.getLastTxId() + 1;
+    }
+  }
+ catch (  BKException e) {
+    throw new IOException("Could not open ledger for " + fromTxId,e);
+  }
+catch (  InterruptedException ie) {
+    Thread.currentThread().interrupt();
+    throw new IOException("Interrupted opening ledger for " + fromTxId,ie);
+  }
+}

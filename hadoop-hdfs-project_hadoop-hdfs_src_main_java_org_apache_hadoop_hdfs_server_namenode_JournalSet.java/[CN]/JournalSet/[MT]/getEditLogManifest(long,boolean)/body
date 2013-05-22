@@ -1,0 +1,43 @@
+{
+  List<RemoteEditLog> allLogs=Lists.newArrayList();
+  for (  JournalAndStream j : journals) {
+    if (j.getManager() instanceof FileJournalManager) {
+      FileJournalManager fjm=(FileJournalManager)j.getManager();
+      try {
+        allLogs.addAll(fjm.getRemoteEditLogs(fromTxId,forReading));
+      }
+ catch (      Throwable t) {
+        LOG.warn("Cannot list edit logs in " + fjm,t);
+      }
+    }
+  }
+  ImmutableListMultimap<Long,RemoteEditLog> logsByStartTxId=Multimaps.index(allLogs,RemoteEditLog.GET_START_TXID);
+  long curStartTxId=fromTxId;
+  List<RemoteEditLog> logs=Lists.newArrayList();
+  while (true) {
+    ImmutableList<RemoteEditLog> logGroup=logsByStartTxId.get(curStartTxId);
+    if (logGroup.isEmpty()) {
+      SortedSet<Long> startTxIds=Sets.newTreeSet(logsByStartTxId.keySet());
+      startTxIds=startTxIds.tailSet(curStartTxId);
+      if (startTxIds.isEmpty()) {
+        break;
+      }
+ else {
+        if (LOG.isDebugEnabled()) {
+          LOG.debug("Found gap in logs at " + curStartTxId + ": "+ "not returning previous logs in manifest.");
+        }
+        logs.clear();
+        curStartTxId=startTxIds.first();
+        continue;
+      }
+    }
+    RemoteEditLog bestLog=Collections.max(logGroup);
+    logs.add(bestLog);
+    curStartTxId=bestLog.getEndTxId() + 1;
+  }
+  RemoteEditLogManifest ret=new RemoteEditLogManifest(logs);
+  if (LOG.isDebugEnabled()) {
+    LOG.debug("Generated manifest for logs since " + fromTxId + ":"+ ret);
+  }
+  return ret;
+}
