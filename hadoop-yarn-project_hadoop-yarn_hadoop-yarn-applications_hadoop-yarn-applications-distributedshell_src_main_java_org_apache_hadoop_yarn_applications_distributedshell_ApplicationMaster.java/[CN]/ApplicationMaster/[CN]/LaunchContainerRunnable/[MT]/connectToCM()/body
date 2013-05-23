@@ -1,7 +1,15 @@
 {
   LOG.debug("Connecting to ContainerManager for containerid=" + container.getId());
   String cmIpPortStr=container.getNodeId().getHost() + ":" + container.getNodeId().getPort();
-  InetSocketAddress cmAddress=NetUtils.createSocketAddr(cmIpPortStr);
+  final InetSocketAddress cmAddress=NetUtils.createSocketAddr(cmIpPortStr);
   LOG.info("Connecting to ContainerManager at " + cmIpPortStr);
-  this.cm=((ContainerManager)rpc.getProxy(ContainerManager.class,cmAddress,conf));
+  UserGroupInformation ugi=UserGroupInformation.createRemoteUser(container.getId().toString());
+  Token<ContainerTokenIdentifier> token=ProtoUtils.convertFromProtoFormat(container.getContainerToken(),cmAddress);
+  ugi.addToken(token);
+  this.cm=ugi.doAs(new PrivilegedAction<ContainerManager>(){
+    @Override public ContainerManager run(){
+      return ((ContainerManager)rpc.getProxy(ContainerManager.class,cmAddress,conf));
+    }
+  }
+);
 }
