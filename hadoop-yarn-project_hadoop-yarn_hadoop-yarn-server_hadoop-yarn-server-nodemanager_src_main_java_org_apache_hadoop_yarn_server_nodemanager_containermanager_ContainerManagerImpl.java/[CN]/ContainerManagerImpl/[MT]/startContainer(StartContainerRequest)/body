@@ -14,7 +14,7 @@
     LOG.error(msg);
     throw RPCUtil.getRemoteException(new InvalidContainerException(msg));
   }
-  LOG.info("Start request for " + containerIDStr + " by user "+ launchContext.getUser());
+  LOG.info("Start request for " + containerIDStr + " by user "+ tokenId.getApplicationSubmitter());
   ByteBuffer tokens=launchContext.getTokens();
   Credentials credentials=new Credentials();
   if (tokens != null) {
@@ -33,20 +33,21 @@
       throw RPCUtil.getRemoteException(e);
     }
   }
-  Container container=new ContainerImpl(getConfig(),this.dispatcher,launchContext,lauchContainer,credentials,metrics);
+  String user=tokenId.getApplicationSubmitter();
+  Container container=new ContainerImpl(getConfig(),this.dispatcher,launchContext,lauchContainer,credentials,metrics,tokenId);
   ApplicationId applicationID=containerID.getApplicationAttemptId().getApplicationId();
   if (context.getContainers().putIfAbsent(containerID,container) != null) {
-    NMAuditLogger.logFailure(launchContext.getUser(),AuditConstants.START_CONTAINER,"ContainerManagerImpl","Container already running on this node!",applicationID,containerID);
+    NMAuditLogger.logFailure(user,AuditConstants.START_CONTAINER,"ContainerManagerImpl","Container already running on this node!",applicationID,containerID);
     throw RPCUtil.getRemoteException("Container " + containerIDStr + " already is running on this node!!");
   }
-  Application application=new ApplicationImpl(dispatcher,this.aclsManager,launchContext.getUser(),applicationID,credentials,context);
+  Application application=new ApplicationImpl(dispatcher,this.aclsManager,user,applicationID,credentials,context);
   if (null == context.getApplications().putIfAbsent(applicationID,application)) {
     LOG.info("Creating a new application reference for app " + applicationID);
     dispatcher.getEventHandler().handle(new ApplicationInitEvent(applicationID,container.getLaunchContext().getApplicationACLs()));
   }
   dispatcher.getEventHandler().handle(new ApplicationContainerInitEvent(container));
   this.context.getContainerTokenSecretManager().startContainerSuccessful(tokenId);
-  NMAuditLogger.logSuccess(launchContext.getUser(),AuditConstants.START_CONTAINER,"ContainerManageImpl",applicationID,containerID);
+  NMAuditLogger.logSuccess(user,AuditConstants.START_CONTAINER,"ContainerManageImpl",applicationID,containerID);
   StartContainerResponse response=recordFactory.newRecordInstance(StartContainerResponse.class);
   response.setAllServiceResponse(auxiliaryServices.getMeta());
   metrics.launchedContainer();
