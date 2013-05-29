@@ -1,0 +1,23 @@
+{
+  final Path root=new Path("/");
+  hdfs.allowSnapshot(root);
+  hdfs.createSnapshot(root,"s1");
+  cluster.shutdown();
+  cluster=new MiniDFSCluster.Builder(conf).format(false).numDataNodes(REPLICATION).build();
+  cluster.waitActive();
+  fsn=cluster.getNamesystem();
+  hdfs=cluster.getFileSystem();
+  hdfs.setSafeMode(SafeModeAction.SAFEMODE_ENTER);
+  hdfs.saveNamespace();
+  hdfs.setSafeMode(SafeModeAction.SAFEMODE_LEAVE);
+  cluster.shutdown();
+  cluster=new MiniDFSCluster.Builder(conf).format(false).numDataNodes(REPLICATION).build();
+  cluster.waitActive();
+  fsn=cluster.getNamesystem();
+  hdfs=cluster.getFileSystem();
+  INodeDirectorySnapshottable rootNode=(INodeDirectorySnapshottable)fsn.dir.getINode4Write(root.toString());
+  assertTrue("The children list of root should be empty",rootNode.getChildrenList(null).isEmpty());
+  List<DirectoryDiff> diffList=rootNode.getDiffs().asList();
+  assertEquals(1,diffList.size());
+  assertEquals("s1",diffList.get(0).getSnapshot().getRoot().getLocalName());
+}
