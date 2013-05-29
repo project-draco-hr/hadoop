@@ -1,0 +1,45 @@
+{
+  Configuration conf=new Configuration();
+  conf.setInt(YarnConfiguration.NM_CLIENT_ASYNC_THREAD_POOL_MAX_SIZE,10);
+  int expectedSuccess=40;
+  int expectedFailure=40;
+  asyncClient=new MockNMClientAsync1(expectedSuccess,expectedFailure);
+  asyncClient.init(conf);
+  Assert.assertEquals("The max thread pool size is not correctly set",10,asyncClient.maxThreadPoolSize);
+  asyncClient.start();
+  for (int i=0; i < expectedSuccess + expectedFailure; ++i) {
+    if (i == expectedSuccess) {
+      while (!((TestCallbackHandler1)asyncClient.callbackHandler).isAllSuccessCallsExecuted()) {
+        Thread.sleep(10);
+      }
+      asyncClient.client=mockNMClient(1);
+    }
+    Container container=mockContainer(i);
+    ContainerLaunchContext clc=recordFactory.newRecordInstance(ContainerLaunchContext.class);
+    asyncClient.startContainer(container,clc);
+  }
+  while (!((TestCallbackHandler1)asyncClient.callbackHandler).isStartAndQueryFailureCallsExecuted()) {
+    Thread.sleep(10);
+  }
+  asyncClient.client=mockNMClient(2);
+  ((TestCallbackHandler1)asyncClient.callbackHandler).path=false;
+  for (int i=0; i < expectedFailure; ++i) {
+    Container container=mockContainer(expectedSuccess + expectedFailure + i);
+    ContainerLaunchContext clc=recordFactory.newRecordInstance(ContainerLaunchContext.class);
+    asyncClient.startContainer(container,clc);
+  }
+  while (!((TestCallbackHandler1)asyncClient.callbackHandler).isStopFailureCallsExecuted()) {
+    Thread.sleep(10);
+  }
+  for (  String errorMsg : ((TestCallbackHandler1)asyncClient.callbackHandler).errorMsgs) {
+    System.out.println(errorMsg);
+  }
+  Assert.assertEquals("Error occurs in CallbackHandler",0,((TestCallbackHandler1)asyncClient.callbackHandler).errorMsgs.size());
+  for (  String errorMsg : ((MockNMClientAsync1)asyncClient).errorMsgs) {
+    System.out.println(errorMsg);
+  }
+  Assert.assertEquals("Error occurs in ContainerEventProcessor",0,((MockNMClientAsync1)asyncClient).errorMsgs.size());
+  asyncClient.stop();
+  Assert.assertFalse("The thread of Container Management Event Dispatcher is still alive",asyncClient.eventDispatcherThread.isAlive());
+  Assert.assertTrue("The thread pool is not shut down",asyncClient.threadPool.isShutdown());
+}

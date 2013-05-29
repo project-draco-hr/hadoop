@@ -1,0 +1,60 @@
+{
+  int size=containers.size();
+  int i=0;
+  for (  Container container : containers) {
+    try {
+      nmClient.getContainerStatus(container.getId(),container.getNodeId(),container.getContainerToken());
+      fail("Exception is expected");
+    }
+ catch (    YarnRemoteException e) {
+      assertTrue("The thrown exception is not expected",e.getMessage().contains("is not handled by this NodeManager"));
+    }
+    try {
+      nmClient.stopContainer(container.getId(),container.getNodeId(),container.getContainerToken());
+      fail("Exception is expected");
+    }
+ catch (    YarnRemoteException e) {
+      assertTrue("The thrown exception is not expected",e.getMessage().contains("is either not started yet or already stopped"));
+    }
+    Credentials ts=new Credentials();
+    DataOutputBuffer dob=new DataOutputBuffer();
+    ts.writeTokenStorageToStream(dob);
+    ByteBuffer securityTokens=ByteBuffer.wrap(dob.getData(),0,dob.getLength());
+    ContainerLaunchContext clc=Records.newRecord(ContainerLaunchContext.class);
+    clc.setTokens(securityTokens);
+    try {
+      nmClient.startContainer(container,clc);
+    }
+ catch (    YarnRemoteException e) {
+      fail("Exception is not expected");
+    }
+    if (++i < size) {
+      try {
+        ContainerStatus status=nmClient.getContainerStatus(container.getId(),container.getNodeId(),container.getContainerToken());
+        assertEquals(container.getId(),status.getContainerId());
+        assertEquals(ContainerState.RUNNING,status.getState());
+        assertEquals("",status.getDiagnostics());
+        assertEquals(-1000,status.getExitStatus());
+      }
+ catch (      YarnRemoteException e) {
+        fail("Exception is not expected");
+      }
+      try {
+        nmClient.stopContainer(container.getId(),container.getNodeId(),container.getContainerToken());
+      }
+ catch (      YarnRemoteException e) {
+        fail("Exception is not expected");
+      }
+      try {
+        ContainerStatus status=nmClient.getContainerStatus(container.getId(),container.getNodeId(),container.getContainerToken());
+        assertEquals(container.getId(),status.getContainerId());
+        assertEquals(ContainerState.RUNNING,status.getState());
+        assertTrue("" + i,status.getDiagnostics().contains("Container killed by the ApplicationMaster."));
+        assertEquals(-1000,status.getExitStatus());
+      }
+ catch (      YarnRemoteException e) {
+        fail("Exception is not expected");
+      }
+    }
+  }
+}

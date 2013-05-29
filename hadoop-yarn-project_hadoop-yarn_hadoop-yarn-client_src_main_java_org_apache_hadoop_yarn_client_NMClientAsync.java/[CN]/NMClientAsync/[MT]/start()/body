@@ -1,0 +1,40 @@
+{
+  client.start();
+  ThreadFactory tf=new ThreadFactoryBuilder().setNameFormat(this.getClass().getName() + " #%d").setDaemon(true).build();
+  int initSize=Math.min(INITIAL_THREAD_POOL_SIZE,maxThreadPoolSize);
+  threadPool=new ThreadPoolExecutor(initSize,Integer.MAX_VALUE,1,TimeUnit.HOURS,new LinkedBlockingQueue<Runnable>(),tf);
+  eventDispatcherThread=new Thread(){
+    @Override public void run(){
+      ContainerEvent event=null;
+      Set<String> allNodes=new HashSet<String>();
+      while (!stopped.get() && !Thread.currentThread().isInterrupted()) {
+        try {
+          event=events.take();
+        }
+ catch (        InterruptedException e) {
+          if (!stopped.get()) {
+            LOG.error("Returning, thread interrupted",e);
+          }
+          return;
+        }
+        allNodes.add(event.getNodeId().toString());
+        int threadPoolSize=threadPool.getCorePoolSize();
+        if (threadPoolSize != maxThreadPoolSize) {
+          int nodeNum=allNodes.size();
+          int idealThreadPoolSize=Math.min(maxThreadPoolSize,nodeNum);
+          if (threadPoolSize < idealThreadPoolSize) {
+            int newThreadPoolSize=Math.min(maxThreadPoolSize,idealThreadPoolSize + INITIAL_THREAD_POOL_SIZE);
+            LOG.info("Set NMClientAsync thread pool size to " + newThreadPoolSize + " as the number of nodes to talk to is "+ nodeNum);
+            threadPool.setCorePoolSize(newThreadPoolSize);
+          }
+        }
+        threadPool.execute(getContainerEventProcessor(event));
+      }
+    }
+  }
+;
+  eventDispatcherThread.setName("Container  Event Dispatcher");
+  eventDispatcherThread.setDaemon(false);
+  eventDispatcherThread.start();
+  super.start();
+}

@@ -1,0 +1,51 @@
+{
+  conf=new YarnConfiguration();
+  yarnCluster=new MiniYARNCluster(TestAMRMClient.class.getName(),nodeCount,1,1);
+  yarnCluster.init(conf);
+  yarnCluster.start();
+  assertNotNull(yarnCluster);
+  assertEquals(STATE.STARTED,yarnCluster.getServiceState());
+  yarnClient=new YarnClientImpl();
+  yarnClient.init(conf);
+  yarnClient.start();
+  assertNotNull(yarnClient);
+  assertEquals(STATE.STARTED,yarnClient.getServiceState());
+  nodeReports=yarnClient.getNodeReports();
+  GetNewApplicationResponse newApp=yarnClient.getNewApplication();
+  ApplicationId appId=newApp.getApplicationId();
+  ApplicationSubmissionContext appContext=Records.newRecord(ApplicationSubmissionContext.class);
+  appContext.setApplicationId(appId);
+  appContext.setApplicationName("Test");
+  Priority pri=Priority.newInstance(0);
+  appContext.setPriority(pri);
+  appContext.setQueue("default");
+  ContainerLaunchContext amContainer=Records.newRecord(ContainerLaunchContext.class);
+  appContext.setAMContainerSpec(amContainer);
+  appContext.setUnmanagedAM(true);
+  SubmitApplicationRequest appRequest=Records.newRecord(SubmitApplicationRequest.class);
+  appRequest.setApplicationSubmissionContext(appContext);
+  yarnClient.submitApplication(appContext);
+  int iterationsLeft=30;
+  while (iterationsLeft > 0) {
+    ApplicationReport appReport=yarnClient.getApplicationReport(appId);
+    if (appReport.getYarnApplicationState() == YarnApplicationState.ACCEPTED) {
+      attemptId=appReport.getCurrentApplicationAttemptId();
+      break;
+    }
+    sleep(1000);
+    --iterationsLeft;
+  }
+  if (iterationsLeft == 0) {
+    fail("Application hasn't bee started");
+  }
+  rmClient=new AMRMClientImpl(attemptId);
+  rmClient.init(conf);
+  rmClient.start();
+  assertNotNull(rmClient);
+  assertEquals(STATE.STARTED,rmClient.getServiceState());
+  nmClient=new NMClientImpl();
+  nmClient.init(conf);
+  nmClient.start();
+  assertNotNull(nmClient);
+  assertEquals(STATE.STARTED,nmClient.getServiceState());
+}
