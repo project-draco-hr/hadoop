@@ -1,0 +1,38 @@
+{
+  final Path root=new Path("/");
+  final Path foo=new Path(root,"foo");
+  final Path bar=new Path(foo,"bar");
+  DFSTestUtil.createFile(hdfs,bar,BLOCKSIZE,REPL,SEED);
+  SnapshotTestHelper.createSnapshot(hdfs,root,snap1);
+  final Path invalid=new Path(foo,HdfsConstants.DOT_SNAPSHOT_DIR);
+  try {
+    hdfs.rename(bar,invalid);
+    fail("expect exception since invalid name is used for rename");
+  }
+ catch (  Exception e) {
+    GenericTestUtils.assertExceptionContains("\"" + HdfsConstants.DOT_SNAPSHOT_DIR + "\" is a reserved name",e);
+  }
+  INodeDirectoryWithSnapshot fooNode=(INodeDirectoryWithSnapshot)fsdir.getINode4Write(foo.toString());
+  ReadOnlyList<INode> children=fooNode.getChildrenList(null);
+  assertEquals(1,children.size());
+  List<DirectoryDiff> diffList=fooNode.getDiffs().asList();
+  assertEquals(1,diffList.size());
+  DirectoryDiff diff=diffList.get(0);
+  assertEquals(snap1,Snapshot.getSnapshotName(diff.snapshot));
+  assertTrue(diff.getChildrenDiff().getList(ListType.DELETED).isEmpty());
+  assertTrue(diff.getChildrenDiff().getList(ListType.CREATED).isEmpty());
+  INodeFileWithSnapshot barNode=(INodeFileWithSnapshot)fsdir.getINode4Write(bar.toString());
+  assertSame(barNode,children.get(0));
+  assertSame(fooNode,barNode.getParent());
+  List<FileDiff> barDiffList=barNode.getDiffs().asList();
+  assertEquals(1,barDiffList.size());
+  FileDiff barDiff=barDiffList.get(0);
+  assertEquals(snap1,Snapshot.getSnapshotName(barDiff.snapshot));
+  hdfs.setSafeMode(SafeModeAction.SAFEMODE_ENTER);
+  hdfs.saveNamespace();
+  hdfs.setSafeMode(SafeModeAction.SAFEMODE_LEAVE);
+  cluster.shutdown();
+  cluster=new MiniDFSCluster.Builder(conf).format(false).numDataNodes(REPL).build();
+  cluster.waitActive();
+  restartClusterAndCheckImage();
+}
