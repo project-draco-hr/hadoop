@@ -1,0 +1,31 @@
+{
+  MemoryRMStateStore memStore=new MemoryRMStateStore();
+  memStore.init(conf);
+  RMState rmState=memStore.getState();
+  Map<RMDelegationTokenIdentifier,Long> rmDTState=rmState.getRMDTSecretManagerState().getTokenState();
+  Set<DelegationKey> rmDTMasterKeyState=rmState.getRMDTSecretManagerState().getMasterKeyState();
+  MockRM rm1=new MyMockRM(conf,memStore);
+  rm1.start();
+  RMDelegationTokenSecretManager dtSecretManager=rm1.getRMDTSecretManager();
+  Assert.assertEquals(dtSecretManager.getAllMasterKeys(),rmDTMasterKeyState);
+  Set<DelegationKey> expiringKeys=new HashSet<DelegationKey>();
+  expiringKeys.addAll(dtSecretManager.getAllMasterKeys());
+  DelegationKey oldCurrentKey=((TestRMDelegationTokenSecretManager)dtSecretManager).getCurrentKey();
+  GetDelegationTokenRequest request=mock(GetDelegationTokenRequest.class);
+  when(request.getRenewer()).thenReturn("renewer1");
+  GetDelegationTokenResponse response=rm1.getClientRMService().getDelegationToken(request);
+  DelegationToken delegationToken=response.getRMDelegationToken();
+  Token<RMDelegationTokenIdentifier> token1=ProtoUtils.convertFromProtoFormat(delegationToken,null);
+  RMDelegationTokenIdentifier dtId1=token1.decodeIdentifier();
+  while (((TestRMDelegationTokenSecretManager)dtSecretManager).numUpdatedKeys.get() < 1) {
+    Thread.sleep(200);
+  }
+  Assert.assertTrue(rmDTMasterKeyState.contains(oldCurrentKey));
+  DelegationKey newCurrentKey=((TestRMDelegationTokenSecretManager)dtSecretManager).getCurrentKey();
+  Assert.assertTrue(rmDTMasterKeyState.contains(newCurrentKey));
+  while (((TestRMDelegationTokenSecretManager)dtSecretManager).numUpdatedKeys.get() < 6) {
+    Thread.sleep(200);
+  }
+  Assert.assertFalse(rmDTState.containsKey(dtId1));
+  rm1.stop();
+}

@@ -1,0 +1,73 @@
+{
+  conf.setInt(YarnConfiguration.RM_AM_MAX_ATTEMPTS,2);
+  MemoryRMStateStore memStore=new MemoryRMStateStore();
+  memStore.init(conf);
+  RMState rmState=memStore.getState();
+  Map<ApplicationId,ApplicationState> rmAppState=rmState.getApplicationState();
+  Map<RMDelegationTokenIdentifier,Long> rmDTState=rmState.getRMDTSecretManagerState().getTokenState();
+  Set<DelegationKey> rmDTMasterKeyState=rmState.getRMDTSecretManagerState().getMasterKeyState();
+  MockRM rm1=new TestSecurityMockRM(conf,memStore);
+  rm1.start();
+  Credentials ts=new Credentials();
+  GetDelegationTokenRequest request1=mock(GetDelegationTokenRequest.class);
+  when(request1.getRenewer()).thenReturn("renewer1");
+  GetDelegationTokenResponse response1=rm1.getClientRMService().getDelegationToken(request1);
+  DelegationToken delegationToken1=response1.getRMDelegationToken();
+  Token<RMDelegationTokenIdentifier> token1=ProtoUtils.convertFromProtoFormat(delegationToken1,null);
+  RMDelegationTokenIdentifier dtId1=token1.decodeIdentifier();
+  HashSet<RMDelegationTokenIdentifier> tokenIdentSet=new HashSet<RMDelegationTokenIdentifier>();
+  ts.addToken(token1.getService(),token1);
+  tokenIdentSet.add(dtId1);
+  RMApp app=rm1.submitApp(200,"name","user",new HashMap<ApplicationAccessType,String>(),false,"default",1,ts);
+  ApplicationState appState=rmAppState.get(app.getApplicationId());
+  Assert.assertNotNull(appState);
+  Set<DelegationKey> allKeysRM1=rm1.getRMDTSecretManager().getAllMasterKeys();
+  Assert.assertEquals(allKeysRM1,rmDTMasterKeyState);
+  Map<RMDelegationTokenIdentifier,Long> allTokensRM1=rm1.getRMDTSecretManager().getAllTokens();
+  Assert.assertEquals(tokenIdentSet,allTokensRM1.keySet());
+  Assert.assertEquals(allTokensRM1,rmDTState);
+  Assert.assertEquals(rm1.getRMDTSecretManager().getLatestDTSequenceNumber(),rmState.getRMDTSecretManagerState().getDTSequenceNumber());
+  GetDelegationTokenRequest request2=mock(GetDelegationTokenRequest.class);
+  when(request2.getRenewer()).thenReturn("renewer2");
+  GetDelegationTokenResponse response2=rm1.getClientRMService().getDelegationToken(request2);
+  DelegationToken delegationToken2=response2.getRMDelegationToken();
+  Token<RMDelegationTokenIdentifier> token2=ProtoUtils.convertFromProtoFormat(delegationToken2,null);
+  RMDelegationTokenIdentifier dtId2=token2.decodeIdentifier();
+  try {
+    rm1.getRMDTSecretManager().cancelToken(token2,UserGroupInformation.getCurrentUser().getUserName());
+  }
+ catch (  Exception e) {
+    Assert.fail();
+  }
+  Assert.assertEquals(rm1.getRMDTSecretManager().getLatestDTSequenceNumber(),dtId2.getSequenceNumber());
+  Assert.assertFalse(rmDTState.containsKey(dtId2));
+  MockRM rm2=new TestSecurityMockRM(conf,memStore);
+  rm2.start();
+  Map<RMDelegationTokenIdentifier,Long> allTokensRM2=rm2.getRMDTSecretManager().getAllTokens();
+  Assert.assertEquals(allTokensRM1,allTokensRM2);
+  Assert.assertTrue(rm2.getRMDTSecretManager().getAllMasterKeys().containsAll(allKeysRM1));
+  Assert.assertEquals(rm1.getRMDTSecretManager().getLatestDTSequenceNumber(),rm2.getRMDTSecretManager().getLatestDTSequenceNumber());
+  Long renewDateBeforeRenew=allTokensRM2.get(dtId1);
+  try {
+    rm2.getRMDTSecretManager().renewToken(token1,"renewer1");
+  }
+ catch (  Exception e) {
+    Assert.fail();
+  }
+  allTokensRM2=rm2.getRMDTSecretManager().getAllTokens();
+  Long renewDateAfterRenew=allTokensRM2.get(dtId1);
+  Assert.assertTrue(renewDateAfterRenew > renewDateBeforeRenew);
+  Assert.assertTrue(rmDTState.containsValue(renewDateAfterRenew));
+  Assert.assertFalse(rmDTState.containsValue(renewDateBeforeRenew));
+  try {
+    rm2.getRMDTSecretManager().cancelToken(token1,UserGroupInformation.getCurrentUser().getUserName());
+  }
+ catch (  Exception e) {
+    Assert.fail();
+  }
+  allTokensRM2=rm2.getRMDTSecretManager().getAllTokens();
+  Assert.assertFalse(allTokensRM2.containsKey(dtId1));
+  Assert.assertFalse(rmDTState.containsKey(dtId1));
+  rm1.stop();
+  rm2.stop();
+}
