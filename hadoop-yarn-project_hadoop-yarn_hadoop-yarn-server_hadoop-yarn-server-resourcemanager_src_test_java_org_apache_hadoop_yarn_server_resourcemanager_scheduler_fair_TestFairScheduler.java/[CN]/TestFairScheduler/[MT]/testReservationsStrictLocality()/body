@@ -1,0 +1,25 @@
+{
+  RMNode node1=MockNodes.newNodeInfo(1,Resources.createResource(1024),1,"127.0.0.1");
+  RMNode node2=MockNodes.newNodeInfo(1,Resources.createResource(1024),2,"127.0.0.2");
+  NodeAddedSchedulerEvent nodeEvent2=new NodeAddedSchedulerEvent(node1);
+  scheduler.handle(nodeEvent2);
+  ApplicationAttemptId attId=createSchedulingRequest(1024,"queue1","user1",0);
+  FSSchedulerApp app=scheduler.applications.get(attId);
+  ResourceRequest nodeRequest=createResourceRequest(1024,node2.getHostName(),1,2,true);
+  ResourceRequest rackRequest=createResourceRequest(1024,"rack1",1,2,true);
+  ResourceRequest anyRequest=createResourceRequest(1024,ResourceRequest.ANY,1,2,false);
+  createSchedulingRequestExistingApplication(nodeRequest,attId);
+  createSchedulingRequestExistingApplication(rackRequest,attId);
+  createSchedulingRequestExistingApplication(anyRequest,attId);
+  scheduler.update();
+  NodeUpdateSchedulerEvent nodeUpdateEvent=new NodeUpdateSchedulerEvent(node1);
+  scheduler.handle(nodeUpdateEvent);
+  assertEquals(1,app.getLiveContainers().size());
+  scheduler.handle(nodeUpdateEvent);
+  assertEquals(1,app.getReservedContainers().size());
+  rackRequest=createResourceRequest(1024,"rack1",1,1,false);
+  anyRequest=createResourceRequest(1024,ResourceRequest.ANY,1,1,false);
+  scheduler.allocate(attId,Arrays.asList(rackRequest,anyRequest),new ArrayList<ContainerId>());
+  scheduler.handle(nodeUpdateEvent);
+  assertEquals(0,app.getReservedContainers().size());
+}

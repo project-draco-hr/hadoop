@@ -22,14 +22,23 @@ synchronized (app) {
       app.addSchedulingOpportunity(priority);
       ResourceRequest rackLocalRequest=app.getResourceRequest(priority,node.getRackName());
       ResourceRequest localRequest=app.getResourceRequest(priority,node.getHostName());
+      if (localRequest != null && !localRequest.getRelaxLocality()) {
+        LOG.warn("Relax locality off is not supported on local request: " + localRequest);
+      }
       NodeType allowedLocality=app.getAllowedLocalityLevel(priority,scheduler.getNumClusterNodes(),scheduler.getNodeLocalityThreshold(),scheduler.getRackLocalityThreshold());
       if (rackLocalRequest != null && rackLocalRequest.getNumContainers() != 0 && localRequest != null && localRequest.getNumContainers() != 0) {
         return assignContainer(node,priority,localRequest,NodeType.NODE_LOCAL,reserved);
+      }
+      if (rackLocalRequest != null && !rackLocalRequest.getRelaxLocality()) {
+        continue;
       }
       if (rackLocalRequest != null && rackLocalRequest.getNumContainers() != 0 && (allowedLocality.equals(NodeType.RACK_LOCAL) || allowedLocality.equals(NodeType.OFF_SWITCH))) {
         return assignContainer(node,priority,rackLocalRequest,NodeType.RACK_LOCAL,reserved);
       }
       ResourceRequest offSwitchRequest=app.getResourceRequest(priority,ResourceRequest.ANY);
+      if (offSwitchRequest != null && !offSwitchRequest.getRelaxLocality()) {
+        continue;
+      }
       if (offSwitchRequest != null && offSwitchRequest.getNumContainers() != 0 && allowedLocality.equals(NodeType.OFF_SWITCH)) {
         return assignContainer(node,priority,offSwitchRequest,NodeType.OFF_SWITCH,reserved);
       }
