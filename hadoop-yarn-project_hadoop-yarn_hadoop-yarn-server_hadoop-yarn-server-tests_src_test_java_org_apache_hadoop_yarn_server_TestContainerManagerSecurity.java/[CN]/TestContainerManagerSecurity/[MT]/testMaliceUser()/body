@@ -5,40 +5,16 @@
   ApplicationId appID=resourceManager.getClientRMService().getNewApplication(Records.newRecord(GetNewApplicationRequest.class)).getApplicationId();
   AMRMProtocol scheduler=submitAndRegisterApplication(resourceManager,yarnRPC,appID);
   final Container allocatedContainer=requestAndGetContainer(scheduler,appID);
-  final ContainerId containerID=allocatedContainer.getId();
-  UserGroupInformation maliceUser=UserGroupInformation.createRemoteUser(containerID.toString());
   ContainerToken containerToken=allocatedContainer.getContainerToken();
-  byte[] identifierBytes=containerToken.getIdentifier().array();
-  DataInputBuffer di=new DataInputBuffer();
-  di.reset(identifierBytes,identifierBytes.length);
-  ContainerTokenIdentifier dummyIdentifier=new ContainerTokenIdentifier();
-  dummyIdentifier.readFields(di);
+  ContainerTokenIdentifier originalContainerTokenId=BuilderUtils.newContainerTokenIdentifier(containerToken);
   Resource modifiedResource=BuilderUtils.newResource(2048,1);
-  ContainerTokenIdentifier modifiedIdentifier=new ContainerTokenIdentifier(dummyIdentifier.getContainerID(),dummyIdentifier.getNmHostAddress(),"testUser",modifiedResource,Long.MAX_VALUE,dummyIdentifier.getMasterKeyId(),ResourceManager.clusterTimeStamp);
+  ContainerTokenIdentifier modifiedIdentifier=new ContainerTokenIdentifier(originalContainerTokenId.getContainerID(),originalContainerTokenId.getNmHostAddress(),"testUser",modifiedResource,Long.MAX_VALUE,originalContainerTokenId.getMasterKeyId(),ResourceManager.clusterTimeStamp);
   Token<ContainerTokenIdentifier> modifiedToken=new Token<ContainerTokenIdentifier>(modifiedIdentifier.getBytes(),containerToken.getPassword().array(),new Text(containerToken.getKind()),new Text(containerToken.getService()));
-  maliceUser.addToken(modifiedToken);
-  maliceUser.doAs(new PrivilegedAction<Void>(){
-    @Override public Void run(){
-      ContainerManager client=(ContainerManager)yarnRPC.getProxy(ContainerManager.class,NetUtils.createSocketAddr(allocatedContainer.getNodeId().toString()),conf);
-      LOG.info("Going to contact NM:  ilLegal request");
-      GetContainerStatusRequest request=recordFactory.newRecordInstance(GetContainerStatusRequest.class);
-      request.setContainerId(containerID);
-      try {
-        client.getContainerStatus(request);
-        fail("Connection initiation with illegally modified " + "tokens is expected to fail.");
-      }
- catch (      YarnRemoteException e) {
-        LOG.error("Got exception",e);
-        fail("Cannot get a YARN remote exception as " + "it will indicate RPC success");
-      }
-catch (      Exception e) {
-        Assert.assertEquals(javax.security.sasl.SaslException.class.getCanonicalName(),e.getClass().getCanonicalName());
-        Assert.assertTrue(e.getMessage().contains("DIGEST-MD5: digest response format violation. " + "Mismatched response."));
-      }
-      return null;
-    }
-  }
-);
+  makeTamperedStartContainerCall(yarnRPC,allocatedContainer,modifiedIdentifier,modifiedToken);
+  ContainerId newContainerId=BuilderUtils.newContainerId(BuilderUtils.newApplicationAttemptId(originalContainerTokenId.getContainerID().getApplicationAttemptId().getApplicationId(),1),originalContainerTokenId.getContainerID().getId() + 42);
+  modifiedIdentifier=new ContainerTokenIdentifier(newContainerId,originalContainerTokenId.getNmHostAddress(),"testUser",originalContainerTokenId.getResource(),Long.MAX_VALUE,originalContainerTokenId.getMasterKeyId(),ResourceManager.clusterTimeStamp);
+  modifiedToken=new Token<ContainerTokenIdentifier>(modifiedIdentifier.getBytes(),containerToken.getPassword().array(),new Text(containerToken.getKind()),new Text(containerToken.getService()));
+  makeTamperedStartContainerCall(yarnRPC,allocatedContainer,modifiedIdentifier,modifiedToken);
   KillApplicationRequest request=Records.newRecord(KillApplicationRequest.class);
   request.setApplicationId(appID);
   resourceManager.getClientRMService().forceKillApplication(request);

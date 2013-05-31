@@ -3,12 +3,19 @@
     throw RPCUtil.getRemoteException(new NMNotYetReadyException("Rejecting new containers as NodeManager has not" + " yet connected with ResourceManager"));
   }
   ContainerLaunchContext launchContext=request.getContainerLaunchContext();
-  org.apache.hadoop.yarn.api.records.Container lauchContainer=request.getContainer();
-  ContainerId containerID=lauchContainer.getId();
+  ContainerToken token=request.getContainerToken();
+  ContainerTokenIdentifier tokenIdentifier=null;
+  try {
+    tokenIdentifier=BuilderUtils.newContainerTokenIdentifier(token);
+  }
+ catch (  IOException e) {
+    throw RPCUtil.getRemoteException(e);
+  }
+  UserGroupInformation remoteUgi=getRemoteUgi();
+  ContainerTokenIdentifier tokenId=getContainerTokenIdentifier(remoteUgi,tokenIdentifier);
+  ContainerId containerID=tokenId.getContainerID();
   String containerIDStr=containerID.toString();
-  UserGroupInformation remoteUgi=getRemoteUgi(containerIDStr);
-  ContainerTokenIdentifier tokenId=getContainerTokenIdentifier(remoteUgi,lauchContainer);
-  authorizeRequest(containerIDStr,launchContext,lauchContainer,remoteUgi,tokenId);
+  authorizeRequest(containerIDStr,launchContext,remoteUgi,tokenId);
   if (tokenId.getRMIdentifer() != nodeStatusUpdater.getRMIdentifier()) {
     String msg="\nContainer " + containerIDStr + " rejected as it is allocated by a previous RM";
     LOG.error(msg);
@@ -34,7 +41,7 @@
     }
   }
   String user=tokenId.getApplicationSubmitter();
-  Container container=new ContainerImpl(getConfig(),this.dispatcher,launchContext,lauchContainer,credentials,metrics,tokenId);
+  Container container=new ContainerImpl(getConfig(),this.dispatcher,launchContext,credentials,metrics,tokenId);
   ApplicationId applicationID=containerID.getApplicationAttemptId().getApplicationId();
   if (context.getContainers().putIfAbsent(containerID,container) != null) {
     NMAuditLogger.logFailure(user,AuditConstants.START_CONTAINER,"ContainerManagerImpl","Container already running on this node!",applicationID,containerID);
@@ -51,6 +58,6 @@
   StartContainerResponse response=recordFactory.newRecordInstance(StartContainerResponse.class);
   response.setAllServiceResponse(auxiliaryServices.getMeta());
   metrics.launchedContainer();
-  metrics.allocateContainer(lauchContainer.getResource());
+  metrics.allocateContainer(tokenId.getResource());
   return response;
 }

@@ -1,7 +1,6 @@
 {
   containerManager.start();
   ContainerLaunchContext containerLaunchContext=recordFactory.newRecordInstance(ContainerLaunchContext.class);
-  Container mockContainer=mock(Container.class);
   ApplicationId appId=ApplicationId.newInstance(0,0);
   ApplicationAttemptId appAttemptId=recordFactory.newRecordInstance(ApplicationAttemptId.class);
   appAttemptId.setApplicationId(appId);
@@ -9,9 +8,6 @@
   ContainerId cId=recordFactory.newRecordInstance(ContainerId.class);
   int port=12345;
   cId.setApplicationAttemptId(appAttemptId);
-  when(mockContainer.getId()).thenReturn(cId);
-  when(mockContainer.getNodeId()).thenReturn(context.getNodeId());
-  when(mockContainer.getNodeHttpAddress()).thenReturn(context.getNodeId().getHost() + ":" + port);
   Map<String,String> userSetEnv=new HashMap<String,String>();
   userSetEnv.put(Environment.CONTAINER_ID.name(),"user_set_container_id");
   userSetEnv.put(Environment.NM_HOST.name(),"user_set_NM_HOST");
@@ -55,12 +51,10 @@
   List<String> commands=Arrays.asList(Shell.getRunScriptCommand(scriptFile));
   containerLaunchContext.setCommands(commands);
   Resource r=BuilderUtils.newResource(1024,1);
-  when(mockContainer.getResource()).thenReturn(r);
   StartContainerRequest startRequest=recordFactory.newRecordInstance(StartContainerRequest.class);
   startRequest.setContainerLaunchContext(containerLaunchContext);
   ContainerToken containerToken=BuilderUtils.newContainerToken(cId,context.getNodeId().getHost(),port,user,r,System.currentTimeMillis() + 10000L,1234,"password".getBytes(),super.DUMMY_RM_IDENTIFIER);
-  when(mockContainer.getContainerToken()).thenReturn(containerToken);
-  startRequest.setContainer(mockContainer);
+  startRequest.setContainerToken(containerToken);
   containerManager.startContainer(startRequest);
   int timeoutSecs=0;
   while (!processStartFile.exists() && timeoutSecs++ < 20) {
@@ -78,14 +72,14 @@
   }
   BufferedReader reader=new BufferedReader(new FileReader(processStartFile));
   Assert.assertEquals(cId.toString(),reader.readLine());
-  Assert.assertEquals(mockContainer.getNodeId().getHost(),reader.readLine());
-  Assert.assertEquals(String.valueOf(mockContainer.getNodeId().getPort()),reader.readLine());
-  Assert.assertEquals(String.valueOf(mockContainer.getNodeHttpAddress().split(":")[1]),reader.readLine());
+  Assert.assertEquals(context.getNodeId().getHost(),reader.readLine());
+  Assert.assertEquals(String.valueOf(context.getNodeId().getPort()),reader.readLine());
+  Assert.assertEquals(String.valueOf(HTTP_PORT),reader.readLine());
   Assert.assertEquals(StringUtils.join(",",appDirs),reader.readLine());
   Assert.assertEquals(cId.toString(),containerLaunchContext.getEnvironment().get(Environment.CONTAINER_ID.name()));
-  Assert.assertEquals(mockContainer.getNodeId().getHost(),containerLaunchContext.getEnvironment().get(Environment.NM_HOST.name()));
-  Assert.assertEquals(String.valueOf(mockContainer.getNodeId().getPort()),containerLaunchContext.getEnvironment().get(Environment.NM_PORT.name()));
-  Assert.assertEquals(mockContainer.getNodeHttpAddress().split(":")[1],containerLaunchContext.getEnvironment().get(Environment.NM_HTTP_PORT.name()));
+  Assert.assertEquals(context.getNodeId().getHost(),containerLaunchContext.getEnvironment().get(Environment.NM_HOST.name()));
+  Assert.assertEquals(String.valueOf(context.getNodeId().getPort()),containerLaunchContext.getEnvironment().get(Environment.NM_PORT.name()));
+  Assert.assertEquals(String.valueOf(HTTP_PORT),containerLaunchContext.getEnvironment().get(Environment.NM_HTTP_PORT.name()));
   Assert.assertEquals(StringUtils.join(",",appDirs),containerLaunchContext.getEnvironment().get(Environment.LOCAL_DIRS.name()));
   String pid=reader.readLine().trim();
   Assert.assertEquals(null,reader.readLine());

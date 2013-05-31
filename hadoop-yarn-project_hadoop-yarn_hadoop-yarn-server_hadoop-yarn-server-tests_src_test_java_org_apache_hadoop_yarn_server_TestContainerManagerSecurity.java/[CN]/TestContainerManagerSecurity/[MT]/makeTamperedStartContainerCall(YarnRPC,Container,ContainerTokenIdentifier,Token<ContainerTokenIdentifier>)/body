@@ -1,0 +1,29 @@
+{
+  final ContainerId containerID=allocatedContainer.getId();
+  UserGroupInformation maliceUser=UserGroupInformation.createRemoteUser(containerID.toString());
+  maliceUser.addToken(modifiedToken);
+  maliceUser.doAs(new PrivilegedAction<Void>(){
+    @Override public Void run(){
+      ContainerManager client=(ContainerManager)yarnRPC.getProxy(ContainerManager.class,NetUtils.createSocketAddr(allocatedContainer.getNodeId().toString()),conf);
+      LOG.info("Going to contact NM:  ilLegal request");
+      StartContainerRequest request=Records.newRecord(StartContainerRequest.class);
+      try {
+        request.setContainerToken(allocatedContainer.getContainerToken());
+        ContainerLaunchContext context=createContainerLaunchContextForTest(modifiedIdentifier);
+        request.setContainerLaunchContext(context);
+        client.startContainer(request);
+        fail("Connection initiation with illegally modified " + "tokens is expected to fail.");
+      }
+ catch (      YarnRemoteException e) {
+        LOG.error("Got exception",e);
+        fail("Cannot get a YARN remote exception as " + "it will indicate RPC success");
+      }
+catch (      Exception e) {
+        Assert.assertEquals(javax.security.sasl.SaslException.class.getCanonicalName(),e.getClass().getCanonicalName());
+        Assert.assertTrue(e.getMessage().contains("DIGEST-MD5: digest response format violation. " + "Mismatched response."));
+      }
+      return null;
+    }
+  }
+);
+}
