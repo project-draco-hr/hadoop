@@ -1,0 +1,84 @@
+{
+  assertTrue(amClient.ask.size() == 0);
+  assertTrue(amClient.release.size() == 0);
+  amClient.addContainerRequest(new ContainerRequest(capability,nodes,racks,priority,1));
+  amClient.addContainerRequest(new ContainerRequest(capability,nodes,racks,priority,3));
+  amClient.removeContainerRequest(new ContainerRequest(capability,nodes,racks,priority,2));
+  int containersRequestedNode=amClient.remoteRequestsTable.get(priority).get(node).get(capability).remoteRequest.getNumContainers();
+  int containersRequestedRack=amClient.remoteRequestsTable.get(priority).get(rack).get(capability).remoteRequest.getNumContainers();
+  int containersRequestedAny=amClient.remoteRequestsTable.get(priority).get(ResourceRequest.ANY).get(capability).remoteRequest.getNumContainers();
+  assertTrue(containersRequestedNode == 2);
+  assertTrue(containersRequestedRack == 2);
+  assertTrue(containersRequestedAny == 2);
+  assertTrue(amClient.ask.size() == 3);
+  assertTrue(amClient.release.size() == 0);
+  int allocatedContainerCount=0;
+  int iterationsLeft=2;
+  Set<ContainerId> releases=new TreeSet<ContainerId>();
+  while (allocatedContainerCount < containersRequestedAny && iterationsLeft-- > 0) {
+    AllocateResponse allocResponse=amClient.allocate(0.1f);
+    assertTrue(amClient.ask.size() == 0);
+    assertTrue(amClient.release.size() == 0);
+    assertTrue(nodeCount == amClient.getClusterNodeCount());
+    allocatedContainerCount+=allocResponse.getAllocatedContainers().size();
+    for (    Container container : allocResponse.getAllocatedContainers()) {
+      ContainerId rejectContainerId=container.getId();
+      releases.add(rejectContainerId);
+      amClient.releaseAssignedContainer(rejectContainerId);
+    }
+    if (allocatedContainerCount < containersRequestedAny) {
+      sleep(1000);
+    }
+  }
+  assertTrue(allocatedContainerCount == containersRequestedAny);
+  assertTrue(amClient.release.size() == 2);
+  assertTrue(amClient.ask.size() == 0);
+  amClient.removeContainerRequest(new ContainerRequest(capability,nodes,racks,priority,2));
+  assertTrue(amClient.ask.size() == 3);
+  ResourceRequest snoopRequest=amClient.ask.iterator().next();
+  assertTrue(snoopRequest.getNumContainers() == 0);
+  amClient.addContainerRequest(new ContainerRequest(capability,nodes,racks,priority,2));
+  snoopRequest=amClient.ask.iterator().next();
+  assertTrue(snoopRequest.getNumContainers() == 2);
+  AMRMProtocol realRM=amClient.rmClient;
+  try {
+    AMRMProtocol mockRM=mock(AMRMProtocol.class);
+    when(mockRM.allocate(any(AllocateRequest.class))).thenAnswer(new Answer<AllocateResponse>(){
+      public AllocateResponse answer(      InvocationOnMock invocation) throws Exception {
+        amClient.removeContainerRequest(new ContainerRequest(capability,nodes,racks,priority,2));
+        throw new Exception();
+      }
+    }
+);
+    amClient.rmClient=mockRM;
+    amClient.allocate(0.1f);
+  }
+ catch (  Exception ioe) {
+  }
+ finally {
+    amClient.rmClient=realRM;
+  }
+  assertTrue(amClient.release.size() == 2);
+  assertTrue(amClient.ask.size() == 3);
+  snoopRequest=amClient.ask.iterator().next();
+  assertTrue(snoopRequest.getNumContainers() == 0);
+  iterationsLeft=2;
+  while (!releases.isEmpty() || iterationsLeft-- > 0) {
+    AllocateResponse allocResponse=amClient.allocate(0.1f);
+    assertTrue(allocResponse.getAllocatedContainers().size() == 0);
+    if (allocResponse.getCompletedContainersStatuses().size() > 0) {
+      for (      ContainerStatus cStatus : allocResponse.getCompletedContainersStatuses()) {
+        if (releases.contains(cStatus.getContainerId())) {
+          assertTrue(cStatus.getState() == ContainerState.COMPLETE);
+          assertTrue(cStatus.getExitStatus() == -100);
+          releases.remove(cStatus.getContainerId());
+        }
+      }
+    }
+    if (iterationsLeft > 0) {
+      sleep(1000);
+    }
+  }
+  assertTrue(amClient.ask.size() == 0);
+  assertTrue(amClient.release.size() == 0);
+}

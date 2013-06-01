@@ -1,7 +1,7 @@
 {
   while (true) {
     AllocateResponse response=null;
-synchronized (client) {
+synchronized (unregisterHeartbeatLock) {
       if (!keepRunning) {
         break;
       }
@@ -9,10 +9,16 @@ synchronized (client) {
         response=client.allocate(progress);
       }
  catch (      YarnRemoteException ex) {
-        LOG.error("Failed to heartbeat",ex);
+        LOG.error("Yarn exception on heartbeat",ex);
+        savedException=ex;
+        handlerThread.interrupt();
+        break;
       }
 catch (      IOException e) {
-        LOG.error("Failed to heartbeat",e);
+        LOG.error("IO exception on heartbeat",e);
+        savedException=e;
+        handlerThread.interrupt();
+        break;
       }
     }
     if (response != null) {
@@ -22,15 +28,15 @@ catch (      IOException e) {
           break;
         }
  catch (        InterruptedException ex) {
-          LOG.warn("Interrupted while waiting to put on response queue",ex);
+          LOG.info("Interrupted while waiting to put on response queue",ex);
         }
       }
     }
     try {
-      Thread.sleep(intervalMs);
+      Thread.sleep(heartbeatIntervalMs.get());
     }
  catch (    InterruptedException ex) {
-      LOG.warn("Heartbeater interrupted",ex);
+      LOG.info("Heartbeater interrupted",ex);
     }
   }
 }
