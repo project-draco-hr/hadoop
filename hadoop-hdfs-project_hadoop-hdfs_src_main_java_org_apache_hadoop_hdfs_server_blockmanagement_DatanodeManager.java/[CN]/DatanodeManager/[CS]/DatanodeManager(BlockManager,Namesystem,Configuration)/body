@@ -1,13 +1,30 @@
 {
   this.namesystem=namesystem;
   this.blockManager=blockManager;
+  int dnsResolutionSeconds=conf.getInt(DFSConfigKeys.DFS_NAMENODE_HOSTS_DNS_RESOLUTION_INTERVAL_SECONDS,DFSConfigKeys.DFS_NAMENODE_HOSTS_DNS_RESOLUTION_INTERVAL_SECONDS_DEFAULT);
+  this.hostFileManager=new HostFileManager(dnsResolutionSeconds);
   networktopology=NetworkTopology.getInstance(conf);
   this.heartbeatManager=new HeartbeatManager(namesystem,blockManager,conf);
-  this.hostsReader=new HostsFileReader(conf.get(DFSConfigKeys.DFS_HOSTS,""),conf.get(DFSConfigKeys.DFS_HOSTS_EXCLUDE,""));
+  this.defaultXferPort=NetUtils.createSocketAddr(conf.get(DFSConfigKeys.DFS_DATANODE_ADDRESS_KEY,DFSConfigKeys.DFS_DATANODE_ADDRESS_DEFAULT)).getPort();
+  this.defaultInfoPort=NetUtils.createSocketAddr(conf.get(DFSConfigKeys.DFS_DATANODE_HTTP_ADDRESS_KEY,DFSConfigKeys.DFS_DATANODE_HTTPS_ADDRESS_DEFAULT)).getPort();
+  this.defaultIpcPort=NetUtils.createSocketAddr(conf.get(DFSConfigKeys.DFS_DATANODE_IPC_ADDRESS_KEY,DFSConfigKeys.DFS_DATANODE_IPC_ADDRESS_DEFAULT)).getPort();
+  try {
+    this.hostFileManager.refresh(conf.get(DFSConfigKeys.DFS_HOSTS,""),conf.get(DFSConfigKeys.DFS_HOSTS_EXCLUDE,""));
+  }
+ catch (  IOException e) {
+    LOG.error("error reading hosts files: ",e);
+  }
   this.dnsToSwitchMapping=ReflectionUtils.newInstance(conf.getClass(DFSConfigKeys.NET_TOPOLOGY_NODE_SWITCH_MAPPING_IMPL_KEY,ScriptBasedMapping.class,DNSToSwitchMapping.class),conf);
   if (dnsToSwitchMapping instanceof CachedDNSToSwitchMapping) {
-    dnsToSwitchMapping.resolve(new ArrayList<String>(hostsReader.getHosts()));
+    final ArrayList<String> locations=new ArrayList<String>();
+    for (    Entry entry : hostFileManager.getIncludes()) {
+      if (!entry.getIpAddress().isEmpty()) {
+        locations.add(entry.getIpAddress());
+      }
+    }
+    dnsToSwitchMapping.resolve(locations);
   }
+  ;
   final long heartbeatIntervalSeconds=conf.getLong(DFSConfigKeys.DFS_HEARTBEAT_INTERVAL_KEY,DFSConfigKeys.DFS_HEARTBEAT_INTERVAL_DEFAULT);
   final int heartbeatRecheckInterval=conf.getInt(DFSConfigKeys.DFS_NAMENODE_HEARTBEAT_RECHECK_INTERVAL_KEY,DFSConfigKeys.DFS_NAMENODE_HEARTBEAT_RECHECK_INTERVAL_DEFAULT);
   this.heartbeatExpireInterval=2 * heartbeatRecheckInterval + 10 * 1000 * heartbeatIntervalSeconds;

@@ -1,20 +1,10 @@
 {
   boolean listLiveNodes=type == DatanodeReportType.ALL || type == DatanodeReportType.LIVE;
   boolean listDeadNodes=type == DatanodeReportType.ALL || type == DatanodeReportType.DEAD;
-  HashMap<String,String> mustList=new HashMap<String,String>();
-  if (listDeadNodes) {
-    Iterator<String> it=hostsReader.getHosts().iterator();
-    while (it.hasNext()) {
-      mustList.put(it.next(),"");
-    }
-    it=hostsReader.getExcludedHosts().iterator();
-    while (it.hasNext()) {
-      mustList.put(it.next(),"");
-    }
-  }
   ArrayList<DatanodeDescriptor> nodes=null;
+  final MutableEntrySet foundNodes=new MutableEntrySet();
 synchronized (datanodeMap) {
-    nodes=new ArrayList<DatanodeDescriptor>(datanodeMap.size() + mustList.size());
+    nodes=new ArrayList<DatanodeDescriptor>(datanodeMap.size());
     Iterator<DatanodeDescriptor> it=datanodeMap.values().iterator();
     while (it.hasNext()) {
       DatanodeDescriptor dn=it.next();
@@ -22,19 +12,22 @@ synchronized (datanodeMap) {
       if ((isDead && listDeadNodes) || (!isDead && listLiveNodes)) {
         nodes.add(dn);
       }
-      for (      String name : getNodeNamesForHostFiltering(dn)) {
-        mustList.remove(name);
-      }
+      foundNodes.add(dn);
     }
   }
   if (listDeadNodes) {
-    Iterator<String> it=mustList.keySet().iterator();
-    while (it.hasNext()) {
-      DatanodeID dnId=parseDNFromHostsEntry(it.next());
-      DatanodeDescriptor dn=new DatanodeDescriptor(dnId);
-      dn.setLastUpdate(0);
-      nodes.add(dn);
+    final EntrySet includedNodes=hostFileManager.getIncludes();
+    final EntrySet excludedNodes=hostFileManager.getExcludes();
+    for (    Entry entry : includedNodes) {
+      if ((foundNodes.find(entry) == null) && (excludedNodes.find(entry) == null)) {
+        DatanodeDescriptor dn=new DatanodeDescriptor(new DatanodeID(entry.getIpAddress(),entry.getPrefix(),"",entry.getPort() == 0 ? defaultXferPort : entry.getPort(),defaultInfoPort,defaultIpcPort));
+        dn.setLastUpdate(0);
+        nodes.add(dn);
+      }
     }
+  }
+  if (LOG.isDebugEnabled()) {
+    LOG.debug("getDatanodeListForReport with " + "includedNodes = " + hostFileManager.getIncludes() + ", excludedNodes = "+ hostFileManager.getExcludes()+ ", foundNodes = "+ foundNodes+ ", nodes = "+ nodes);
   }
   return nodes;
 }
