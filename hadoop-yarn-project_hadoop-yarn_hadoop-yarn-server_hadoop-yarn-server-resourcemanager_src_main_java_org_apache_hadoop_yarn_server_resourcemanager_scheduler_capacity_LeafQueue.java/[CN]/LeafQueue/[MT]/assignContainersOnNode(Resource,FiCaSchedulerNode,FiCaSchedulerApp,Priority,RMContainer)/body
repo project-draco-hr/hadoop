@@ -1,12 +1,28 @@
 {
   Resource assigned=Resources.none();
-  assigned=assignNodeLocalContainers(clusterResource,node,application,priority,reservedContainer);
-  if (Resources.greaterThan(resourceCalculator,clusterResource,assigned,Resources.none())) {
-    return new CSAssignment(assigned,NodeType.NODE_LOCAL);
+  ResourceRequest nodeLocalResourceRequest=application.getResourceRequest(priority,node.getHostName());
+  if (nodeLocalResourceRequest != null) {
+    assigned=assignNodeLocalContainers(clusterResource,nodeLocalResourceRequest,node,application,priority,reservedContainer);
+    if (Resources.greaterThan(resourceCalculator,clusterResource,assigned,Resources.none())) {
+      return new CSAssignment(assigned,NodeType.NODE_LOCAL);
+    }
   }
-  assigned=assignRackLocalContainers(clusterResource,node,application,priority,reservedContainer);
-  if (Resources.greaterThan(resourceCalculator,clusterResource,assigned,Resources.none())) {
-    return new CSAssignment(assigned,NodeType.RACK_LOCAL);
+  ResourceRequest rackLocalResourceRequest=application.getResourceRequest(priority,node.getRackName());
+  if (rackLocalResourceRequest != null) {
+    if (!rackLocalResourceRequest.getRelaxLocality()) {
+      return SKIP_ASSIGNMENT;
+    }
+    assigned=assignRackLocalContainers(clusterResource,rackLocalResourceRequest,node,application,priority,reservedContainer);
+    if (Resources.greaterThan(resourceCalculator,clusterResource,assigned,Resources.none())) {
+      return new CSAssignment(assigned,NodeType.RACK_LOCAL);
+    }
   }
-  return new CSAssignment(assignOffSwitchContainers(clusterResource,node,application,priority,reservedContainer),NodeType.OFF_SWITCH);
+  ResourceRequest offSwitchResourceRequest=application.getResourceRequest(priority,ResourceRequest.ANY);
+  if (offSwitchResourceRequest != null) {
+    if (!offSwitchResourceRequest.getRelaxLocality()) {
+      return SKIP_ASSIGNMENT;
+    }
+    return new CSAssignment(assignOffSwitchContainers(clusterResource,offSwitchResourceRequest,node,application,priority,reservedContainer),NodeType.OFF_SWITCH);
+  }
+  return SKIP_ASSIGNMENT;
 }
