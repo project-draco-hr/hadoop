@@ -13,38 +13,46 @@
     }
     throw e;
   }
-  if (response.getResync()) {
-    eventHandler.handle(new JobEvent(this.getJob().getID(),JobEventType.JOB_AM_REBOOT));
+  if (response.getAMCommand() != null) {
+switch (response.getAMCommand()) {
+case AM_RESYNC:
+case AM_SHUTDOWN:
+      eventHandler.handle(new JobEvent(this.getJob().getID(),JobEventType.JOB_AM_REBOOT));
     throw new YarnRuntimeException("Resource Manager doesn't recognize AttemptId: " + this.getContext().getApplicationID());
-  }
-  int newHeadRoom=getAvailableResources() != null ? getAvailableResources().getMemory() : 0;
-  List<Container> newContainers=response.getAllocatedContainers();
-  List<ContainerStatus> finishedContainers=response.getCompletedContainersStatuses();
-  if (newContainers.size() + finishedContainers.size() > 0 || headRoom != newHeadRoom) {
-    recalculateReduceSchedule=true;
-    if (LOG.isDebugEnabled() && headRoom != newHeadRoom) {
-      LOG.debug("headroom=" + newHeadRoom);
-    }
-  }
-  if (LOG.isDebugEnabled()) {
-    for (    Container cont : newContainers) {
-      LOG.debug("Received new Container :" + cont);
-    }
-  }
-  computeIgnoreBlacklisting();
-  handleUpdatedNodes(response);
-  for (  ContainerStatus cont : finishedContainers) {
-    LOG.info("Received completed container " + cont.getContainerId());
-    TaskAttemptId attemptID=assignedRequests.get(cont.getContainerId());
-    if (attemptID == null) {
-      LOG.error("Container complete event for unknown container id " + cont.getContainerId());
-    }
+default :
+  String msg="Unhandled value of AMCommand: " + response.getAMCommand();
+LOG.error(msg);
+throw new YarnRuntimeException(msg);
+}
+}
+int newHeadRoom=getAvailableResources() != null ? getAvailableResources().getMemory() : 0;
+List<Container> newContainers=response.getAllocatedContainers();
+List<ContainerStatus> finishedContainers=response.getCompletedContainersStatuses();
+if (newContainers.size() + finishedContainers.size() > 0 || headRoom != newHeadRoom) {
+recalculateReduceSchedule=true;
+if (LOG.isDebugEnabled() && headRoom != newHeadRoom) {
+LOG.debug("headroom=" + newHeadRoom);
+}
+}
+if (LOG.isDebugEnabled()) {
+for (Container cont : newContainers) {
+LOG.debug("Received new Container :" + cont);
+}
+}
+computeIgnoreBlacklisting();
+handleUpdatedNodes(response);
+for (ContainerStatus cont : finishedContainers) {
+LOG.info("Received completed container " + cont.getContainerId());
+TaskAttemptId attemptID=assignedRequests.get(cont.getContainerId());
+if (attemptID == null) {
+LOG.error("Container complete event for unknown container id " + cont.getContainerId());
+}
  else {
-      assignedRequests.remove(attemptID);
-      eventHandler.handle(createContainerFinishedEvent(cont,attemptID));
-      String diagnostics=StringInterner.weakIntern(cont.getDiagnostics());
-      eventHandler.handle(new TaskAttemptDiagnosticsUpdateEvent(attemptID,diagnostics));
-    }
-  }
-  return newContainers;
+assignedRequests.remove(attemptID);
+eventHandler.handle(createContainerFinishedEvent(cont,attemptID));
+String diagnostics=StringInterner.weakIntern(cont.getDiagnostics());
+eventHandler.handle(new TaskAttemptDiagnosticsUpdateEvent(attemptID,diagnostics));
+}
+}
+return newContainers;
 }
