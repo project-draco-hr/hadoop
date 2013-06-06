@@ -1,0 +1,36 @@
+{
+  MyContainerManager containerManager=new MyContainerManager();
+  final MockRM rm=new MockRMWithAMS(new YarnConfiguration(),containerManager);
+  rm.start();
+  MockNM nm1=rm.registerNode("localhost:1234",5120);
+  Map<ApplicationAccessType,String> acls=new HashMap<ApplicationAccessType,String>(2);
+  acls.put(ApplicationAccessType.VIEW_APP,"*");
+  RMApp app=rm.submitApp(1024,"appname","appuser",acls);
+  nm1.nodeHeartbeat(true);
+  RMAppAttempt attempt=app.getCurrentAppAttempt();
+  ApplicationAttemptId applicationAttemptId=attempt.getAppAttemptId();
+  waitForLaunchedState(attempt);
+  final Configuration conf=rm.getConfig();
+  final YarnRPC rpc=YarnRPC.create(conf);
+  UserGroupInformation currentUser=UserGroupInformation.createRemoteUser(applicationAttemptId.toString());
+  AMRMProtocol client=currentUser.doAs(new PrivilegedAction<AMRMProtocol>(){
+    @Override public AMRMProtocol run(){
+      return (AMRMProtocol)rpc.getProxy(AMRMProtocol.class,rm.getApplicationMasterService().getBindAddress(),conf);
+    }
+  }
+);
+  RegisterApplicationMasterRequest request=Records.newRecord(RegisterApplicationMasterRequest.class);
+  request.setApplicationAttemptId(applicationAttemptId);
+  client.registerApplicationMaster(request);
+  ResourceBlacklistRequest blacklistRequest=ResourceBlacklistRequest.newInstance(Collections.singletonList(ResourceRequest.ANY),null);
+  AllocateRequest allocateRequest=AllocateRequest.newInstance(applicationAttemptId,0,0.0f,null,null,blacklistRequest);
+  boolean error=false;
+  try {
+    client.allocate(allocateRequest);
+  }
+ catch (  InvalidResourceBlacklistRequestException e) {
+    error=true;
+  }
+  rm.stop();
+  Assert.assertTrue("Didn't not catch InvalidResourceBlacklistRequestException",error);
+}

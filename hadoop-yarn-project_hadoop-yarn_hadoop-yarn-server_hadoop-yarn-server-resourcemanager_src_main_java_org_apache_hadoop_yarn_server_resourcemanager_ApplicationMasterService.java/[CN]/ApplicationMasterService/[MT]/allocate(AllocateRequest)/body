@@ -18,14 +18,24 @@ synchronized (lastResponse) {
     this.rmContext.getDispatcher().getEventHandler().handle(new RMAppAttemptStatusupdateEvent(appAttemptId,request.getProgress()));
     List<ResourceRequest> ask=request.getAskList();
     List<ContainerId> release=request.getReleaseList();
+    ResourceBlacklistRequest blacklistRequest=request.getResourceBlacklistRequest();
+    List<String> blacklistAdditions=(blacklistRequest != null) ? blacklistRequest.getBlacklistAdditions() : null;
+    List<String> blacklistRemovals=(blacklistRequest != null) ? blacklistRequest.getBlacklistRemovals() : null;
     try {
       SchedulerUtils.validateResourceRequests(ask,rScheduler.getMaximumResourceCapability());
     }
  catch (    InvalidResourceRequestException e) {
       LOG.warn("Invalid resource ask by application " + appAttemptId,e);
-      throw RPCUtil.getRemoteException(e);
+      throw e;
     }
-    Allocation allocation=this.rScheduler.allocate(appAttemptId,ask,release);
+    try {
+      SchedulerUtils.validateBlacklistRequest(blacklistRequest);
+    }
+ catch (    InvalidResourceBlacklistRequestException e) {
+      LOG.warn("Invalid blacklist request by application " + appAttemptId,e);
+      throw e;
+    }
+    Allocation allocation=this.rScheduler.allocate(appAttemptId,ask,release,blacklistAdditions,blacklistRemovals);
     RMApp app=this.rmContext.getRMApps().get(appAttemptId.getApplicationId());
     RMAppAttempt appAttempt=app.getRMAppAttempt(appAttemptId);
     AllocateResponse allocateResponse=recordFactory.newRecordInstance(AllocateResponse.class);
