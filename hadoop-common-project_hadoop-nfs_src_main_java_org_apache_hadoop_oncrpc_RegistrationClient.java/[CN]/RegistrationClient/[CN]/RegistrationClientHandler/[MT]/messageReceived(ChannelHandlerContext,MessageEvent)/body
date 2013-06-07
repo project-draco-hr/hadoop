@@ -1,0 +1,23 @@
+{
+  ChannelBuffer buf=(ChannelBuffer)e.getMessage();
+  if (!validMessageLength(buf.readableBytes())) {
+    e.getChannel().close();
+    return;
+  }
+  byte[] fragmentHeader=Arrays.copyOfRange(buf.array(),0,4);
+  int fragmentSize=XDR.fragmentSize(fragmentHeader);
+  boolean isLast=XDR.isLastFragment(fragmentHeader);
+  assert(fragmentSize == 28 && isLast == true);
+  XDR xdr=new XDR();
+  xdr.writeFixedOpaque(Arrays.copyOfRange(buf.array(),4,buf.readableBytes()));
+  RpcReply reply=RpcReply.read(xdr);
+  if (reply.getState() == RpcReply.ReplyState.MSG_ACCEPTED) {
+    RpcAcceptedReply acceptedReply=(RpcAcceptedReply)reply;
+    handle(acceptedReply,xdr);
+  }
+ else {
+    RpcDeniedReply deniedReply=(RpcDeniedReply)reply;
+    handle(deniedReply);
+  }
+  e.getChannel().close();
+}
