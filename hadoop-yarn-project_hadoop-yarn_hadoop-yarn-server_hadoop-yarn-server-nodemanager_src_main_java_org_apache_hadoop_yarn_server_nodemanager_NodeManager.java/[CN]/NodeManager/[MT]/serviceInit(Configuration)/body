@@ -1,0 +1,35 @@
+{
+  conf.setBoolean(Dispatcher.DISPATCHER_EXIT_ON_ERROR_KEY,true);
+  NMContainerTokenSecretManager containerTokenSecretManager=new NMContainerTokenSecretManager(conf);
+  this.context=createNMContext(containerTokenSecretManager);
+  this.aclsManager=new ApplicationACLsManager(conf);
+  ContainerExecutor exec=ReflectionUtils.newInstance(conf.getClass(YarnConfiguration.NM_CONTAINER_EXECUTOR,DefaultContainerExecutor.class,ContainerExecutor.class),conf);
+  try {
+    exec.init();
+  }
+ catch (  IOException e) {
+    throw new YarnRuntimeException("Failed to initialize container executor",e);
+  }
+  DeletionService del=createDeletionService(exec);
+  addService(del);
+  this.dispatcher=new AsyncDispatcher();
+  nodeHealthChecker=new NodeHealthCheckerService();
+  addService(nodeHealthChecker);
+  dirsHandler=nodeHealthChecker.getDiskHandler();
+  nodeStatusUpdater=createNodeStatusUpdater(context,dispatcher,nodeHealthChecker);
+  NodeResourceMonitor nodeResourceMonitor=createNodeResourceMonitor();
+  addService(nodeResourceMonitor);
+  containerManager=createContainerManager(context,exec,del,nodeStatusUpdater,this.aclsManager,dirsHandler);
+  addService(containerManager);
+  ((NMContext)context).setContainerManager(containerManager);
+  WebServer webServer=createWebServer(context,containerManager.getContainersMonitor(),this.aclsManager,dirsHandler);
+  addService(webServer);
+  ((NMContext)context).setWebServer(webServer);
+  dispatcher.register(ContainerManagerEventType.class,containerManager);
+  dispatcher.register(NodeManagerEventType.class,this);
+  addService(dispatcher);
+  DefaultMetricsSystem.initialize("NodeManager");
+  addService(nodeStatusUpdater);
+  waitForContainersOnShutdownMillis=conf.getLong(YarnConfiguration.NM_SLEEP_DELAY_BEFORE_SIGKILL_MS,YarnConfiguration.DEFAULT_NM_SLEEP_DELAY_BEFORE_SIGKILL_MS) + conf.getLong(YarnConfiguration.NM_PROCESS_KILL_WAIT_MS,YarnConfiguration.DEFAULT_NM_PROCESS_KILL_WAIT_MS) + SHUTDOWN_CLEANUP_SLOP_MS;
+  super.serviceInit(conf);
+}

@@ -1,6 +1,24 @@
 {
-  startTime=System.currentTimeMillis();
-  ensureCurrentState(STATE.INITED);
-  changeState(STATE.STARTED);
-  LOG.info("Service:" + getName() + " is started.");
+  if (isInState(STATE.STARTED)) {
+    return;
+  }
+synchronized (stateChangeLock) {
+    if (stateModel.enterState(STATE.STARTED) != STATE.STARTED) {
+      try {
+        startTime=System.currentTimeMillis();
+        serviceStart();
+        if (isInState(STATE.STARTED)) {
+          if (LOG.isDebugEnabled()) {
+            LOG.debug("Service " + getName() + " is started");
+          }
+          notifyListeners();
+        }
+      }
+ catch (      Exception e) {
+        noteFailure(e);
+        ServiceOperations.stopQuietly(LOG,this);
+        throw ServiceStateException.convert(e);
+      }
+    }
+  }
 }

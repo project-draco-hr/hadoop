@@ -1,8 +1,28 @@
 {
-  if (state == STATE.STOPPED || state == STATE.INITED || state == STATE.NOTINITED) {
+  if (isInState(STATE.STOPPED)) {
     return;
   }
-  ensureCurrentState(STATE.STARTED);
-  changeState(STATE.STOPPED);
-  LOG.info("Service:" + getName() + " is stopped.");
+synchronized (stateChangeLock) {
+    if (enterState(STATE.STOPPED) != STATE.STOPPED) {
+      try {
+        serviceStop();
+      }
+ catch (      Exception e) {
+        noteFailure(e);
+        throw ServiceStateException.convert(e);
+      }
+ finally {
+        terminationNotification.set(true);
+synchronized (terminationNotification) {
+          terminationNotification.notifyAll();
+        }
+        notifyListeners();
+      }
+    }
+ else {
+      if (LOG.isDebugEnabled()) {
+        LOG.debug("Ignoring re-entrant call to stop()");
+      }
+    }
+  }
 }

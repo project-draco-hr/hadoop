@@ -1,6 +1,24 @@
 {
-  ensureCurrentState(STATE.NOTINITED);
-  this.config=conf;
-  changeState(STATE.INITED);
-  LOG.info("Service:" + getName() + " is inited.");
+  if (conf == null) {
+    throw new ServiceStateException("Cannot initialize service " + getName() + ": null configuration");
+  }
+  if (isInState(STATE.INITED)) {
+    return;
+  }
+synchronized (stateChangeLock) {
+    if (enterState(STATE.INITED) != STATE.INITED) {
+      setConfig(conf);
+      try {
+        serviceInit(config);
+        if (isInState(STATE.INITED)) {
+          notifyListeners();
+        }
+      }
+ catch (      Exception e) {
+        noteFailure(e);
+        ServiceOperations.stopQuietly(LOG,this);
+        throw ServiceStateException.convert(e);
+      }
+    }
+  }
 }

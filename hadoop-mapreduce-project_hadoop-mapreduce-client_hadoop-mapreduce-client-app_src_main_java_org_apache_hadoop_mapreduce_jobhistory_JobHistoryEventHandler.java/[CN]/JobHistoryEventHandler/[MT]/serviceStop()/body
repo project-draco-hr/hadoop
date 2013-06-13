@@ -1,0 +1,62 @@
+{
+  LOG.info("Stopping JobHistoryEventHandler. " + "Size of the outstanding queue size is " + eventQueue.size());
+  stopped=true;
+synchronized (lock) {
+    if (eventHandlingThread != null) {
+      LOG.debug("Interrupting Event Handling thread");
+      eventHandlingThread.interrupt();
+    }
+ else {
+      LOG.debug("Null event handling thread");
+    }
+  }
+  try {
+    if (eventHandlingThread != null) {
+      LOG.debug("Waiting for Event Handling thread to complete");
+      eventHandlingThread.join();
+    }
+  }
+ catch (  InterruptedException ie) {
+    LOG.info("Interrupted Exception while stopping",ie);
+  }
+  for (  MetaInfo mi : fileMap.values()) {
+    try {
+      if (LOG.isDebugEnabled()) {
+        LOG.debug("Shutting down timer for " + mi);
+      }
+      mi.shutDownTimer();
+    }
+ catch (    IOException e) {
+      LOG.info("Exception while cancelling delayed flush timer. " + "Likely caused by a failed flush " + e.getMessage());
+    }
+  }
+  Iterator<JobHistoryEvent> it=eventQueue.iterator();
+  while (it.hasNext()) {
+    JobHistoryEvent ev=it.next();
+    LOG.info("In stop, writing event " + ev.getType());
+    handleEvent(ev);
+  }
+  Iterator<JobId> jobIt=fileMap.keySet().iterator();
+  if (forceJobCompletion) {
+    while (jobIt.hasNext()) {
+      JobId toClose=jobIt.next();
+      MetaInfo mi=fileMap.get(toClose);
+      if (mi != null && mi.isWriterActive()) {
+        LOG.warn("Found jobId " + toClose + " to have not been closed. Will close");
+        JobUnsuccessfulCompletionEvent jucEvent=new JobUnsuccessfulCompletionEvent(TypeConverter.fromYarn(toClose),System.currentTimeMillis(),context.getJob(toClose).getCompletedMaps(),context.getJob(toClose).getCompletedReduces(),JobState.KILLED.toString());
+        JobHistoryEvent jfEvent=new JobHistoryEvent(toClose,jucEvent);
+        handleEvent(jfEvent);
+      }
+    }
+  }
+  for (  MetaInfo mi : fileMap.values()) {
+    try {
+      mi.closeWriter();
+    }
+ catch (    IOException e) {
+      LOG.info("Exception while closing file " + e.getMessage());
+    }
+  }
+  LOG.info("Stopped JobHistoryEventHandler. super.stop()");
+  super.serviceStop();
+}

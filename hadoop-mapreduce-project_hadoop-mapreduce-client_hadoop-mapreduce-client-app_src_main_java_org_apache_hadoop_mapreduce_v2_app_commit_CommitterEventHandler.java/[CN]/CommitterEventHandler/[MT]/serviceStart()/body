@@ -1,0 +1,25 @@
+{
+  ThreadFactory tf=new ThreadFactoryBuilder().setNameFormat("CommitterEvent Processor #%d").build();
+  launcherPool=new ThreadPoolExecutor(5,5,1,TimeUnit.HOURS,new LinkedBlockingQueue<Runnable>(),tf);
+  eventHandlingThread=new Thread(new Runnable(){
+    @Override public void run(){
+      CommitterEvent event=null;
+      while (!stopped.get() && !Thread.currentThread().isInterrupted()) {
+        try {
+          event=eventQueue.take();
+        }
+ catch (        InterruptedException e) {
+          if (!stopped.get()) {
+            LOG.error("Returning, interrupted : " + e);
+          }
+          return;
+        }
+        launcherPool.execute(new EventProcessor(event));
+      }
+    }
+  }
+);
+  eventHandlingThread.setName("CommitterEvent Handler");
+  eventHandlingThread.start();
+  super.serviceStart();
+}

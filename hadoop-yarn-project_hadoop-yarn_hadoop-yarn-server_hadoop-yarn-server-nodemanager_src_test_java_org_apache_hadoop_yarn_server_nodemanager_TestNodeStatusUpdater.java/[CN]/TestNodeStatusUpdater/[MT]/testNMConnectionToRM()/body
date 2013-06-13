@@ -6,8 +6,9 @@
   YarnConfiguration conf=createNMConfig();
   conf.setLong(YarnConfiguration.RESOURCEMANAGER_CONNECT_WAIT_SECS,connectionWaitSecs);
   conf.setLong(YarnConfiguration.RESOURCEMANAGER_CONNECT_RETRY_INTERVAL_SECS,connectionRetryIntervalSecs);
-  nm=new NodeManager(){
-    @Override protected NodeStatusUpdater createNodeStatusUpdater(    Context context,    Dispatcher dispatcher,    NodeHealthCheckerService healthChecker){
+  NodeManagerWithCustomNodeStatusUpdater nmWithUpdater;
+  nm=nmWithUpdater=new NodeManagerWithCustomNodeStatusUpdater(){
+    @Override protected NodeStatusUpdater createUpdater(    Context context,    Dispatcher dispatcher,    NodeHealthCheckerService healthChecker){
       NodeStatusUpdater nodeStatusUpdater=new MyNodeStatusUpdater4(context,dispatcher,healthChecker,metrics,rmStartIntervalMS,true);
       return nodeStatusUpdater;
     }
@@ -20,22 +21,35 @@
     Assert.fail("NM should have failed to start due to RM connect failure");
   }
  catch (  Exception e) {
-    Assert.assertTrue("NM should have tried re-connecting to RM during " + "period of at least " + connectionWaitSecs + " seconds, but "+ "stopped retrying within "+ (connectionWaitSecs + delta / 1000)+ " seconds",(System.currentTimeMillis() - waitStartTime >= connectionWaitSecs * 1000) && (System.currentTimeMillis() - waitStartTime < (connectionWaitSecs * 1000 + delta)));
+    long t=System.currentTimeMillis();
+    long duration=t - waitStartTime;
+    boolean waitTimeValid=(duration >= connectionWaitSecs * 1000) && (duration < (connectionWaitSecs * 1000 + delta));
+    if (!waitTimeValid) {
+      throw new Exception("NM should have tried re-connecting to RM during " + "period of at least " + connectionWaitSecs + " seconds, but "+ "stopped retrying within "+ (connectionWaitSecs + delta / 1000)+ " seconds: "+ e,e);
+    }
   }
-  nm=new NodeManager(){
-    @Override protected NodeStatusUpdater createNodeStatusUpdater(    Context context,    Dispatcher dispatcher,    NodeHealthCheckerService healthChecker){
+  nm=nmWithUpdater=new NodeManagerWithCustomNodeStatusUpdater(){
+    @Override protected NodeStatusUpdater createUpdater(    Context context,    Dispatcher dispatcher,    NodeHealthCheckerService healthChecker){
       NodeStatusUpdater nodeStatusUpdater=new MyNodeStatusUpdater4(context,dispatcher,healthChecker,metrics,rmStartIntervalMS,false);
       return nodeStatusUpdater;
     }
   }
 ;
   nm.init(conf);
+  NodeStatusUpdater updater=nmWithUpdater.getUpdater();
+  Assert.assertNotNull("Updater not yet created ",updater);
   waitStartTime=System.currentTimeMillis();
   try {
     nm.start();
   }
  catch (  Exception ex) {
-    Assert.fail("NM should have started successfully " + "after connecting to RM.");
+    LOG.error("NM should have started successfully " + "after connecting to RM.",ex);
+    throw ex;
   }
-  Assert.assertTrue("NM should have connected to RM within " + delta / 1000 + " seconds of RM starting up.",(System.currentTimeMillis() - waitStartTime >= rmStartIntervalMS) && (System.currentTimeMillis() - waitStartTime < (rmStartIntervalMS + delta)));
+  long duration=System.currentTimeMillis() - waitStartTime;
+  MyNodeStatusUpdater4 myUpdater=(MyNodeStatusUpdater4)updater;
+  Assert.assertTrue("Updater was never started",myUpdater.getWaitStartTime() > 0);
+  Assert.assertTrue("NM started before updater triggered",myUpdater.isTriggered());
+  Assert.assertTrue("NM should have connected to RM after " + "the start interval of " + rmStartIntervalMS + ": actual "+ duration+ " "+ myUpdater,(duration >= rmStartIntervalMS));
+  Assert.assertTrue("NM should have connected to RM less than " + (rmStartIntervalMS + delta) + " milliseconds of RM starting up: actual "+ duration+ " "+ myUpdater,(duration < (rmStartIntervalMS + delta)));
 }
