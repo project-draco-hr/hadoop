@@ -11,7 +11,8 @@
           nodeStatus.setResponseId(lastHeartBeatID);
           NodeHeartbeatRequest request=recordFactory.newRecordInstance(NodeHeartbeatRequest.class);
           request.setNodeStatus(nodeStatus);
-          request.setLastKnownMasterKey(NodeStatusUpdaterImpl.this.context.getContainerTokenSecretManager().getCurrentKey());
+          request.setLastKnownContainerTokenMasterKey(NodeStatusUpdaterImpl.this.context.getContainerTokenSecretManager().getCurrentKey());
+          request.setLastKnownNMTokenMasterKey(NodeStatusUpdaterImpl.this.context.getNMTokenSecretManager().getCurrentKey());
           while (!isStopped) {
             try {
               rmRetryCount++;
@@ -36,10 +37,7 @@
             }
           }
           nextHeartBeatInterval=response.getNextHeartBeatInterval();
-          MasterKey updatedMasterKey=response.getMasterKey();
-          if (updatedMasterKey != null) {
-            context.getContainerTokenSecretManager().setMasterKey(updatedMasterKey);
-          }
+          updateMasterKeys(response);
           if (response.getNodeAction() == NodeAction.SHUTDOWN) {
             LOG.warn("Recieved SHUTDOWN signal from Resourcemanager as part of heartbeat," + " hence shutting down.");
             LOG.warn("Message from ResourceManager: " + response.getDiagnosticsMessage());
@@ -81,6 +79,16 @@ synchronized (heartbeatMonitor) {
             }
           }
         }
+      }
+    }
+    private void updateMasterKeys(    NodeHeartbeatResponse response){
+      MasterKey updatedMasterKey=response.getContainerTokenMasterKey();
+      if (updatedMasterKey != null) {
+        context.getContainerTokenSecretManager().setMasterKey(updatedMasterKey);
+      }
+      updatedMasterKey=response.getNMTokenMasterKey();
+      if (updatedMasterKey != null) {
+        context.getNMTokenSecretManager().setMasterKey(updatedMasterKey);
       }
     }
   }
