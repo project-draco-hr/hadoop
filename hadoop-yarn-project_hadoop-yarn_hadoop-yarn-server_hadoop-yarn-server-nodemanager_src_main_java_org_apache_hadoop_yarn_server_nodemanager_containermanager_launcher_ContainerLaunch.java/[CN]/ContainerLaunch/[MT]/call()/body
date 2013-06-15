@@ -9,7 +9,8 @@
     final String user=container.getUser();
     List<String> newCmds=new ArrayList<String>(command.size());
     String appIdStr=app.getAppId().toString();
-    Path containerLogDir=dirsHandler.getLogPathForWrite(ContainerLaunch.getRelativeContainerLogDir(appIdStr,containerIdStr),false);
+    String relativeContainerLogDir=ContainerLaunch.getRelativeContainerLogDir(appIdStr,containerIdStr);
+    Path containerLogDir=dirsHandler.getLogPathForWrite(relativeContainerLogDir,false);
     for (    String str : command) {
       newCmds.add(str.replace(ApplicationConstants.LOG_DIR_EXPANSION_VAR,containerLogDir.toString()));
     }
@@ -29,6 +30,10 @@
     pidFilePath=dirsHandler.getLocalPathForWrite(ResourceLocalizationService.NM_PRIVATE_DIR + Path.SEPARATOR + pidFileSuffix);
     List<String> localDirs=dirsHandler.getLocalDirs();
     List<String> logDirs=dirsHandler.getLogDirs();
+    List<String> containerLogDirs=new ArrayList<String>();
+    for (    String logDir : logDirs) {
+      containerLogDirs.add(logDir + Path.SEPARATOR + relativeContainerLogDir);
+    }
     if (!dirsHandler.areDisksHealthy()) {
       ret=ContainerExitStatus.DISKS_FAILED;
       throw new IOException("Most of the disks failed. " + dirsHandler.getDisksHealthReport());
@@ -43,7 +48,7 @@
       }
       containerScriptOutStream=lfs.create(nmPrivateContainerScriptPath,EnumSet.of(CREATE,OVERWRITE));
       environment.put(ApplicationConstants.CONTAINER_TOKEN_FILE_ENV_NAME,new Path(containerWorkDir,FINAL_CONTAINER_TOKENS_FILE).toUri().getPath());
-      sanitizeEnv(environment,containerWorkDir,appDirs,localResources);
+      sanitizeEnv(environment,containerWorkDir,appDirs,containerLogDirs,localResources);
       writeLaunchEnv(containerScriptOutStream,environment,localResources,launchContext.getCommands());
       tokensOutStream=lfs.create(nmPrivateTokensPath,EnumSet.of(CREATE,OVERWRITE));
       Credentials creds=container.getCredentials();
