@@ -1,0 +1,29 @@
+{
+  LOG.info("Running test for malice user");
+  NMTokenSecretManagerInRM nmTokenSecretManagerInRM=yarnCluster.getResourceManager().getRMContext().getNMTokenSecretManager();
+  ApplicationId appId=ApplicationId.newInstance(1,1);
+  ApplicationAttemptId appAttemptId=ApplicationAttemptId.newInstance(appId,0);
+  ContainerId cId=ContainerId.newInstance(appAttemptId,0);
+  NodeManager nm=yarnCluster.getNodeManager(0);
+  NMTokenSecretManagerInNM nmTokenSecretManagerInNM=nm.getNMContext().getNMTokenSecretManager();
+  String user="test";
+  waitForNMToReceiveNMTokenKey(nmTokenSecretManagerInNM,nm);
+  NodeId nodeId=nm.getNMContext().getNodeId();
+  Assert.assertEquals(nmTokenSecretManagerInNM.getCurrentKey().getKeyId(),nmTokenSecretManagerInRM.getCurrentKey().getKeyId());
+  RMContainerTokenSecretManager containerTokenSecretManager=yarnCluster.getResourceManager().getRMContainerTokenSecretManager();
+  RMContainerTokenSecretManager tamperedContainerTokenSecretManager=new RMContainerTokenSecretManager(conf);
+  tamperedContainerTokenSecretManager.rollMasterKey();
+  do {
+    tamperedContainerTokenSecretManager.rollMasterKey();
+    tamperedContainerTokenSecretManager.activateNextMasterKey();
+  }
+ while (containerTokenSecretManager.getCurrentKey().getKeyId() == tamperedContainerTokenSecretManager.getCurrentKey().getKeyId());
+  Resource r=Resource.newInstance(1230,2);
+  Token containerToken=tamperedContainerTokenSecretManager.createContainerToken(cId,nodeId,user,r);
+  Token nmToken=nmTokenSecretManagerInRM.createNMToken(appAttemptId,nodeId,user);
+  YarnRPC rpc=YarnRPC.create(conf);
+  StringBuilder sb=new StringBuilder("Given Container ");
+  sb.append(cId);
+  sb.append(" seems to have an illegally generated token.");
+  Assert.assertTrue(testStartContainer(rpc,appAttemptId,nodeId,containerToken,nmToken,true).contains(sb.toString()));
+}

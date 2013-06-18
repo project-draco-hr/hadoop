@@ -1,28 +1,32 @@
 {
-synchronized (addStartedContainer(container)) {
+  StartedContainer startingContainer=createStartedContainer(container);
+synchronized (startingContainer) {
+    addStartingContainer(startingContainer);
     Map<String,ByteBuffer> allServiceResponse;
-    NMCommunicator nmCommunicator=null;
+    ContainerManagementProtocolProxyData proxy=null;
     try {
-      nmCommunicator=new NMCommunicator(container.getId(),container.getNodeId(),container.getContainerToken());
-      nmCommunicator.init(getConfig());
-      nmCommunicator.start();
-      allServiceResponse=nmCommunicator.startContainer(container,containerLaunchContext);
+      proxy=cmProxy.getProxy(container.getNodeId().toString(),container.getId());
+      allServiceResponse=proxy.getContainerManagementProtocol().startContainer(StartContainerRequest.newInstance(containerLaunchContext,container.getContainerToken())).getAllServicesMetaData();
+      startingContainer.state=ContainerState.RUNNING;
     }
  catch (    YarnException e) {
-      removeStartedContainer(container.getId());
+      startingContainer.state=ContainerState.COMPLETE;
+      removeStartedContainer(startingContainer);
       throw e;
     }
 catch (    IOException e) {
-      removeStartedContainer(container.getId());
+      startingContainer.state=ContainerState.COMPLETE;
+      removeStartedContainer(startingContainer);
       throw e;
     }
 catch (    Throwable t) {
-      removeStartedContainer(container.getId());
+      startingContainer.state=ContainerState.COMPLETE;
+      removeStartedContainer(startingContainer);
       throw RPCUtil.getRemoteException(t);
     }
  finally {
-      if (nmCommunicator != null) {
-        nmCommunicator.stop();
+      if (proxy != null) {
+        cmProxy.mayBeCloseProxy(proxy);
       }
     }
     return allServiceResponse;

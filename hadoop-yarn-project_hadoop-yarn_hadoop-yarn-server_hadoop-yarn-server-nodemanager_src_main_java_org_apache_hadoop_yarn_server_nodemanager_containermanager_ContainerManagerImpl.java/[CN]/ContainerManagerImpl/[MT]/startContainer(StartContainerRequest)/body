@@ -2,50 +2,27 @@
   if (blockNewContainerRequests.get()) {
     throw new NMNotYetReadyException("Rejecting new containers as NodeManager has not" + " yet connected with ResourceManager");
   }
-  ContainerLaunchContext launchContext=request.getContainerLaunchContext();
-  org.apache.hadoop.yarn.api.records.Token token=request.getContainerToken();
-  ContainerTokenIdentifier tokenIdentifier=null;
-  try {
-    tokenIdentifier=BuilderUtils.newContainerTokenIdentifier(token);
-  }
- catch (  IOException e) {
-    throw RPCUtil.getRemoteException(e);
-  }
   UserGroupInformation remoteUgi=getRemoteUgi();
-  ContainerTokenIdentifier tokenId=getContainerTokenIdentifier(remoteUgi,tokenIdentifier);
-  ContainerId containerID=tokenId.getContainerID();
-  String containerIDStr=containerID.toString();
-  authorizeRequest(containerIDStr,launchContext,remoteUgi,tokenId);
-  if (tokenId.getRMIdentifer() != nodeStatusUpdater.getRMIdentifier()) {
-    String msg="\nContainer " + containerIDStr + " rejected as it is allocated by a previous RM";
-    LOG.error(msg);
-    throw new InvalidContainerException(msg);
+  NMTokenIdentifier nmTokenIdentifier=selectNMTokenIdentifier(remoteUgi);
+  ContainerTokenIdentifier containerTokenIdentifier=verifyAndGetContainerTokenIdentifier(request.getContainerToken());
+  authorizeStartRequest(nmTokenIdentifier,containerTokenIdentifier,remoteUgi);
+  if (containerTokenIdentifier.getRMIdentifer() != nodeStatusUpdater.getRMIdentifier()) {
+    StringBuilder sb=new StringBuilder("\nContainer ");
+    sb.append(containerTokenIdentifier.getContainerID().toString()).append(" rejected as it is allocated by a previous RM");
+    throw new InvalidContainerException(sb.toString());
   }
-  LOG.info("Start request for " + containerIDStr + " by user "+ tokenId.getApplicationSubmitter());
-  ByteBuffer tokens=launchContext.getTokens();
-  Credentials credentials=new Credentials();
-  if (tokens != null) {
-    DataInputByteBuffer buf=new DataInputByteBuffer();
-    tokens.rewind();
-    buf.reset(tokens);
-    try {
-      credentials.readTokenStorageStream(buf);
-      if (LOG.isDebugEnabled()) {
-        for (        Token<? extends TokenIdentifier> tk : credentials.getAllTokens()) {
-          LOG.debug(tk.getService() + " = " + tk.toString());
-        }
-      }
-    }
- catch (    IOException e) {
-      throw RPCUtil.getRemoteException(e);
-    }
-  }
-  String user=tokenId.getApplicationSubmitter();
-  Container container=new ContainerImpl(getConfig(),this.dispatcher,launchContext,credentials,metrics,tokenId);
-  ApplicationId applicationID=containerID.getApplicationAttemptId().getApplicationId();
-  if (context.getContainers().putIfAbsent(containerID,container) != null) {
-    NMAuditLogger.logFailure(user,AuditConstants.START_CONTAINER,"ContainerManagerImpl","Container already running on this node!",applicationID,containerID);
-    throw RPCUtil.getRemoteException("Container " + containerIDStr + " already is running on this node!!");
+  updateNMTokenIdentifier(nmTokenIdentifier);
+  ContainerId containerId=containerTokenIdentifier.getContainerID();
+  String containerIdStr=containerId.toString();
+  String user=containerTokenIdentifier.getApplicationSubmitter();
+  LOG.info("Start request for " + containerIdStr + " by user "+ user);
+  ContainerLaunchContext launchContext=request.getContainerLaunchContext();
+  Credentials credentials=parseCredentials(launchContext);
+  Container container=new ContainerImpl(getConfig(),this.dispatcher,launchContext,credentials,metrics,containerTokenIdentifier);
+  ApplicationId applicationID=containerId.getApplicationAttemptId().getApplicationId();
+  if (context.getContainers().putIfAbsent(containerId,container) != null) {
+    NMAuditLogger.logFailure(user,AuditConstants.START_CONTAINER,"ContainerManagerImpl","Container already running on this node!",applicationID,containerId);
+    throw RPCUtil.getRemoteException("Container " + containerIdStr + " already is running on this node!!");
   }
   Application application=new ApplicationImpl(dispatcher,this.aclsManager,user,applicationID,credentials,context);
   if (null == context.getApplications().putIfAbsent(applicationID,application)) {
@@ -53,10 +30,11 @@
     dispatcher.getEventHandler().handle(new ApplicationInitEvent(applicationID,container.getLaunchContext().getApplicationACLs()));
   }
   dispatcher.getEventHandler().handle(new ApplicationContainerInitEvent(container));
-  this.context.getContainerTokenSecretManager().startContainerSuccessful(tokenId);
-  NMAuditLogger.logSuccess(user,AuditConstants.START_CONTAINER,"ContainerManageImpl",applicationID,containerID);
-  StartContainerResponse response=StartContainerResponse.newInstance(auxiliaryServices.getMetaData());
+  this.context.getContainerTokenSecretManager().startContainerSuccessful(containerTokenIdentifier);
+  NMAuditLogger.logSuccess(user,AuditConstants.START_CONTAINER,"ContainerManageImpl",applicationID,containerId);
+  StartContainerResponse response=recordFactory.newRecordInstance(StartContainerResponse.class);
+  response.setAllServicesMetaData(auxiliaryServices.getMetaData());
   metrics.launchedContainer();
-  metrics.allocateContainer(tokenId.getResource());
+  metrics.allocateContainer(containerTokenIdentifier.getResource());
   return response;
 }

@@ -1,0 +1,47 @@
+{
+  NMTokenSecretManagerInRM nmTokenSecretManagerRM=yarnCluster.getResourceManager().getRMContext().getNMTokenSecretManager();
+  NMTokenSecretManagerInNM nmTokenSecretManagerNM=yarnCluster.getNodeManager(0).getNMContext().getNMTokenSecretManager();
+  RMContainerTokenSecretManager containerTokenSecretManager=yarnCluster.getResourceManager().getRMContainerTokenSecretManager();
+  NodeManager nm=yarnCluster.getNodeManager(0);
+  waitForNMToReceiveNMTokenKey(nmTokenSecretManagerNM,nm);
+  Assert.assertEquals(nmTokenSecretManagerNM.getCurrentKey().getKeyId(),nmTokenSecretManagerRM.getCurrentKey().getKeyId());
+  YarnRPC rpc=YarnRPC.create(conf);
+  String user="test";
+  Resource r=Resource.newInstance(1024,1);
+  ApplicationId appId=ApplicationId.newInstance(1,1);
+  ApplicationAttemptId validAppAttemptId=ApplicationAttemptId.newInstance(appId,1);
+  ApplicationAttemptId invalidAppAttemptId=ApplicationAttemptId.newInstance(appId,2);
+  ContainerId validContainerId=ContainerId.newInstance(validAppAttemptId,0);
+  NodeId validNode=yarnCluster.getNodeManager(0).getNMContext().getNodeId();
+  NodeId invalidNode=NodeId.newInstance("InvalidHost",1234);
+  org.apache.hadoop.yarn.api.records.Token validNMToken=nmTokenSecretManagerRM.createNMToken(validAppAttemptId,validNode,user);
+  org.apache.hadoop.yarn.api.records.Token validContainerToken=containerTokenSecretManager.createContainerToken(validContainerId,validNode,user,r);
+  StringBuilder sb;
+  NMTokenSecretManagerInRM tempManager=new NMTokenSecretManagerInRM(conf);
+  tempManager.rollMasterKey();
+  do {
+    tempManager.rollMasterKey();
+    tempManager.activateNextMasterKey();
+  }
+ while (tempManager.getCurrentKey().getKeyId() == nmTokenSecretManagerRM.getCurrentKey().getKeyId());
+  org.apache.hadoop.yarn.api.records.Token invalidNMToken=tempManager.createNMToken(validAppAttemptId,validNode,user);
+  sb=new StringBuilder("Given NMToken for application : ");
+  sb.append(validAppAttemptId.toString()).append(" seems to have been generated illegally.");
+  Assert.assertTrue(sb.toString().contains(testStartContainer(rpc,validAppAttemptId,validNode,validContainerToken,invalidNMToken,true)));
+  invalidNMToken=nmTokenSecretManagerRM.createNMToken(validAppAttemptId,invalidNode,user);
+  sb=new StringBuilder("Given NMToken for application : ");
+  sb.append(validAppAttemptId).append(" is not valid for current node manager.expected : ").append(validNode.toString()).append(" found : ").append(invalidNode.toString());
+  Assert.assertTrue(sb.toString().contains(testStartContainer(rpc,validAppAttemptId,validNode,validContainerToken,invalidNMToken,true)));
+  invalidNMToken=nmTokenSecretManagerRM.createNMToken(invalidAppAttemptId,validNode,user);
+  sb=new StringBuilder("\nNMToken for application attempt : ");
+  sb.append(invalidAppAttemptId.toString()).append(" was used for starting container with container token").append(" issued for application attempt : ").append(validAppAttemptId.toString());
+  Assert.assertTrue(testStartContainer(rpc,validAppAttemptId,validNode,validContainerToken,invalidNMToken,true).contains(sb.toString()));
+  testStartContainer(rpc,validAppAttemptId,validNode,validContainerToken,validNMToken,false);
+  Assert.assertTrue(nmTokenSecretManagerNM.isAppAttemptNMTokenKeyPresent(validAppAttemptId));
+  rollNMTokenMasterKey(nmTokenSecretManagerRM,nmTokenSecretManagerNM);
+  rollNMTokenMasterKey(nmTokenSecretManagerRM,nmTokenSecretManagerNM);
+  sb=new StringBuilder("Container ");
+  sb.append(validContainerId.toString());
+  sb.append(" is not handled by this NodeManager");
+  Assert.assertTrue(testGetContainer(rpc,validAppAttemptId,validNode,validContainerId,validNMToken,false).contains(sb.toString()));
+}

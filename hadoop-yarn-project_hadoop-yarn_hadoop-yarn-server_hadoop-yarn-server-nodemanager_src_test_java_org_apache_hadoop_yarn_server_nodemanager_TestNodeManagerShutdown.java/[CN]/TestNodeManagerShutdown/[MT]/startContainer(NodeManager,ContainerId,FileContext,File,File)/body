@@ -1,7 +1,7 @@
 {
   File scriptFile=createUnhaltingScriptFile(cId,scriptFileDir,processStartFile);
   ContainerLaunchContext containerLaunchContext=recordFactory.newRecordInstance(ContainerLaunchContext.class);
-  NodeId nodeId=BuilderUtils.newNodeId("localhost",1234);
+  NodeId nodeId=BuilderUtils.newNodeId("localhost",12345);
   URL localResourceUri=ConverterUtils.getYarnUrlFromPath(localFS.makeQualified(new Path(scriptFile.getAbsolutePath())));
   LocalResource localResource=recordFactory.newRecordInstance(LocalResource.class);
   localResource.setResource(localResourceUri);
@@ -15,12 +15,13 @@
   containerLaunchContext.setLocalResources(localResources);
   List<String> commands=Arrays.asList(Shell.getRunScriptCommand(scriptFile));
   containerLaunchContext.setCommands(commands);
-  Resource resource=BuilderUtils.newResource(1024,1);
-  Token containerToken=BuilderUtils.newContainerToken(cId,nodeId.getHost(),nodeId.getPort(),user,resource,System.currentTimeMillis() + 10000L,123,"password".getBytes(),0);
   StartContainerRequest startRequest=recordFactory.newRecordInstance(StartContainerRequest.class);
   startRequest.setContainerLaunchContext(containerLaunchContext);
-  startRequest.setContainerToken(containerToken);
+  startRequest.setContainerToken(TestContainerManager.createContainerToken(cId,0,nodeId,user,nm.getNMContext().getContainerTokenSecretManager()));
+  final InetSocketAddress containerManagerBindAddress=NetUtils.createSocketAddrForHost("127.0.0.1",12345);
   UserGroupInformation currentUser=UserGroupInformation.createRemoteUser(cId.toString());
+  org.apache.hadoop.security.token.Token<NMTokenIdentifier> nmToken=ConverterUtils.convertFromYarn(nm.getNMContext().getNMTokenSecretManager().createNMToken(cId.getApplicationAttemptId(),nodeId,user),containerManagerBindAddress);
+  currentUser.addToken(nmToken);
   ContainerManagementProtocol containerManager=currentUser.doAs(new PrivilegedAction<ContainerManagementProtocol>(){
     @Override public ContainerManagementProtocol run(){
       Configuration conf=new Configuration();

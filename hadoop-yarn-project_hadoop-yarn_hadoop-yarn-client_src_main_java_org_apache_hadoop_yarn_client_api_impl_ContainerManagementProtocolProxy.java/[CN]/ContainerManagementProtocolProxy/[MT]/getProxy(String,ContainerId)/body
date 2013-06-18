@@ -1,0 +1,31 @@
+{
+  ContainerManagementProtocolProxyData proxy=cmProxy.get(containerManagerBindAddr);
+  while (proxy != null && !proxy.token.getIdentifier().equals(nmTokens.get(containerManagerBindAddr).getIdentifier())) {
+    LOG.info("Refreshing proxy as NMToken got updated for node : " + containerManagerBindAddr);
+    if (!proxy.scheduledForClose) {
+      removeProxy(proxy);
+    }
+ else {
+      try {
+        this.wait();
+      }
+ catch (      InterruptedException e) {
+        e.printStackTrace();
+      }
+    }
+    if (proxy.activeCallers < 0) {
+      proxy=cmProxy.get(containerManagerBindAddr);
+    }
+  }
+  if (proxy == null) {
+    proxy=new ContainerManagementProtocolProxyData(rpc,containerManagerBindAddr,containerId,nmTokens.get(containerManagerBindAddr));
+    if (cmProxy.size() > maxConnectedNMs) {
+      String cmAddr=cmProxy.keySet().iterator().next();
+      removeProxy(cmProxy.get(cmAddr));
+    }
+    cmProxy.put(containerManagerBindAddr,proxy);
+  }
+  proxy.activeCallers++;
+  updateLRUCache(containerManagerBindAddr);
+  return proxy;
+}
