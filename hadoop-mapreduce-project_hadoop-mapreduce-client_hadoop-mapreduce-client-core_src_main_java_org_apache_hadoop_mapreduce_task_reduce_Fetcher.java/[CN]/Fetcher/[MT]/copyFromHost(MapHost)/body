@@ -7,15 +7,23 @@
     LOG.debug("Fetcher " + id + " going to fetch from "+ host+ " for: "+ maps);
   }
   Set<TaskAttemptID> remaining=new HashSet<TaskAttemptID>(maps);
-  DataInputStream input;
+  DataInputStream input=null;
   try {
     URL url=getMapOutputURL(host,maps);
-    HttpURLConnection connection=openConnection(url);
+    openConnection(url);
+    if (stopped) {
+      abortConnect(host,remaining);
+      return;
+    }
     String msgToEncode=SecureShuffleUtils.buildMsgFrom(url);
     String encHash=SecureShuffleUtils.hashFromString(msgToEncode,shuffleSecretKey);
     connection.addRequestProperty(SecureShuffleUtils.HTTP_HEADER_URL_HASH,encHash);
     connection.setReadTimeout(readTimeout);
     connect(connection,connectionTimeout);
+    if (stopped) {
+      abortConnect(host,remaining);
+      return;
+    }
     input=new DataInputStream(connection.getInputStream());
     int rc=connection.getResponseCode();
     if (rc != HttpURLConnection.HTTP_OK) {
@@ -52,12 +60,17 @@
         scheduler.copyFailed(left,host,true,false);
       }
     }
-    IOUtils.cleanup(LOG,input);
     if (failedTasks == null && !remaining.isEmpty()) {
       throw new IOException("server didn't return all expected map outputs: " + remaining.size() + " left.");
     }
+    input.close();
+    input=null;
   }
   finally {
+    if (input != null) {
+      IOUtils.cleanup(LOG,input);
+      input=null;
+    }
     for (    TaskAttemptID left : remaining) {
       scheduler.putBackKnownMapOutput(host,left);
     }
