@@ -8,9 +8,14 @@
   YarnRPC rpc=YarnRPC.create(conf);
   String bindAddr="localhost:0";
   InetSocketAddress addr=NetUtils.createSocketAddr(bindAddr);
-  server=rpc.getServer(ContainerManagementProtocol.class,new DummyContainerManager(),addr,conf,null,1);
+  NMTokenSecretManagerInNM tokenSecretManager=new NMTokenSecretManagerInNM();
+  MasterKey masterKey=Records.newRecord(MasterKey.class);
+  masterKey.setBytes(ByteBuffer.wrap("key".getBytes()));
+  tokenSecretManager.setMasterKey(masterKey);
+  conf.set(CommonConfigurationKeysPublic.HADOOP_SECURITY_AUTHENTICATION,"token");
+  server=rpc.getServer(ContainerManagementProtocol.class,new DummyContainerManager(),addr,conf,tokenSecretManager,1);
   server.start();
-  MRApp app=new MRAppWithSlowNM();
+  MRApp app=new MRAppWithSlowNM(tokenSecretManager);
   try {
     Job job=app.submit(conf);
     app.waitForState(job,JobState.RUNNING);
