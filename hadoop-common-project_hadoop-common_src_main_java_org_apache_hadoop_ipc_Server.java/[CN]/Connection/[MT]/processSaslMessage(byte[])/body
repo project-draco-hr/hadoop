@@ -1,0 +1,53 @@
+{
+  final DataInputStream dis=new DataInputStream(new ByteArrayInputStream(buf));
+  RpcRequestMessageWrapper requestWrapper=new RpcRequestMessageWrapper();
+  requestWrapper.readFields(dis);
+  final RpcRequestHeaderProto rpcHeader=requestWrapper.requestHeader;
+  if (rpcHeader.getCallId() != AuthProtocol.SASL.callId) {
+    throw new SaslException("Client sent non-SASL request");
+  }
+  final RpcSaslProto saslMessage=RpcSaslProto.parseFrom(requestWrapper.theRequestRead);
+  RpcSaslProto saslResponse=null;
+  final SaslState state=saslMessage.getState();
+switch (state) {
+case NEGOTIATE:
+{
+      if (sentNegotiate) {
+        throw new AccessControlException("Client already attempted negotiation");
+      }
+      saslResponse=buildSaslNegotiateResponse();
+      break;
+    }
+case INITIATE:
+{
+    if (saslMessage.getAuthsCount() != 1) {
+      throw new SaslException("Client mechanism is malformed");
+    }
+    String authMethodName=saslMessage.getAuths(0).getMethod();
+    authMethod=createSaslServer(authMethodName);
+    if (authMethod == null) {
+      if (sentNegotiate) {
+        throw new AccessControlException(authMethodName + " authentication is not enabled." + "  Available:"+ enabledAuthMethods);
+      }
+      saslResponse=buildSaslNegotiateResponse();
+      break;
+    }
+  }
+case RESPONSE:
+{
+  if (!saslMessage.hasToken()) {
+    throw new SaslException("Client did not send a token");
+  }
+  byte[] saslToken=saslMessage.getToken().toByteArray();
+  if (LOG.isDebugEnabled()) {
+    LOG.debug("Have read input token of size " + saslToken.length + " for processing by saslServer.evaluateResponse()");
+  }
+  saslToken=saslServer.evaluateResponse(saslToken);
+  saslResponse=buildSaslResponse(saslServer.isComplete() ? SaslState.SUCCESS : SaslState.CHALLENGE,saslToken);
+  break;
+}
+default :
+throw new SaslException("Client sent unsupported state " + state);
+}
+return saslResponse;
+}

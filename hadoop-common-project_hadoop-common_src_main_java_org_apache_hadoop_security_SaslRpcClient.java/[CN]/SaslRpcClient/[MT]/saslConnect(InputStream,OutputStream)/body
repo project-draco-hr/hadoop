@@ -1,46 +1,87 @@
 {
   DataInputStream inStream=new DataInputStream(new BufferedInputStream(inS));
   DataOutputStream outStream=new DataOutputStream(new BufferedOutputStream(outS));
-  try {
-    byte[] saslToken=new byte[0];
-    if (saslClient.hasInitialResponse())     saslToken=saslClient.evaluateChallenge(saslToken);
-    while (saslToken != null) {
-      outStream.writeInt(saslToken.length);
-      outStream.write(saslToken,0,saslToken.length);
-      outStream.flush();
-      if (LOG.isDebugEnabled())       LOG.debug("Have sent token of size " + saslToken.length + " from initSASLContext.");
-      readStatus(inStream);
-      int len=inStream.readInt();
-      if (len == SaslRpcServer.SWITCH_TO_SIMPLE_AUTH) {
-        if (!fallbackAllowed) {
-          throw new IOException("Server asks us to fall back to SIMPLE " + "auth, but this client is configured to only allow secure " + "connections.");
-        }
-        if (LOG.isDebugEnabled())         LOG.debug("Server asks us to fall back to simple auth.");
-        saslClient.dispose();
-        return false;
-      }
- else       if ((len == 0) && saslClient.isComplete()) {
+  boolean inSasl=false;
+  sendSaslMessage(outStream,negotiateRequest);
+  boolean done=false;
+  do {
+    int totalLen=inStream.readInt();
+    RpcResponseMessageWrapper responseWrapper=new RpcResponseMessageWrapper();
+    responseWrapper.readFields(inStream);
+    RpcResponseHeaderProto header=responseWrapper.getMessageHeader();
+switch (header.getStatus()) {
+case ERROR:
+case FATAL:
+      throw new RemoteException(header.getExceptionClassName(),header.getErrorMsg());
+default :
+    break;
+}
+if (totalLen != responseWrapper.getLength()) {
+  throw new SaslException("Received malformed response length");
+}
+if (header.getCallId() != AuthProtocol.SASL.callId) {
+  throw new SaslException("Non-SASL response during negotiation");
+}
+RpcSaslProto saslMessage=RpcSaslProto.parseFrom(responseWrapper.getMessageBytes());
+if (LOG.isDebugEnabled()) {
+  LOG.debug("Received SASL message " + saslMessage);
+}
+RpcSaslProto.Builder response=null;
+switch (saslMessage.getState()) {
+case NEGOTIATE:
+{
+    inSasl=true;
+    String clientAuthMethod=authMethod.toString();
+    SaslAuth saslAuthType=null;
+    for (    SaslAuth authType : saslMessage.getAuthsList()) {
+      if (clientAuthMethod.equals(authType.getMethod())) {
+        saslAuthType=authType;
         break;
       }
-      saslToken=new byte[len];
-      if (LOG.isDebugEnabled())       LOG.debug("Will read input token of size " + saslToken.length + " for processing by initSASLContext");
-      inStream.readFully(saslToken);
-      saslToken=saslClient.evaluateChallenge(saslToken);
     }
-    if (!saslClient.isComplete()) {
-      throw new SaslException("Internal negotiation error");
+    if (saslAuthType == null) {
+      saslAuthType=SaslAuth.newBuilder().setMethod(clientAuthMethod).setMechanism(saslClient.getMechanismName()).build();
     }
-    if (LOG.isDebugEnabled()) {
-      LOG.debug("SASL client context established. Negotiated QoP: " + saslClient.getNegotiatedProperty(Sasl.QOP));
+    byte[] challengeToken=null;
+    if (saslAuthType != null && saslAuthType.hasChallenge()) {
+      challengeToken=saslAuthType.getChallenge().toByteArray();
+      saslAuthType=SaslAuth.newBuilder(saslAuthType).clearChallenge().build();
     }
-    return true;
+ else     if (saslClient.hasInitialResponse()) {
+      challengeToken=new byte[0];
+    }
+    byte[] responseToken=(challengeToken != null) ? saslClient.evaluateChallenge(challengeToken) : new byte[0];
+    response=createSaslReply(SaslState.INITIATE,responseToken);
+    response.addAuths(saslAuthType);
+    break;
   }
- catch (  IOException e) {
-    try {
-      saslClient.dispose();
-    }
- catch (    SaslException ignored) {
-    }
-    throw e;
-  }
+case CHALLENGE:
+{
+  inSasl=true;
+  byte[] responseToken=saslEvaluateToken(saslMessage,false);
+  response=createSaslReply(SaslState.RESPONSE,responseToken);
+  break;
+}
+case SUCCESS:
+{
+if (inSasl && saslEvaluateToken(saslMessage,true) != null) {
+  throw new SaslException("SASL client generated spurious token");
+}
+done=true;
+break;
+}
+default :
+{
+throw new SaslException("RPC client doesn't support SASL " + saslMessage.getState());
+}
+}
+if (response != null) {
+sendSaslMessage(outStream,response.build());
+}
+}
+ while (!done);
+if (!inSasl && !fallbackAllowed) {
+throw new IOException("Server asks us to fall back to SIMPLE " + "auth, but this client is configured to only allow secure " + "connections.");
+}
+return inSasl;
 }
