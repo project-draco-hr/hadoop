@@ -1,0 +1,58 @@
+{
+  long offset=request.getOffset();
+  int count=request.getCount();
+  WriteStableHow stableHow=request.getStableHow();
+  WccAttr preOpAttr=latestAttr.getWccAttr();
+  if (LOG.isDebugEnabled()) {
+    LOG.debug("requesed offset=" + offset + " and current filesize="+ preOpAttr.getSize());
+  }
+  long nextOffset=getNextOffsetUnprotected();
+  if (offset == nextOffset) {
+    LOG.info("Add to the list, update nextOffset and notify the writer," + " nextOffset:" + nextOffset);
+    WriteCtx writeCtx=new WriteCtx(request.getHandle(),request.getOffset(),request.getCount(),request.getStableHow(),request.getData().array(),channel,xid,false,WriteCtx.NO_DUMP);
+    addWrite(writeCtx);
+    if (!asyncStatus) {
+      asyncStatus=true;
+      asyncDataService.execute(new AsyncDataService.WriteBackTask(this));
+    }
+    updateLastAccessTime();
+    Nfs3FileAttributes postOpAttr=new Nfs3FileAttributes(latestAttr);
+    if (request.getStableHow() == WriteStableHow.UNSTABLE) {
+      WccData fileWcc=new WccData(preOpAttr,postOpAttr);
+      WRITE3Response response=new WRITE3Response(Nfs3Status.NFS3_OK,fileWcc,count,stableHow,Nfs3Constant.WRITE_COMMIT_VERF);
+      Nfs3Utils.writeChannel(channel,response.send(new XDR(),xid));
+      writeCtx.setReplied(true);
+    }
+  }
+ else   if (offset > nextOffset) {
+    LOG.info("Add new write to the list but not update nextOffset:" + nextOffset);
+    WriteCtx writeCtx=new WriteCtx(request.getHandle(),request.getOffset(),request.getCount(),request.getStableHow(),request.getData().array(),channel,xid,false,WriteCtx.ALLOW_DUMP);
+    addWrite(writeCtx);
+    checkDump(request.getCount());
+    updateLastAccessTime();
+    Nfs3FileAttributes postOpAttr=new Nfs3FileAttributes(latestAttr);
+    if (request.getStableHow() == WriteStableHow.UNSTABLE) {
+      WccData fileWcc=new WccData(preOpAttr,postOpAttr);
+      WRITE3Response response=new WRITE3Response(Nfs3Status.NFS3_OK,fileWcc,count,stableHow,Nfs3Constant.WRITE_COMMIT_VERF);
+      Nfs3Utils.writeChannel(channel,response.send(new XDR(),xid));
+      writeCtx.setReplied(true);
+    }
+  }
+ else {
+    LOG.warn("(offset,count,nextOffset):" + "(" + offset + ","+ count+ ","+ nextOffset+ ")");
+    WccData wccData=new WccData(preOpAttr,null);
+    WRITE3Response response;
+    if (offset + count > nextOffset) {
+      LOG.warn("Haven't noticed any partial overwrite out of a sequential file" + "write requests, so treat it as a real random write, no support.");
+      response=new WRITE3Response(Nfs3Status.NFS3ERR_INVAL,wccData,0,WriteStableHow.UNSTABLE,0);
+    }
+ else {
+      if (LOG.isDebugEnabled()) {
+        LOG.debug("Process perfectOverWrite");
+      }
+      response=processPerfectOverWrite(dfsClient,offset,count,stableHow,request.getData().array(),Nfs3Utils.getFileIdPath(request.getHandle()),wccData,iug);
+    }
+    updateLastAccessTime();
+    Nfs3Utils.writeChannel(channel,response.send(new XDR(),xid));
+  }
+}

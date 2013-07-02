@@ -1,0 +1,41 @@
+{
+  if (!asyncDataServiceStarted) {
+    startAsyncDataSerivce();
+  }
+  long offset=request.getOffset();
+  int count=request.getCount();
+  WriteStableHow stableHow=request.getStableHow();
+  byte[] data=request.getData().array();
+  if (data.length < count) {
+    WRITE3Response response=new WRITE3Response(Nfs3Status.NFS3ERR_INVAL);
+    Nfs3Utils.writeChannel(channel,response.send(new XDR(),xid));
+    return;
+  }
+  FileHandle handle=request.getHandle();
+  if (LOG.isDebugEnabled()) {
+    LOG.debug("handleWrite fileId: " + handle.getFileId() + " offset: "+ offset+ " length:"+ count+ " stableHow:"+ stableHow.getValue());
+  }
+  FileHandle fileHandle=request.getHandle();
+  OpenFileCtx openFileCtx=openFileMap.get(fileHandle);
+  if (openFileCtx == null) {
+    LOG.info("No opened stream for fileId:" + fileHandle.getFileId());
+    WccData fileWcc=new WccData(Nfs3Utils.getWccAttr(preOpAttr),preOpAttr);
+    WRITE3Response response=new WRITE3Response(Nfs3Status.NFS3ERR_IO,fileWcc,count,request.getStableHow(),Nfs3Constant.WRITE_COMMIT_VERF);
+    Nfs3Utils.writeChannel(channel,response.send(new XDR(),xid));
+    return;
+  }
+  openFileCtx.receivedNewWrite(dfsClient,request,channel,xid,asyncDataService,iug);
+  if (request.getStableHow() != WriteStableHow.UNSTABLE) {
+    if (handleCommit(fileHandle,offset + count)) {
+      Nfs3FileAttributes postOpAttr=getFileAttr(dfsClient,handle,iug);
+      WccData fileWcc=new WccData(Nfs3Utils.getWccAttr(preOpAttr),postOpAttr);
+      WRITE3Response response=new WRITE3Response(Nfs3Status.NFS3_OK,fileWcc,count,request.getStableHow(),Nfs3Constant.WRITE_COMMIT_VERF);
+      Nfs3Utils.writeChannel(channel,response.send(new XDR(),xid));
+    }
+ else {
+      WRITE3Response response=new WRITE3Response(Nfs3Status.NFS3ERR_IO);
+      Nfs3Utils.writeChannel(channel,response.send(new XDR(),xid));
+    }
+  }
+  return;
+}

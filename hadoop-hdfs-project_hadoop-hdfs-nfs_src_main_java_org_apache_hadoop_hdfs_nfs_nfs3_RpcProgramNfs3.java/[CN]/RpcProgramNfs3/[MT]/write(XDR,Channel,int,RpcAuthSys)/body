@@ -1,0 +1,55 @@
+{
+  WRITE3Response response=new WRITE3Response(Nfs3Status.NFS3_OK);
+  String uname=authSysCheck(authSys);
+  DFSClient dfsClient=clientCache.get(uname);
+  if (dfsClient == null) {
+    response.setStatus(Nfs3Status.NFS3ERR_SERVERFAULT);
+    return response;
+  }
+  WRITE3Request request=null;
+  try {
+    request=new WRITE3Request(xdr);
+  }
+ catch (  IOException e) {
+    LOG.error("Invalid WRITE request");
+    return new WRITE3Response(Nfs3Status.NFS3ERR_INVAL);
+  }
+  long offset=request.getOffset();
+  int count=request.getCount();
+  WriteStableHow stableHow=request.getStableHow();
+  byte[] data=request.getData().array();
+  if (data.length < count) {
+    LOG.error("Invalid argument, data size is less than count in request");
+    return new WRITE3Response(Nfs3Status.NFS3ERR_INVAL);
+  }
+  FileHandle handle=request.getHandle();
+  if (LOG.isDebugEnabled()) {
+    LOG.debug("NFS WRITE fileId: " + handle.getFileId() + " offset: "+ offset+ " length:"+ count+ " stableHow:"+ stableHow.getValue()+ " xid:"+ xid);
+  }
+  Nfs3FileAttributes preOpAttr=null;
+  try {
+    preOpAttr=writeManager.getFileAttr(dfsClient,handle,iug);
+    if (preOpAttr == null) {
+      LOG.error("Can't get path for fileId:" + handle.getFileId());
+      return new WRITE3Response(Nfs3Status.NFS3ERR_STALE);
+    }
+    if (LOG.isDebugEnabled()) {
+      LOG.debug("requesed offset=" + offset + " and current filesize="+ preOpAttr.getSize());
+    }
+    writeManager.handleWrite(dfsClient,request,channel,xid,preOpAttr);
+  }
+ catch (  IOException e) {
+    LOG.info("Error writing to fileId " + handle.getFileId() + " at offset "+ offset+ " and length "+ data.length,e);
+    Nfs3FileAttributes postOpAttr=null;
+    try {
+      postOpAttr=writeManager.getFileAttr(dfsClient,handle,iug);
+    }
+ catch (    IOException e1) {
+      LOG.info("Can't get postOpAttr for fileId: " + handle.getFileId());
+    }
+    WccAttr attr=preOpAttr == null ? null : Nfs3Utils.getWccAttr(preOpAttr);
+    WccData fileWcc=new WccData(attr,postOpAttr);
+    return new WRITE3Response(Nfs3Status.NFS3ERR_IO,fileWcc,0,request.getStableHow(),Nfs3Constant.WRITE_COMMIT_VERF);
+  }
+  return null;
+}

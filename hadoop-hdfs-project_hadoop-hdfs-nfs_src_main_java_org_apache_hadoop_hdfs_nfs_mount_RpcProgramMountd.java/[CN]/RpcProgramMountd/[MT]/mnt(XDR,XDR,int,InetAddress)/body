@@ -1,0 +1,30 @@
+{
+  String path=xdr.readString();
+  if (LOG.isDebugEnabled()) {
+    LOG.debug("MOUNT MNT path: " + path + " client: "+ client);
+  }
+  String host=client.getHostName();
+  if (LOG.isDebugEnabled()) {
+    LOG.debug("Got host: " + host + " path: "+ path);
+  }
+  if (!exports.contains(path)) {
+    LOG.info("Path " + path + " is not shared.");
+    MountResponse.writeMNTResponse(Nfs3Status.NFS3ERR_NOENT,out,xid,null);
+    return out;
+  }
+  FileHandle handle=null;
+  try {
+    HdfsFileStatus exFileStatus=dfsClient.getFileInfo(path);
+    handle=new FileHandle(exFileStatus.getFileId());
+  }
+ catch (  IOException e) {
+    LOG.error("Can't get handle for export:" + path + ", exception:"+ e);
+    MountResponse.writeMNTResponse(Nfs3Status.NFS3ERR_NOENT,out,xid,null);
+    return out;
+  }
+  assert(handle != null);
+  LOG.info("Giving handle (fileId:" + handle.getFileId() + ") to client for export "+ path);
+  mounts.add(new MountEntry(host,path));
+  MountResponse.writeMNTResponse(Nfs3Status.NFS3_OK,out,xid,handle.getContent());
+  return out;
+}

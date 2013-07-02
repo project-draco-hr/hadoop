@@ -1,0 +1,63 @@
+{
+  assert(ctxLock.isLocked());
+  updateNonSequentialWriteInMemory(count);
+  if (!enabledDump) {
+    if (LOG.isDebugEnabled()) {
+      LOG.debug("Do nothing, dump is disabled.");
+    }
+    return;
+  }
+  if (nonSequentialWriteInMemory < DUMP_WRITE_WATER_MARK) {
+    return;
+  }
+  if (dumpOut == null) {
+    LOG.info("Create dump file:" + dumpFilePath);
+    File dumpFile=new File(dumpFilePath);
+    try {
+      if (dumpFile.exists()) {
+        LOG.fatal("The dump file should not exist:" + dumpFilePath);
+        throw new RuntimeException("The dump file should not exist:" + dumpFilePath);
+      }
+      dumpOut=new FileOutputStream(dumpFile);
+    }
+ catch (    IOException e) {
+      LOG.error("Got failure when creating dump stream " + dumpFilePath + " with error:"+ e);
+      enabledDump=false;
+      IOUtils.cleanup(LOG,dumpOut);
+      return;
+    }
+  }
+  if (raf == null) {
+    try {
+      raf=new RandomAccessFile(dumpFilePath,"r");
+    }
+ catch (    FileNotFoundException e) {
+      LOG.error("Can't get random access to file " + dumpFilePath);
+      enabledDump=false;
+      return;
+    }
+  }
+  if (LOG.isDebugEnabled()) {
+    LOG.debug("Start dump, current write number:" + pendingWrites.size());
+  }
+  Iterator<OffsetRange> it=pendingWrites.keySet().iterator();
+  while (it.hasNext()) {
+    OffsetRange key=it.next();
+    WriteCtx writeCtx=pendingWrites.get(key);
+    try {
+      long dumpedDataSize=writeCtx.dumpData(dumpOut,raf);
+      if (dumpedDataSize > 0) {
+        updateNonSequentialWriteInMemory(-dumpedDataSize);
+      }
+    }
+ catch (    IOException e) {
+      LOG.error("Dump data failed:" + writeCtx + " with error:"+ e);
+      enabledDump=false;
+      return;
+    }
+  }
+  if (nonSequentialWriteInMemory != 0) {
+    LOG.fatal("After dump, nonSequentialWriteInMemory is not zero: " + nonSequentialWriteInMemory);
+    throw new RuntimeException("After dump, nonSequentialWriteInMemory is not zero: " + nonSequentialWriteInMemory);
+  }
+}

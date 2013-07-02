@@ -1,0 +1,44 @@
+{
+  assert(ctxLock.isLocked());
+  activeState=false;
+  try {
+    if (fos != null) {
+      fos.close();
+    }
+  }
+ catch (  IOException e) {
+    LOG.info("Can't close stream for fileId:" + latestAttr.getFileid() + ", error:"+ e);
+  }
+  LOG.info("There are " + pendingWrites.size() + " pending writes.");
+  WccAttr preOpAttr=latestAttr.getWccAttr();
+  while (!pendingWrites.isEmpty()) {
+    OffsetRange key=pendingWrites.firstKey();
+    LOG.info("Fail pending write: (" + key.getMin() + ","+ key.getMax()+ "), nextOffset="+ getNextOffsetUnprotected());
+    WriteCtx writeCtx=pendingWrites.remove(key);
+    if (!writeCtx.getReplied()) {
+      WccData fileWcc=new WccData(preOpAttr,latestAttr);
+      WRITE3Response response=new WRITE3Response(Nfs3Status.NFS3ERR_IO,fileWcc,0,writeCtx.getStableHow(),Nfs3Constant.WRITE_COMMIT_VERF);
+      Nfs3Utils.writeChannel(writeCtx.getChannel(),response.send(new XDR(),writeCtx.getXid()));
+    }
+  }
+  if (dumpOut != null) {
+    try {
+      dumpOut.close();
+    }
+ catch (    IOException e) {
+      e.printStackTrace();
+    }
+  }
+  if (raf != null) {
+    try {
+      raf.close();
+    }
+ catch (    IOException e) {
+      e.printStackTrace();
+    }
+  }
+  File dumpFile=new File(dumpFilePath);
+  if (dumpFile.delete()) {
+    LOG.error("Failed to delete dumpfile: " + dumpFile);
+  }
+}

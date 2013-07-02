@@ -1,0 +1,45 @@
+{
+  assert(ctxLock.isLocked());
+  Channel channel=writeCtx.getChannel();
+  int xid=writeCtx.getXid();
+  long offset=writeCtx.getOffset();
+  int count=writeCtx.getCount();
+  WriteStableHow stableHow=writeCtx.getStableHow();
+  byte[] data=null;
+  try {
+    data=writeCtx.getData();
+  }
+ catch (  IOException e1) {
+    LOG.error("Failed to get request data offset:" + offset + " count:"+ count+ " error:"+ e1);
+    cleanup();
+    return;
+  }
+  assert(data.length == count);
+  FileHandle handle=writeCtx.getHandle();
+  LOG.info("do write, fileId: " + handle.getFileId() + " offset: "+ offset+ " length:"+ count+ " stableHow:"+ stableHow.getValue());
+  try {
+    fos.write(data,0,count);
+    if (fos.getPos() != (offset + count)) {
+      throw new IOException("output stream is out of sync, pos=" + fos.getPos() + " and nextOffset should be"+ (offset + count));
+    }
+    nextOffset=fos.getPos();
+    if (writeCtx.getDataState() == WriteCtx.ALLOW_DUMP) {
+      updateNonSequentialWriteInMemory(-count);
+    }
+    if (!writeCtx.getReplied()) {
+      WccAttr preOpAttr=latestAttr.getWccAttr();
+      WccData fileWcc=new WccData(preOpAttr,latestAttr);
+      WRITE3Response response=new WRITE3Response(Nfs3Status.NFS3_OK,fileWcc,count,stableHow,Nfs3Constant.WRITE_COMMIT_VERF);
+      Nfs3Utils.writeChannel(channel,response.send(new XDR(),xid));
+    }
+  }
+ catch (  IOException e) {
+    LOG.error("Error writing to fileId " + handle.getFileId() + " at offset "+ offset+ " and length "+ data.length,e);
+    if (!writeCtx.getReplied()) {
+      WRITE3Response response=new WRITE3Response(Nfs3Status.NFS3ERR_IO);
+      Nfs3Utils.writeChannel(channel,response.send(new XDR(),xid));
+    }
+    LOG.info("Clean up open file context for fileId: " + latestAttr.getFileid());
+    cleanup();
+  }
+}

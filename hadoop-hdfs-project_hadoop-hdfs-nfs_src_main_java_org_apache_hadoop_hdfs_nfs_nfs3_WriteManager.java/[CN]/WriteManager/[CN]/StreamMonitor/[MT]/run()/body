@@ -1,0 +1,32 @@
+{
+  while (true) {
+    Iterator<Entry<FileHandle,OpenFileCtx>> it=openFileMap.entrySet().iterator();
+    if (LOG.isTraceEnabled()) {
+      LOG.trace("openFileMap size:" + openFileMap.size());
+    }
+    while (it.hasNext()) {
+      Entry<FileHandle,OpenFileCtx> pairs=it.next();
+      OpenFileCtx ctx=pairs.getValue();
+      if (ctx.streamCleanup((pairs.getKey()).getFileId(),streamTimeout)) {
+        it.remove();
+        if (LOG.isDebugEnabled()) {
+          LOG.debug("After remove stream " + pairs.getKey().getFileId() + ", the stream number:"+ openFileMap.size());
+        }
+      }
+    }
+    try {
+      long workedTime=System.currentTimeMillis() - lastWakeupTime;
+      if (workedTime < rotation) {
+        if (LOG.isTraceEnabled()) {
+          LOG.trace("StreamMonitor can still have a sleep:" + ((rotation - workedTime) / 1000));
+        }
+        Thread.sleep(rotation - workedTime);
+      }
+      lastWakeupTime=System.currentTimeMillis();
+    }
+ catch (    InterruptedException e) {
+      LOG.info("StreamMonitor got interrupted");
+      return;
+    }
+  }
+}
