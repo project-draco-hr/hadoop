@@ -6,19 +6,32 @@
   }
 ;
   rm.start();
-  MockNM node=rm.registerNode("host:1234",1024);
+  MockNM node=rm.registerNode("host1:1234",1024);
+  rm.sendNodeStarted(node);
   node.nodeHeartbeat(true);
+  MockNM lostNode=rm.registerNode("host2:1235",1024);
+  rm.sendNodeStarted(lostNode);
+  lostNode.nodeHeartbeat(true);
+  rm.NMwaitForState(lostNode.getNodeId(),NodeState.RUNNING);
+  rm.sendNodeLost(lostNode);
   Configuration conf=new Configuration();
   YarnRPC rpc=YarnRPC.create(conf);
   InetSocketAddress rmAddress=rm.getClientRMService().getBindAddress();
   LOG.info("Connecting to ResourceManager at " + rmAddress);
   ApplicationClientProtocol client=(ApplicationClientProtocol)rpc.getProxy(ApplicationClientProtocol.class,rmAddress,conf);
-  GetClusterNodesRequest request=Records.newRecord(GetClusterNodesRequest.class);
+  GetClusterNodesRequest request=GetClusterNodesRequest.newInstance(EnumSet.of(NodeState.RUNNING));
   List<NodeReport> nodeReports=client.getClusterNodes(request).getNodeReports();
   Assert.assertEquals(1,nodeReports.size());
   Assert.assertNotSame("Node is expected to be healthy!",NodeState.UNHEALTHY,nodeReports.get(0).getNodeState());
   node.nodeHeartbeat(false);
   nodeReports=client.getClusterNodes(request).getNodeReports();
+  Assert.assertEquals("Unhealthy nodes should not show up by default",0,nodeReports.size());
+  request=GetClusterNodesRequest.newInstance(EnumSet.of(NodeState.UNHEALTHY));
+  nodeReports=client.getClusterNodes(request).getNodeReports();
   Assert.assertEquals(1,nodeReports.size());
   Assert.assertEquals("Node is expected to be unhealthy!",NodeState.UNHEALTHY,nodeReports.get(0).getNodeState());
+  rm.registerNode("host3:1236",1024);
+  request=GetClusterNodesRequest.newInstance(EnumSet.allOf(NodeState.class));
+  nodeReports=client.getClusterNodes(request).getNodeReports();
+  Assert.assertEquals(3,nodeReports.size());
 }
