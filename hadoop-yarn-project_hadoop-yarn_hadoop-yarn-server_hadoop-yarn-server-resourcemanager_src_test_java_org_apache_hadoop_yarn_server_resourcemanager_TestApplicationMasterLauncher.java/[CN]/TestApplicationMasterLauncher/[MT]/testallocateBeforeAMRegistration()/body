@@ -1,0 +1,39 @@
+{
+  Logger rootLogger=LogManager.getRootLogger();
+  boolean thrown=false;
+  rootLogger.setLevel(Level.DEBUG);
+  MockRM rm=new MockRM();
+  rm.start();
+  MockNM nm1=rm.registerNode("h1:1234",5000);
+  RMApp app=rm.submitApp(2000);
+  nm1.nodeHeartbeat(true);
+  RMAppAttempt attempt=app.getCurrentAppAttempt();
+  MockAM am=rm.sendAMLaunched(attempt.getAppAttemptId());
+  int request=2;
+  try {
+    AllocateResponse ar=am.allocate("h1",1000,request,new ArrayList<ContainerId>());
+  }
+ catch (  Exception e) {
+    Assert.assertEquals("Application Master is trying to allocate before " + "registering for: " + attempt.getAppAttemptId().getApplicationId(),e.getMessage());
+    thrown=true;
+  }
+  nm1.nodeHeartbeat(true);
+  try {
+    AllocateResponse amrs=am.allocate(new ArrayList<ResourceRequest>(),new ArrayList<ContainerId>());
+  }
+ catch (  Exception e) {
+    Assert.assertEquals("Application Master is trying to allocate before " + "registering for: " + attempt.getAppAttemptId().getApplicationId(),e.getMessage());
+    thrown=true;
+  }
+  Assert.assertTrue(thrown);
+  am.registerAppAttempt();
+  thrown=false;
+  try {
+    am.registerAppAttempt(false);
+  }
+ catch (  Exception e) {
+    Assert.assertEquals("Application Master is already registered : " + attempt.getAppAttemptId().getApplicationId(),e.getMessage());
+    thrown=true;
+  }
+  Assert.assertTrue(thrown);
+}

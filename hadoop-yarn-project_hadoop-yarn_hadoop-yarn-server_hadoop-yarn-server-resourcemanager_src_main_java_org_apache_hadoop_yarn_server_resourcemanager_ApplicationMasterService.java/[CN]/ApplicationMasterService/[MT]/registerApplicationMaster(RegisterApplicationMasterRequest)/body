@@ -10,10 +10,18 @@
     throw RPCUtil.getRemoteException(message);
   }
 synchronized (lastResponse) {
-    LOG.info("AM registration " + applicationAttemptId);
+    if (hasApplicationMasterRegistered(applicationAttemptId)) {
+      String message="Application Master is already registered : " + applicationAttemptId.getApplicationId();
+      LOG.warn(message);
+      RMAuditLogger.logFailure(this.rmContext.getRMApps().get(applicationAttemptId.getApplicationId()).getUser(),AuditConstants.REGISTER_AM,"","ApplicationMasterService",message,applicationAttemptId.getApplicationId(),applicationAttemptId);
+      throw new InvalidApplicationMasterRequestException(message);
+    }
     this.amLivelinessMonitor.receivedPing(applicationAttemptId);
-    this.rmContext.getDispatcher().getEventHandler().handle(new RMAppAttemptRegistrationEvent(applicationAttemptId,request.getHost(),request.getRpcPort(),request.getTrackingUrl()));
     RMApp app=this.rmContext.getRMApps().get(appID);
+    lastResponse.setResponseId(0);
+    responseMap.put(applicationAttemptId,lastResponse);
+    LOG.info("AM registration " + applicationAttemptId);
+    this.rmContext.getDispatcher().getEventHandler().handle(new RMAppAttemptRegistrationEvent(applicationAttemptId,request.getHost(),request.getRpcPort(),request.getTrackingUrl()));
     RMAuditLogger.logSuccess(app.getUser(),AuditConstants.REGISTER_AM,"ApplicationMasterService",appID,applicationAttemptId);
     RegisterApplicationMasterResponse response=recordFactory.newRecordInstance(RegisterApplicationMasterResponse.class);
     response.setMaximumResourceCapability(rScheduler.getMaximumResourceCapability());
