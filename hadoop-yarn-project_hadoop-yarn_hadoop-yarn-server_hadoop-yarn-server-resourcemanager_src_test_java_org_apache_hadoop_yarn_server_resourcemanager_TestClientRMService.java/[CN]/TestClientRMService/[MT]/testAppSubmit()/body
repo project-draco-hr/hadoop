@@ -10,8 +10,10 @@
     }
   }
 );
-  ClientRMService rmService=new ClientRMService(rmContext,yarnScheduler,appManager,null,null);
   ApplicationId appId1=getApplicationId(100);
+  ApplicationACLsManager mockAclsManager=mock(ApplicationACLsManager.class);
+  when(mockAclsManager.checkAccess(UserGroupInformation.getCurrentUser(),ApplicationAccessType.VIEW_APP,null,appId1)).thenReturn(true);
+  ClientRMService rmService=new ClientRMService(rmContext,yarnScheduler,appManager,mockAclsManager,null);
   SubmitApplicationRequest submitRequest1=mockSubmitAppRequest(appId1,null,null);
   try {
     rmService.submitApplication(submitRequest1);
@@ -27,6 +29,7 @@
   String queue=MockApps.newQueue();
   ApplicationId appId2=getApplicationId(101);
   SubmitApplicationRequest submitRequest2=mockSubmitAppRequest(appId2,name,queue);
+  submitRequest2.getApplicationSubmissionContext().setApplicationType("matchType");
   try {
     rmService.submitApplication(submitRequest2);
   }
@@ -44,4 +47,13 @@
  catch (  YarnException e) {
     Assert.assertTrue("The thrown exception is not expected.",e.getMessage().contains("Cannot add a duplicate!"));
   }
+  GetApplicationsRequest getAllAppsRequest=GetApplicationsRequest.newInstance(new HashSet<String>());
+  GetApplicationsResponse getAllApplicationsResponse=rmService.getApplications(getAllAppsRequest);
+  Assert.assertEquals(5,getAllApplicationsResponse.getApplicationList().size());
+  Set<String> appTypes=new HashSet<String>();
+  appTypes.add("matchType");
+  getAllAppsRequest=GetApplicationsRequest.newInstance(appTypes);
+  getAllApplicationsResponse=rmService.getApplications(getAllAppsRequest);
+  Assert.assertEquals(1,getAllApplicationsResponse.getApplicationList().size());
+  Assert.assertEquals(appId2,getAllApplicationsResponse.getApplicationList().get(0).getApplicationId());
 }

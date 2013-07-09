@@ -1,0 +1,23 @@
+{
+  UserGroupInformation callerUGI;
+  try {
+    callerUGI=UserGroupInformation.getCurrentUser();
+  }
+ catch (  IOException ie) {
+    LOG.info("Error getting UGI ",ie);
+    throw RPCUtil.getRemoteException(ie);
+  }
+  Set<String> applicationTypes=request.getApplicationTypes();
+  boolean bypassFilter=applicationTypes.isEmpty();
+  List<ApplicationReport> reports=new ArrayList<ApplicationReport>();
+  for (  RMApp application : this.rmContext.getRMApps().values()) {
+    if (!(bypassFilter || applicationTypes.contains(application.getApplicationType()))) {
+      continue;
+    }
+    boolean allowAccess=checkAccess(callerUGI,application.getUser(),ApplicationAccessType.VIEW_APP,application.getApplicationId());
+    reports.add(application.createAndGetApplicationReport(allowAccess));
+  }
+  GetApplicationsResponse response=recordFactory.newRecordInstance(GetApplicationsResponse.class);
+  response.setApplicationList(reports);
+  return response;
+}
