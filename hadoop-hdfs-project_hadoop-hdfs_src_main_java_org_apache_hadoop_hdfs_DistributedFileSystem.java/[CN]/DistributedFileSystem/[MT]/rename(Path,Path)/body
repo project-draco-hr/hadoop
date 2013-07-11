@@ -1,4 +1,25 @@
 {
   statistics.incrementWriteOps(1);
-  return dfs.rename(getPathName(src),getPathName(dst));
+  final Path absSrc=fixRelativePart(src);
+  final Path absDst=fixRelativePart(dst);
+  FileSystem srcFS=getFSofPath(absSrc,getConf());
+  FileSystem dstFS=getFSofPath(absDst,getConf());
+  if (!srcFS.getUri().equals(getUri()) || !dstFS.getUri().equals(getUri())) {
+    throw new IOException("Renames across FileSystems not supported");
+  }
+  try {
+    return dfs.rename(getPathName(absSrc),getPathName(absDst));
+  }
+ catch (  UnresolvedLinkException e) {
+    final Path source=getFileLinkStatus(absSrc).getPath();
+    return new FileSystemLinkResolver<Boolean>(){
+      @Override public Boolean doCall(      final Path p) throws IOException, UnresolvedLinkException {
+        return dfs.rename(getPathName(source),getPathName(p));
+      }
+      @Override public Boolean next(      final FileSystem fs,      final Path p) throws IOException {
+        return fs.rename(source,p);
+      }
+    }
+.resolve(this,absDst);
+  }
 }

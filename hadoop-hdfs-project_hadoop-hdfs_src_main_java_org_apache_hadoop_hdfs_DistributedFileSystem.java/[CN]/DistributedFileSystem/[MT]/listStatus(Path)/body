@@ -1,35 +1,12 @@
 {
-  String src=getPathName(p);
-  DirectoryListing thisListing=dfs.listPaths(src,HdfsFileStatus.EMPTY_NAME);
-  if (thisListing == null) {
-    throw new FileNotFoundException("File " + p + " does not exist.");
-  }
-  HdfsFileStatus[] partialListing=thisListing.getPartialListing();
-  if (!thisListing.hasMore()) {
-    FileStatus[] stats=new FileStatus[partialListing.length];
-    for (int i=0; i < partialListing.length; i++) {
-      stats[i]=makeQualified(partialListing[i],p);
+  Path absF=fixRelativePart(p);
+  return new FileSystemLinkResolver<FileStatus[]>(){
+    @Override public FileStatus[] doCall(    final Path p) throws IOException, UnresolvedLinkException {
+      return listStatusInternal(p);
     }
-    statistics.incrementReadOps(1);
-    return stats;
-  }
-  int totalNumEntries=partialListing.length + thisListing.getRemainingEntries();
-  ArrayList<FileStatus> listing=new ArrayList<FileStatus>(totalNumEntries);
-  for (  HdfsFileStatus fileStatus : partialListing) {
-    listing.add(makeQualified(fileStatus,p));
-  }
-  statistics.incrementLargeReadOps(1);
-  do {
-    thisListing=dfs.listPaths(src,thisListing.getLastName());
-    if (thisListing == null) {
-      throw new FileNotFoundException("File " + p + " does not exist.");
+    @Override public FileStatus[] next(    final FileSystem fs,    final Path p) throws IOException {
+      return fs.listStatus(p);
     }
-    partialListing=thisListing.getPartialListing();
-    for (    HdfsFileStatus fileStatus : partialListing) {
-      listing.add(makeQualified(fileStatus,p));
-    }
-    statistics.incrementLargeReadOps(1);
   }
- while (thisListing.hasMore());
-  return listing.toArray(new FileStatus[listing.size()]);
+.resolve(this,absF);
 }
