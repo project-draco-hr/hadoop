@@ -1,0 +1,38 @@
+{
+  List<TempQueue> qAlloc=new ArrayList<TempQueue>(queues);
+  Resource unassigned=Resources.clone(tot_guarant);
+  while (!qAlloc.isEmpty() && Resources.greaterThan(rc,tot_guarant,unassigned,Resources.none())) {
+    Resource wQassigned=Resource.newInstance(0,0);
+    resetCapacity(rc,unassigned,qAlloc);
+    for (Iterator<TempQueue> i=qAlloc.iterator(); i.hasNext(); ) {
+      TempQueue sub=i.next();
+      Resource wQavail=Resources.multiply(unassigned,sub.normalizedGuarantee);
+      Resource wQidle=sub.offer(wQavail,rc,tot_guarant);
+      Resource wQdone=Resources.subtract(wQavail,wQidle);
+      if (!Resources.greaterThan(rc,tot_guarant,wQdone,Resources.none())) {
+        i.remove();
+      }
+      Resources.addTo(wQassigned,wQdone);
+    }
+    Resources.subtractFrom(unassigned,wQassigned);
+  }
+  Resource totPreemptionNeeded=Resource.newInstance(0,0);
+  for (  TempQueue t : queues) {
+    if (Resources.greaterThan(rc,tot_guarant,t.current,t.idealAssigned)) {
+      Resources.addTo(totPreemptionNeeded,Resources.subtract(t.current,t.idealAssigned));
+    }
+  }
+  float scalingFactor=1.0F;
+  if (Resources.greaterThan(rc,tot_guarant,totPreemptionNeeded,totalPreemptionAllowed)) {
+    scalingFactor=Resources.divide(rc,tot_guarant,totalPreemptionAllowed,totPreemptionNeeded);
+  }
+  for (  TempQueue t : queues) {
+    t.assignPreemption(scalingFactor,rc,tot_guarant);
+  }
+  if (LOG.isDebugEnabled()) {
+    long time=clock.getTime();
+    for (    TempQueue t : queues) {
+      LOG.debug(time + ": " + t);
+    }
+  }
+}

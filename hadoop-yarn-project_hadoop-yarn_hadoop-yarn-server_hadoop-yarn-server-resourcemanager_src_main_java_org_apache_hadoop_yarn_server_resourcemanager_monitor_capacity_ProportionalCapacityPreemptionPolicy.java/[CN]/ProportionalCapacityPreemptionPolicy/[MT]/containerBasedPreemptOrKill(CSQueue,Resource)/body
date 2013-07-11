@@ -1,0 +1,34 @@
+{
+  TempQueue tRoot;
+synchronized (scheduler) {
+    tRoot=cloneQueues(root,clusterResources);
+  }
+  tRoot.idealAssigned=tRoot.guaranteed;
+  Resource totalPreemptionAllowed=Resources.multiply(clusterResources,percentageClusterPreemptionAllowed);
+  List<TempQueue> queues=recursivelyComputeIdealAssignment(tRoot,totalPreemptionAllowed);
+  Map<ApplicationAttemptId,Set<RMContainer>> toPreempt=getContainersToPreempt(queues,clusterResources);
+  logToCSV(queues);
+  if (observeOnly) {
+    return;
+  }
+  for (  Map.Entry<ApplicationAttemptId,Set<RMContainer>> e : toPreempt.entrySet()) {
+    for (    RMContainer container : e.getValue()) {
+      if (preempted.get(container) != null && preempted.get(container) + maxWaitTime < clock.getTime()) {
+        dispatcher.handle(new ContainerPreemptEvent(e.getKey(),container,ContainerPreemptEventType.KILL_CONTAINER));
+        preempted.remove(container);
+      }
+ else {
+        dispatcher.handle(new ContainerPreemptEvent(e.getKey(),container,ContainerPreemptEventType.PREEMPT_CONTAINER));
+        if (preempted.get(container) == null) {
+          preempted.put(container,clock.getTime());
+        }
+      }
+    }
+  }
+  for (Iterator<RMContainer> i=preempted.keySet().iterator(); i.hasNext(); ) {
+    RMContainer id=i.next();
+    if (preempted.get(id) + 2 * maxWaitTime < clock.getTime()) {
+      i.remove();
+    }
+  }
+}
