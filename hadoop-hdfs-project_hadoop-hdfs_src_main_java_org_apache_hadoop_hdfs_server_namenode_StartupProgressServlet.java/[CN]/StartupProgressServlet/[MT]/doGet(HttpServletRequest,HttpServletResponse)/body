@@ -1,0 +1,42 @@
+{
+  resp.setContentType("application/json; charset=UTF-8");
+  StartupProgress prog=NameNodeHttpServer.getStartupProgressFromContext(getServletContext());
+  StartupProgressView view=prog.createView();
+  JsonGenerator json=new JsonFactory().createJsonGenerator(resp.getWriter());
+  try {
+    json.writeStartObject();
+    json.writeNumberField(ELAPSED_TIME,view.getElapsedTime());
+    json.writeNumberField(PERCENT_COMPLETE,view.getPercentComplete());
+    json.writeArrayFieldStart(PHASES);
+    for (    Phase phase : view.getPhases()) {
+      json.writeStartObject();
+      json.writeStringField(NAME,phase.getName());
+      json.writeStringField(STATUS,view.getStatus(phase).toString());
+      json.writeNumberField(PERCENT_COMPLETE,view.getPercentComplete(phase));
+      json.writeNumberField(ELAPSED_TIME,view.getElapsedTime(phase));
+      writeStringFieldIfNotNull(json,FILE,view.getFile(phase));
+      writeNumberFieldIfDefined(json,SIZE,view.getSize(phase));
+      json.writeArrayFieldStart(STEPS);
+      for (      Step step : view.getSteps(phase)) {
+        json.writeStartObject();
+        StepType type=step.getType();
+        String name=type != null ? type.getName() : null;
+        writeStringFieldIfNotNull(json,NAME,name);
+        json.writeNumberField(COUNT,view.getCount(phase,step));
+        writeStringFieldIfNotNull(json,FILE,step.getFile());
+        writeNumberFieldIfDefined(json,SIZE,step.getSize());
+        json.writeNumberField(TOTAL,view.getTotal(phase,step));
+        json.writeNumberField(PERCENT_COMPLETE,view.getPercentComplete(phase,step));
+        json.writeNumberField(ELAPSED_TIME,view.getElapsedTime(phase,step));
+        json.writeEndObject();
+      }
+      json.writeEndArray();
+      json.writeEndObject();
+    }
+    json.writeEndArray();
+    json.writeEndObject();
+  }
+  finally {
+    IOUtils.cleanup(LOG,json);
+  }
+}
