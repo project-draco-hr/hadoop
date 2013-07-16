@@ -1,14 +1,18 @@
 {
   Preconditions.checkArgument(req != null,"Resource request can not be null.");
-  Set<String> allRacks=new HashSet<String>();
+  Set<String> dedupedRacks=new HashSet<String>();
   if (req.getRacks() != null) {
-    allRacks.addAll(req.getRacks());
-    if (req.getRacks().size() != allRacks.size()) {
+    dedupedRacks.addAll(req.getRacks());
+    if (req.getRacks().size() != dedupedRacks.size()) {
       Joiner joiner=Joiner.on(',');
       LOG.warn("ContainerRequest has duplicate racks: " + joiner.join(req.getRacks()));
     }
   }
-  allRacks.addAll(resolveRacks(req.getNodes()));
+  Set<String> inferredRacks=resolveRacks(req.getNodes());
+  inferredRacks.removeAll(dedupedRacks);
+  checkLocalityRelaxationConflict(req.getPriority(),ANY_LIST,req.getRelaxLocality());
+  checkLocalityRelaxationConflict(req.getPriority(),dedupedRacks,true);
+  checkLocalityRelaxationConflict(req.getPriority(),inferredRacks,req.getRelaxLocality());
   if (req.getNodes() != null) {
     HashSet<String> dedupedNodes=new HashSet<String>(req.getNodes());
     if (dedupedNodes.size() != req.getNodes().size()) {
@@ -16,11 +20,14 @@
       LOG.warn("ContainerRequest has duplicate nodes: " + joiner.join(req.getNodes()));
     }
     for (    String node : dedupedNodes) {
-      addResourceRequest(req.getPriority(),node,req.getCapability(),req.getContainerCount(),req);
+      addResourceRequest(req.getPriority(),node,req.getCapability(),req.getContainerCount(),req,true);
     }
   }
-  for (  String rack : allRacks) {
-    addResourceRequest(req.getPriority(),rack,req.getCapability(),req.getContainerCount(),req);
+  for (  String rack : dedupedRacks) {
+    addResourceRequest(req.getPriority(),rack,req.getCapability(),req.getContainerCount(),req,true);
   }
-  addResourceRequest(req.getPriority(),ResourceRequest.ANY,req.getCapability(),req.getContainerCount(),req);
+  for (  String rack : inferredRacks) {
+    addResourceRequest(req.getPriority(),rack,req.getCapability(),req.getContainerCount(),req,req.getRelaxLocality());
+  }
+  addResourceRequest(req.getPriority(),ResourceRequest.ANY,req.getCapability(),req.getContainerCount(),req,req.getRelaxLocality());
 }
