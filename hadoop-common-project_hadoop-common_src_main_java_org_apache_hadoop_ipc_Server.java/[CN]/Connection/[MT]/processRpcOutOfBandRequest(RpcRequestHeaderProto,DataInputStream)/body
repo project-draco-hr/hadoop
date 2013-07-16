@@ -1,0 +1,25 @@
+{
+  final int callId=header.getCallId();
+  if (callId == CONNECTION_CONTEXT_CALL_ID) {
+    if (authProtocol == AuthProtocol.SASL && !saslContextEstablished) {
+      throw new WrappedRpcServerException(RpcErrorCodeProto.FATAL_INVALID_RPC_HEADER,"Connection header sent during SASL negotiation");
+    }
+    processConnectionContext(dis);
+  }
+ else   if (callId == AuthProtocol.SASL.callId) {
+    if (authProtocol != AuthProtocol.SASL) {
+      if (!skipInitialSaslHandshake) {
+        throw new WrappedRpcServerException(RpcErrorCodeProto.FATAL_INVALID_RPC_HEADER,"SASL protocol not requested by client");
+      }
+      skipInitialSaslHandshake=false;
+      return;
+    }
+    RpcSaslProto response=saslReadAndProcess(dis);
+    if (response != null) {
+      doSaslReply(response);
+    }
+  }
+ else {
+    throw new WrappedRpcServerException(RpcErrorCodeProto.FATAL_INVALID_RPC_HEADER,"Unknown out of band call #" + callId);
+  }
+}

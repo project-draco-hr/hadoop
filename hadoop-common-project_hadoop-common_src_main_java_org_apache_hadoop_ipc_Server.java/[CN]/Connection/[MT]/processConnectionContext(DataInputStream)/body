@@ -1,6 +1,8 @@
 {
-  DataInputStream in=new DataInputStream(new ByteArrayInputStream(buf));
-  connectionContext=IpcConnectionContextProto.parseFrom(in);
+  if (connectionContextRead) {
+    throw new WrappedRpcServerException(RpcErrorCodeProto.FATAL_INVALID_RPC_HEADER,"Connection context already processed");
+  }
+  connectionContext=decodeProtobufFromStream(IpcConnectionContextProto.newBuilder(),dis);
   protocolName=connectionContext.hasProtocol() ? connectionContext.getProtocol() : null;
   UserGroupInformation protocolUser=ProtoUtil.getUgi(connectionContext);
   if (saslServer == null) {
@@ -10,7 +12,7 @@
     user.setAuthenticationMethod(authMethod);
     if ((protocolUser != null) && (!protocolUser.getUserName().equals(user.getUserName()))) {
       if (authMethod == AuthMethod.TOKEN) {
-        throw new AccessControlException("Authenticated user (" + user + ") doesn't match what the client claims to be ("+ protocolUser+ ")");
+        throw new WrappedRpcServerException(RpcErrorCodeProto.FATAL_UNAUTHORIZED,new AccessControlException("Authenticated user (" + user + ") doesn't match what the client claims to be ("+ protocolUser+ ")"));
       }
  else {
         UserGroupInformation realUser=user;
@@ -18,4 +20,6 @@
       }
     }
   }
+  authorizeConnection();
+  connectionContextRead=true;
 }

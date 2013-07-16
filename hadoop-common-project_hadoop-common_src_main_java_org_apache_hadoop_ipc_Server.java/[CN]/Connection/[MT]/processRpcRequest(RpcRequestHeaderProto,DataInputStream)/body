@@ -1,0 +1,21 @@
+{
+  Class<? extends Writable> rpcRequestClass=getRpcRequestWrapper(header.getRpcKind());
+  if (rpcRequestClass == null) {
+    LOG.warn("Unknown rpc kind " + header.getRpcKind() + " from client "+ getHostAddress());
+    final String err="Unknown rpc kind in rpc header" + header.getRpcKind();
+    throw new WrappedRpcServerException(RpcErrorCodeProto.FATAL_INVALID_RPC_HEADER,err);
+  }
+  Writable rpcRequest;
+  try {
+    rpcRequest=ReflectionUtils.newInstance(rpcRequestClass,conf);
+    rpcRequest.readFields(dis);
+  }
+ catch (  Throwable t) {
+    LOG.warn("Unable to read call parameters for client " + getHostAddress() + "on connection protocol "+ this.protocolName+ " for rpcKind "+ header.getRpcKind(),t);
+    String err="IPC server unable to read call parameters: " + t.getMessage();
+    throw new WrappedRpcServerException(RpcErrorCodeProto.FATAL_DESERIALIZING_REQUEST,err);
+  }
+  Call call=new Call(header.getCallId(),rpcRequest,this,ProtoUtil.convert(header.getRpcKind()),header.getClientId().toByteArray());
+  callQueue.put(call);
+  incRpcCount();
+}

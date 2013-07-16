@@ -1,8 +1,11 @@
 {
-  if (!saslContextEstablished) {
-    RpcSaslProto saslResponse;
+  if (saslContextEstablished) {
+    throw new WrappedRpcServerException(RpcErrorCodeProto.FATAL_INVALID_RPC_HEADER,new SaslException("Negotiation is already complete"));
+  }
+  RpcSaslProto saslResponse=null;
+  try {
     try {
-      saslResponse=processSaslMessage(saslToken);
+      saslResponse=processSaslMessage(dis);
     }
  catch (    IOException e) {
       IOException sendToClient=e;
@@ -17,8 +20,7 @@
       rpcMetrics.incrAuthenticationFailures();
       String clientIP=this.toString();
       AUDITLOG.warn(AUTH_FAILED_FOR + clientIP + ":"+ attemptingUser+ " ("+ e.getLocalizedMessage()+ ")");
-      doSaslReply(sendToClient);
-      throw e;
+      throw sendToClient;
     }
     if (saslServer != null && saslServer.isComplete()) {
       if (LOG.isDebugEnabled()) {
@@ -34,16 +36,12 @@
       AUDITLOG.info(AUTH_SUCCESSFUL_FOR + user);
       saslContextEstablished=true;
     }
-    doSaslReply(saslResponse);
   }
- else {
-    if (LOG.isDebugEnabled())     LOG.debug("Have read input token of size " + saslToken.length + " for processing by saslServer.unwrap()");
-    if (!useWrap) {
-      processOneRpc(saslToken);
-    }
- else {
-      byte[] plaintextData=saslServer.unwrap(saslToken,0,saslToken.length);
-      processUnwrappedData(plaintextData);
-    }
+ catch (  WrappedRpcServerException wrse) {
+    throw wrse;
   }
+catch (  IOException ioe) {
+    throw new WrappedRpcServerException(RpcErrorCodeProto.FATAL_UNAUTHORIZED,ioe);
+  }
+  return saslResponse;
 }

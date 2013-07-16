@@ -1,12 +1,28 @@
 {
-  if (connectionContextRead) {
-    processRpcRequest(buf);
-  }
- else {
-    processConnectionContext(buf);
-    connectionContextRead=true;
-    if (!authorizeConnection()) {
-      throw new AccessControlException("Connection from " + this + " for protocol "+ connectionContext.getProtocol()+ " is unauthorized for user "+ user);
+  int callId=-1;
+  try {
+    final DataInputStream dis=new DataInputStream(new ByteArrayInputStream(buf));
+    final RpcRequestHeaderProto header=decodeProtobufFromStream(RpcRequestHeaderProto.newBuilder(),dis);
+    callId=header.getCallId();
+    if (LOG.isDebugEnabled()) {
+      LOG.debug(" got #" + callId);
     }
+    checkRpcHeaders(header);
+    if (callId < 0) {
+      processRpcOutOfBandRequest(header,dis);
+    }
+ else     if (!connectionContextRead) {
+      throw new WrappedRpcServerException(RpcErrorCodeProto.FATAL_INVALID_RPC_HEADER,"Connection context not established");
+    }
+ else {
+      processRpcRequest(header,dis);
+    }
+  }
+ catch (  WrappedRpcServerException wrse) {
+    Throwable ioe=wrse.getCause();
+    final Call call=new Call(callId,null,this);
+    setupResponse(authFailedResponse,call,RpcStatusProto.FATAL,wrse.getRpcErrorCodeProto(),null,ioe.getClass().getName(),ioe.getMessage());
+    responder.doRespond(call);
+    throw wrse;
   }
 }
