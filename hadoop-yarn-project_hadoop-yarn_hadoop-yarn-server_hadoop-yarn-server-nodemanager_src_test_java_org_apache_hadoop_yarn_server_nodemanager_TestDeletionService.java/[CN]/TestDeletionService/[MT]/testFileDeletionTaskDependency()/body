@@ -1,0 +1,55 @@
+{
+  FakeDefaultContainerExecutor exec=new FakeDefaultContainerExecutor();
+  Configuration conf=new Configuration();
+  exec.setConf(conf);
+  DeletionService del=new DeletionService(exec);
+  del.init(conf);
+  del.start();
+  try {
+    Random r=new Random();
+    long seed=r.nextLong();
+    r.setSeed(seed);
+    System.out.println("SEED: " + seed);
+    List<Path> dirs=buildDirs(r,base,2);
+    createDirs(new Path("."),dirs);
+    List<Path> subDirs=buildDirs(r,dirs.get(0),2);
+    FileDeletionTask dependentDeletionTask=del.createFileDeletionTask(null,dirs.get(0),new Path[]{});
+    List<FileDeletionTask> deletionTasks=new ArrayList<FileDeletionTask>();
+    for (    Path subDir : subDirs) {
+      FileDeletionTask deletionTask=del.createFileDeletionTask(null,null,new Path[]{subDir});
+      deletionTask.addFileDeletionTaskDependency(dependentDeletionTask);
+      deletionTasks.add(deletionTask);
+    }
+    for (    FileDeletionTask task : deletionTasks) {
+      del.scheduleFileDeletionTask(task);
+    }
+    int msecToWait=20 * 1000;
+    while (msecToWait > 0 && (lfs.util().exists(dirs.get(0)))) {
+      Thread.sleep(100);
+      msecToWait-=100;
+    }
+    assertFalse(lfs.util().exists(dirs.get(0)));
+    subDirs=buildDirs(r,dirs.get(1),2);
+    subDirs.add(new Path(dirs.get(1),"absentFile"));
+    dependentDeletionTask=del.createFileDeletionTask(null,dirs.get(1),new Path[]{});
+    deletionTasks=new ArrayList<FileDeletionTask>();
+    for (    Path subDir : subDirs) {
+      FileDeletionTask deletionTask=del.createFileDeletionTask(null,null,new Path[]{subDir});
+      deletionTask.addFileDeletionTaskDependency(dependentDeletionTask);
+      deletionTasks.add(deletionTask);
+    }
+    deletionTasks.get(2).setSuccess(false);
+    for (    FileDeletionTask task : deletionTasks) {
+      del.scheduleFileDeletionTask(task);
+    }
+    msecToWait=20 * 1000;
+    while (msecToWait > 0 && (lfs.util().exists(subDirs.get(0)) || lfs.util().exists(subDirs.get(1)))) {
+      Thread.sleep(100);
+      msecToWait-=100;
+    }
+    assertTrue(lfs.util().exists(dirs.get(1)));
+  }
+  finally {
+    del.stop();
+  }
+}
