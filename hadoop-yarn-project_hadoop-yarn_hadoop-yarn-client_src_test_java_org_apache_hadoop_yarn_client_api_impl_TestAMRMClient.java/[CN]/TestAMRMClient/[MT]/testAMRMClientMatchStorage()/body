@@ -1,15 +1,15 @@
 {
-  AMRMClientImpl<StoredContainerRequest> amClient=null;
+  AMRMClientImpl<ContainerRequest> amClient=null;
   try {
-    amClient=(AMRMClientImpl<StoredContainerRequest>)AMRMClient.<StoredContainerRequest>createAMRMClient(attemptId);
+    amClient=(AMRMClientImpl<ContainerRequest>)AMRMClient.<ContainerRequest>createAMRMClient(attemptId);
     amClient.init(conf);
     amClient.start();
     amClient.registerApplicationMaster("Host",10000,"");
     Priority priority1=Records.newRecord(Priority.class);
     priority1.setPriority(2);
-    StoredContainerRequest storedContainer1=new StoredContainerRequest(capability,nodes,racks,priority);
-    StoredContainerRequest storedContainer2=new StoredContainerRequest(capability,nodes,racks,priority);
-    StoredContainerRequest storedContainer3=new StoredContainerRequest(capability,null,null,priority1);
+    ContainerRequest storedContainer1=new ContainerRequest(capability,nodes,racks,priority);
+    ContainerRequest storedContainer2=new ContainerRequest(capability,nodes,racks,priority);
+    ContainerRequest storedContainer3=new ContainerRequest(capability,null,null,priority1);
     amClient.addContainerRequest(storedContainer1);
     amClient.addContainerRequest(storedContainer2);
     amClient.addContainerRequest(storedContainer3);
@@ -17,7 +17,7 @@
     assertTrue(containersRequestedAny == 2);
     containersRequestedAny=amClient.remoteRequestsTable.get(priority1).get(ResourceRequest.ANY).get(capability).remoteRequest.getNumContainers();
     assertTrue(containersRequestedAny == 1);
-    List<? extends Collection<StoredContainerRequest>> matches=amClient.getMatchingRequests(priority,node,capability);
+    List<? extends Collection<ContainerRequest>> matches=amClient.getMatchingRequests(priority,node,capability);
     verifyMatches(matches,2);
     matches=amClient.getMatchingRequests(priority,rack,capability);
     verifyMatches(matches,2);
@@ -35,7 +35,7 @@
     verifyMatches(matches,1);
     matches=amClient.getMatchingRequests(priority,rack,capability);
     verifyMatches(matches,1);
-    StoredContainerRequest storedRequest=matches.get(0).iterator().next();
+    ContainerRequest storedRequest=matches.get(0).iterator().next();
     assertTrue(storedContainer1 == storedRequest);
     amClient.removeContainerRequest(storedContainer1);
     matches=amClient.getMatchingRequests(priority,ResourceRequest.ANY,capability);
@@ -46,7 +46,7 @@
     amClient.addContainerRequest(storedContainer1);
     amClient.addContainerRequest(storedContainer3);
     int allocatedContainerCount=0;
-    int iterationsLeft=2;
+    int iterationsLeft=3;
     while (allocatedContainerCount < 2 && iterationsLeft-- > 0) {
       AllocateResponse allocResponse=amClient.allocate(0.1f);
       assertTrue(amClient.ask.size() == 0);
@@ -59,19 +59,19 @@
         verifyMatches(matches,1);
         ContainerRequest matchedRequest=matches.get(0).iterator().next();
         assertTrue(matchedRequest == expectedRequest);
+        amClient.removeContainerRequest(matchedRequest);
         amClient.releaseAssignedContainer(container.getId());
       }
       if (allocatedContainerCount < containersRequestedAny) {
-        sleep(1000);
+        sleep(100);
       }
     }
     assertTrue(allocatedContainerCount == 2);
-    assertTrue(amClient.release.size() == 2);
-    assertTrue(amClient.ask.size() == 0);
     AllocateResponse allocResponse=amClient.allocate(0.1f);
     assertTrue(amClient.release.size() == 0);
     assertTrue(amClient.ask.size() == 0);
     assertTrue(allocResponse.getAllocatedContainers().size() == 0);
+    assertTrue(amClient.remoteRequestsTable.isEmpty());
     amClient.unregisterApplicationMaster(FinalApplicationStatus.SUCCEEDED,null,null);
   }
   finally {
