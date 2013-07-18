@@ -6,17 +6,26 @@
   pri.setPriority(0);
   appContext.setPriority(pri);
   appContext.setQueue("default");
-  ContainerLaunchContext amContainer=Records.newRecord(ContainerLaunchContext.class);
+  ContainerLaunchContext amContainer=BuilderUtils.newContainerLaunchContext(Collections.<String,LocalResource>emptyMap(),new HashMap<String,String>(),Arrays.asList("sleep","100"),new HashMap<String,ByteBuffer>(),null,new HashMap<ApplicationAccessType,String>());
   appContext.setAMContainerSpec(amContainer);
-  appContext.setUnmanagedAM(true);
+  appContext.setResource(Resource.newInstance(1024,1));
   SubmitApplicationRequest appRequest=Records.newRecord(SubmitApplicationRequest.class);
   appRequest.setApplicationSubmissionContext(appContext);
   yarnClient.submitApplication(appContext);
+  RMAppAttempt appAttempt=null;
   while (true) {
     ApplicationReport appReport=yarnClient.getApplicationReport(appId);
     if (appReport.getYarnApplicationState() == YarnApplicationState.ACCEPTED) {
       attemptId=appReport.getCurrentApplicationAttemptId();
+      appAttempt=yarnCluster.getResourceManager().getRMContext().getRMApps().get(attemptId.getApplicationId()).getCurrentAppAttempt();
+      while (true) {
+        if (appAttempt.getAppAttemptState() == RMAppAttemptState.LAUNCHED) {
+          break;
+        }
+      }
       break;
     }
   }
+  UserGroupInformation.setLoginUser(UserGroupInformation.createRemoteUser(UserGroupInformation.getCurrentUser().getUserName()));
+  UserGroupInformation.getCurrentUser().addToken(appAttempt.getAMRMToken());
 }

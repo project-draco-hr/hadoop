@@ -1,6 +1,6 @@
 {
   MyContainerManager containerManager=new MyContainerManager();
-  final MockRM rm=new MockRMWithAMS(confWithSecurityEnabled,containerManager);
+  final MockRM rm=new MockRMWithAMS(conf,containerManager);
   rm.start();
   final Configuration conf=rm.getConfig();
   final YarnRPC rpc=YarnRPC.create(conf);
@@ -10,19 +10,15 @@
     RMApp app=rm.submitApp(1024);
     nm1.nodeHeartbeat(true);
     int waitCount=0;
-    while (containerManager.amTokens == null && waitCount++ < 20) {
+    while (containerManager.containerTokens == null && waitCount++ < 20) {
       LOG.info("Waiting for AM Launch to happen..");
       Thread.sleep(1000);
     }
-    Assert.assertNotNull(containerManager.amTokens);
+    Assert.assertNotNull(containerManager.containerTokens);
     RMAppAttempt attempt=app.getCurrentAppAttempt();
     ApplicationAttemptId applicationAttemptId=attempt.getAppAttemptId();
     UserGroupInformation currentUser=UserGroupInformation.createRemoteUser(applicationAttemptId.toString());
-    Credentials credentials=new Credentials();
-    DataInputByteBuffer buf=new DataInputByteBuffer();
-    containerManager.amTokens.rewind();
-    buf.reset(containerManager.amTokens);
-    credentials.readTokenStorageStream(buf);
+    Credentials credentials=containerManager.getContainerCredentials();
     currentUser.addCredentials(credentials);
     rmClient=createRMClient(rm,conf,rpc,currentUser);
     RegisterApplicationMasterRequest request=Records.newRecord(RegisterApplicationMasterRequest.class);

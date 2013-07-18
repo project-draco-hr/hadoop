@@ -24,10 +24,17 @@
   appRequest.setApplicationSubmissionContext(appContext);
   yarnClient.submitApplication(appContext);
   int iterationsLeft=30;
+  RMAppAttempt appAttempt=null;
   while (iterationsLeft > 0) {
     ApplicationReport appReport=yarnClient.getApplicationReport(appId);
     if (appReport.getYarnApplicationState() == YarnApplicationState.ACCEPTED) {
       attemptId=appReport.getCurrentApplicationAttemptId();
+      appAttempt=yarnCluster.getResourceManager().getRMContext().getRMApps().get(attemptId.getApplicationId()).getCurrentAppAttempt();
+      while (true) {
+        if (appAttempt.getAppAttemptState() == RMAppAttemptState.LAUNCHED) {
+          break;
+        }
+      }
       break;
     }
     sleep(1000);
@@ -36,6 +43,8 @@
   if (iterationsLeft == 0) {
     fail("Application hasn't bee started");
   }
+  UserGroupInformation.setLoginUser(UserGroupInformation.createRemoteUser(UserGroupInformation.getCurrentUser().getUserName()));
+  UserGroupInformation.getCurrentUser().addToken(appAttempt.getAMRMToken());
   rmClient=(AMRMClientImpl<ContainerRequest>)AMRMClient.<ContainerRequest>createAMRMClient(attemptId);
   rmClient.init(conf);
   rmClient.start();

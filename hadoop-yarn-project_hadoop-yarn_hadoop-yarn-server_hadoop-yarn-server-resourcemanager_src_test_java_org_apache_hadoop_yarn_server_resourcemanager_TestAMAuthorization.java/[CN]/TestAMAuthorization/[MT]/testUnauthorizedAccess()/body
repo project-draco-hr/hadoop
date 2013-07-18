@@ -1,16 +1,16 @@
 {
   MyContainerManager containerManager=new MyContainerManager();
-  MockRM rm=new MockRMWithAMS(confWithSecurityEnabled,containerManager);
+  MockRM rm=new MockRMWithAMS(conf,containerManager);
   rm.start();
   MockNM nm1=rm.registerNode("localhost:1234",5120);
   RMApp app=rm.submitApp(1024);
   nm1.nodeHeartbeat(true);
   int waitCount=0;
-  while (containerManager.amTokens == null && waitCount++ < 40) {
+  while (containerManager.containerTokens == null && waitCount++ < 40) {
     LOG.info("Waiting for AM Launch to happen..");
     Thread.sleep(1000);
   }
-  Assert.assertNotNull(containerManager.amTokens);
+  Assert.assertNotNull(containerManager.containerTokens);
   RMAppAttempt attempt=app.getCurrentAppAttempt();
   ApplicationAttemptId applicationAttemptId=attempt.getAppAttemptId();
   waitForLaunchedState(attempt);
@@ -31,13 +31,16 @@
     Assert.fail("Should fail with authorization error");
   }
  catch (  Exception e) {
-    Assert.assertTrue(e.getCause().getMessage().contains("SIMPLE authentication is not enabled.  " + "Available:[TOKEN, KERBEROS]"));
+    String availableAuthMethods;
+    if (UserGroupInformation.isSecurityEnabled()) {
+      availableAuthMethods="[TOKEN, KERBEROS]";
+    }
+ else {
+      availableAuthMethods="[TOKEN]";
+    }
+    Assert.assertTrue(e.getCause().getMessage().contains("SIMPLE authentication is not enabled.  " + "Available:" + availableAuthMethods));
   }
-  Credentials credentials=new Credentials();
-  DataInputByteBuffer buf=new DataInputByteBuffer();
-  containerManager.amTokens.rewind();
-  buf.reset(containerManager.amTokens);
-  credentials.readTokenStorageStream(buf);
+  Credentials credentials=containerManager.getContainerCredentials();
   currentUser.addCredentials(credentials);
   client=currentUser.doAs(new PrivilegedAction<ApplicationMasterProtocol>(){
     @Override public ApplicationMasterProtocol run(){
