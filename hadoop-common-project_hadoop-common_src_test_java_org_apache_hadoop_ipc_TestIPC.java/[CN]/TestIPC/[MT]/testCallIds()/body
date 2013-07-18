@@ -1,0 +1,29 @@
+{
+  final CallId callId=new CallId();
+  final Client client=new Client(LongWritable.class,conf){
+    @Override Call createCall(    RpcKind rpcKind,    Writable rpcRequest){
+      final Call call=super.createCall(rpcKind,rpcRequest);
+      callId.id=call.id;
+      return call;
+    }
+  }
+;
+  final TestServer server=new TestServer(1,false);
+  server.callListener=new Runnable(){
+    @Override public void run(){
+      Assert.assertEquals(callId.id,Server.getCallId());
+    }
+  }
+;
+  try {
+    InetSocketAddress addr=NetUtils.getConnectAddress(server);
+    server.start();
+    final SerialCaller caller=new SerialCaller(client,addr,10);
+    caller.run();
+    assertFalse(caller.failed);
+  }
+  finally {
+    client.stop();
+    server.stop();
+  }
+}
