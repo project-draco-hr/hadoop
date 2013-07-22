@@ -1,16 +1,14 @@
 {
-  if (!isLongRead() || blockInFd == null) {
-    return;
-  }
-  if (readaheadLength > 0 && datanode.readaheadPool != null) {
+  if (blockInFd == null)   return;
+  if ((readaheadLength > 0) && (datanode.readaheadPool != null) && (alwaysReadahead || isLongRead())) {
     curReadahead=datanode.readaheadPool.readaheadStream(clientTraceFmt,blockInFd,offset,readaheadLength,Long.MAX_VALUE,curReadahead);
   }
-  long nextCacheDropOffset=lastCacheDropOffset + CACHE_DROP_INTERVAL_BYTES;
-  if (shouldDropCacheBehindRead && offset >= nextCacheDropOffset) {
-    long dropLength=offset - lastCacheDropOffset;
-    if (dropLength >= 1024) {
-      NativeIO.POSIX.posixFadviseIfPossible(blockInFd,lastCacheDropOffset,dropLength,NativeIO.POSIX.POSIX_FADV_DONTNEED);
+  if (dropCacheBehindAllReads || (dropCacheBehindLargeReads && isLongRead())) {
+    long nextCacheDropOffset=lastCacheDropOffset + CACHE_DROP_INTERVAL_BYTES;
+    if (offset >= nextCacheDropOffset) {
+      long dropLength=offset - lastCacheDropOffset;
+      NativeIO.POSIX.posixFadviseIfPossible(block.getBlockName(),blockInFd,lastCacheDropOffset,dropLength,NativeIO.POSIX.POSIX_FADV_DONTNEED);
+      lastCacheDropOffset=offset;
     }
-    lastCacheDropOffset+=CACHE_DROP_INTERVAL_BYTES;
   }
 }

@@ -1,0 +1,122 @@
+{
+  try {
+    this.block=block;
+    this.corruptChecksumOk=corruptChecksumOk;
+    this.verifyChecksum=verifyChecksum;
+    this.clientTraceFmt=clientTraceFmt;
+    if (cachingStrategy.getDropBehind() == null) {
+      this.dropCacheBehindAllReads=false;
+      this.dropCacheBehindLargeReads=datanode.getDnConf().dropCacheBehindReads;
+    }
+ else {
+      this.dropCacheBehindAllReads=this.dropCacheBehindLargeReads=cachingStrategy.getDropBehind().booleanValue();
+    }
+    if (cachingStrategy.getReadahead() == null) {
+      this.alwaysReadahead=false;
+      this.readaheadLength=datanode.getDnConf().readaheadLength;
+    }
+ else {
+      this.alwaysReadahead=true;
+      this.readaheadLength=cachingStrategy.getReadahead().longValue();
+    }
+    this.datanode=datanode;
+    if (verifyChecksum) {
+      Preconditions.checkArgument(sendChecksum,"If verifying checksum, currently must also send it.");
+    }
+    final Replica replica;
+    final long replicaVisibleLength;
+synchronized (datanode.data) {
+      replica=getReplica(block,datanode);
+      replicaVisibleLength=replica.getVisibleLength();
+    }
+    ChunkChecksum chunkChecksum=null;
+    if (replica instanceof ReplicaBeingWritten) {
+      final ReplicaBeingWritten rbw=(ReplicaBeingWritten)replica;
+      waitForMinLength(rbw,startOffset + length);
+      chunkChecksum=rbw.getLastChecksumAndDataLen();
+    }
+    if (replica.getGenerationStamp() < block.getGenerationStamp()) {
+      throw new IOException("Replica gen stamp < block genstamp, block=" + block + ", replica="+ replica);
+    }
+    if (replicaVisibleLength < 0) {
+      throw new IOException("Replica is not readable, block=" + block + ", replica="+ replica);
+    }
+    if (DataNode.LOG.isDebugEnabled()) {
+      DataNode.LOG.debug("block=" + block + ", replica="+ replica);
+    }
+    this.transferToAllowed=datanode.getDnConf().transferToAllowed && (!is32Bit || length <= Integer.MAX_VALUE);
+    DataChecksum csum=null;
+    if (verifyChecksum || sendChecksum) {
+      final InputStream metaIn=datanode.data.getMetaDataInputStream(block);
+      if (!corruptChecksumOk || metaIn != null) {
+        if (metaIn == null) {
+          throw new FileNotFoundException("Meta-data not found for " + block);
+        }
+        checksumIn=new DataInputStream(new BufferedInputStream(metaIn,HdfsConstants.IO_FILE_BUFFER_SIZE));
+        BlockMetadataHeader header=BlockMetadataHeader.readHeader(checksumIn);
+        short version=header.getVersion();
+        if (version != BlockMetadataHeader.VERSION) {
+          LOG.warn("Wrong version (" + version + ") for metadata file for "+ block+ " ignoring ...");
+        }
+        csum=header.getChecksum();
+      }
+ else {
+        LOG.warn("Could not find metadata file for " + block);
+      }
+    }
+    if (csum == null) {
+      csum=DataChecksum.newDataChecksum(DataChecksum.Type.NULL,512);
+    }
+    int size=csum.getBytesPerChecksum();
+    if (size > 10 * 1024 * 1024 && size > replicaVisibleLength) {
+      csum=DataChecksum.newDataChecksum(csum.getChecksumType(),Math.max((int)replicaVisibleLength,10 * 1024 * 1024));
+      size=csum.getBytesPerChecksum();
+    }
+    chunkSize=size;
+    checksum=csum;
+    checksumSize=checksum.getChecksumSize();
+    length=length < 0 ? replicaVisibleLength : length;
+    long end=chunkChecksum != null ? chunkChecksum.getDataLength() : replica.getBytesOnDisk();
+    if (startOffset < 0 || startOffset > end || (length + startOffset) > end) {
+      String msg=" Offset " + startOffset + " and length "+ length+ " don't match block "+ block+ " ( blockLen "+ end+ " )";
+      LOG.warn(datanode.getDNRegistrationForBP(block.getBlockPoolId()) + ":sendBlock() : " + msg);
+      throw new IOException(msg);
+    }
+    offset=startOffset - (startOffset % chunkSize);
+    if (length >= 0) {
+      long tmpLen=startOffset + length;
+      if (tmpLen % chunkSize != 0) {
+        tmpLen+=(chunkSize - tmpLen % chunkSize);
+      }
+      if (tmpLen < end) {
+        end=tmpLen;
+      }
+ else       if (chunkChecksum != null) {
+        this.lastChunkChecksum=chunkChecksum;
+      }
+    }
+    endOffset=end;
+    if (offset > 0) {
+      long checksumSkip=(offset / chunkSize) * checksumSize;
+      if (checksumSkip > 0) {
+        IOUtils.skipFully(checksumIn,checksumSkip);
+      }
+    }
+    seqno=0;
+    if (DataNode.LOG.isDebugEnabled()) {
+      DataNode.LOG.debug("replica=" + replica);
+    }
+    blockIn=datanode.data.getBlockInputStream(block,offset);
+    if (blockIn instanceof FileInputStream) {
+      blockInFd=((FileInputStream)blockIn).getFD();
+    }
+ else {
+      blockInFd=null;
+    }
+  }
+ catch (  IOException ioe) {
+    IOUtils.closeStream(this);
+    IOUtils.closeStream(blockIn);
+    throw ioe;
+  }
+}
