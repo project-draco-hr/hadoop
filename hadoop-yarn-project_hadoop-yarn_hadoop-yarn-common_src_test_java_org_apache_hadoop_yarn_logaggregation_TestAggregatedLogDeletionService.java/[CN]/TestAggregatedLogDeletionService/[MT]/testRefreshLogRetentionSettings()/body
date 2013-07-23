@@ -1,0 +1,51 @@
+{
+  long now=System.currentTimeMillis();
+  long before2000Secs=now - (2000 * 1000);
+  long before50Secs=now - (50 * 1000);
+  String root="mockfs://foo/";
+  String remoteRootLogDir=root + "tmp/logs";
+  String suffix="logs";
+  final Configuration conf=new Configuration();
+  conf.setClass("fs.mockfs.impl",MockFileSystem.class,FileSystem.class);
+  conf.set(YarnConfiguration.LOG_AGGREGATION_ENABLED,"true");
+  conf.set(YarnConfiguration.LOG_AGGREGATION_RETAIN_SECONDS,"1800");
+  conf.set(YarnConfiguration.LOG_AGGREGATION_RETAIN_CHECK_INTERVAL_SECONDS,"1");
+  conf.set(YarnConfiguration.NM_REMOTE_APP_LOG_DIR,remoteRootLogDir);
+  conf.set(YarnConfiguration.NM_REMOTE_APP_LOG_DIR_SUFFIX,suffix);
+  Path rootPath=new Path(root);
+  FileSystem rootFs=rootPath.getFileSystem(conf);
+  FileSystem mockFs=((FilterFileSystem)rootFs).getRawFileSystem();
+  Path remoteRootLogPath=new Path(remoteRootLogDir);
+  Path userDir=new Path(remoteRootLogPath,"me");
+  FileStatus userDirStatus=new FileStatus(0,true,0,0,before50Secs,userDir);
+  when(mockFs.listStatus(remoteRootLogPath)).thenReturn(new FileStatus[]{userDirStatus});
+  Path userLogDir=new Path(userDir,suffix);
+  Path app1Dir=new Path(userLogDir,"application_1_1");
+  FileStatus app1DirStatus=new FileStatus(0,true,0,0,before2000Secs,app1Dir);
+  Path app2Dir=new Path(userLogDir,"application_1_2");
+  FileStatus app2DirStatus=new FileStatus(0,true,0,0,before50Secs,app2Dir);
+  when(mockFs.listStatus(userLogDir)).thenReturn(new FileStatus[]{app1DirStatus,app2DirStatus});
+  Path app1Log1=new Path(app1Dir,"host1");
+  FileStatus app1Log1Status=new FileStatus(10,false,1,1,before2000Secs,app1Log1);
+  when(mockFs.listStatus(app1Dir)).thenReturn(new FileStatus[]{app1Log1Status});
+  Path app2Log1=new Path(app2Dir,"host1");
+  FileStatus app2Log1Status=new FileStatus(10,false,1,1,before50Secs,app2Log1);
+  when(mockFs.listStatus(app2Dir)).thenReturn(new FileStatus[]{app2Log1Status});
+  AggregatedLogDeletionService deletionSvc=new AggregatedLogDeletionService(){
+    @Override protected Configuration createConf(){
+      return conf;
+    }
+  }
+;
+  deletionSvc.init(conf);
+  deletionSvc.start();
+  verify(mockFs,timeout(10000)).delete(app1Dir,true);
+  verify(mockFs,timeout(3000).times(0)).delete(app2Dir,true);
+  conf.set(YarnConfiguration.LOG_AGGREGATION_RETAIN_SECONDS,"50");
+  conf.set(YarnConfiguration.LOG_AGGREGATION_RETAIN_CHECK_INTERVAL_SECONDS,"2");
+  Assert.assertTrue(2000l != deletionSvc.getCheckIntervalMsecs());
+  deletionSvc.refreshLogRetentionSettings();
+  Assert.assertTrue(2000l == deletionSvc.getCheckIntervalMsecs());
+  verify(mockFs,timeout(10000)).delete(app2Dir,true);
+  deletionSvc.stop();
+}
