@@ -4,8 +4,19 @@
     String diagnosticMsg="Job failed as tasks failed. " + "failedMaps:" + job.failedMapTaskCount + " failedReduces:"+ job.failedReduceTaskCount;
     LOG.info(diagnosticMsg);
     job.addDiagnostic(diagnosticMsg);
-    job.eventHandler.handle(new CommitterJobAbortEvent(job.jobId,job.jobContext,org.apache.hadoop.mapreduce.JobStatus.State.FAILED));
-    return JobStateInternal.FAIL_ABORT;
+    boolean allDone=true;
+    for (    Task task : job.tasks.values()) {
+      if (!task.isFinished()) {
+        allDone=false;
+        job.eventHandler.handle(new TaskEvent(task.getID(),TaskEventType.T_KILL));
+      }
+    }
+    if (allDone) {
+      job.eventHandler.handle(new CommitterJobAbortEvent(job.jobId,job.jobContext,org.apache.hadoop.mapreduce.JobStatus.State.FAILED));
+      return JobStateInternal.FAIL_ABORT;
+    }
+    job.failWaitTriggerScheduledFuture=job.executor.schedule(new TriggerScheduledFuture(job,new JobEvent(job.getID(),JobEventType.JOB_FAIL_WAIT_TIMEDOUT)),job.conf.getInt(MRJobConfig.MR_AM_COMMITTER_CANCEL_TIMEOUT_MS,MRJobConfig.DEFAULT_MR_AM_COMMITTER_CANCEL_TIMEOUT_MS),TimeUnit.MILLISECONDS);
+    return JobStateInternal.FAIL_WAIT;
   }
   return job.checkReadyForCommit();
 }
