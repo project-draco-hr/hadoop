@@ -1,28 +1,32 @@
 {
-  while (keepRunning) {
-    AllocateResponse response;
+  while (true) {
+    if (!keepRunning) {
+      return;
+    }
     try {
+      AllocateResponse response;
       if (savedException != null) {
         LOG.error("Stopping callback due to: ",savedException);
         handler.onError(savedException);
-        break;
+        return;
       }
-      response=responseQueue.take();
-    }
- catch (    InterruptedException ex) {
-      LOG.info("Interrupted while waiting for queue",ex);
-      continue;
-    }
-    if (response.getAMCommand() != null) {
+      try {
+        response=responseQueue.take();
+      }
+ catch (      InterruptedException ex) {
+        LOG.info("Interrupted while waiting for queue",ex);
+        continue;
+      }
+      if (response.getAMCommand() != null) {
 switch (response.getAMCommand()) {
 case AM_RESYNC:
 case AM_SHUTDOWN:
-        handler.onShutdownRequest();
-      LOG.info("Shutdown requested. Stopping callback.");
-    return;
+          handler.onShutdownRequest();
+        LOG.info("Shutdown requested. Stopping callback.");
+      return;
 default :
-  String msg="Unhandled value of AMCommand: " + response.getAMCommand();
-LOG.error(msg);
+    String msg="Unhandled value of RM AMCommand: " + response.getAMCommand();
+  LOG.error(msg);
 throw new YarnRuntimeException(msg);
 }
 }
@@ -39,5 +43,10 @@ if (!allocated.isEmpty()) {
 handler.onContainersAllocated(allocated);
 }
 progress=handler.getProgress();
+}
+ catch (Throwable ex) {
+handler.onError(ex);
+throw new YarnRuntimeException(ex);
+}
 }
 }
