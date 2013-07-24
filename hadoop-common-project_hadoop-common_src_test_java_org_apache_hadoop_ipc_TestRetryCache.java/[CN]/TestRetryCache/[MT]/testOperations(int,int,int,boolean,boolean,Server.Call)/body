@@ -1,0 +1,37 @@
+{
+  final int failureOutput=input + 1;
+  ExecutorService executorService=Executors.newFixedThreadPool(numberOfThreads);
+  List<Future<Integer>> list=new ArrayList<Future<Integer>>();
+  for (int i=0; i < numberOfThreads; i++) {
+    Callable<Integer> worker=new Callable<Integer>(){
+      @Override public Integer call() throws Exception {
+        Server.getCurCall().set(call);
+        Assert.assertEquals(Server.getCurCall().get(),call);
+        int randomPause=pause == 0 ? pause : r.nextInt(pause);
+        return testServer.echo(input,failureOutput,randomPause,success);
+      }
+    }
+;
+    Future<Integer> submit=executorService.submit(worker);
+    list.add(submit);
+  }
+  Assert.assertEquals(numberOfThreads,list.size());
+  for (  Future<Integer> future : list) {
+    if (success) {
+      Assert.assertEquals(input,future.get().intValue());
+    }
+ else {
+      Assert.assertEquals(failureOutput,future.get().intValue());
+    }
+  }
+  if (success) {
+    int retries=numberOfThreads + (attemptedBefore ? 0 : -1);
+    Assert.assertEquals(1,testServer.operationCount.get());
+    Assert.assertEquals(retries,testServer.retryCount.get());
+  }
+ else {
+    int opCount=numberOfThreads + (attemptedBefore ? 1 : 0);
+    Assert.assertEquals(opCount,testServer.operationCount.get());
+    Assert.assertEquals(0,testServer.retryCount.get());
+  }
+}

@@ -1,0 +1,28 @@
+{
+  CacheEntry mapEntry=null;
+synchronized (this) {
+    mapEntry=set.get(newEntry);
+    if (mapEntry == null) {
+      if (LOG.isTraceEnabled()) {
+        LOG.trace("Adding Rpc request clientId " + newEntry.clientIdMsb + newEntry.clientIdLsb+ " callId "+ newEntry.callId+ " to retryCache");
+      }
+      set.put(newEntry);
+      return newEntry;
+    }
+  }
+  Preconditions.checkNotNull(mapEntry,"Entry from the cache should not be null");
+synchronized (mapEntry) {
+    while (mapEntry.state == CacheEntry.INPROGRESS) {
+      try {
+        mapEntry.wait();
+      }
+ catch (      InterruptedException ie) {
+        Thread.currentThread().interrupt();
+      }
+    }
+    if (mapEntry.state != CacheEntry.SUCCESS) {
+      mapEntry.state=CacheEntry.INPROGRESS;
+    }
+  }
+  return mapEntry;
+}
