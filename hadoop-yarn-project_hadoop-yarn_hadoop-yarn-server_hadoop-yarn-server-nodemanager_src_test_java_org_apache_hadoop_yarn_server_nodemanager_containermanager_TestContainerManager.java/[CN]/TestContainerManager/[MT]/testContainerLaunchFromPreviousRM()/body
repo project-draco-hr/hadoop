@@ -1,28 +1,36 @@
 {
   containerManager.start();
   ContainerLaunchContext containerLaunchContext=recordFactory.newRecordInstance(ContainerLaunchContext.class);
-  ContainerId cId1=createContainerId();
-  ContainerId cId2=createContainerId();
+  ContainerId cId1=createContainerId(0);
+  ContainerId cId2=createContainerId(0);
   containerLaunchContext.setLocalResources(new HashMap<String,LocalResource>());
-  StartContainerRequest startRequest1=recordFactory.newRecordInstance(StartContainerRequest.class);
-  startRequest1.setContainerLaunchContext(containerLaunchContext);
-  startRequest1.setContainerToken(createContainerToken(cId1,ResourceManagerConstants.RM_INVALID_IDENTIFIER,context.getNodeId(),user,context.getContainerTokenSecretManager()));
+  StartContainerRequest startRequest1=StartContainerRequest.newInstance(containerLaunchContext,createContainerToken(cId1,ResourceManagerConstants.RM_INVALID_IDENTIFIER,context.getNodeId(),user,context.getContainerTokenSecretManager()));
+  List<StartContainerRequest> list=new ArrayList<StartContainerRequest>();
+  list.add(startRequest1);
+  StartContainersRequest allRequests=StartContainersRequest.newInstance(list);
+  containerManager.startContainers(allRequests);
   boolean catchException=false;
   try {
-    containerManager.startContainer(startRequest1);
+    StartContainersResponse response=containerManager.startContainers(allRequests);
+    if (response.getFailedRequests().containsKey(cId1)) {
+      throw response.getFailedRequests().get(cId1).deSerialize();
+    }
   }
- catch (  YarnException e) {
+ catch (  Throwable e) {
+    e.printStackTrace();
     catchException=true;
     Assert.assertTrue(e.getMessage().contains("Container " + cId1 + " rejected as it is allocated by a previous RM"));
     Assert.assertTrue(e.getClass().getName().equalsIgnoreCase(InvalidContainerException.class.getName()));
   }
   Assert.assertTrue(catchException);
-  StartContainerRequest startRequest2=recordFactory.newRecordInstance(StartContainerRequest.class);
-  startRequest2.setContainerLaunchContext(containerLaunchContext);
-  startRequest2.setContainerToken(createContainerToken(cId2,DUMMY_RM_IDENTIFIER,context.getNodeId(),user,context.getContainerTokenSecretManager()));
+  StartContainerRequest startRequest2=StartContainerRequest.newInstance(containerLaunchContext,createContainerToken(cId2,DUMMY_RM_IDENTIFIER,context.getNodeId(),user,context.getContainerTokenSecretManager()));
+  List<StartContainerRequest> list2=new ArrayList<StartContainerRequest>();
+  list.add(startRequest2);
+  StartContainersRequest allRequests2=StartContainersRequest.newInstance(list2);
+  containerManager.startContainers(allRequests2);
   boolean noException=true;
   try {
-    containerManager.startContainer(startRequest2);
+    containerManager.startContainers(allRequests2);
   }
  catch (  YarnException e) {
     noException=false;

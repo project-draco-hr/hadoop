@@ -1,0 +1,44 @@
+{
+  containerManager.start();
+  List<StartContainerRequest> startRequest=new ArrayList<StartContainerRequest>();
+  ContainerLaunchContext containerLaunchContext=recordFactory.newRecordInstance(ContainerLaunchContext.class);
+  List<ContainerId> containerIds=new ArrayList<ContainerId>();
+  for (int i=0; i < 10; i++) {
+    ContainerId cId=createContainerId(i);
+    String user=null;
+    if ((i & 1) == 0) {
+      user="Fail";
+    }
+ else {
+      user="Pass";
+    }
+    Token containerToken=createContainerToken(cId,DUMMY_RM_IDENTIFIER,context.getNodeId(),user,context.getContainerTokenSecretManager());
+    StartContainerRequest request=StartContainerRequest.newInstance(containerLaunchContext,containerToken);
+    startRequest.add(request);
+    containerIds.add(cId);
+  }
+  StartContainersRequest requestList=StartContainersRequest.newInstance(startRequest);
+  containerManager.startContainers(requestList);
+  GetContainerStatusesRequest statusRequest=GetContainerStatusesRequest.newInstance(containerIds);
+  GetContainerStatusesResponse statusResponse=containerManager.getContainerStatuses(statusRequest);
+  Assert.assertEquals(5,statusResponse.getContainerStatuses().size());
+  for (  ContainerStatus status : statusResponse.getContainerStatuses()) {
+    Assert.assertEquals(1,status.getContainerId().getId() & 1);
+  }
+  Assert.assertEquals(5,statusResponse.getFailedRequests().size());
+  for (  Map.Entry<ContainerId,SerializedException> entry : statusResponse.getFailedRequests().entrySet()) {
+    Assert.assertEquals(0,entry.getKey().getId() & 1);
+    Assert.assertTrue(entry.getValue().getMessage().contains("Reject this container"));
+  }
+  StopContainersRequest stopRequest=StopContainersRequest.newInstance(containerIds);
+  StopContainersResponse stopResponse=containerManager.stopContainers(stopRequest);
+  Assert.assertEquals(5,stopResponse.getSuccessfullyStoppedContainers().size());
+  for (  ContainerId id : stopResponse.getSuccessfullyStoppedContainers()) {
+    Assert.assertEquals(1,id.getId() & 1);
+  }
+  Assert.assertEquals(5,stopResponse.getFailedRequests().size());
+  for (  Map.Entry<ContainerId,SerializedException> entry : stopResponse.getFailedRequests().entrySet()) {
+    Assert.assertEquals(0,entry.getKey().getId() & 1);
+    Assert.assertTrue(entry.getValue().getMessage().contains("Reject this container"));
+  }
+}

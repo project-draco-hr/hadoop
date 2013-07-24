@@ -14,23 +14,25 @@
   containerLaunchContext.setLocalResources(localResources);
   List<String> commands=new ArrayList<String>();
   containerLaunchContext.setCommands(commands);
-  final StartContainerRequest startRequest=Records.newRecord(StartContainerRequest.class);
-  startRequest.setContainerLaunchContext(containerLaunchContext);
   NodeId nodeId=nm.getNMContext().getNodeId();
-  startRequest.setContainerToken(TestContainerManager.createContainerToken(cId,0,nodeId,destinationFile,nm.getNMContext().getContainerTokenSecretManager()));
+  StartContainerRequest scRequest=StartContainerRequest.newInstance(containerLaunchContext,TestContainerManager.createContainerToken(cId,0,nodeId,destinationFile,nm.getNMContext().getContainerTokenSecretManager()));
+  List<StartContainerRequest> list=new ArrayList<StartContainerRequest>();
+  list.add(scRequest);
+  final StartContainersRequest allRequests=StartContainersRequest.newInstance(list);
   final UserGroupInformation currentUser=UserGroupInformation.createRemoteUser(cId.getApplicationAttemptId().toString());
   NMTokenIdentifier nmIdentifier=new NMTokenIdentifier(cId.getApplicationAttemptId(),nodeId,user,123);
   currentUser.addTokenIdentifier(nmIdentifier);
   currentUser.doAs(new PrivilegedExceptionAction<Void>(){
     @Override public Void run() throws YarnException, IOException {
-      nm.getContainerManager().startContainer(startRequest);
+      nm.getContainerManager().startContainers(allRequests);
       return null;
     }
   }
 );
-  GetContainerStatusRequest request=Records.newRecord(GetContainerStatusRequest.class);
-  request.setContainerId(cId);
-  Container container=nm.getNMContext().getContainers().get(request.getContainerId());
+  List<ContainerId> containerIds=new ArrayList<ContainerId>();
+  containerIds.add(cId);
+  GetContainerStatusesRequest request=GetContainerStatusesRequest.newInstance(containerIds);
+  Container container=nm.getNMContext().getContainers().get(request.getContainerIds().get(0));
   final int MAX_TRIES=20;
   int numTries=0;
   while (!container.getContainerState().equals(ContainerState.DONE) && numTries <= MAX_TRIES) {

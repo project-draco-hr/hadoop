@@ -15,9 +15,6 @@
   containerLaunchContext.setLocalResources(localResources);
   List<String> commands=Arrays.asList(Shell.getRunScriptCommand(scriptFile));
   containerLaunchContext.setCommands(commands);
-  StartContainerRequest startRequest=recordFactory.newRecordInstance(StartContainerRequest.class);
-  startRequest.setContainerLaunchContext(containerLaunchContext);
-  startRequest.setContainerToken(TestContainerManager.createContainerToken(cId,0,nodeId,user,nm.getNMContext().getContainerTokenSecretManager()));
   final InetSocketAddress containerManagerBindAddress=NetUtils.createSocketAddrForHost("127.0.0.1",12345);
   UserGroupInformation currentUser=UserGroupInformation.createRemoteUser(cId.toString());
   org.apache.hadoop.security.token.Token<NMTokenIdentifier> nmToken=ConverterUtils.convertFromYarn(nm.getNMContext().getNMTokenSecretManager().createNMToken(cId.getApplicationAttemptId(),nodeId,user),containerManagerBindAddress);
@@ -31,9 +28,14 @@
     }
   }
 );
-  containerManager.startContainer(startRequest);
-  GetContainerStatusRequest request=recordFactory.newRecordInstance(GetContainerStatusRequest.class);
-  request.setContainerId(cId);
-  ContainerStatus containerStatus=containerManager.getContainerStatus(request).getStatus();
+  StartContainerRequest scRequest=StartContainerRequest.newInstance(containerLaunchContext,TestContainerManager.createContainerToken(cId,0,nodeId,user,nm.getNMContext().getContainerTokenSecretManager()));
+  List<StartContainerRequest> list=new ArrayList<StartContainerRequest>();
+  list.add(scRequest);
+  StartContainersRequest allRequests=StartContainersRequest.newInstance(list);
+  containerManager.startContainers(allRequests);
+  List<ContainerId> containerIds=new ArrayList<ContainerId>();
+  containerIds.add(cId);
+  GetContainerStatusesRequest request=GetContainerStatusesRequest.newInstance(containerIds);
+  ContainerStatus containerStatus=containerManager.getContainerStatuses(request).getContainerStatuses().get(0);
   Assert.assertEquals(ContainerState.RUNNING,containerStatus.getState());
 }

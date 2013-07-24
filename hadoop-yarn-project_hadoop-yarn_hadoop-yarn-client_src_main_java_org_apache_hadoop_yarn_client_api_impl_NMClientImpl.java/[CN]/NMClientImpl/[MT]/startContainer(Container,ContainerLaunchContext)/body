@@ -6,7 +6,16 @@ synchronized (startingContainer) {
     ContainerManagementProtocolProxyData proxy=null;
     try {
       proxy=cmProxy.getProxy(container.getNodeId().toString(),container.getId());
-      allServiceResponse=proxy.getContainerManagementProtocol().startContainer(StartContainerRequest.newInstance(containerLaunchContext,container.getContainerToken())).getAllServicesMetaData();
+      StartContainerRequest scRequest=StartContainerRequest.newInstance(containerLaunchContext,container.getContainerToken());
+      List<StartContainerRequest> list=new ArrayList<StartContainerRequest>();
+      list.add(scRequest);
+      StartContainersRequest allRequests=StartContainersRequest.newInstance(list);
+      StartContainersResponse response=proxy.getContainerManagementProtocol().startContainers(allRequests);
+      if (response.getFailedRequests() != null && response.getFailedRequests().containsKey(container.getId())) {
+        Throwable t=response.getFailedRequests().get(container.getId()).deSerialize();
+        parseAndThrowException(t);
+      }
+      allServiceResponse=response.getAllServicesMetaData();
       startingContainer.state=ContainerState.RUNNING;
     }
  catch (    YarnException e) {

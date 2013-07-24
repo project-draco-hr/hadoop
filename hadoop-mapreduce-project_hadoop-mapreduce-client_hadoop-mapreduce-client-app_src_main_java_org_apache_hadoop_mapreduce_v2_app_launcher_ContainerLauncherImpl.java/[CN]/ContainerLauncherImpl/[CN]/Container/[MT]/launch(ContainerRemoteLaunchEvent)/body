@@ -9,10 +9,14 @@
   try {
     proxy=getCMProxy(containerMgrAddress,containerID);
     ContainerLaunchContext containerLaunchContext=event.getContainerLaunchContext();
-    StartContainerRequest startRequest=Records.newRecord(StartContainerRequest.class);
-    startRequest.setContainerLaunchContext(containerLaunchContext);
-    startRequest.setContainerToken(event.getContainerToken());
-    StartContainerResponse response=proxy.getContainerManagementProtocol().startContainer(startRequest);
+    StartContainerRequest startRequest=StartContainerRequest.newInstance(containerLaunchContext,event.getContainerToken());
+    List<StartContainerRequest> list=new ArrayList<StartContainerRequest>();
+    list.add(startRequest);
+    StartContainersRequest requestList=StartContainersRequest.newInstance(list);
+    StartContainersResponse response=proxy.getContainerManagementProtocol().startContainers(requestList);
+    if (response.getFailedRequests() != null && response.getFailedRequests().containsKey(containerID)) {
+      throw response.getFailedRequests().get(containerID).deSerialize();
+    }
     ByteBuffer portInfo=response.getAllServicesMetaData().get(ShuffleHandler.MAPREDUCE_SHUFFLE_SERVICEID);
     int port=-1;
     if (portInfo != null) {

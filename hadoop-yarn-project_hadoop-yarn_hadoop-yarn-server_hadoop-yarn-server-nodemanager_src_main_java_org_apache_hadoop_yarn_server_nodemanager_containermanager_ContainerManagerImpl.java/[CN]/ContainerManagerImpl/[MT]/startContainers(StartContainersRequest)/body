@@ -1,0 +1,31 @@
+{
+  if (blockNewContainerRequests.get()) {
+    throw new NMNotYetReadyException("Rejecting new containers as NodeManager has not" + " yet connected with ResourceManager");
+  }
+  UserGroupInformation remoteUgi=getRemoteUgi();
+  NMTokenIdentifier nmTokenIdentifier=selectNMTokenIdentifier(remoteUgi);
+  authorizeUser(remoteUgi,nmTokenIdentifier);
+  List<ContainerId> succeededContainers=new ArrayList<ContainerId>();
+  Map<ContainerId,SerializedException> failedContainers=new HashMap<ContainerId,SerializedException>();
+  for (  StartContainerRequest request : requests.getStartContainerRequests()) {
+    ContainerId containerId=null;
+    try {
+      ContainerTokenIdentifier containerTokenIdentifier=BuilderUtils.newContainerTokenIdentifier(request.getContainerToken());
+      verifyAndGetContainerTokenIdentifier(request.getContainerToken(),containerTokenIdentifier);
+      containerId=containerTokenIdentifier.getContainerID();
+      startContainerInternal(nmTokenIdentifier,containerTokenIdentifier,request);
+      succeededContainers.add(containerId);
+    }
+ catch (    YarnException e) {
+      failedContainers.put(containerId,SerializedException.newInstance(e));
+    }
+catch (    InvalidToken ie) {
+      failedContainers.put(containerId,SerializedException.newInstance(ie));
+      throw ie;
+    }
+catch (    IOException e) {
+      throw RPCUtil.getRemoteException(e);
+    }
+  }
+  return StartContainersResponse.newInstance(auxiliaryServices.getMetaData(),succeededContainers,failedContainers);
+}

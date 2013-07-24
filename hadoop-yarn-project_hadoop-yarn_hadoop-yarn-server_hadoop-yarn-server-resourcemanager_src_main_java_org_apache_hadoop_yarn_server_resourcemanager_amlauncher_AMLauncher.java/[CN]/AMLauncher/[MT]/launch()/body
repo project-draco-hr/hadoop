@@ -4,9 +4,16 @@
   ApplicationSubmissionContext applicationContext=application.getSubmissionContext();
   LOG.info("Setting up container " + masterContainer + " for AM "+ application.getAppAttemptId());
   ContainerLaunchContext launchContext=createAMContainerLaunchContext(applicationContext,masterContainerID);
-  StartContainerRequest request=recordFactory.newRecordInstance(StartContainerRequest.class);
-  request.setContainerLaunchContext(launchContext);
-  request.setContainerToken(masterContainer.getContainerToken());
-  containerMgrProxy.startContainer(request);
-  LOG.info("Done launching container " + masterContainer + " for AM "+ application.getAppAttemptId());
+  StartContainerRequest scRequest=StartContainerRequest.newInstance(launchContext,masterContainer.getContainerToken());
+  List<StartContainerRequest> list=new ArrayList<StartContainerRequest>();
+  list.add(scRequest);
+  StartContainersRequest allRequests=StartContainersRequest.newInstance(list);
+  StartContainersResponse response=containerMgrProxy.startContainers(allRequests);
+  if (response.getFailedRequests() != null && response.getFailedRequests().containsKey(masterContainerID)) {
+    Throwable t=response.getFailedRequests().get(masterContainerID).deSerialize();
+    parseAndThrowException(t);
+  }
+ else {
+    LOG.info("Done launching container " + masterContainer + " for AM "+ application.getAppAttemptId());
+  }
 }

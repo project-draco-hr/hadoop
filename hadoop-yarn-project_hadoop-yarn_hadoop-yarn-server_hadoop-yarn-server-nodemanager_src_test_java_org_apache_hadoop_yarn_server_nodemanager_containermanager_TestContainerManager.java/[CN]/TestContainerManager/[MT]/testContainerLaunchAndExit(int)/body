@@ -2,7 +2,7 @@
   File scriptFile=Shell.appendScriptExtension(tmpDir,"scriptFile");
   PrintWriter fileWriter=new PrintWriter(scriptFile);
   File processStartFile=new File(tmpDir,"start_file.txt").getAbsoluteFile();
-  ContainerId cId=createContainerId();
+  ContainerId cId=createContainerId(0);
   if (Shell.WINDOWS) {
     fileWriter.println("@echo Hello World!> " + processStartFile);
     fileWriter.println("@echo " + cId + ">> "+ processStartFile);
@@ -33,13 +33,15 @@
   containerLaunchContext.setLocalResources(localResources);
   List<String> commands=Arrays.asList(Shell.getRunScriptCommand(scriptFile));
   containerLaunchContext.setCommands(commands);
-  StartContainerRequest startRequest=recordFactory.newRecordInstance(StartContainerRequest.class);
-  startRequest.setContainerLaunchContext(containerLaunchContext);
-  startRequest.setContainerToken(createContainerToken(cId,DUMMY_RM_IDENTIFIER,context.getNodeId(),user,context.getContainerTokenSecretManager()));
-  containerManager.startContainer(startRequest);
+  StartContainerRequest scRequest=StartContainerRequest.newInstance(containerLaunchContext,createContainerToken(cId,DUMMY_RM_IDENTIFIER,context.getNodeId(),user,context.getContainerTokenSecretManager()));
+  List<StartContainerRequest> list=new ArrayList<StartContainerRequest>();
+  list.add(scRequest);
+  StartContainersRequest allRequests=StartContainersRequest.newInstance(list);
+  containerManager.startContainers(allRequests);
   BaseContainerManagerTest.waitForContainerState(containerManager,cId,ContainerState.COMPLETE);
-  GetContainerStatusRequest gcsRequest=recordFactory.newRecordInstance(GetContainerStatusRequest.class);
-  gcsRequest.setContainerId(cId);
-  ContainerStatus containerStatus=containerManager.getContainerStatus(gcsRequest).getStatus();
+  List<ContainerId> containerIds=new ArrayList<ContainerId>();
+  containerIds.add(cId);
+  GetContainerStatusesRequest gcsRequest=GetContainerStatusesRequest.newInstance(containerIds);
+  ContainerStatus containerStatus=containerManager.getContainerStatuses(gcsRequest).getContainerStatuses().get(0);
   Assert.assertEquals(exitCode,containerStatus.getExitStatus());
 }
