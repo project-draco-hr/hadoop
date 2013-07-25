@@ -4,15 +4,20 @@
   YarnConfiguration conf=createNMConfig();
   conf.setLong(YarnConfiguration.RESOURCEMANAGER_CONNECT_MAX_WAIT_SECS,connectionWaitSecs);
   conf.setLong(YarnConfiguration.RESOURCEMANAGER_CONNECT_RETRY_INTERVAL_SECS,connectionRetryIntervalSecs);
+  conf.setLong(YarnConfiguration.NM_SLEEP_DELAY_BEFORE_SIGKILL_MS,5000);
   CyclicBarrier syncBarrier=new CyclicBarrier(2);
   nm=new MyNodeManager2(syncBarrier,conf);
   nm.init(conf);
   nm.start();
+  ContainerId cId=TestNodeManagerShutdown.createContainerId();
+  FileContext localFS=FileContext.getLocalFSFileContext();
+  TestNodeManagerShutdown.startContainer(nm,cId,localFS,nmLocalDir,new File("start_file.txt"));
   try {
     syncBarrier.await(10000,TimeUnit.MILLISECONDS);
   }
  catch (  Exception e) {
   }
+  Assert.assertFalse("Containers not cleaned up when NM stopped",assertionFailedInThread.get());
   Assert.assertTrue(((MyNodeManager2)nm).isStopped);
   Assert.assertTrue("calculate heartBeatCount based on" + " connectionWaitSecs and RetryIntervalSecs",heartBeatID == 2);
 }
