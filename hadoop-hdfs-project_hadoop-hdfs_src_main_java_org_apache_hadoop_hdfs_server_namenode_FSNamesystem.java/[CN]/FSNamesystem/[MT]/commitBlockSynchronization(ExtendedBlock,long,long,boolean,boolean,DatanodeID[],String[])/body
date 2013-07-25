@@ -8,13 +8,24 @@
     if (isInSafeMode()) {
       throw new SafeModeException("Cannot commitBlockSynchronization while in safe mode",safeMode);
     }
-    final BlockInfo storedBlock=blockManager.getStoredBlock(ExtendedBlock.getLocalBlock(lastblock));
+    final BlockInfo storedBlock=getStoredBlock(ExtendedBlock.getLocalBlock(lastblock));
     if (storedBlock == null) {
-      throw new IOException("Block (=" + lastblock + ") not found");
+      if (deleteblock) {
+        if (LOG.isDebugEnabled()) {
+          LOG.debug("Block (=" + lastblock + ") not found");
+        }
+        return;
+      }
+ else {
+        throw new IOException("Block (=" + lastblock + ") not found");
+      }
     }
     INodeFile iFile=((INode)storedBlock.getBlockCollection()).asFile();
     if (!iFile.isUnderConstruction() || storedBlock.isComplete()) {
-      throw new IOException("Unexpected block (=" + lastblock + ") since the file (="+ iFile.getLocalName()+ ") is not under construction");
+      if (LOG.isDebugEnabled()) {
+        LOG.debug("Unexpected block (=" + lastblock + ") since the file (="+ iFile.getLocalName()+ ") is not under construction");
+      }
+      return;
     }
     long recoveryId=((BlockInfoUnderConstruction)storedBlock).getBlockRecoveryId();
     if (recoveryId != newgenerationstamp) {
@@ -24,10 +35,9 @@
     if (deleteblock) {
       Block blockToDel=ExtendedBlock.getLocalBlock(lastblock);
       boolean remove=pendingFile.removeLastBlock(blockToDel);
-      if (!remove) {
-        throw new IOException("Trying to delete non-existant block " + blockToDel);
+      if (remove) {
+        blockManager.removeBlockFromMap(storedBlock);
       }
-      blockManager.removeBlockFromMap(storedBlock);
     }
  else {
       storedBlock.setGenerationStamp(newgenerationstamp);
@@ -46,13 +56,11 @@
       }
       pendingFile.setLastBlock(storedBlock,descriptors);
     }
-    src=leaseManager.findPath(pendingFile);
     if (closeFile) {
-      commitOrCompleteLastBlock(pendingFile,storedBlock);
-      finalizeINodeFileUnderConstruction(src,pendingFile,Snapshot.findLatestSnapshot(pendingFile,null));
+      src=closeFileCommitBlocks(pendingFile,storedBlock);
     }
  else {
-      dir.persistBlocks(src,pendingFile);
+      src=persistBlocks(pendingFile);
     }
   }
   finally {
