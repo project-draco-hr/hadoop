@@ -1,6 +1,11 @@
 {
+  CacheEntry cacheEntry=RetryCache.waitForCompletion(retryCache);
+  if (cacheEntry != null && cacheEntry.isSuccess()) {
+    return;
+  }
   final FSPermissionChecker pc=getPermissionChecker();
   writeLock();
+  boolean success=false;
   try {
     checkOperation(OperationCategory.WRITE);
     if (isInSafeMode()) {
@@ -12,9 +17,11 @@
     dir.verifySnapshotName(snapshotNewName,path);
     snapshotManager.renameSnapshot(path,snapshotOldName,snapshotNewName);
     getEditLog().logRenameSnapshot(path,snapshotOldName,snapshotNewName);
+    success=true;
   }
   finally {
     writeUnlock();
+    RetryCache.setState(cacheEntry,success);
   }
   getEditLog().logSync();
   if (auditLog.isInfoEnabled() && isExternalInvocation()) {

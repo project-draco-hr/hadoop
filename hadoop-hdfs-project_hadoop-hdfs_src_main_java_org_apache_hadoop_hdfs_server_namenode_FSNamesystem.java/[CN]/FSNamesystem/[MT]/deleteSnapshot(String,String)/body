@@ -1,5 +1,10 @@
 {
   final FSPermissionChecker pc=getPermissionChecker();
+  CacheEntry cacheEntry=RetryCache.waitForCompletion(retryCache);
+  if (cacheEntry != null && cacheEntry.isSuccess()) {
+    return;
+  }
+  boolean success=false;
   writeLock();
   try {
     checkOperation(OperationCategory.WRITE);
@@ -21,9 +26,11 @@
     this.removeBlocks(collectedBlocks);
     collectedBlocks.clear();
     getEditLog().logDeleteSnapshot(snapshotRoot,snapshotName);
+    success=true;
   }
   finally {
     writeUnlock();
+    RetryCache.setState(cacheEntry,success);
   }
   getEditLog().logSync();
   if (auditLog.isInfoEnabled() && isExternalInvocation()) {

@@ -1,4 +1,8 @@
 {
+  CacheEntry cacheEntry=RetryCache.waitForCompletion(retryCache);
+  if (cacheEntry != null && cacheEntry.isSuccess()) {
+    return;
+  }
   if (NameNode.stateChangeLog.isDebugEnabled()) {
     NameNode.stateChangeLog.debug("DIR* NameSystem.renameTo: with options - " + src + " to "+ dst);
   }
@@ -10,6 +14,7 @@
   byte[][] srcComponents=FSDirectory.getPathComponentsForReservedPath(src);
   byte[][] dstComponents=FSDirectory.getPathComponentsForReservedPath(dst);
   HdfsFileStatus resultingStat=null;
+  boolean success=false;
   writeLock();
   try {
     checkOperation(OperationCategory.WRITE);
@@ -20,9 +25,11 @@
     dst=FSDirectory.resolvePath(dst,dstComponents,dir);
     renameToInternal(pc,src,dst,options);
     resultingStat=getAuditFileInfo(dst,false);
+    success=true;
   }
   finally {
     writeUnlock();
+    RetryCache.setState(cacheEntry,success);
   }
   getEditLog().logSync();
   if (resultingStat != null) {
