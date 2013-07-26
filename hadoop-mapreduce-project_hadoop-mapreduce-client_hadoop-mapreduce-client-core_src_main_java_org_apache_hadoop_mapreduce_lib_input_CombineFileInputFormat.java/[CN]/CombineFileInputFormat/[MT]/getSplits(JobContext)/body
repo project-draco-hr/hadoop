@@ -30,29 +30,23 @@
   if (minSizeRack != 0 && minSizeNode > minSizeRack) {
     throw new IOException("Minimum split size per node" + minSizeNode + " cannot be smaller than minimum split "+ "size per rack "+ minSizeRack);
   }
-  Path[] paths=FileUtil.stat2Paths(listStatus(job).toArray(new FileStatus[0]));
+  List<FileStatus> stats=listStatus(job);
   List<InputSplit> splits=new ArrayList<InputSplit>();
-  if (paths.length == 0) {
+  if (stats.size() == 0) {
     return splits;
   }
-  List<Path> newpaths=new LinkedList<Path>();
-  for (int i=0; i < paths.length; i++) {
-    FileSystem fs=paths[i].getFileSystem(conf);
-    Path p=fs.makeQualified(paths[i]);
-    newpaths.add(p);
-  }
   for (  MultiPathFilter onepool : pools) {
-    ArrayList<Path> myPaths=new ArrayList<Path>();
-    for (Iterator<Path> iter=newpaths.iterator(); iter.hasNext(); ) {
-      Path p=iter.next();
-      if (onepool.accept(p)) {
+    ArrayList<FileStatus> myPaths=new ArrayList<FileStatus>();
+    for (Iterator<FileStatus> iter=stats.iterator(); iter.hasNext(); ) {
+      FileStatus p=iter.next();
+      if (onepool.accept(p.getPath())) {
         myPaths.add(p);
         iter.remove();
       }
     }
-    getMoreSplits(job,myPaths.toArray(new Path[myPaths.size()]),maxSize,minSizeNode,minSizeRack,splits);
+    getMoreSplits(job,myPaths,maxSize,minSizeNode,minSizeRack,splits);
   }
-  getMoreSplits(job,newpaths.toArray(new Path[newpaths.size()]),maxSize,minSizeNode,minSizeRack,splits);
+  getMoreSplits(job,stats,maxSize,minSizeNode,minSizeRack,splits);
   rackToNodes.clear();
   return splits;
 }

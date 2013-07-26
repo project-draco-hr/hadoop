@@ -14,26 +14,34 @@
   NetworkTopology clusterMap=new NetworkTopology();
   for (  FileStatus file : files) {
     Path path=file.getPath();
-    FileSystem fs=path.getFileSystem(job);
     long length=file.getLen();
-    BlockLocation[] blkLocations=fs.getFileBlockLocations(file,0,length);
-    if ((length != 0) && isSplitable(fs,path)) {
-      long blockSize=file.getBlockSize();
-      long splitSize=computeSplitSize(goalSize,minSize,blockSize);
-      long bytesRemaining=length;
-      while (((double)bytesRemaining) / splitSize > SPLIT_SLOP) {
-        String[] splitHosts=getSplitHosts(blkLocations,length - bytesRemaining,splitSize,clusterMap);
-        splits.add(makeSplit(path,length - bytesRemaining,splitSize,splitHosts));
-        bytesRemaining-=splitSize;
+    if (length != 0) {
+      FileSystem fs=path.getFileSystem(job);
+      BlockLocation[] blkLocations;
+      if (file instanceof LocatedFileStatus) {
+        blkLocations=((LocatedFileStatus)file).getBlockLocations();
       }
-      if (bytesRemaining != 0) {
-        String[] splitHosts=getSplitHosts(blkLocations,length - bytesRemaining,bytesRemaining,clusterMap);
-        splits.add(makeSplit(path,length - bytesRemaining,bytesRemaining,splitHosts));
+ else {
+        blkLocations=fs.getFileBlockLocations(file,0,length);
       }
-    }
- else     if (length != 0) {
-      String[] splitHosts=getSplitHosts(blkLocations,0,length,clusterMap);
-      splits.add(makeSplit(path,0,length,splitHosts));
+      if (isSplitable(fs,path)) {
+        long blockSize=file.getBlockSize();
+        long splitSize=computeSplitSize(goalSize,minSize,blockSize);
+        long bytesRemaining=length;
+        while (((double)bytesRemaining) / splitSize > SPLIT_SLOP) {
+          String[] splitHosts=getSplitHosts(blkLocations,length - bytesRemaining,splitSize,clusterMap);
+          splits.add(makeSplit(path,length - bytesRemaining,splitSize,splitHosts));
+          bytesRemaining-=splitSize;
+        }
+        if (bytesRemaining != 0) {
+          String[] splitHosts=getSplitHosts(blkLocations,length - bytesRemaining,bytesRemaining,clusterMap);
+          splits.add(makeSplit(path,length - bytesRemaining,bytesRemaining,splitHosts));
+        }
+      }
+ else {
+        String[] splitHosts=getSplitHosts(blkLocations,0,length,clusterMap);
+        splits.add(makeSplit(path,0,length,splitHosts));
+      }
     }
  else {
       splits.add(makeSplit(path,0,length,new String[0]));
