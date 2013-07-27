@@ -1,4 +1,22 @@
 {
+  ApplicationReport report=rmClient.getApplicationReport(attemptId.getApplicationId());
+  if (report.getYarnApplicationState() != YarnApplicationState.ACCEPTED) {
+    throw new YarnException("Umanaged AM must be in ACCEPTED state before launching");
+  }
+  Credentials credentials=new Credentials();
+  Token<AMRMTokenIdentifier> token=rmClient.getAMRMToken(attemptId.getApplicationId());
+  credentials.addToken(token.getService(),token);
+  File tokenFile=File.createTempFile("unmanagedAMRMToken","",new File(System.getProperty("user.dir")));
+  try {
+    FileUtil.chmod(tokenFile.getAbsolutePath(),"600");
+  }
+ catch (  InterruptedException ex) {
+    throw new RuntimeException(ex);
+  }
+  tokenFile.deleteOnExit();
+  DataOutputStream os=new DataOutputStream(new FileOutputStream(tokenFile,true));
+  credentials.writeTokenStorageToStream(os);
+  os.close();
   Map<String,String> env=System.getenv();
   ArrayList<String> envAMList=new ArrayList<String>();
   boolean setClasspath=false;
@@ -24,6 +42,7 @@
   envAMList.add(Environment.NM_PORT.name() + "=0");
   envAMList.add(Environment.LOCAL_DIRS.name() + "= /tmp");
   envAMList.add(ApplicationConstants.APP_SUBMIT_TIME_ENV + "=" + System.currentTimeMillis());
+  envAMList.add(ApplicationConstants.CONTAINER_TOKEN_FILE_ENV_NAME + "=" + tokenFile.getAbsolutePath());
   String[] envAM=new String[envAMList.size()];
   Process amProc=Runtime.getRuntime().exec(amCmd,envAMList.toArray(envAM));
   final BufferedReader errReader=new BufferedReader(new InputStreamReader(amProc.getErrorStream()));

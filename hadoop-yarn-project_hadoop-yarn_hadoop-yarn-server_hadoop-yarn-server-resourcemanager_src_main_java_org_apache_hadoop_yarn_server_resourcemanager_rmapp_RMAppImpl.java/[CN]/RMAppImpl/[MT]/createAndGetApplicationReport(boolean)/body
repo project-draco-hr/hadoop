@@ -11,6 +11,7 @@
     FinalApplicationStatus finishState=getFinalApplicationStatus();
     String diags=UNAVAILABLE;
     float progress=0.0f;
+    org.apache.hadoop.yarn.api.records.Token amrmToken=null;
     if (allowAccess) {
       if (this.currentAttempt != null) {
         currentApplicationAttemptId=this.currentAttempt.getAppAttemptId();
@@ -26,11 +27,24 @@
         progress=currentAttempt.getProgress();
       }
       diags=this.diagnostics.toString();
+      if (currentAttempt != null && currentAttempt.getAppAttemptState() == RMAppAttemptState.LAUNCHED) {
+        try {
+          if (getApplicationSubmissionContext().getUnmanagedAM() && getUser().equals(UserGroupInformation.getCurrentUser().getUserName())) {
+            Token<AMRMTokenIdentifier> token=currentAttempt.getAMRMToken();
+            if (token != null) {
+              amrmToken=BuilderUtils.newAMRMToken(token.getIdentifier(),token.getKind().toString(),token.getPassword(),token.getService().toString());
+            }
+          }
+        }
+ catch (        IOException ex) {
+          LOG.warn("UserGroupInformation.getCurrentUser() error: " + ex.toString(),ex);
+        }
+      }
     }
     if (currentApplicationAttemptId == null) {
       currentApplicationAttemptId=BuilderUtils.newApplicationAttemptId(this.applicationId,DUMMY_APPLICATION_ATTEMPT_NUMBER);
     }
-    return BuilderUtils.newApplicationReport(this.applicationId,currentApplicationAttemptId,this.user,this.queue,this.name,host,rpcPort,clientToAMToken,createApplicationState(this.stateMachine.getCurrentState()),diags,trackingUrl,this.startTime,this.finishTime,finishState,appUsageReport,origTrackingUrl,progress,this.applicationType);
+    return BuilderUtils.newApplicationReport(this.applicationId,currentApplicationAttemptId,this.user,this.queue,this.name,host,rpcPort,clientToAMToken,createApplicationState(this.stateMachine.getCurrentState()),diags,trackingUrl,this.startTime,this.finishTime,finishState,appUsageReport,origTrackingUrl,progress,this.applicationType,amrmToken);
   }
   finally {
     this.readLock.unlock();
