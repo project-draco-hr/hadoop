@@ -1,0 +1,37 @@
+{
+  HistoryFileManager historyManager=mock(HistoryFileManager.class);
+  jobHistory=spy(new JobHistory());
+  doReturn(historyManager).when(jobHistory).createHistoryFileManager();
+  Configuration conf=new Configuration();
+  conf.set(JHAdminConfig.MR_HISTORY_LOADED_JOB_CACHE_SIZE,"2");
+  jobHistory.init(conf);
+  jobHistory.start();
+  CachedHistoryStorage storage=spy((CachedHistoryStorage)jobHistory.getHistoryStorage());
+  Job[] jobs=new Job[3];
+  JobId[] jobIds=new JobId[3];
+  for (int i=0; i < 3; i++) {
+    jobs[i]=mock(Job.class);
+    jobIds[i]=mock(JobId.class);
+    when(jobs[i].getID()).thenReturn(jobIds[i]);
+  }
+  HistoryFileInfo fileInfo=mock(HistoryFileInfo.class);
+  when(historyManager.getFileInfo(any(JobId.class))).thenReturn(fileInfo);
+  when(fileInfo.loadJob()).thenReturn(jobs[0]).thenReturn(jobs[1]).thenReturn(jobs[2]);
+  for (int i=0; i < 3; i++) {
+    storage.getFullJob(jobs[i].getID());
+  }
+  Map<JobId,Job> jobCache=storage.getLoadedJobCache();
+  assertFalse(jobCache.containsKey(jobs[0].getID()));
+  assertTrue(jobCache.containsKey(jobs[1].getID()) && jobCache.containsKey(jobs[2].getID()));
+  conf.set(JHAdminConfig.MR_HISTORY_LOADED_JOB_CACHE_SIZE,"3");
+  doReturn(conf).when(storage).createConf();
+  when(fileInfo.loadJob()).thenReturn(jobs[0]).thenReturn(jobs[1]).thenReturn(jobs[2]);
+  jobHistory.refreshLoadedJobCache();
+  for (int i=0; i < 3; i++) {
+    storage.getFullJob(jobs[i].getID());
+  }
+  jobCache=storage.getLoadedJobCache();
+  for (int i=0; i < 3; i++) {
+    assertTrue(jobCache.containsKey(jobs[i].getID()));
+  }
+}
