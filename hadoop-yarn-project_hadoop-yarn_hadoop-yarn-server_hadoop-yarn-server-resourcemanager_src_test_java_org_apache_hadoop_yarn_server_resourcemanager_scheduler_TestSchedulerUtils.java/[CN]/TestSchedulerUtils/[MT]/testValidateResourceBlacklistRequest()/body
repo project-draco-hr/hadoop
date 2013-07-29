@@ -1,6 +1,6 @@
 {
   MyContainerManager containerManager=new MyContainerManager();
-  final MockRM rm=new MockRMWithAMS(new YarnConfiguration(),containerManager);
+  final MockRMWithAMS rm=new MockRMWithAMS(new YarnConfiguration(),containerManager);
   rm.start();
   MockNM nm1=rm.registerNode("localhost:1234",5120);
   Map<ApplicationAccessType,String> acls=new HashMap<ApplicationAccessType,String>(2);
@@ -14,10 +14,12 @@
   final YarnRPC rpc=YarnRPC.create(conf);
   UserGroupInformation currentUser=UserGroupInformation.createRemoteUser(applicationAttemptId.toString());
   Credentials credentials=containerManager.getContainerCredentials();
-  currentUser.addCredentials(credentials);
+  final InetSocketAddress rmBindAddress=rm.getApplicationMasterService().getBindAddress();
+  Token<? extends TokenIdentifier> amRMToken=MockRMWithAMS.setupAndReturnAMRMToken(rmBindAddress,credentials.getAllTokens());
+  currentUser.addToken(amRMToken);
   ApplicationMasterProtocol client=currentUser.doAs(new PrivilegedAction<ApplicationMasterProtocol>(){
     @Override public ApplicationMasterProtocol run(){
-      return (ApplicationMasterProtocol)rpc.getProxy(ApplicationMasterProtocol.class,rm.getApplicationMasterService().getBindAddress(),conf);
+      return (ApplicationMasterProtocol)rpc.getProxy(ApplicationMasterProtocol.class,rmBindAddress,conf);
     }
   }
 );
