@@ -1,5 +1,38 @@
 {
-  for (  FsVolumeImpl v : volumes) {
-    v.addBlockPool(bpid,conf);
+  long totalStartTime=System.currentTimeMillis();
+  final List<IOException> exceptions=Collections.synchronizedList(new ArrayList<IOException>());
+  List<Thread> blockPoolAddingThreads=new ArrayList<Thread>();
+  for (  final FsVolumeImpl v : volumes) {
+    Thread t=new Thread(){
+      public void run(){
+        try {
+          FsDatasetImpl.LOG.info("Scanning block pool " + bpid + " on volume "+ v+ "...");
+          long startTime=System.currentTimeMillis();
+          v.addBlockPool(bpid,conf);
+          long timeTaken=System.currentTimeMillis() - startTime;
+          FsDatasetImpl.LOG.info("Time taken to scan block pool " + bpid + " on "+ v+ ": "+ timeTaken+ "ms");
+        }
+ catch (        IOException ioe) {
+          FsDatasetImpl.LOG.info("Caught exception while scanning " + v + ". Will throw later.",ioe);
+          exceptions.add(ioe);
+        }
+      }
+    }
+;
+    blockPoolAddingThreads.add(t);
+    t.start();
   }
+  for (  Thread t : blockPoolAddingThreads) {
+    try {
+      t.join();
+    }
+ catch (    InterruptedException ie) {
+      throw new IOException(ie);
+    }
+  }
+  if (!exceptions.isEmpty()) {
+    throw exceptions.get(0);
+  }
+  long totalTimeTaken=System.currentTimeMillis() - totalStartTime;
+  FsDatasetImpl.LOG.info("Total time to scan all replicas for block pool " + bpid + ": "+ totalTimeTaken+ "ms");
 }
