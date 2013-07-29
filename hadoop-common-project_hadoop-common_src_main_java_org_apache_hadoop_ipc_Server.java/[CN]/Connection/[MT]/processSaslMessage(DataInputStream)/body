@@ -9,6 +9,9 @@ case NEGOTIATE:
         throw new AccessControlException("Client already attempted negotiation");
       }
       saslResponse=buildSaslNegotiateResponse();
+      if (saslResponse.getState() == SaslState.SUCCESS) {
+        switchToSimple();
+      }
       break;
     }
 case INITIATE:
@@ -16,14 +19,21 @@ case INITIATE:
     if (saslMessage.getAuthsCount() != 1) {
       throw new SaslException("Client mechanism is malformed");
     }
-    String authMethodName=saslMessage.getAuths(0).getMethod();
-    authMethod=createSaslServer(authMethodName);
-    if (authMethod == null) {
+    SaslAuth clientSaslAuth=saslMessage.getAuths(0);
+    if (!negotiateResponse.getAuthsList().contains(clientSaslAuth)) {
       if (sentNegotiate) {
-        throw new AccessControlException(authMethodName + " authentication is not enabled." + "  Available:"+ enabledAuthMethods);
+        throw new AccessControlException(clientSaslAuth.getMethod() + " authentication is not enabled." + "  Available:"+ enabledAuthMethods);
       }
       saslResponse=buildSaslNegotiateResponse();
       break;
+    }
+    authMethod=AuthMethod.valueOf(clientSaslAuth.getMethod());
+    if (authMethod == AuthMethod.SIMPLE) {
+      switchToSimple();
+      break;
+    }
+    if (saslServer == null || authMethod != AuthMethod.TOKEN) {
+      saslServer=createSaslServer(authMethod);
     }
   }
 case RESPONSE:

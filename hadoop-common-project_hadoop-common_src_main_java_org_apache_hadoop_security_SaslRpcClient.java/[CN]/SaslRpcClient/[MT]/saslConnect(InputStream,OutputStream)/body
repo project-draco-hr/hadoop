@@ -1,7 +1,7 @@
 {
   DataInputStream inStream=new DataInputStream(new BufferedInputStream(inS));
   DataOutputStream outStream=new DataOutputStream(new BufferedOutputStream(outS));
-  boolean inSasl=false;
+  AuthMethod authMethod=AuthMethod.SIMPLE;
   sendSaslMessage(outStream,negotiateRequest);
   boolean done=false;
   do {
@@ -30,42 +30,43 @@ RpcSaslProto.Builder response=null;
 switch (saslMessage.getState()) {
 case NEGOTIATE:
 {
-    inSasl=true;
-    String clientAuthMethod=authMethod.toString();
-    SaslAuth saslAuthType=null;
-    for (    SaslAuth authType : saslMessage.getAuthsList()) {
-      if (clientAuthMethod.equals(authType.getMethod())) {
-        saslAuthType=authType;
-        break;
+    SaslAuth saslAuthType=selectSaslClient(saslMessage.getAuthsList());
+    authMethod=AuthMethod.valueOf(saslAuthType.getMethod());
+    byte[] responseToken=null;
+    if (authMethod == AuthMethod.SIMPLE) {
+      done=true;
+    }
+ else {
+      byte[] challengeToken=null;
+      if (saslAuthType.hasChallenge()) {
+        challengeToken=saslAuthType.getChallenge().toByteArray();
+        saslAuthType=SaslAuth.newBuilder(saslAuthType).clearChallenge().build();
       }
+ else       if (saslClient.hasInitialResponse()) {
+        challengeToken=new byte[0];
+      }
+      responseToken=(challengeToken != null) ? saslClient.evaluateChallenge(challengeToken) : new byte[0];
     }
-    if (saslAuthType == null) {
-      saslAuthType=SaslAuth.newBuilder().setMethod(clientAuthMethod).setMechanism(saslClient.getMechanismName()).build();
-    }
-    byte[] challengeToken=null;
-    if (saslAuthType != null && saslAuthType.hasChallenge()) {
-      challengeToken=saslAuthType.getChallenge().toByteArray();
-      saslAuthType=SaslAuth.newBuilder(saslAuthType).clearChallenge().build();
-    }
- else     if (saslClient.hasInitialResponse()) {
-      challengeToken=new byte[0];
-    }
-    byte[] responseToken=(challengeToken != null) ? saslClient.evaluateChallenge(challengeToken) : new byte[0];
     response=createSaslReply(SaslState.INITIATE,responseToken);
     response.addAuths(saslAuthType);
     break;
   }
 case CHALLENGE:
 {
-  inSasl=true;
+  if (saslClient == null) {
+    throw new SaslException("Server sent unsolicited challenge");
+  }
   byte[] responseToken=saslEvaluateToken(saslMessage,false);
   response=createSaslReply(SaslState.RESPONSE,responseToken);
   break;
 }
 case SUCCESS:
 {
-if (inSasl && saslEvaluateToken(saslMessage,true) != null) {
-  throw new SaslException("SASL client generated spurious token");
+if (saslClient == null) {
+  authMethod=AuthMethod.SIMPLE;
+}
+ else {
+  saslEvaluateToken(saslMessage,true);
 }
 done=true;
 break;
@@ -80,8 +81,5 @@ sendSaslMessage(outStream,response.build());
 }
 }
  while (!done);
-if (!inSasl && !fallbackAllowed) {
-throw new IOException("Server asks us to fall back to SIMPLE " + "auth, but this client is configured to only allow secure " + "connections.");
-}
-return inSasl;
+return authMethod;
 }

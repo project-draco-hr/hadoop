@@ -14,17 +14,16 @@
       InputStream inStream=NetUtils.getInputStream(socket);
       OutputStream outStream=NetUtils.getOutputStream(socket);
       writeConnectionHeader(outStream);
-      if (authMethod != AuthMethod.SIMPLE) {
+      if (authProtocol == AuthProtocol.SASL) {
         final InputStream in2=inStream;
         final OutputStream out2=outStream;
         UserGroupInformation ticket=remoteId.getTicket();
         if (ticket.getRealUser() != null) {
           ticket=ticket.getRealUser();
         }
-        boolean continueSasl=false;
         try {
-          continueSasl=ticket.doAs(new PrivilegedExceptionAction<Boolean>(){
-            @Override public Boolean run() throws IOException {
+          authMethod=ticket.doAs(new PrivilegedExceptionAction<AuthMethod>(){
+            @Override public AuthMethod run() throws IOException, InterruptedException {
               return setupSaslConnection(in2,out2);
             }
           }
@@ -37,12 +36,12 @@
           handleSaslConnectionFailure(numRetries++,MAX_RETRIES,ex,rand,ticket);
           continue;
         }
-        if (continueSasl) {
+        if (authMethod != AuthMethod.SIMPLE) {
           inStream=saslRpcClient.getInputStream(inStream);
           outStream=saslRpcClient.getOutputStream(outStream);
         }
- else {
-          authMethod=AuthMethod.SIMPLE;
+ else         if (UserGroupInformation.isSecurityEnabled() && !fallbackAllowed) {
+          throw new IOException("Server asks us to fall back to SIMPLE " + "auth, but this client is configured to only allow secure " + "connections.");
         }
       }
       if (doPing) {

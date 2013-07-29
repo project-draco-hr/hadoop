@@ -10,11 +10,12 @@
   current.addToken(token);
   Configuration newConf=new Configuration(conf);
   newConf.set(CommonConfigurationKeysPublic.HADOOP_RPC_SOCKET_FACTORY_CLASS_DEFAULT_KEY,"");
-  newConf.set(SERVER_PRINCIPAL_KEY,SERVER_PRINCIPAL_1);
   TestSaslProtocol proxy1=null;
   TestSaslProtocol proxy2=null;
   TestSaslProtocol proxy3=null;
+  int timeouts[]={111222,3333333};
   try {
+    newConf.setInt(CommonConfigurationKeysPublic.IPC_CLIENT_CONNECTION_MAXIDLETIME_KEY,timeouts[0]);
     proxy1=RPC.getProxy(TestSaslProtocol.class,TestSaslProtocol.versionID,addr,newConf);
     proxy1.getAuthMethod();
     Client client=WritableRpcEngine.getClient(conf);
@@ -23,16 +24,15 @@
     proxy2=RPC.getProxy(TestSaslProtocol.class,TestSaslProtocol.versionID,addr,newConf);
     proxy2.getAuthMethod();
     assertEquals("number of connections in cache is wrong",1,conns.size());
-    newConf.set(SERVER_PRINCIPAL_KEY,SERVER_PRINCIPAL_2);
+    newConf.setInt(CommonConfigurationKeysPublic.IPC_CLIENT_CONNECTION_MAXIDLETIME_KEY,timeouts[1]);
     proxy3=RPC.getProxy(TestSaslProtocol.class,TestSaslProtocol.versionID,addr,newConf);
     proxy3.getAuthMethod();
-    ConnectionId[] connsArray=conns.toArray(new ConnectionId[0]);
-    assertEquals("number of connections in cache is wrong",2,connsArray.length);
-    String p1=connsArray[0].getServerPrincipal();
-    String p2=connsArray[1].getServerPrincipal();
-    assertFalse("should have different principals",p1.equals(p2));
-    assertTrue("principal not as expected",p1.equals(SERVER_PRINCIPAL_1) || p1.equals(SERVER_PRINCIPAL_2));
-    assertTrue("principal not as expected",p2.equals(SERVER_PRINCIPAL_1) || p2.equals(SERVER_PRINCIPAL_2));
+    assertEquals("number of connections in cache is wrong",2,conns.size());
+    ConnectionId[] connsArray={RPC.getConnectionIdForProxy(proxy1),RPC.getConnectionIdForProxy(proxy2),RPC.getConnectionIdForProxy(proxy3)};
+    assertEquals(connsArray[0],connsArray[1]);
+    assertEquals(connsArray[0].getMaxIdleTime(),timeouts[0]);
+    assertFalse(connsArray[0].equals(connsArray[2]));
+    assertNotSame(connsArray[2].getMaxIdleTime(),timeouts[1]);
   }
   finally {
     server.stop();

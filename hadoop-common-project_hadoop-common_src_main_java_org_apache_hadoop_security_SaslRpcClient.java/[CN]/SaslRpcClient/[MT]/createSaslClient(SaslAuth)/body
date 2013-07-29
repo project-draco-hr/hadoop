@@ -1,0 +1,40 @@
+{
+  String saslUser=null;
+  final String saslProtocol=authType.getProtocol();
+  final String saslServerName=authType.getServerId();
+  Map<String,String> saslProperties=SaslRpcServer.SASL_PROPS;
+  CallbackHandler saslCallback=null;
+  final AuthMethod method=AuthMethod.valueOf(authType.getMethod());
+switch (method) {
+case TOKEN:
+{
+      Token<?> token=getServerToken(authType);
+      if (token == null) {
+        return null;
+      }
+      saslCallback=new SaslClientCallbackHandler(token);
+      break;
+    }
+case KERBEROS:
+{
+    if (ugi.getRealAuthenticationMethod().getAuthMethod() != AuthMethod.KERBEROS) {
+      return null;
+    }
+    String serverPrincipal=getServerPrincipal(authType);
+    if (serverPrincipal == null) {
+      return null;
+    }
+    if (LOG.isDebugEnabled()) {
+      LOG.debug("RPC Server's Kerberos principal name for protocol=" + protocol.getCanonicalName() + " is "+ serverPrincipal);
+    }
+    break;
+  }
+default :
+throw new IOException("Unknown authentication method " + method);
+}
+String mechanism=method.getMechanismName();
+if (LOG.isDebugEnabled()) {
+LOG.debug("Creating SASL " + mechanism + "("+ method+ ") "+ " client to authenticate to service at "+ saslServerName);
+}
+return Sasl.createSaslClient(new String[]{mechanism},saslUser,saslProtocol,saslServerName,saslProperties,saslCallback);
+}
