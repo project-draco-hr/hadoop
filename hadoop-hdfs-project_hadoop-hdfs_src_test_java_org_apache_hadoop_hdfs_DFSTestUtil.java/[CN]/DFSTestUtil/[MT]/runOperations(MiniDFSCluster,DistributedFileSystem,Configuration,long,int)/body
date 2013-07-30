@@ -1,0 +1,60 @@
+{
+  FileContext fc=FileContext.getFileContext(cluster.getURI(0),conf);
+  final Path pathFileCreate=new Path("/file_create");
+  FSDataOutputStream s=filesystem.create(pathFileCreate);
+  s.close();
+  final Path pathFileMoved=new Path("/file_moved");
+  filesystem.rename(pathFileCreate,pathFileMoved);
+  filesystem.delete(pathFileMoved,false);
+  Path pathDirectoryMkdir=new Path("/directory_mkdir");
+  filesystem.mkdirs(pathDirectoryMkdir);
+  filesystem.allowSnapshot(pathDirectoryMkdir);
+  filesystem.disallowSnapshot(pathDirectoryMkdir);
+  String ssName="snapshot1";
+  filesystem.allowSnapshot(pathDirectoryMkdir);
+  filesystem.createSnapshot(pathDirectoryMkdir,ssName);
+  String ssNewName="snapshot2";
+  filesystem.renameSnapshot(pathDirectoryMkdir,ssName,ssNewName);
+  filesystem.deleteSnapshot(pathDirectoryMkdir,ssNewName);
+  s=filesystem.create(pathFileCreate);
+  s.close();
+  filesystem.setReplication(pathFileCreate,(short)1);
+  Short permission=0777;
+  filesystem.setPermission(pathFileCreate,new FsPermission(permission));
+  filesystem.setOwner(pathFileCreate,new String("newOwner"),null);
+  long mtime=1285195527000L;
+  long atime=mtime;
+  filesystem.setTimes(pathFileCreate,mtime,atime);
+  filesystem.setQuota(pathDirectoryMkdir,1000L,HdfsConstants.QUOTA_DONT_SET);
+  fc.rename(pathFileCreate,pathFileMoved,Rename.NONE);
+  Path pathConcatTarget=new Path("/file_concat_target");
+  Path[] pathConcatFiles=new Path[2];
+  pathConcatFiles[0]=new Path("/file_concat_0");
+  pathConcatFiles[1]=new Path("/file_concat_1");
+  long length=blockSize * 3;
+  short replication=1;
+  long seed=1;
+  DFSTestUtil.createFile(filesystem,pathConcatTarget,length,replication,seed);
+  DFSTestUtil.createFile(filesystem,pathConcatFiles[0],length,replication,seed);
+  DFSTestUtil.createFile(filesystem,pathConcatFiles[1],length,replication,seed);
+  filesystem.concat(pathConcatTarget,pathConcatFiles);
+  Path pathSymlink=new Path("/file_symlink");
+  fc.createSymlink(pathConcatTarget,pathSymlink,false);
+  String filePath="/hard-lease-recovery-test";
+  byte[] bytes="foo-bar-baz".getBytes();
+  DFSClientAdapter.stopLeaseRenewer(filesystem);
+  FSDataOutputStream leaseRecoveryPath=filesystem.create(new Path(filePath));
+  leaseRecoveryPath.write(bytes);
+  leaseRecoveryPath.hflush();
+  cluster.setLeasePeriod(60 * 1000,1000,nnIndex);
+  LocatedBlocks locatedBlocks;
+  do {
+    try {
+      Thread.sleep(1000);
+    }
+ catch (    InterruptedException e) {
+    }
+    locatedBlocks=DFSClientAdapter.callGetBlockLocations(cluster.getNameNodeRpc(nnIndex),filePath,0L,bytes.length);
+  }
+ while (locatedBlocks.isUnderConstruction());
+}

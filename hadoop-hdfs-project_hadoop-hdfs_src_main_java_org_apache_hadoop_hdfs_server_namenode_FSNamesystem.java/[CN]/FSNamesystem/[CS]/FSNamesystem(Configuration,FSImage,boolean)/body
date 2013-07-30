@@ -1,0 +1,63 @@
+{
+  try {
+    resourceRecheckInterval=conf.getLong(DFS_NAMENODE_RESOURCE_CHECK_INTERVAL_KEY,DFS_NAMENODE_RESOURCE_CHECK_INTERVAL_DEFAULT);
+    this.blockManager=new BlockManager(this,this,conf);
+    this.datanodeStatistics=blockManager.getDatanodeManager().getDatanodeStatistics();
+    this.blockIdGenerator=new SequentialBlockIdGenerator(this.blockManager);
+    this.fsOwner=UserGroupInformation.getCurrentUser();
+    this.fsOwnerShortUserName=fsOwner.getShortUserName();
+    this.supergroup=conf.get(DFS_PERMISSIONS_SUPERUSERGROUP_KEY,DFS_PERMISSIONS_SUPERUSERGROUP_DEFAULT);
+    this.isPermissionEnabled=conf.getBoolean(DFS_PERMISSIONS_ENABLED_KEY,DFS_PERMISSIONS_ENABLED_DEFAULT);
+    LOG.info("fsOwner             = " + fsOwner);
+    LOG.info("supergroup          = " + supergroup);
+    LOG.info("isPermissionEnabled = " + isPermissionEnabled);
+    final boolean persistBlocks=conf.getBoolean(DFS_PERSIST_BLOCKS_KEY,DFS_PERSIST_BLOCKS_DEFAULT);
+    String nameserviceId=DFSUtil.getNamenodeNameServiceId(conf);
+    this.haEnabled=HAUtil.isHAEnabled(conf,nameserviceId);
+    this.persistBlocks=persistBlocks || (haEnabled && HAUtil.usesSharedEditsDir(conf));
+    if (nameserviceId != null) {
+      LOG.info("Determined nameservice ID: " + nameserviceId);
+    }
+    LOG.info("HA Enabled: " + haEnabled);
+    if (!haEnabled && HAUtil.usesSharedEditsDir(conf)) {
+      LOG.warn("Configured NNs:\n" + DFSUtil.nnAddressesAsString(conf));
+      throw new IOException("Invalid configuration: a shared edits dir " + "must not be specified if HA is not enabled.");
+    }
+    String checksumTypeStr=conf.get(DFS_CHECKSUM_TYPE_KEY,DFS_CHECKSUM_TYPE_DEFAULT);
+    DataChecksum.Type checksumType;
+    try {
+      checksumType=DataChecksum.Type.valueOf(checksumTypeStr);
+    }
+ catch (    IllegalArgumentException iae) {
+      throw new IOException("Invalid checksum type in " + DFS_CHECKSUM_TYPE_KEY + ": "+ checksumTypeStr);
+    }
+    this.serverDefaults=new FsServerDefaults(conf.getLongBytes(DFS_BLOCK_SIZE_KEY,DFS_BLOCK_SIZE_DEFAULT),conf.getInt(DFS_BYTES_PER_CHECKSUM_KEY,DFS_BYTES_PER_CHECKSUM_DEFAULT),conf.getInt(DFS_CLIENT_WRITE_PACKET_SIZE_KEY,DFS_CLIENT_WRITE_PACKET_SIZE_DEFAULT),(short)conf.getInt(DFS_REPLICATION_KEY,DFS_REPLICATION_DEFAULT),conf.getInt(IO_FILE_BUFFER_SIZE_KEY,IO_FILE_BUFFER_SIZE_DEFAULT),conf.getBoolean(DFS_ENCRYPT_DATA_TRANSFER_KEY,DFS_ENCRYPT_DATA_TRANSFER_DEFAULT),conf.getLong(FS_TRASH_INTERVAL_KEY,FS_TRASH_INTERVAL_DEFAULT),checksumType);
+    this.maxFsObjects=conf.getLong(DFS_NAMENODE_MAX_OBJECTS_KEY,DFS_NAMENODE_MAX_OBJECTS_DEFAULT);
+    this.minBlockSize=conf.getLong(DFSConfigKeys.DFS_NAMENODE_MIN_BLOCK_SIZE_KEY,DFSConfigKeys.DFS_NAMENODE_MIN_BLOCK_SIZE_DEFAULT);
+    this.maxBlocksPerFile=conf.getLong(DFSConfigKeys.DFS_NAMENODE_MAX_BLOCKS_PER_FILE_KEY,DFSConfigKeys.DFS_NAMENODE_MAX_BLOCKS_PER_FILE_DEFAULT);
+    this.accessTimePrecision=conf.getLong(DFS_NAMENODE_ACCESSTIME_PRECISION_KEY,DFS_NAMENODE_ACCESSTIME_PRECISION_DEFAULT);
+    this.supportAppends=conf.getBoolean(DFS_SUPPORT_APPEND_KEY,DFS_SUPPORT_APPEND_DEFAULT);
+    LOG.info("Append Enabled: " + supportAppends);
+    this.dtpReplaceDatanodeOnFailure=ReplaceDatanodeOnFailure.get(conf);
+    this.standbyShouldCheckpoint=conf.getBoolean(DFS_HA_STANDBY_CHECKPOINTS_KEY,DFS_HA_STANDBY_CHECKPOINTS_DEFAULT);
+    this.inodeId=new INodeId();
+    alwaysUseDelegationTokensForTests=conf.getBoolean(DFS_NAMENODE_DELEGATION_TOKEN_ALWAYS_USE_KEY,DFS_NAMENODE_DELEGATION_TOKEN_ALWAYS_USE_DEFAULT);
+    this.dtSecretManager=createDelegationTokenSecretManager(conf);
+    this.dir=new FSDirectory(fsImage,this,conf);
+    this.snapshotManager=new SnapshotManager(dir);
+    this.safeMode=new SafeModeInfo(conf);
+    this.auditLoggers=initAuditLoggers(conf);
+    this.isDefaultAuditLogger=auditLoggers.size() == 1 && auditLoggers.get(0) instanceof DefaultAuditLogger;
+    this.retryCache=ignoreRetryCache ? null : initRetryCache(conf);
+  }
+ catch (  IOException e) {
+    LOG.error(getClass().getSimpleName() + " initialization failed.",e);
+    close();
+    throw e;
+  }
+catch (  RuntimeException re) {
+    LOG.error(getClass().getSimpleName() + " initialization failed.",re);
+    close();
+    throw re;
+  }
+}

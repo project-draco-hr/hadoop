@@ -1,0 +1,24 @@
+{
+  DFSTestUtil.runOperations(cluster,dfs,conf,BlockSize,0);
+  FSNamesystem fsn0=cluster.getNamesystem(0);
+  LightWeightCache<CacheEntry,CacheEntry> cacheSet=(LightWeightCache<CacheEntry,CacheEntry>)fsn0.getRetryCache().getCacheSet();
+  assertEquals(14,cacheSet.size());
+  Map<CacheEntry,CacheEntry> oldEntries=new HashMap<CacheEntry,CacheEntry>();
+  Iterator<CacheEntry> iter=cacheSet.iterator();
+  while (iter.hasNext()) {
+    CacheEntry entry=iter.next();
+    oldEntries.put(entry,entry);
+  }
+  cluster.getNameNode(0).getRpcServer().rollEditLog();
+  cluster.getNameNode(1).getNamesystem().getEditLogTailer().doTailEdits();
+  cluster.shutdownNameNode(0);
+  cluster.transitionToActive(1);
+  FSNamesystem fsn1=cluster.getNamesystem(1);
+  cacheSet=(LightWeightCache<CacheEntry,CacheEntry>)fsn1.getRetryCache().getCacheSet();
+  assertEquals(14,cacheSet.size());
+  iter=cacheSet.iterator();
+  while (iter.hasNext()) {
+    CacheEntry entry=iter.next();
+    assertTrue(oldEntries.containsKey(entry));
+  }
+}
