@@ -21,8 +21,11 @@ synchronized (proxyProvider) {
       return ret;
     }
  catch (    Exception e) {
-      boolean isMethodIdempotent=proxyProvider.getInterface().getMethod(method.getName(),method.getParameterTypes()).isAnnotationPresent(Idempotent.class);
-      RetryAction action=policy.shouldRetry(e,retries++,invocationFailoverCount,isMethodIdempotent);
+      boolean isIdempotentOrAtMostOnce=proxyProvider.getInterface().getMethod(method.getName(),method.getParameterTypes()).isAnnotationPresent(Idempotent.class);
+      if (!isIdempotentOrAtMostOnce) {
+        isIdempotentOrAtMostOnce=proxyProvider.getInterface().getMethod(method.getName(),method.getParameterTypes()).isAnnotationPresent(AtMostOnce.class);
+      }
+      RetryAction action=policy.shouldRetry(e,retries++,invocationFailoverCount,isIdempotentOrAtMostOnce);
       if (action.action == RetryAction.RetryDecision.FAIL) {
         if (action.reason != null) {
           LOG.warn("Exception while invoking " + currentProxy.getClass() + "."+ method.getName()+ ". Not retrying because "+ action.reason,e);
