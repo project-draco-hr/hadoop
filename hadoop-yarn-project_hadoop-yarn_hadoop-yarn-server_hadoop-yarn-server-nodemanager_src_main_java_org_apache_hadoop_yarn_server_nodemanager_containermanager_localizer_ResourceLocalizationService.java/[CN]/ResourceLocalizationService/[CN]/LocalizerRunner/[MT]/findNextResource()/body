@@ -1,27 +1,29 @@
 {
-  for (Iterator<LocalizerResourceRequestEvent> i=pending.iterator(); i.hasNext(); ) {
-    LocalizerResourceRequestEvent evt=i.next();
-    LocalizedResource nRsrc=evt.getResource();
-    if (!ResourceState.DOWNLOADING.equals(nRsrc.getState())) {
-      i.remove();
-      continue;
-    }
-    if (nRsrc.tryAcquire()) {
-      if (nRsrc.getState().equals(ResourceState.DOWNLOADING)) {
-        LocalResourceRequest nextRsrc=nRsrc.getRequest();
-        LocalResource next=recordFactory.newRecordInstance(LocalResource.class);
-        next.setResource(ConverterUtils.getYarnUrlFromPath(nextRsrc.getPath()));
-        next.setTimestamp(nextRsrc.getTimestamp());
-        next.setType(nextRsrc.getType());
-        next.setVisibility(evt.getVisibility());
-        next.setPattern(evt.getPattern());
-        scheduled.put(nextRsrc,evt);
-        return next;
+synchronized (pending) {
+    for (Iterator<LocalizerResourceRequestEvent> i=pending.iterator(); i.hasNext(); ) {
+      LocalizerResourceRequestEvent evt=i.next();
+      LocalizedResource nRsrc=evt.getResource();
+      if (!ResourceState.DOWNLOADING.equals(nRsrc.getState())) {
+        i.remove();
+        continue;
       }
+      if (nRsrc.tryAcquire()) {
+        if (nRsrc.getState().equals(ResourceState.DOWNLOADING)) {
+          LocalResourceRequest nextRsrc=nRsrc.getRequest();
+          LocalResource next=recordFactory.newRecordInstance(LocalResource.class);
+          next.setResource(ConverterUtils.getYarnUrlFromPath(nextRsrc.getPath()));
+          next.setTimestamp(nextRsrc.getTimestamp());
+          next.setType(nextRsrc.getType());
+          next.setVisibility(evt.getVisibility());
+          next.setPattern(evt.getPattern());
+          scheduled.put(nextRsrc,evt);
+          return next;
+        }
  else {
-        nRsrc.unlock();
+          nRsrc.unlock();
+        }
       }
     }
+    return null;
   }
-  return null;
 }
