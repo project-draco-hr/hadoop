@@ -1,0 +1,23 @@
+{
+  Configuration conf=new Configuration();
+  TestCallbackHandler callbackHandler=new TestCallbackHandler();
+  @SuppressWarnings("unchecked") AMRMClient<ContainerRequest> client=mock(AMRMClientImpl.class);
+  when(client.allocate(anyFloat())).thenThrow(ex);
+  AMRMClientAsync<ContainerRequest> asyncClient=AMRMClientAsync.createAMRMClientAsync(client,20,callbackHandler);
+  asyncClient.init(conf);
+  asyncClient.start();
+synchronized (callbackHandler.notifier) {
+    asyncClient.registerApplicationMaster("localhost",1234,null);
+    while (callbackHandler.savedException == null) {
+      try {
+        callbackHandler.notifier.wait();
+      }
+ catch (      InterruptedException e) {
+        e.printStackTrace();
+      }
+    }
+  }
+  Assert.assertTrue(callbackHandler.savedException.getMessage().contains(ex.getMessage()));
+  asyncClient.stop();
+  Assert.assertTrue(callbackHandler.callbackCount == 0);
+}
