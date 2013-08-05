@@ -1,0 +1,50 @@
+{
+  String scheme=schemeFromPath(pathPattern);
+  String authority=authorityFromPath(pathPattern);
+  String pathPatternString=pathPattern.toUri().getPath();
+  List<String> flattenedPatterns=GlobExpander.expand(pathPatternString);
+  ArrayList<FileStatus> results=new ArrayList<FileStatus>(flattenedPatterns.size());
+  boolean sawWildcard=false;
+  for (  String flatPattern : flattenedPatterns) {
+    Path absPattern=fixRelativePart(new Path(flatPattern.isEmpty() ? "." : flatPattern));
+    List<String> components=getPathComponents(absPattern.toUri().getPath());
+    ArrayList<FileStatus> candidates=new ArrayList<FileStatus>(1);
+    candidates.add(new FileStatus(0,true,0,0,0,new Path(scheme,authority,"/")));
+    for (    String component : components) {
+      ArrayList<FileStatus> newCandidates=new ArrayList<FileStatus>(candidates.size());
+      GlobFilter globFilter=new GlobFilter(component);
+      if (globFilter.hasPattern()) {
+        sawWildcard=true;
+      }
+      if (candidates.isEmpty() && sawWildcard) {
+        break;
+      }
+      for (      FileStatus candidate : candidates) {
+        FileStatus resolvedCandidate=candidate;
+        if (candidate.isSymlink()) {
+          resolvedCandidate=getFileStatus(candidate.getPath());
+        }
+        if (resolvedCandidate == null || resolvedCandidate.isDirectory() == false) {
+          continue;
+        }
+        FileStatus[] children=listStatus(candidate.getPath());
+        for (        FileStatus child : children) {
+          child.setPath(new Path(candidate.getPath(),child.getPath().getName()));
+          if (globFilter.accept(child.getPath())) {
+            newCandidates.add(child);
+          }
+        }
+      }
+      candidates=newCandidates;
+    }
+    for (    FileStatus status : candidates) {
+      if (filter.accept(status.getPath())) {
+        results.add(status);
+      }
+    }
+  }
+  if ((!sawWildcard) && results.isEmpty() && (flattenedPatterns.size() <= 1)) {
+    return null;
+  }
+  return results.toArray(new FileStatus[0]);
+}
