@@ -23,27 +23,14 @@
   codec=initCodec();
   RawKeyValueIterator rIter=null;
   ShuffleConsumerPlugin shuffleConsumerPlugin=null;
-  boolean isLocal=false;
-  String framework=job.get(MRConfig.FRAMEWORK_NAME);
-  String masterAddr=job.get(MRConfig.MASTER_ADDRESS,"local");
-  if ((framework == null && masterAddr.equals("local")) || (framework != null && framework.equals(MRConfig.LOCAL_FRAMEWORK_NAME))) {
-    isLocal=true;
-  }
-  if (!isLocal) {
-    Class combinerClass=conf.getCombinerClass();
-    CombineOutputCollector combineCollector=(null != combinerClass) ? new CombineOutputCollector(reduceCombineOutputCounter,reporter,conf) : null;
-    Class<? extends ShuffleConsumerPlugin> clazz=job.getClass(MRConfig.SHUFFLE_CONSUMER_PLUGIN,Shuffle.class,ShuffleConsumerPlugin.class);
-    shuffleConsumerPlugin=ReflectionUtils.newInstance(clazz,job);
-    LOG.info("Using ShuffleConsumerPlugin: " + shuffleConsumerPlugin);
-    ShuffleConsumerPlugin.Context shuffleContext=new ShuffleConsumerPlugin.Context(getTaskID(),job,FileSystem.getLocal(job),umbilical,super.lDirAlloc,reporter,codec,combinerClass,combineCollector,spilledRecordsCounter,reduceCombineInputCounter,shuffledMapsCounter,reduceShuffleBytes,failedShuffleCounter,mergedMapOutputsCounter,taskStatus,copyPhase,sortPhase,this,mapOutputFile);
-    shuffleConsumerPlugin.init(shuffleContext);
-    rIter=shuffleConsumerPlugin.run();
-  }
- else {
-    copyPhase.complete();
-    final FileSystem rfs=FileSystem.getLocal(job).getRaw();
-    rIter=Merger.merge(job,rfs,job.getMapOutputKeyClass(),job.getMapOutputValueClass(),codec,getMapFiles(rfs,true),!conf.getKeepFailedTaskFiles(),job.getInt(JobContext.IO_SORT_FACTOR,100),new Path(getTaskID().toString()),job.getOutputKeyComparator(),reporter,spilledRecordsCounter,null,null);
-  }
+  Class combinerClass=conf.getCombinerClass();
+  CombineOutputCollector combineCollector=(null != combinerClass) ? new CombineOutputCollector(reduceCombineOutputCounter,reporter,conf) : null;
+  Class<? extends ShuffleConsumerPlugin> clazz=job.getClass(MRConfig.SHUFFLE_CONSUMER_PLUGIN,Shuffle.class,ShuffleConsumerPlugin.class);
+  shuffleConsumerPlugin=ReflectionUtils.newInstance(clazz,job);
+  LOG.info("Using ShuffleConsumerPlugin: " + shuffleConsumerPlugin);
+  ShuffleConsumerPlugin.Context shuffleContext=new ShuffleConsumerPlugin.Context(getTaskID(),job,FileSystem.getLocal(job),umbilical,super.lDirAlloc,reporter,codec,combinerClass,combineCollector,spilledRecordsCounter,reduceCombineInputCounter,shuffledMapsCounter,reduceShuffleBytes,failedShuffleCounter,mergedMapOutputsCounter,taskStatus,copyPhase,sortPhase,this,mapOutputFile,localMapFiles);
+  shuffleConsumerPlugin.init(shuffleContext);
+  rIter=shuffleConsumerPlugin.run();
   mapOutputFilesOnDisk.clear();
   sortPhase.complete();
   setPhase(TaskStatus.Phase.REDUCE);
@@ -57,8 +44,6 @@
  else {
     runOldReducer(job,umbilical,reporter,rIter,comparator,keyClass,valueClass);
   }
-  if (shuffleConsumerPlugin != null) {
-    shuffleConsumerPlugin.close();
-  }
+  shuffleConsumerPlugin.close();
   done(umbilical,reporter);
 }
