@@ -1,0 +1,27 @@
+{
+  LOG.debug("reading next wrapped RPC packet");
+  DataInputStream dis=new DataInputStream(in);
+  int rpcLen=dis.readInt();
+  byte[] rpcBuf=new byte[rpcLen];
+  dis.readFully(rpcBuf);
+  ByteArrayInputStream bis=new ByteArrayInputStream(rpcBuf);
+  RpcResponseHeaderProto.Builder headerBuilder=RpcResponseHeaderProto.newBuilder();
+  headerBuilder.mergeDelimitedFrom(bis);
+  boolean isWrapped=false;
+  if (headerBuilder.getCallId() == AuthProtocol.SASL.callId) {
+    RpcSaslProto.Builder saslMessage=RpcSaslProto.newBuilder();
+    saslMessage.mergeDelimitedFrom(bis);
+    if (saslMessage.getState() == SaslState.WRAP) {
+      isWrapped=true;
+      byte[] token=saslMessage.getToken().toByteArray();
+      if (LOG.isDebugEnabled()) {
+        LOG.debug("unwrapping token of length:" + token.length);
+      }
+      token=saslClient.unwrap(token,0,token.length);
+      unwrappedRpcBuffer=ByteBuffer.wrap(token);
+    }
+  }
+  if (!isWrapped) {
+    throw new SaslException("Server sent non-wrapped response");
+  }
+}
