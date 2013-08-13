@@ -1,9 +1,8 @@
 {
-  String currentUser=UserGroupInformation.getCurrentUser().getUserName();
   final Configuration serverConf=new Configuration(conf);
   serverConf.set(HADOOP_SECURITY_AUTHENTICATION,serverAuth.toString());
   UserGroupInformation.setConfiguration(serverConf);
-  final UserGroupInformation serverUgi=UserGroupInformation.createRemoteUser(currentUser + "-SERVER/localhost@NONE");
+  final UserGroupInformation serverUgi=(serverAuth == KERBEROS) ? UserGroupInformation.createRemoteUser("server/localhost@NONE") : UserGroupInformation.createRemoteUser("server");
   serverUgi.setAuthenticationMethod(serverAuth);
   final TestTokenSecretManager sm=new TestTokenSecretManager();
   boolean useSecretManager=(serverAuth != SIMPLE);
@@ -26,7 +25,7 @@
   clientConf.set(HADOOP_SECURITY_AUTHENTICATION,clientAuth.toString());
   clientConf.setBoolean(CommonConfigurationKeys.IPC_CLIENT_FALLBACK_TO_SIMPLE_AUTH_ALLOWED_KEY,clientFallBackToSimpleAllowed);
   UserGroupInformation.setConfiguration(clientConf);
-  final UserGroupInformation clientUgi=UserGroupInformation.createRemoteUser(currentUser + "-CLIENT");
+  final UserGroupInformation clientUgi=UserGroupInformation.createRemoteUser("client");
   clientUgi.setAuthenticationMethod(clientAuth);
   final InetSocketAddress addr=NetUtils.getConnectAddress(server);
   if (tokenType != UseToken.NONE) {
@@ -56,11 +55,10 @@ TestSaslProtocol proxy=null;
 try {
 proxy=RPC.getProxy(TestSaslProtocol.class,TestSaslProtocol.versionID,addr,clientConf);
 proxy.ping();
-if (serverAuth != SIMPLE) {
-assertEquals(SaslRpcServer.SASL_PROPS.get(Sasl.QOP),"auth");
-}
 assertEquals(clientUgi.getUserName(),proxy.getAuthUser());
-return proxy.getAuthMethod().toString();
+AuthMethod authMethod=proxy.getAuthMethod();
+assertEquals((authMethod != SIMPLE) ? expectedQop.saslQop : null,RPC.getConnectionIdForProxy(proxy).getSaslQop());
+return authMethod.toString();
 }
   finally {
 if (proxy != null) {

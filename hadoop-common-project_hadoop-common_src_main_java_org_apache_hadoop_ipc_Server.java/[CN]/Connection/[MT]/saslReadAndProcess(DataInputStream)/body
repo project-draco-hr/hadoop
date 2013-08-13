@@ -1,47 +1,15 @@
 {
-  if (saslContextEstablished) {
-    throw new WrappedRpcServerException(RpcErrorCodeProto.FATAL_INVALID_RPC_HEADER,new SaslException("Negotiation is already complete"));
-  }
-  RpcSaslProto saslResponse=null;
-  try {
-    try {
-      saslResponse=processSaslMessage(dis);
-    }
- catch (    IOException e) {
-      IOException sendToClient=e;
-      Throwable cause=e;
-      while (cause != null) {
-        if (cause instanceof InvalidToken) {
-          sendToClient=(InvalidToken)cause;
-          break;
-        }
-        cause=cause.getCause();
+  final RpcSaslProto saslMessage=decodeProtobufFromStream(RpcSaslProto.newBuilder(),dis);
+switch (saslMessage.getState()) {
+case WRAP:
+{
+      if (!saslContextEstablished || !useWrap) {
+        throw new WrappedRpcServerException(RpcErrorCodeProto.FATAL_INVALID_RPC_HEADER,new SaslException("Server is not wrapping data"));
       }
-      rpcMetrics.incrAuthenticationFailures();
-      String clientIP=this.toString();
-      AUDITLOG.warn(AUTH_FAILED_FOR + clientIP + ":"+ attemptingUser+ " ("+ e.getLocalizedMessage()+ ")");
-      throw sendToClient;
+      unwrapPacketAndProcessRpcs(saslMessage.getToken().toByteArray());
+      break;
     }
-    if (saslServer != null && saslServer.isComplete()) {
-      if (LOG.isDebugEnabled()) {
-        LOG.debug("SASL server context established. Negotiated QoP is " + saslServer.getNegotiatedProperty(Sasl.QOP));
-      }
-      String qop=(String)saslServer.getNegotiatedProperty(Sasl.QOP);
-      useWrap=qop != null && !"auth".equalsIgnoreCase(qop);
-      user=getAuthorizedUgi(saslServer.getAuthorizationID());
-      if (LOG.isDebugEnabled()) {
-        LOG.debug("SASL server successfully authenticated client: " + user);
-      }
-      rpcMetrics.incrAuthenticationSuccesses();
-      AUDITLOG.info(AUTH_SUCCESSFUL_FOR + user);
-      saslContextEstablished=true;
-    }
-  }
- catch (  WrappedRpcServerException wrse) {
-    throw wrse;
-  }
-catch (  IOException ioe) {
-    throw new WrappedRpcServerException(RpcErrorCodeProto.FATAL_UNAUTHORIZED,ioe);
-  }
-  return saslResponse;
+default :
+  saslProcess(saslMessage);
+}
 }

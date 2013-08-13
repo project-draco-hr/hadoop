@@ -13,6 +13,17 @@
   dispatcher.register(AuxServicesEventType.class,auxBus);
   dispatcher.register(ApplicationEventType.class,appBus);
   dispatcher.register(LogHandlerEventType.class,LogBus);
+  Context context=mock(Context.class);
+  when(context.getApplications()).thenReturn(new ConcurrentHashMap<ApplicationId,Application>());
+  launcher=new ContainersLauncher(context,dispatcher,null,null);
+  launcher.containerLauncher=mock(ExecutorService.class);
+  Future future=mock(Future.class);
+  when(launcher.containerLauncher.submit(any(Callable.class))).thenReturn(future);
+  when(future.isDone()).thenReturn(false);
+  when(future.cancel(false)).thenReturn(true);
+  launcher.init(new Configuration());
+  launcher.start();
+  dispatcher.register(ContainersLauncherEventType.class,launcher);
   ctxt=mock(ContainerLaunchContext.class);
   org.apache.hadoop.yarn.api.records.Container mockContainer=mock(org.apache.hadoop.yarn.api.records.Container.class);
   cId=BuilderUtils.newContainerId(appId,1,timestamp,id);
@@ -48,5 +59,11 @@
   }
   when(ctxt.getServiceData()).thenReturn(serviceData);
   c=new ContainerImpl(conf,dispatcher,ctxt,null,metrics,identifier);
+  dispatcher.register(ContainerEventType.class,new EventHandler<ContainerEvent>(){
+    @Override public void handle(    ContainerEvent event){
+      c.handle(event);
+    }
+  }
+);
   dispatcher.start();
 }

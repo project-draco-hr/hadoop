@@ -12,71 +12,18 @@
   try {
     TaskSplitMetaInfo[] taskSplitMetaInfos=SplitMetaInfoReader.readSplitMetaInfo(jobId,localFs,conf,systemJobDir);
     int numReduceTasks=job.getNumReduceTasks();
-    if (numReduceTasks > 1 || numReduceTasks < 0) {
-      numReduceTasks=1;
-      job.setNumReduceTasks(1);
-    }
     outputCommitter.setupJob(jContext);
     status.setSetupProgress(1.0f);
     Map<TaskAttemptID,MapOutputFile> mapOutputFiles=Collections.synchronizedMap(new HashMap<TaskAttemptID,MapOutputFile>());
-    List<MapTaskRunnable> taskRunnables=getMapTaskRunnables(taskSplitMetaInfos,jobId,mapOutputFiles);
-    ExecutorService mapService=createMapExecutor(taskRunnables.size());
-    for (    Runnable r : taskRunnables) {
-      mapService.submit(r);
-    }
-    try {
-      mapService.shutdown();
-      LOG.info("Waiting for map tasks");
-      mapService.awaitTermination(Long.MAX_VALUE,TimeUnit.NANOSECONDS);
-    }
- catch (    InterruptedException ie) {
-      mapService.shutdownNow();
-      throw ie;
-    }
-    LOG.info("Map task executor complete.");
-    for (    MapTaskRunnable r : taskRunnables) {
-      if (r.storedException != null) {
-        throw new Exception(r.storedException);
-      }
-    }
-    TaskAttemptID reduceId=new TaskAttemptID(new TaskID(jobId,TaskType.REDUCE,0),0);
+    List<RunnableWithThrowable> mapRunnables=getMapTaskRunnables(taskSplitMetaInfos,jobId,mapOutputFiles);
+    initCounters(mapRunnables.size(),numReduceTasks);
+    ExecutorService mapService=createMapExecutor();
+    runTasks(mapRunnables,mapService,"map");
     try {
       if (numReduceTasks > 0) {
-        ReduceTask reduce=new ReduceTask(systemJobFile.toString(),reduceId,0,mapIds.size(),1);
-        reduce.setUser(UserGroupInformation.getCurrentUser().getShortUserName());
-        JobConf localConf=new JobConf(job);
-        localConf.set("mapreduce.jobtracker.address","local");
-        setupChildMapredLocalDirs(reduce,localConf);
-        for (int i=0; i < mapIds.size(); i++) {
-          if (!this.isInterrupted()) {
-            TaskAttemptID mapId=mapIds.get(i);
-            Path mapOut=mapOutputFiles.get(mapId).getOutputFile();
-            MapOutputFile localOutputFile=new MROutputFiles();
-            localOutputFile.setConf(localConf);
-            Path reduceIn=localOutputFile.getInputFileForWrite(mapId.getTaskID(),localFs.getFileStatus(mapOut).getLen());
-            if (!localFs.mkdirs(reduceIn.getParent())) {
-              throw new IOException("Mkdirs failed to create " + reduceIn.getParent().toString());
-            }
-            if (!localFs.rename(mapOut,reduceIn))             throw new IOException("Couldn't rename " + mapOut);
-          }
- else {
-            throw new InterruptedException();
-          }
-        }
-        if (!this.isInterrupted()) {
-          reduce.setJobFile(localJobFile.toString());
-          localConf.setUser(reduce.getUser());
-          reduce.localizeConfiguration(localConf);
-          reduce.setConf(localConf);
-          reduce_tasks+=1;
-          myMetrics.launchReduce(reduce.getTaskID());
-          reduce.run(localConf,this);
-          myMetrics.completeReduce(reduce.getTaskID());
-          reduce_tasks-=1;
-        }
- else {
-          throw new InterruptedException();
-        }
+        List<RunnableWithThrowable> reduceRunnables=getReduceTaskRunnables(jobId,mapOutputFiles);
+        ExecutorService reduceService=createReduceExecutor();
+        runTasks(reduceRunnables,reduceService,"reduce");
       }
     }
   finally {

@@ -8,17 +8,26 @@
   if (serverKey == null) {
     throw new IllegalArgumentException("Can't obtain server Kerberos config key from protocol=" + protocol.getCanonicalName());
   }
-  String confPrincipal=SecurityUtil.getServerPrincipal(conf.get(serverKey),serverAddr.getAddress());
-  if (confPrincipal == null || confPrincipal.isEmpty()) {
-    throw new IllegalArgumentException("Failed to specify server's Kerberos principal name");
+  String serverPrincipal=new KerberosPrincipal(authType.getProtocol() + "/" + authType.getServerId()).getName();
+  boolean isPrincipalValid=false;
+  String serverKeyPattern=conf.get(serverKey + ".pattern");
+  if (serverKeyPattern != null && !serverKeyPattern.isEmpty()) {
+    Pattern pattern=GlobPattern.compile(serverKeyPattern);
+    isPrincipalValid=pattern.matcher(serverPrincipal).matches();
   }
-  KerberosName name=new KerberosName(confPrincipal);
-  if (name.getHostName() == null) {
-    throw new IllegalArgumentException("Kerberos principal name does NOT have the expected hostname part: " + confPrincipal);
+ else {
+    String confPrincipal=SecurityUtil.getServerPrincipal(conf.get(serverKey),serverAddr.getAddress());
+    if (confPrincipal == null || confPrincipal.isEmpty()) {
+      throw new IllegalArgumentException("Failed to specify server's Kerberos principal name");
+    }
+    KerberosName name=new KerberosName(confPrincipal);
+    if (name.getHostName() == null) {
+      throw new IllegalArgumentException("Kerberos principal name does NOT have the expected hostname part: " + confPrincipal);
+    }
+    isPrincipalValid=serverPrincipal.equals(confPrincipal);
   }
-  KerberosPrincipal serverPrincipal=new KerberosPrincipal(authType.getProtocol() + "/" + authType.getServerId());
-  if (!serverPrincipal.getName().equals(confPrincipal)) {
+  if (!isPrincipalValid) {
     throw new IllegalArgumentException("Server has invalid Kerberos principal: " + serverPrincipal);
   }
-  return confPrincipal;
+  return serverPrincipal;
 }
