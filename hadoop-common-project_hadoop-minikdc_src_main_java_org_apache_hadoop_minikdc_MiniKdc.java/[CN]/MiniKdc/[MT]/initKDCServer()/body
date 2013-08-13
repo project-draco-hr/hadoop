@@ -1,0 +1,51 @@
+{
+  String orgName=conf.getProperty(ORG_NAME);
+  String orgDomain=conf.getProperty(ORG_DOMAIN);
+  String bindAddress=conf.getProperty(KDC_BIND_ADDRESS);
+  final Map<String,String> map=new HashMap<String,String>();
+  map.put("0",orgName.toLowerCase());
+  map.put("1",orgDomain.toLowerCase());
+  map.put("2",orgName.toUpperCase());
+  map.put("3",orgDomain.toUpperCase());
+  map.put("4",bindAddress);
+  ClassLoader cl=Thread.currentThread().getContextClassLoader();
+  InputStream is=cl.getResourceAsStream("minikdc.ldiff");
+  SchemaManager schemaManager=ds.getSchemaManager();
+  final String content=StrSubstitutor.replace(IOUtils.toString(is),map);
+  LdifReader reader=new LdifReader(new StringReader(content));
+  for (  LdifEntry ldifEntry : reader) {
+    ds.getAdminSession().add(new DefaultEntry(schemaManager,ldifEntry.getEntry()));
+  }
+  kdc=new KdcServer();
+  kdc.setDirectoryService(ds);
+  String transport=conf.getProperty(TRANSPORT);
+  if (transport.trim().equals("TCP")) {
+    kdc.addTransports(new TcpTransport(bindAddress,port,3,50));
+  }
+ else   if (transport.trim().equals("UDP")) {
+    kdc.addTransports(new UdpTransport(port));
+  }
+ else {
+    throw new IllegalArgumentException("Invalid transport: " + transport);
+  }
+  kdc.setServiceName(conf.getProperty(INSTANCE));
+  kdc.getConfig().setMaximumRenewableLifetime(Long.parseLong(conf.getProperty(MAX_RENEWABLE_LIFETIME)));
+  kdc.getConfig().setMaximumTicketLifetime(Long.parseLong(conf.getProperty(MAX_TICKET_LIFETIME)));
+  kdc.getConfig().setPaEncTimestampRequired(false);
+  kdc.start();
+  StringBuilder sb=new StringBuilder();
+  is=cl.getResourceAsStream("minikdc-krb5.conf");
+  BufferedReader r=new BufferedReader(new InputStreamReader(is));
+  String line=r.readLine();
+  while (line != null) {
+    sb.append(line).append("{3}");
+    line=r.readLine();
+  }
+  r.close();
+  krb5conf=new File(workDir,"krb5.conf").getAbsoluteFile();
+  FileUtils.writeStringToFile(krb5conf,MessageFormat.format(sb.toString(),getRealm(),getHost(),Integer.toString(getPort()),System.getProperty("line.separator")));
+  System.setProperty("java.security.krb5.conf",krb5conf.getAbsolutePath());
+  System.setProperty("sun.security.krb5.debug",conf.getProperty(DEBUG,"false"));
+  LOG.info("MiniKdc listening at port: {}",getPort());
+  LOG.info("MiniKdc setting JVM krb5.conf to: {}",krb5conf.getAbsolutePath());
+}
