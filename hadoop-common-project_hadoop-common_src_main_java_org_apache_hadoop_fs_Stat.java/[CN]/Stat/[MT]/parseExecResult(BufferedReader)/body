@@ -1,0 +1,48 @@
+{
+  stat=null;
+  String line=lines.readLine();
+  if (line == null) {
+    throw new IOException("Unable to stat path: " + original);
+  }
+  if (line.endsWith("No such file or directory") || line.endsWith("Not a directory")) {
+    throw new FileNotFoundException("File " + original + " does not exist");
+  }
+  if (line.endsWith("Too many levels of symbolic links")) {
+    throw new IOException("Possible cyclic loop while following symbolic" + " link " + original);
+  }
+  StringTokenizer tokens=new StringTokenizer(line,",");
+  try {
+    long length=Long.parseLong(tokens.nextToken());
+    boolean isDir=tokens.nextToken().equalsIgnoreCase("directory") ? true : false;
+    long modTime=Long.parseLong(tokens.nextToken()) * 1000;
+    long accessTime=Long.parseLong(tokens.nextToken()) * 1000;
+    String octalPerms=tokens.nextToken();
+    if (octalPerms.length() > 4) {
+      int len=octalPerms.length();
+      octalPerms=octalPerms.substring(len - 4,len);
+    }
+    FsPermission perms=new FsPermission(Short.parseShort(octalPerms,8));
+    String owner=tokens.nextToken();
+    String group=tokens.nextToken();
+    String symStr=tokens.nextToken();
+    Path symlink=null;
+    StringTokenizer symTokens=new StringTokenizer(symStr,"`");
+    symTokens.nextToken();
+    try {
+      String target=symTokens.nextToken();
+      target=target.substring(0,target.length() - 1);
+      if (!target.isEmpty()) {
+        symlink=new Path(target);
+      }
+    }
+ catch (    NoSuchElementException e) {
+    }
+    stat=new FileStatus(length,isDir,1,blockSize,modTime,accessTime,perms,owner,group,symlink,qualified);
+  }
+ catch (  NumberFormatException e) {
+    throw new IOException("Unexpected stat output: " + line,e);
+  }
+catch (  NoSuchElementException e) {
+    throw new IOException("Unexpected stat output: " + line,e);
+  }
+}
