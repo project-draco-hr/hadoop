@@ -1,0 +1,33 @@
+{
+  assert(toRead > 0);
+  if (((blockReader == null) || (blockEnd == -1)) && (pos < getFileLength())) {
+    if ((!seekToBlockSource(pos)) || (blockReader == null)) {
+      throw new IOException("failed to allocate new BlockReader " + "at position " + pos);
+    }
+  }
+  long curPos=pos;
+  boolean canSkipChecksums=zcursor.getSkipChecksums();
+  long blockLeft=blockEnd - curPos + 1;
+  if (zcursor.getAllowShortReads()) {
+    if (blockLeft < toRead) {
+      toRead=(int)blockLeft;
+    }
+  }
+  if (canSkipChecksums && (toRead <= blockLeft)) {
+    long blockStartInFile=currentLocatedBlock.getStartOffset();
+    long blockPos=curPos - blockStartInFile;
+    if (blockReader.readZeroCopy(zcursor,currentLocatedBlock,blockPos,toRead,dfsClient.getMmapManager())) {
+      if (DFSClient.LOG.isDebugEnabled()) {
+        DFSClient.LOG.debug("readZeroCopy read " + toRead + " bytes from "+ "offset "+ curPos+ " via the zero-copy read path.  "+ "blockEnd = "+ blockEnd);
+      }
+      readStatistics.addZeroCopyBytes(toRead);
+      seek(pos + toRead);
+      return;
+    }
+  }
+  long prevBlockEnd=blockEnd;
+  int slowReadAmount=zcursor.readViaSlowPath(toRead);
+  if (DFSClient.LOG.isDebugEnabled()) {
+    DFSClient.LOG.debug("readZeroCopy read " + slowReadAmount + " bytes "+ "from offset "+ curPos+ " via the fallback read path.  "+ "prevBlockEnd = "+ prevBlockEnd+ ", blockEnd = "+ blockEnd+ ", canSkipChecksums = "+ canSkipChecksums);
+  }
+}

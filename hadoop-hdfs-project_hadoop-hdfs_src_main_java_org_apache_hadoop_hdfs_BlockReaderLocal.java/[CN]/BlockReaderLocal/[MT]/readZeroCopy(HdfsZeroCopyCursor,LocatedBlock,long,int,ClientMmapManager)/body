@@ -1,0 +1,36 @@
+{
+  if (clientMmap == null) {
+    if (mmapDisabled) {
+      return false;
+    }
+    try {
+      clientMmap=mmapManager.fetch(datanodeID,block,dataIn);
+      if (clientMmap == null) {
+        mmapDisabled=true;
+        return false;
+      }
+    }
+ catch (    InterruptedException e) {
+      LOG.error("Interrupted while setting up mmap for " + filename,e);
+      Thread.currentThread().interrupt();
+      return false;
+    }
+catch (    IOException e) {
+      LOG.error("unable to set up mmap for " + filename,e);
+      mmapDisabled=true;
+      return false;
+    }
+  }
+  long limit=blockPos + toRead;
+  if (limit > Integer.MAX_VALUE) {
+    mmapDisabled=true;
+    clientMmap.unref();
+    clientMmap=null;
+    return false;
+  }
+  ByteBuffer mmapBuffer=clientMmap.getMappedByteBuffer().duplicate();
+  mmapBuffer.position((int)blockPos);
+  mmapBuffer.limit((int)limit);
+  cursor.setMmap(clientMmap,mmapBuffer);
+  return true;
+}

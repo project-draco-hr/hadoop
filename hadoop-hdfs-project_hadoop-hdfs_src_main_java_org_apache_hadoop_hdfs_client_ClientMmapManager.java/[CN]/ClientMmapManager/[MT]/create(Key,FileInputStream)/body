@@ -1,0 +1,35 @@
+{
+  if (mmaps.size() + 1 > cacheSize) {
+    if (!evictOne()) {
+      LOG.warn("mmap cache is full (with " + cacheSize + " elements) and "+ "nothing is evictable.  Ignoring request for mmap with "+ "datanodeID="+ key.datanode+ ", "+ "block="+ key.block);
+      return null;
+    }
+  }
+  Waitable<ClientMmap> waitable=new Waitable<ClientMmap>(lock.newCondition());
+  mmaps.put(key,waitable);
+  boolean success=false;
+  ClientMmap mmap=null;
+  try {
+    try {
+      lock.unlock();
+      mmap=ClientMmap.load(this,in,key.block,key.datanode);
+    }
+  finally {
+      lock.lock();
+    }
+    if (cacheCleaner == null) {
+      cacheCleaner=new CacheCleaner(this);
+      ScheduledFuture<?> future=executor.scheduleAtFixedRate(cacheCleaner,timeoutNs,timeoutNs / runsPerTimeout,TimeUnit.NANOSECONDS);
+      cacheCleaner.setFuture(future);
+    }
+    success=true;
+  }
+  finally {
+    if (!success) {
+      LOG.warn("failed to create mmap for datanodeID=" + key.datanode + ", "+ "block="+ key.block);
+      mmaps.remove(key);
+    }
+    waitable.provide(mmap);
+  }
+  return mmap;
+}
