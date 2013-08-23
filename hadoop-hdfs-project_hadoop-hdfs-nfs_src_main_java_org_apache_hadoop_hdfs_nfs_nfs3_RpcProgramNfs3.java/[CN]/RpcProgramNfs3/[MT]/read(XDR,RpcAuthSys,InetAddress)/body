@@ -1,0 +1,75 @@
+{
+  READ3Response response=new READ3Response(Nfs3Status.NFS3_OK);
+  if (!checkAccessPrivilege(client,AccessPrivilege.READ_ONLY)) {
+    response.setStatus(Nfs3Status.NFS3ERR_ACCES);
+    return response;
+  }
+  String uname=authSysCheck(authSys);
+  DFSClient dfsClient=clientCache.get(uname);
+  if (dfsClient == null) {
+    response.setStatus(Nfs3Status.NFS3ERR_SERVERFAULT);
+    return response;
+  }
+  READ3Request request=null;
+  try {
+    request=new READ3Request(xdr);
+  }
+ catch (  IOException e) {
+    LOG.error("Invalid READ request");
+    return new READ3Response(Nfs3Status.NFS3ERR_INVAL);
+  }
+  long offset=request.getOffset();
+  int count=request.getCount();
+  FileHandle handle=request.getHandle();
+  if (LOG.isDebugEnabled()) {
+    LOG.debug("NFS READ fileId: " + handle.getFileId() + " offset: "+ offset+ " count: "+ count);
+  }
+  Nfs3FileAttributes attrs;
+  boolean eof;
+  if (count == 0) {
+    try {
+      attrs=Nfs3Utils.getFileAttr(superUserClient,Nfs3Utils.getFileIdPath(handle),iug);
+    }
+ catch (    IOException e) {
+      if (LOG.isDebugEnabled()) {
+        LOG.debug("Get error accessing file, fileId:" + handle.getFileId());
+      }
+      return new READ3Response(Nfs3Status.NFS3ERR_IO);
+    }
+    if (attrs == null) {
+      if (LOG.isDebugEnabled()) {
+        LOG.debug("Can't get path for fileId:" + handle.getFileId());
+      }
+      return new READ3Response(Nfs3Status.NFS3ERR_NOENT);
+    }
+    int access=Nfs3Utils.getAccessRightsForUserGroup(authSys.getUid(),authSys.getGid(),attrs);
+    if ((access & Nfs3Constant.ACCESS3_READ) != 0) {
+      eof=offset < attrs.getSize() ? false : true;
+      return new READ3Response(Nfs3Status.NFS3_OK,attrs,0,eof,ByteBuffer.wrap(new byte[0]));
+    }
+ else {
+      return new READ3Response(Nfs3Status.NFS3ERR_ACCES);
+    }
+  }
+  try {
+    int buffSize=Math.min(MAX_READ_TRANSFER_SIZE,count);
+    byte[] readbuffer=new byte[buffSize];
+    DFSInputStream is=dfsClient.open(Nfs3Utils.getFileIdPath(handle));
+    FSDataInputStream fis=new FSDataInputStream(is);
+    int readCount=fis.read(offset,readbuffer,0,count);
+    fis.close();
+    attrs=Nfs3Utils.getFileAttr(dfsClient,Nfs3Utils.getFileIdPath(handle),iug);
+    if (readCount < count) {
+      LOG.info("Partical read. Asked offset:" + offset + " count:"+ count+ " and read back:"+ readCount+ "file size:"+ attrs.getSize());
+    }
+    if (readCount < 0) {
+      readCount=0;
+    }
+    eof=(offset + readCount) < attrs.getSize() ? false : true;
+    return new READ3Response(Nfs3Status.NFS3_OK,attrs,readCount,eof,ByteBuffer.wrap(readbuffer));
+  }
+ catch (  IOException e) {
+    LOG.warn("Read error: " + e.getClass() + " offset: "+ offset+ " count: "+ count,e);
+    return new READ3Response(Nfs3Status.NFS3ERR_IO);
+  }
+}
