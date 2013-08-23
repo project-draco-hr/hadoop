@@ -1,0 +1,51 @@
+{
+  final MetaInfo mi=fileMap.get(jobId);
+  if (mi == null) {
+    throw new IOException("No MetaInfo found for JobId: [" + jobId + "]");
+  }
+  if (mi.getHistoryFile() == null) {
+    LOG.warn("No file for job-history with " + jobId + " found in cache!");
+  }
+  if (mi.getConfFile() == null) {
+    LOG.warn("No file for jobconf with " + jobId + " found in cache!");
+  }
+  Path qualifiedSummaryDoneFile=null;
+  FSDataOutputStream summaryFileOut=null;
+  try {
+    String doneSummaryFileName=getTempFileName(JobHistoryUtils.getIntermediateSummaryFileName(jobId));
+    qualifiedSummaryDoneFile=doneDirFS.makeQualified(new Path(doneDirPrefixPath,doneSummaryFileName));
+    summaryFileOut=doneDirFS.create(qualifiedSummaryDoneFile,true);
+    summaryFileOut.writeUTF(mi.getJobSummary().getJobSummaryString());
+    summaryFileOut.close();
+    doneDirFS.setPermission(qualifiedSummaryDoneFile,new FsPermission(JobHistoryUtils.HISTORY_INTERMEDIATE_FILE_PERMISSIONS));
+  }
+ catch (  IOException e) {
+    LOG.info("Unable to write out JobSummaryInfo to [" + qualifiedSummaryDoneFile + "]",e);
+    throw e;
+  }
+  try {
+    Path qualifiedDoneFile=null;
+    if (mi.getHistoryFile() != null) {
+      Path historyFile=mi.getHistoryFile();
+      Path qualifiedLogFile=stagingDirFS.makeQualified(historyFile);
+      String doneJobHistoryFileName=getTempFileName(FileNameIndexUtils.getDoneFileName(mi.getJobIndexInfo()));
+      qualifiedDoneFile=doneDirFS.makeQualified(new Path(doneDirPrefixPath,doneJobHistoryFileName));
+      moveToDoneNow(qualifiedLogFile,qualifiedDoneFile);
+    }
+    Path qualifiedConfDoneFile=null;
+    if (mi.getConfFile() != null) {
+      Path confFile=mi.getConfFile();
+      Path qualifiedConfFile=stagingDirFS.makeQualified(confFile);
+      String doneConfFileName=getTempFileName(JobHistoryUtils.getIntermediateConfFileName(jobId));
+      qualifiedConfDoneFile=doneDirFS.makeQualified(new Path(doneDirPrefixPath,doneConfFileName));
+      moveToDoneNow(qualifiedConfFile,qualifiedConfDoneFile);
+    }
+    moveTmpToDone(qualifiedSummaryDoneFile);
+    moveTmpToDone(qualifiedConfDoneFile);
+    moveTmpToDone(qualifiedDoneFile);
+  }
+ catch (  IOException e) {
+    LOG.error("Error closing writer for JobID: " + jobId);
+    throw e;
+  }
+}
