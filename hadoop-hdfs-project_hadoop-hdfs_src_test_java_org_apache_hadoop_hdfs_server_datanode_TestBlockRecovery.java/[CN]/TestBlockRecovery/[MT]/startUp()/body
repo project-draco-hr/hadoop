@@ -7,11 +7,12 @@
   conf.set(DFSConfigKeys.DFS_DATANODE_IPC_ADDRESS_KEY,"0.0.0.0:0");
   conf.setInt(CommonConfigurationKeys.IPC_CLIENT_CONNECT_MAX_RETRIES_KEY,0);
   FileSystem.setDefaultUri(conf,"hdfs://" + NN_ADDR.getHostName() + ":"+ NN_ADDR.getPort());
-  ArrayList<File> dirs=new ArrayList<File>();
+  ArrayList<StorageLocation> locations=new ArrayList<StorageLocation>();
   File dataDir=new File(DATA_DIR);
   FileUtil.fullyDelete(dataDir);
   dataDir.mkdirs();
-  dirs.add(dataDir);
+  StorageLocation location=new StorageLocation(new URI(dataDir.getPath()));
+  locations.add(location);
   final DatanodeProtocolClientSideTranslatorPB namenode=mock(DatanodeProtocolClientSideTranslatorPB.class);
   Mockito.doAnswer(new Answer<DatanodeRegistration>(){
     @Override public DatanodeRegistration answer(    InvocationOnMock invocation) throws Throwable {
@@ -21,7 +22,7 @@
 ).when(namenode).registerDatanode(Mockito.any(DatanodeRegistration.class));
   when(namenode.versionRequest()).thenReturn(new NamespaceInfo(1,CLUSTER_ID,POOL_ID,1L));
   when(namenode.sendHeartbeat(Mockito.any(DatanodeRegistration.class),Mockito.any(StorageReport[].class),Mockito.anyInt(),Mockito.anyInt(),Mockito.anyInt())).thenReturn(new HeartbeatResponse(new DatanodeCommand[0],new NNHAStatusHeartbeat(HAServiceState.ACTIVE,1)));
-  dn=new DataNode(conf,dirs,null){
+  dn=new DataNode(conf,locations,null){
     @Override DatanodeProtocolClientSideTranslatorPB connectToNN(    InetSocketAddress nnAddr) throws IOException {
       Assert.assertEquals(NN_ADDR,nnAddr);
       return namenode;
