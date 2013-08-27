@@ -1,0 +1,102 @@
+{
+  READDIR3Response response=new READDIR3Response(Nfs3Status.NFS3_OK);
+  if (!checkAccessPrivilege(client,AccessPrivilege.READ_ONLY)) {
+    response.setStatus(Nfs3Status.NFS3ERR_ACCES);
+    return response;
+  }
+  String uname=authSysCheck(authSys);
+  DFSClient dfsClient=clientCache.get(uname);
+  if (dfsClient == null) {
+    response.setStatus(Nfs3Status.NFS3ERR_SERVERFAULT);
+    return response;
+  }
+  READDIR3Request request=null;
+  try {
+    request=new READDIR3Request(xdr);
+  }
+ catch (  IOException e) {
+    LOG.error("Invalid READDIR request");
+    return new READDIR3Response(Nfs3Status.NFS3ERR_INVAL);
+  }
+  FileHandle handle=request.getHandle();
+  long cookie=request.getCookie();
+  if (cookie < 0) {
+    LOG.error("Invalid READDIR request, with negitve cookie:" + cookie);
+    return new READDIR3Response(Nfs3Status.NFS3ERR_INVAL);
+  }
+  long count=request.getCount();
+  if (count <= 0) {
+    LOG.info("Nonpositive count in invalid READDIR request:" + count);
+    return new READDIR3Response(Nfs3Status.NFS3_OK);
+  }
+  if (LOG.isDebugEnabled()) {
+    LOG.debug("NFS READDIR fileId: " + handle.getFileId() + " cookie: "+ cookie+ " count: "+ count);
+  }
+  HdfsFileStatus dirStatus;
+  DirectoryListing dlisting=null;
+  Nfs3FileAttributes postOpAttr=null;
+  long dotdotFileId=0;
+  try {
+    String dirFileIdPath=Nfs3Utils.getFileIdPath(handle);
+    dirStatus=dfsClient.getFileInfo(dirFileIdPath);
+    if (dirStatus == null) {
+      LOG.info("Can't get path for fileId:" + handle.getFileId());
+      return new READDIR3Response(Nfs3Status.NFS3ERR_STALE);
+    }
+    if (!dirStatus.isDir()) {
+      LOG.error("Can't readdir for regular file, fileId:" + handle.getFileId());
+      return new READDIR3Response(Nfs3Status.NFS3ERR_NOTDIR);
+    }
+    long cookieVerf=request.getCookieVerf();
+    if ((cookieVerf != 0) && (cookieVerf != dirStatus.getModificationTime())) {
+      LOG.error("CookierVerf mismatch. request cookierVerf:" + cookieVerf + " dir cookieVerf:"+ dirStatus.getModificationTime());
+      return new READDIR3Response(Nfs3Status.NFS3ERR_BAD_COOKIE);
+    }
+    if (cookie == 0) {
+      String dotdotFileIdPath=dirFileIdPath + "/..";
+      HdfsFileStatus dotdotStatus=dfsClient.getFileInfo(dotdotFileIdPath);
+      if (dotdotStatus == null) {
+        throw new IOException("Can't get path for handle path:" + dotdotFileIdPath);
+      }
+      dotdotFileId=dotdotStatus.getFileId();
+    }
+    byte[] startAfter;
+    if (cookie == 0) {
+      startAfter=HdfsFileStatus.EMPTY_NAME;
+    }
+ else {
+      String inodeIdPath=Nfs3Utils.getFileIdPath(cookie);
+      startAfter=inodeIdPath.getBytes();
+    }
+    dlisting=dfsClient.listPaths(dirFileIdPath,startAfter);
+    postOpAttr=Nfs3Utils.getFileAttr(dfsClient,dirFileIdPath,iug);
+    if (postOpAttr == null) {
+      LOG.error("Can't get path for fileId:" + handle.getFileId());
+      return new READDIR3Response(Nfs3Status.NFS3ERR_STALE);
+    }
+  }
+ catch (  IOException e) {
+    LOG.warn("Exception ",e);
+    return new READDIR3Response(Nfs3Status.NFS3ERR_IO);
+  }
+  HdfsFileStatus[] fstatus=dlisting.getPartialListing();
+  int n=(int)Math.min(fstatus.length,count - 2);
+  boolean eof=(n < fstatus.length) ? false : (dlisting.getRemainingEntries() == 0);
+  Entry3[] entries;
+  if (cookie == 0) {
+    entries=new Entry3[n + 2];
+    entries[0]=new READDIR3Response.Entry3(postOpAttr.getFileId(),".",0);
+    entries[1]=new READDIR3Response.Entry3(dotdotFileId,"..",dotdotFileId);
+    for (int i=2; i < n + 2; i++) {
+      entries[i]=new READDIR3Response.Entry3(fstatus[i - 2].getFileId(),fstatus[i - 2].getLocalName(),fstatus[i - 2].getFileId());
+    }
+  }
+ else {
+    entries=new Entry3[n];
+    for (int i=0; i < n; i++) {
+      entries[i]=new READDIR3Response.Entry3(fstatus[i].getFileId(),fstatus[i].getLocalName(),fstatus[i].getFileId());
+    }
+  }
+  DirList3 dirList=new READDIR3Response.DirList3(entries,eof);
+  return new READDIR3Response(Nfs3Status.NFS3_OK,postOpAttr,dirStatus.getModificationTime(),dirList);
+}
