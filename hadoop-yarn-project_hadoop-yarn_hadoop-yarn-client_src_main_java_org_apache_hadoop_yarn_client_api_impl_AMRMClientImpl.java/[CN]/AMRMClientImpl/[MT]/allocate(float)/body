@@ -1,9 +1,11 @@
 {
   Preconditions.checkArgument(progressIndicator >= 0,"Progress indicator should not be negative");
   AllocateResponse allocateResponse=null;
-  ArrayList<ResourceRequest> askList=null;
-  ArrayList<ContainerId> releaseList=null;
+  List<ResourceRequest> askList=null;
+  List<ContainerId> releaseList=null;
   AllocateRequest allocateRequest=null;
+  List<String> blacklistToAdd=new ArrayList<String>();
+  List<String> blacklistToRemove=new ArrayList<String>();
   try {
 synchronized (this) {
       askList=new ArrayList<ResourceRequest>(ask.size());
@@ -13,7 +15,12 @@ synchronized (this) {
       releaseList=new ArrayList<ContainerId>(release);
       ask.clear();
       release.clear();
-      allocateRequest=AllocateRequest.newInstance(lastResponseId,progressIndicator,askList,releaseList,null);
+      blacklistToAdd.addAll(blacklistAdditions);
+      blacklistToRemove.addAll(blacklistRemovals);
+      ResourceBlacklistRequest blacklistRequest=(blacklistToAdd != null) || (blacklistToRemove != null) ? ResourceBlacklistRequest.newInstance(blacklistToAdd,blacklistToRemove) : null;
+      allocateRequest=AllocateRequest.newInstance(lastResponseId,progressIndicator,askList,releaseList,blacklistRequest);
+      blacklistAdditions.clear();
+      blacklistRemovals.clear();
     }
     allocateResponse=rmClient.allocate(allocateRequest);
 synchronized (this) {
@@ -34,6 +41,8 @@ synchronized (this) {
             ask.add(oldAsk);
           }
         }
+        blacklistAdditions.addAll(blacklistToAdd);
+        blacklistRemovals.addAll(blacklistToRemove);
       }
     }
   }
