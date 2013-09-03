@@ -42,13 +42,27 @@
  else {
       storedBlock.setGenerationStamp(newgenerationstamp);
       storedBlock.setNumBytes(newlength);
-      final DatanodeStorageInfo[] storages=blockManager.getDatanodeManager().getDatanodeStorageInfos(newtargets,newtargetstorages);
-      if (closeFile && storages != null) {
-        for (int i=0; i < storages.length; i++) {
-          storages[i].addBlock(storedBlock);
+      ArrayList<DatanodeDescriptor> trimmedTargets=new ArrayList<DatanodeDescriptor>(newtargets.length);
+      ArrayList<String> trimmedStorages=new ArrayList<String>(newtargets.length);
+      if (newtargets.length > 0) {
+        for (int i=0; i < newtargets.length; ++i) {
+          DatanodeDescriptor targetNode=blockManager.getDatanodeManager().getDatanode(newtargets[i]);
+          if (targetNode != null) {
+            trimmedTargets.add(targetNode);
+            trimmedStorages.add(newtargetstorages[i]);
+          }
+ else           if (LOG.isDebugEnabled()) {
+            LOG.debug("DatanodeDescriptor (=" + newtargets[i] + ") not found");
+          }
         }
       }
-      pendingFile.setLastBlock(storedBlock,storages);
+      if ((closeFile) && !trimmedTargets.isEmpty()) {
+        for (int i=0; i < trimmedTargets.size(); i++) {
+          trimmedTargets.get(i).addBlock(trimmedStorages.get(i),storedBlock);
+        }
+      }
+      DatanodeStorageInfo[] trimmedStorageInfos=blockManager.getDatanodeManager().getDatanodeStorageInfos(trimmedTargets.toArray(new DatanodeID[trimmedTargets.size()]),trimmedStorages.toArray(new String[trimmedStorages.size()]));
+      pendingFile.setLastBlock(storedBlock,trimmedStorageInfos);
     }
     if (closeFile) {
       src=closeFileCommitBlocks(pendingFile,storedBlock);
