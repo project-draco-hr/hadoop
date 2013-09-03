@@ -21,15 +21,21 @@
   WritableRpcEngine.ensureInitialized();
   InetSocketAddress serviceRpcAddr=nn.getServiceRpcServerAddress(conf);
   if (serviceRpcAddr != null) {
+    String bindHost=nn.getServiceRpcServerBindHost(conf);
+    if (bindHost == null) {
+      bindHost=serviceRpcAddr.getHostName();
+    }
+    LOG.info("Service RPC server is binding to " + bindHost + ":"+ serviceRpcAddr.getPort());
     int serviceHandlerCount=conf.getInt(DFS_NAMENODE_SERVICE_HANDLER_COUNT_KEY,DFS_NAMENODE_SERVICE_HANDLER_COUNT_DEFAULT);
-    serviceRpcServer=new RPC.Builder(conf).setProtocol(org.apache.hadoop.hdfs.protocolPB.ClientNamenodeProtocolPB.class).setInstance(clientNNPbService).setBindAddress(serviceRpcAddr.getHostName()).setPort(serviceRpcAddr.getPort()).setNumHandlers(serviceHandlerCount).setVerbose(false).setSecretManager(namesystem.getDelegationTokenSecretManager()).build();
+    serviceRpcServer=new RPC.Builder(conf).setProtocol(org.apache.hadoop.hdfs.protocolPB.ClientNamenodeProtocolPB.class).setInstance(clientNNPbService).setBindAddress(bindHost).setPort(serviceRpcAddr.getPort()).setNumHandlers(serviceHandlerCount).setVerbose(false).setSecretManager(namesystem.getDelegationTokenSecretManager()).build();
     DFSUtil.addPBProtocol(conf,HAServiceProtocolPB.class,haPbService,serviceRpcServer);
     DFSUtil.addPBProtocol(conf,NamenodeProtocolPB.class,NNPbService,serviceRpcServer);
     DFSUtil.addPBProtocol(conf,DatanodeProtocolPB.class,dnProtoPbService,serviceRpcServer);
     DFSUtil.addPBProtocol(conf,RefreshAuthorizationPolicyProtocolPB.class,refreshAuthService,serviceRpcServer);
     DFSUtil.addPBProtocol(conf,RefreshUserMappingsProtocolPB.class,refreshUserMappingService,serviceRpcServer);
     DFSUtil.addPBProtocol(conf,GetUserMappingsProtocolPB.class,getUserMappingService,serviceRpcServer);
-    serviceRPCAddress=serviceRpcServer.getListenerAddress();
+    InetSocketAddress listenAddr=serviceRpcServer.getListenerAddress();
+    serviceRPCAddress=new InetSocketAddress(serviceRpcAddr.getHostName(),listenAddr.getPort());
     nn.setRpcServiceServerAddress(conf,serviceRPCAddress);
   }
  else {
@@ -37,7 +43,12 @@
     serviceRPCAddress=null;
   }
   InetSocketAddress rpcAddr=nn.getRpcServerAddress(conf);
-  clientRpcServer=new RPC.Builder(conf).setProtocol(org.apache.hadoop.hdfs.protocolPB.ClientNamenodeProtocolPB.class).setInstance(clientNNPbService).setBindAddress(rpcAddr.getHostName()).setPort(rpcAddr.getPort()).setNumHandlers(handlerCount).setVerbose(false).setSecretManager(namesystem.getDelegationTokenSecretManager()).build();
+  String bindHost=nn.getRpcServerBindHost(conf);
+  if (bindHost == null) {
+    bindHost=rpcAddr.getHostName();
+  }
+  LOG.info("RPC server is binding to " + bindHost + ":"+ rpcAddr.getPort());
+  clientRpcServer=new RPC.Builder(conf).setProtocol(org.apache.hadoop.hdfs.protocolPB.ClientNamenodeProtocolPB.class).setInstance(clientNNPbService).setBindAddress(bindHost).setPort(rpcAddr.getPort()).setNumHandlers(handlerCount).setVerbose(false).setSecretManager(namesystem.getDelegationTokenSecretManager()).build();
   DFSUtil.addPBProtocol(conf,HAServiceProtocolPB.class,haPbService,clientRpcServer);
   DFSUtil.addPBProtocol(conf,NamenodeProtocolPB.class,NNPbService,clientRpcServer);
   DFSUtil.addPBProtocol(conf,DatanodeProtocolPB.class,dnProtoPbService,clientRpcServer);
@@ -50,7 +61,8 @@
       serviceRpcServer.refreshServiceAcl(conf,new HDFSPolicyProvider());
     }
   }
-  clientRpcAddress=clientRpcServer.getListenerAddress();
+  InetSocketAddress listenAddr=clientRpcServer.getListenerAddress();
+  clientRpcAddress=new InetSocketAddress(rpcAddr.getHostName(),listenAddr.getPort());
   nn.setRpcServerAddress(conf,clientRpcAddress);
   minimumDataNodeVersion=conf.get(DFSConfigKeys.DFS_NAMENODE_MIN_SUPPORTED_DATANODE_VERSION_KEY,DFSConfigKeys.DFS_NAMENODE_MIN_SUPPORTED_DATANODE_VERSION_DEFAULT);
   clientRpcServer.addTerseExceptions(SafeModeException.class,FileNotFoundException.class,HadoopIllegalArgumentException.class,FileAlreadyExistsException.class,InvalidPathException.class,ParentNotDirectoryException.class,UnresolvedLinkException.class,AlreadyBeingCreatedException.class,QuotaExceededException.class,RecoveryInProgressException.class,AccessControlException.class,InvalidToken.class,LeaseExpiredException.class,NSQuotaExceededException.class,DSQuotaExceededException.class);
