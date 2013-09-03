@@ -1,0 +1,29 @@
+{
+  final FSPermissionChecker pc=getPermissionChecker();
+  CacheEntry cacheEntry=RetryCache.waitForCompletion(retryCache);
+  if (cacheEntry != null && cacheEntry.isSuccess()) {
+    return;
+  }
+  checkOperation(OperationCategory.WRITE);
+  writeLock();
+  boolean success=false;
+  try {
+    checkOperation(OperationCategory.WRITE);
+    if (!pc.isSuperUser()) {
+      throw new AccessControlException("Non-super users cannot " + "add cache pools.");
+    }
+    if (isInSafeMode()) {
+      throw new SafeModeException("Cannot add cache pool " + req.getPoolName(),safeMode);
+    }
+    cacheManager.addCachePool(req);
+    success=true;
+  }
+  finally {
+    writeUnlock();
+    if (isAuditEnabled() && isExternalInvocation()) {
+      logAuditEvent(success,"addCachePool",req.getPoolName(),null,null);
+    }
+    RetryCache.setState(cacheEntry,success);
+  }
+  getEditLog().logSync();
+}

@@ -5,7 +5,11 @@
     cluster=new MiniDFSCluster.Builder(conf).numDataNodes(1).build();
     cluster.waitActive();
     NamenodeProtocols proto=cluster.getNameNodeRpc();
-    List<Fallible<PathCacheEntry>> addResults1=proto.addPathCacheDirectives(Arrays.asList(new PathCacheDirective[]{new PathCacheDirective("/alpha","pool1"),new PathCacheDirective("/beta","pool2"),new PathCacheDirective("","pool3")}));
+    proto.addCachePool(new CachePoolInfo("pool1"));
+    proto.addCachePool(new CachePoolInfo("pool2"));
+    proto.addCachePool(new CachePoolInfo("pool3"));
+    proto.addCachePool(new CachePoolInfo("pool4").setMode(0));
+    List<Fallible<PathCacheEntry>> addResults1=proto.addPathCacheDirectives(Arrays.asList(new PathCacheDirective[]{new PathCacheDirective("/alpha","pool1"),new PathCacheDirective("/beta","pool2"),new PathCacheDirective("","pool3"),new PathCacheDirective("/zeta","nonexistent_pool"),new PathCacheDirective("/zeta","pool4")}));
     long ids1[]=new long[2];
     ids1[0]=addResults1.get(0).get().getEntryId();
     ids1[1]=addResults1.get(1).get().getEntryId();
@@ -15,6 +19,20 @@
     }
  catch (    IOException ioe) {
       Assert.assertTrue(ioe.getCause() instanceof EmptyPathError);
+    }
+    try {
+      addResults1.get(3).get();
+      Assert.fail("expected an error when adding to a nonexistent pool.");
+    }
+ catch (    IOException ioe) {
+      Assert.assertTrue(ioe.getCause() instanceof InvalidPoolNameError);
+    }
+    try {
+      addResults1.get(4).get();
+      Assert.fail("expected an error when adding to a pool with " + "mode 0 (no permissions for anyone).");
+    }
+ catch (    IOException ioe) {
+      Assert.assertTrue(ioe.getCause() instanceof PoolWritePermissionDeniedError);
     }
     List<Fallible<PathCacheEntry>> addResults2=proto.addPathCacheDirectives(Arrays.asList(new PathCacheDirective[]{new PathCacheDirective("/alpha","pool1"),new PathCacheDirective("/theta",""),new PathCacheDirective("bogus","pool1"),new PathCacheDirective("/gamma","pool1")}));
     long id=addResults2.get(0).get().getEntryId();

@@ -1,0 +1,34 @@
+{
+  CachePool pool=cachePools.get(directive.getPool());
+  if (pool == null) {
+    LOG.info("addDirective " + directive + ": pool not found.");
+    return new Fallible<PathCacheEntry>(new InvalidPoolNameError(directive));
+  }
+  if (!pc.checkWritePermission(pool.getOwnerName(),pool.getGroupName(),pool.getMode())) {
+    LOG.info("addDirective " + directive + ": write permission denied.");
+    return new Fallible<PathCacheEntry>(new PoolWritePermissionDeniedError(directive));
+  }
+  try {
+    directive.validate();
+  }
+ catch (  IOException ioe) {
+    LOG.info("addDirective " + directive + ": validation failed.");
+    return new Fallible<PathCacheEntry>(ioe);
+  }
+  PathCacheEntry existing=entriesByDirective.get(directive);
+  if (existing != null) {
+    LOG.info("addDirective " + directive + ": there is an "+ "existing directive "+ existing);
+    return new Fallible<PathCacheEntry>(existing);
+  }
+  PathCacheEntry entry;
+  try {
+    entry=new PathCacheEntry(getNextEntryId(),directive);
+  }
+ catch (  IOException ioe) {
+    return new Fallible<PathCacheEntry>(new UnexpectedAddPathCacheDirectiveException(directive));
+  }
+  LOG.info("addDirective " + directive + ": added cache directive "+ directive);
+  entriesByDirective.put(directive,entry);
+  entriesById.put(entry.getEntryId(),entry);
+  return new Fallible<PathCacheEntry>(entry);
+}

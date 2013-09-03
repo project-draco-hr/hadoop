@@ -1,3 +1,30 @@
 {
-  return cacheManager.addDirectives(directives);
+  CacheEntryWithPayload retryCacheEntry=RetryCache.waitForCompletion(retryCache,null);
+  if (retryCacheEntry != null && retryCacheEntry.isSuccess()) {
+    return (List<Fallible<PathCacheEntry>>)retryCacheEntry.getPayload();
+  }
+  final FSPermissionChecker pc=getPermissionChecker();
+  boolean success=false;
+  List<Fallible<PathCacheEntry>> results=null;
+  checkOperation(OperationCategory.WRITE);
+  writeLock();
+  try {
+    checkOperation(OperationCategory.WRITE);
+    if (isInSafeMode()) {
+      throw new SafeModeException("Cannot add path cache directive",safeMode);
+    }
+    results=cacheManager.addDirectives(directives,pc);
+    success=true;
+  }
+  finally {
+    writeUnlock();
+    if (success) {
+      getEditLog().logSync();
+    }
+    if (isAuditEnabled() && isExternalInvocation()) {
+      logAuditEvent(success,"addPathCacheDirectives",null,null,null);
+    }
+    RetryCache.setState(retryCacheEntry,success,results);
+  }
+  return results;
 }
