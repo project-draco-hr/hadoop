@@ -7,43 +7,24 @@
   try {
     containerId=ConverterUtils.toContainerId($(CONTAINER_ID));
   }
- catch (  IllegalArgumentException e) {
-    html.h1("Invalid containerId " + $(CONTAINER_ID));
+ catch (  IllegalArgumentException ex) {
+    html.h1("Invalid container ID: " + $(CONTAINER_ID));
     return;
   }
-  ApplicationId applicationId=containerId.getApplicationAttemptId().getApplicationId();
-  Application application=this.nmContext.getApplications().get(applicationId);
-  Container container=this.nmContext.getContainers().get(containerId);
-  if (application == null) {
-    html.h1("Unknown container. Container either has not started or " + "has already completed or " + "doesn't belong to this node at all.");
-    return;
-  }
-  if (container == null) {
-    printLogs(html,containerId,applicationId,application);
-    return;
-  }
-  if (EnumSet.of(ContainerState.NEW,ContainerState.LOCALIZING,ContainerState.LOCALIZED).contains(container.getContainerState())) {
-    html.h1("Container is not yet running. Current state is " + container.getContainerState());
-    return;
-  }
-  if (container.getContainerState() == ContainerState.LOCALIZATION_FAILED) {
-    html.h1("Container wasn't started. Localization failed.");
-    return;
-  }
-  if (EnumSet.of(ContainerState.RUNNING,ContainerState.EXITED_WITH_FAILURE,ContainerState.EXITED_WITH_SUCCESS).contains(container.getContainerState())) {
-    printLogs(html,containerId,applicationId,application);
-    return;
-  }
-  if (EnumSet.of(ContainerState.KILLING,ContainerState.CONTAINER_CLEANEDUP_AFTER_KILL,ContainerState.CONTAINER_RESOURCES_CLEANINGUP).contains(container.getContainerState())) {
-    printLogs(html,containerId,applicationId,application);
-    return;
-  }
-  if (container.getContainerState().equals(ContainerState.DONE)) {
-    printLogs(html,containerId,applicationId,application);
-    return;
-  }
+  try {
+    if ($(CONTAINER_LOG_TYPE).isEmpty()) {
+      List<File> logFiles=ContainerLogsUtils.getContainerLogDirs(containerId,request().getRemoteUser(),nmContext);
+      printLogFileDirectory(html,logFiles);
+    }
  else {
-    html.h1("Container is no longer running...");
-    return;
+      File logFile=ContainerLogsUtils.getContainerLogFile(containerId,$(CONTAINER_LOG_TYPE),request().getRemoteUser(),nmContext);
+      printLogFile(html,logFile);
+    }
+  }
+ catch (  YarnException ex) {
+    html.h1(ex.getMessage());
+  }
+catch (  NotFoundException ex) {
+    html.h1(ex.getMessage());
   }
 }
