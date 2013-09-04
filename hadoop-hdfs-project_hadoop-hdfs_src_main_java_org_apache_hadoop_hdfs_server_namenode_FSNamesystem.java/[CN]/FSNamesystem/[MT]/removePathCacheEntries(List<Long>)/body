@@ -1,28 +1,24 @@
 {
-  CacheEntryWithPayload retryCacheEntry=RetryCache.waitForCompletion(retryCache,null);
-  if (retryCacheEntry != null && retryCacheEntry.isSuccess()) {
-    return (List<Fallible<Long>>)retryCacheEntry.getPayload();
-  }
   final FSPermissionChecker pc=getPermissionChecker();
   boolean success=false;
   List<Fallible<Long>> results=null;
-  checkOperation(OperationCategory.WRITE);
   writeLock();
   try {
     checkOperation(OperationCategory.WRITE);
     if (isInSafeMode()) {
-      throw new SafeModeException("Cannot remove path cache directives",safeMode);
+      throw new SafeModeException("Cannot add path cache directive",safeMode);
     }
-    results=cacheManager.removeEntries(ids,pc);
+    results=cacheManager.removeEntries(pc,ids);
     success=true;
   }
   finally {
     writeUnlock();
-    if (isAuditEnabled() && isExternalInvocation()) {
+    if (success) {
+      getEditLog().logSync();
+    }
+    if (auditLog.isInfoEnabled() && isExternalInvocation()) {
       logAuditEvent(success,"removePathCacheEntries",null,null,null);
     }
-    RetryCache.setState(retryCacheEntry,success,results);
   }
-  getEditLog().logSync();
   return results;
 }

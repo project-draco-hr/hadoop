@@ -1,0 +1,30 @@
+{
+  final FSPermissionChecker pc=getPermissionChecker();
+  writeLock();
+  CachePool pool;
+  try {
+    checkOperation(OperationCategory.WRITE);
+    if (!pc.isSuperUser()) {
+      throw new AccessControlException("Non-super users cannot " + "remove cache pools.");
+    }
+    pool=cacheManager.getCachePool(poolId);
+    if (isInSafeMode()) {
+      String identifier;
+      if (pool == null) {
+        identifier="with id " + Long.toString(poolId);
+      }
+ else {
+        identifier=pool.getInfo().getPoolName();
+      }
+      throw new SafeModeException("Cannot remove cache pool " + identifier,safeMode);
+    }
+    cacheManager.removeCachePool(poolId);
+  }
+  finally {
+    writeUnlock();
+  }
+  getEditLog().logSync();
+  if (auditLog.isInfoEnabled() && isExternalInvocation()) {
+    logAuditEvent(true,"removeCachePool",pool.getInfo().getPoolName(),null,null);
+  }
+}

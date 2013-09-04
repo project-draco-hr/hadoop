@@ -4,15 +4,23 @@
   try {
     cluster=new MiniDFSCluster.Builder(conf).numDataNodes(1).build();
     cluster.waitActive();
-    NamenodeProtocols proto=cluster.getNameNodeRpc();
-    proto.addCachePool(new CachePoolInfo("pool1"));
-    proto.addCachePool(new CachePoolInfo("pool2"));
-    proto.addCachePool(new CachePoolInfo("pool3"));
-    proto.addCachePool(new CachePoolInfo("pool4").setMode(0));
-    List<Fallible<PathCacheEntry>> addResults1=proto.addPathCacheDirectives(Arrays.asList(new PathCacheDirective[]{new PathCacheDirective("/alpha","pool1"),new PathCacheDirective("/beta","pool2"),new PathCacheDirective("","pool3"),new PathCacheDirective("/zeta","nonexistent_pool"),new PathCacheDirective("/zeta","pool4")}));
+    final CachePool pool1=proto.addCachePool(new CachePoolInfo("pool1"));
+    final CachePool pool2=proto.addCachePool(new CachePoolInfo("pool2"));
+    final CachePool pool3=proto.addCachePool(new CachePoolInfo("pool3"));
+    final CachePool pool4=proto.addCachePool(CachePoolInfo.newBuilder().setPoolName("pool4").setMode(new FsPermission((short)0)).build());
+    UserGroupInformation testUgi=UserGroupInformation.createUserForTesting("myuser",new String[]{"mygroup"});
+    List<Fallible<PathCacheEntry>> addResults1=testUgi.doAs(new PrivilegedExceptionAction<List<Fallible<PathCacheEntry>>>(){
+      @Override public List<Fallible<PathCacheEntry>> run() throws IOException {
+        List<Fallible<PathCacheEntry>> entries;
+        entries=proto.addPathCacheDirectives(Arrays.asList(new PathCacheDirective[]{new PathCacheDirective("/alpha",pool1.getId()),new PathCacheDirective("/beta",pool2.getId()),new PathCacheDirective("",pool3.getId()),new PathCacheDirective("/zeta",404),new PathCacheDirective("/zeta",pool4.getId())}));
+        return entries;
+      }
+    }
+);
     long ids1[]=new long[2];
-    ids1[0]=addResults1.get(0).get().getEntryId();
-    ids1[1]=addResults1.get(1).get().getEntryId();
+    for (int i=0; i < 2; i++) {
+      ids1[i]=addResults1.get(i).get().getEntryId();
+    }
     try {
       addResults1.get(2).get();
       Assert.fail("expected an error when adding an empty path");
@@ -25,7 +33,7 @@
       Assert.fail("expected an error when adding to a nonexistent pool.");
     }
  catch (    IOException ioe) {
-      Assert.assertTrue(ioe.getCause() instanceof InvalidPoolNameError);
+      Assert.assertTrue(ioe.getCause() instanceof InvalidPoolError);
     }
     try {
       addResults1.get(4).get();
@@ -34,7 +42,7 @@
  catch (    IOException ioe) {
       Assert.assertTrue(ioe.getCause() instanceof PoolWritePermissionDeniedError);
     }
-    List<Fallible<PathCacheEntry>> addResults2=proto.addPathCacheDirectives(Arrays.asList(new PathCacheDirective[]{new PathCacheDirective("/alpha","pool1"),new PathCacheDirective("/theta",""),new PathCacheDirective("bogus","pool1"),new PathCacheDirective("/gamma","pool1")}));
+    List<Fallible<PathCacheEntry>> addResults2=proto.addPathCacheDirectives(Arrays.asList(new PathCacheDirective[]{new PathCacheDirective("/alpha",pool1.getId()),new PathCacheDirective("/theta",404),new PathCacheDirective("bogus",pool1.getId()),new PathCacheDirective("/gamma",pool1.getId())}));
     long id=addResults2.get(0).get().getEntryId();
     Assert.assertEquals("expected to get back the same ID as last time " + "when re-adding an existing path cache directive.",ids1[0],id);
     try {
@@ -42,7 +50,7 @@
       Assert.fail("expected an error when adding a path cache " + "directive with an empty pool name.");
     }
  catch (    IOException ioe) {
-      Assert.assertTrue(ioe.getCause() instanceof InvalidPoolNameError);
+      Assert.assertTrue(ioe.getCause() instanceof InvalidPoolError);
     }
     try {
       addResults2.get(2).get();
@@ -53,13 +61,13 @@
     }
     long ids2[]=new long[1];
     ids2[0]=addResults2.get(3).get().getEntryId();
-    RemoteIterator<PathCacheEntry> iter=proto.listPathCacheEntries(0,"",100);
+    RemoteIterator<PathCacheEntry> iter=proto.listPathCacheEntries(-1l,-1l,100);
     validateListAll(iter,ids1[0],ids1[1],ids2[0]);
-    iter=proto.listPathCacheEntries(0,"",1);
+    iter=proto.listPathCacheEntries(-1l,-1l,1);
     validateListAll(iter,ids1[0],ids1[1],ids2[0]);
-    iter=proto.listPathCacheEntries(0,"pool3",1);
+    iter=proto.listPathCacheEntries(0,pool3.getId(),1);
     Assert.assertFalse(iter.hasNext());
-    iter=proto.listPathCacheEntries(0,"pool2",4444);
+    iter=proto.listPathCacheEntries(0,pool2.getId(),4444);
     Assert.assertEquals(addResults1.get(1).get(),iter.next());
     Assert.assertFalse(iter.hasNext());
     List<Fallible<Long>> removeResults1=proto.removePathCacheEntries(Arrays.asList(new Long[]{ids1[1],-42L,999999L}));
@@ -78,7 +86,7 @@
  catch (    IOException ioe) {
       Assert.assertTrue(ioe.getCause() instanceof NoSuchIdException);
     }
-    iter=proto.listPathCacheEntries(0,"pool2",4444);
+    iter=proto.listPathCacheEntries(0,pool2.getId(),4444);
     Assert.assertFalse(iter.hasNext());
   }
   finally {

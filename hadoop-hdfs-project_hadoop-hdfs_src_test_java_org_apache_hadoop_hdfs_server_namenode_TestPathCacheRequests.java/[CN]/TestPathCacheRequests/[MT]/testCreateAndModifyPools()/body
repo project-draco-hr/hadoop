@@ -1,27 +1,23 @@
 {
-  Configuration conf=new HdfsConfiguration();
-  MiniDFSCluster cluster=null;
-  cluster=new MiniDFSCluster.Builder(conf).numDataNodes(1).build();
-  cluster.waitActive();
-  NamenodeProtocols proto=cluster.getNameNodeRpc();
-  proto.addCachePool(new CachePoolInfo("pool1").setOwnerName("abc").setGroupName("123").setMode(0755).setWeight(150));
-  proto.modifyCachePool(new CachePoolInfo("pool1").setOwnerName("def").setGroupName("456"));
-  RemoteIterator<CachePoolInfo> iter=proto.listCachePools("",1);
-  CachePoolInfo info=iter.next();
-  assertEquals("pool1",info.getPoolName());
-  assertEquals("def",info.getOwnerName());
-  assertEquals("456",info.getGroupName());
-  assertEquals(Integer.valueOf(0755),info.getMode());
-  assertEquals(Integer.valueOf(150),info.getWeight());
+  CachePoolInfo info=CachePoolInfo.newBuilder().setPoolName("pool1").setOwnerName("abc").setGroupName("123").setMode(new FsPermission((short)0755)).setWeight(150).build();
+  CachePool pool=proto.addCachePool(info);
+  CachePoolInfo actualInfo=pool.getInfo();
+  assertEquals("Expected info to match create time settings",info,actualInfo);
+  info=CachePoolInfo.newBuilder().setPoolName("pool2").setOwnerName("def").setGroupName("456").setMode(new FsPermission((short)0644)).setWeight(200).build();
+  proto.modifyCachePool(pool.getId(),info);
+  RemoteIterator<CachePool> iter=proto.listCachePools(0,1);
+  CachePool listedPool=iter.next();
+  actualInfo=listedPool.getInfo();
+  assertEquals("Expected info to match modified settings",info,actualInfo);
   try {
-    proto.removeCachePool("pool99");
+    proto.removeCachePool(808);
     Assert.fail("expected to get an exception when " + "removing a non-existent pool.");
   }
  catch (  IOException ioe) {
   }
-  proto.removeCachePool("pool1");
+  proto.removeCachePool(pool.getId());
   try {
-    proto.removeCachePool("pool1");
+    proto.removeCachePool(pool.getId());
     Assert.fail("expected to get an exception when " + "removing a non-existent pool.");
   }
  catch (  IOException ioe) {

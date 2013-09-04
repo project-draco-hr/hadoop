@@ -1,12 +1,11 @@
 {
   final FSPermissionChecker pc=getPermissionChecker();
-  CacheEntry cacheEntry=RetryCache.waitForCompletion(retryCache);
+  CacheEntryWithPayload cacheEntry=RetryCache.waitForCompletion(retryCache,null);
   if (cacheEntry != null && cacheEntry.isSuccess()) {
-    return;
+    return (CachePool)cacheEntry.getPayload();
   }
-  checkOperation(OperationCategory.WRITE);
   writeLock();
-  boolean success=false;
+  CachePool pool=null;
   try {
     checkOperation(OperationCategory.WRITE);
     if (!pc.isSuperUser()) {
@@ -15,15 +14,15 @@
     if (isInSafeMode()) {
       throw new SafeModeException("Cannot add cache pool " + req.getPoolName(),safeMode);
     }
-    cacheManager.addCachePool(req);
-    success=true;
+    pool=cacheManager.addCachePool(req);
+    RetryCache.setState(cacheEntry,true);
   }
   finally {
     writeUnlock();
-    if (isAuditEnabled() && isExternalInvocation()) {
-      logAuditEvent(success,"addCachePool",req.getPoolName(),null,null);
-    }
-    RetryCache.setState(cacheEntry,success);
   }
   getEditLog().logSync();
+  if (auditLog.isInfoEnabled() && isExternalInvocation()) {
+    logAuditEvent(true,"addCachePool",req.getPoolName(),null,null);
+  }
+  return pool;
 }

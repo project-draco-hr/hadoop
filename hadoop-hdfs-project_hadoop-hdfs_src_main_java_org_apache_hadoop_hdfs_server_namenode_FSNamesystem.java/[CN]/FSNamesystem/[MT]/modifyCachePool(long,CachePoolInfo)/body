@@ -1,0 +1,26 @@
+{
+  final FSPermissionChecker pc=getPermissionChecker();
+  CacheEntry cacheEntry=RetryCache.waitForCompletion(retryCache);
+  if (cacheEntry != null && cacheEntry.isSuccess()) {
+    return;
+  }
+  writeLock();
+  try {
+    checkOperation(OperationCategory.WRITE);
+    if (!pc.isSuperUser()) {
+      throw new AccessControlException("Non-super users cannot " + "modify cache pools.");
+    }
+    if (isInSafeMode()) {
+      throw new SafeModeException("Cannot modify cache pool " + info.getPoolName(),safeMode);
+    }
+    cacheManager.modifyCachePool(poolId,info);
+    RetryCache.setState(cacheEntry,true);
+  }
+  finally {
+    writeUnlock();
+  }
+  getEditLog().logSync();
+  if (auditLog.isInfoEnabled() && isExternalInvocation()) {
+    logAuditEvent(true,"modifyCachePool",info.getPoolName(),null,null);
+  }
+}
