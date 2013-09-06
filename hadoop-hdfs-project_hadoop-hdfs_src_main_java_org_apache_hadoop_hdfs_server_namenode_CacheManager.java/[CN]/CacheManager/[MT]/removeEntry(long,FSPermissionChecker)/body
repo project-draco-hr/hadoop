@@ -1,0 +1,26 @@
+{
+  if (entryId <= 0) {
+    LOG.info("removeEntry " + entryId + ": invalid non-positive entry ID.");
+    return new Fallible<Long>(new InvalidIdException(entryId));
+  }
+  PathCacheEntry existing=entriesById.get(entryId);
+  if (existing == null) {
+    LOG.info("removeEntry " + entryId + ": entry not found.");
+    return new Fallible<Long>(new NoSuchIdException(entryId));
+  }
+  CachePool pool=cachePools.get(existing.getDirective().getPool());
+  if (pool == null) {
+    LOG.info("removeEntry " + entryId + ": pool not found for directive "+ existing.getDirective());
+    return new Fallible<Long>(new UnexpectedRemovePathCacheEntryException(entryId));
+  }
+  if ((pc != null) && (!pc.checkPermission(pool,FsAction.WRITE))) {
+    LOG.info("removeEntry " + entryId + ": write permission denied to "+ "pool "+ pool+ " for entry "+ existing);
+    return new Fallible<Long>(new RemovePermissionDeniedException(entryId));
+  }
+  if (entriesByDirective.remove(existing.getDirective()) == null) {
+    LOG.warn("removeEntry " + entryId + ": failed to find existing entry "+ existing+ " in entriesByDirective");
+    return new Fallible<Long>(new UnexpectedRemovePathCacheEntryException(entryId));
+  }
+  entriesById.remove(entryId);
+  return new Fallible<Long>(entryId);
+}

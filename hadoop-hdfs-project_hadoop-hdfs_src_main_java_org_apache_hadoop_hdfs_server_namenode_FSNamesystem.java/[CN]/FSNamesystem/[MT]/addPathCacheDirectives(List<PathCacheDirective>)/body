@@ -3,16 +3,17 @@
   if (retryCacheEntry != null && retryCacheEntry.isSuccess()) {
     return (List<Fallible<PathCacheEntry>>)retryCacheEntry.getPayload();
   }
-  final FSPermissionChecker pc=getPermissionChecker();
+  final FSPermissionChecker pc=isPermissionEnabled ? getPermissionChecker() : null;
   boolean success=false;
   List<Fallible<PathCacheEntry>> results=null;
+  checkOperation(OperationCategory.WRITE);
   writeLock();
   try {
     checkOperation(OperationCategory.WRITE);
     if (isInSafeMode()) {
       throw new SafeModeException("Cannot add path cache directive",safeMode);
     }
-    results=cacheManager.addDirectives(pc,directives);
+    results=cacheManager.addDirectives(directives,pc);
     success=true;
   }
   finally {
@@ -20,7 +21,7 @@
     if (success) {
       getEditLog().logSync();
     }
-    if (auditLog.isInfoEnabled() && isExternalInvocation()) {
+    if (isAuditEnabled() && isExternalInvocation()) {
       logAuditEvent(success,"addPathCacheDirectives",null,null,null);
     }
     RetryCache.setState(retryCacheEntry,success,results);
