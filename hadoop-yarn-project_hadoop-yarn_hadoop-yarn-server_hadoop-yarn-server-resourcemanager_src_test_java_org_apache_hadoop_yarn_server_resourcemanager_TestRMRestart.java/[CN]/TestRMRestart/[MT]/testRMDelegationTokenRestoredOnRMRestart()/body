@@ -1,5 +1,8 @@
 {
   conf.setInt(YarnConfiguration.RM_AM_MAX_ATTEMPTS,2);
+  conf.set(CommonConfigurationKeysPublic.HADOOP_SECURITY_AUTHENTICATION,"kerberos");
+  conf.set(YarnConfiguration.RM_ADDRESS,"localhost:8032");
+  UserGroupInformation.setConfiguration(conf);
   MemoryRMStateStore memStore=new MemoryRMStateStore();
   memStore.init(conf);
   RMState rmState=memStore.getState();
@@ -10,6 +13,7 @@
   rm1.start();
   Credentials ts=new Credentials();
   GetDelegationTokenRequest request1=GetDelegationTokenRequest.newInstance("renewer1");
+  UserGroupInformation.getCurrentUser().setAuthenticationMethod(AuthMethod.KERBEROS);
   GetDelegationTokenResponse response1=rm1.getClientRMService().getDelegationToken(request1);
   org.apache.hadoop.yarn.api.records.Token delegationToken1=response1.getRMDelegationToken();
   Token<RMDelegationTokenIdentifier> token1=ConverterUtils.convertFromYarn(delegationToken1,rmAddr);
@@ -42,7 +46,7 @@
   MockRM rm2=new TestSecurityMockRM(conf,memStore);
   rm2.start();
   Map<RMDelegationTokenIdentifier,Long> allTokensRM2=rm2.getRMDTSecretManager().getAllTokens();
-  Assert.assertEquals(allTokensRM1,allTokensRM2);
+  Assert.assertEquals(allTokensRM2.keySet(),allTokensRM1.keySet());
   Assert.assertTrue(rm2.getRMDTSecretManager().getAllMasterKeys().containsAll(allKeysRM1));
   Assert.assertEquals(rm1.getRMDTSecretManager().getLatestDTSequenceNumber(),rm2.getRMDTSecretManager().getLatestDTSequenceNumber());
   Long renewDateBeforeRenew=allTokensRM2.get(dtId1);

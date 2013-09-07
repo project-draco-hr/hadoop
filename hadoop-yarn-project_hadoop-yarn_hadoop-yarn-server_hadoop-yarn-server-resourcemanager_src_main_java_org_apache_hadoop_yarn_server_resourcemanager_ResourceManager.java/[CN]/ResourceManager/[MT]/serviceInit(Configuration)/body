@@ -11,10 +11,6 @@
   addService(amLivelinessMonitor);
   AMLivelinessMonitor amFinishingMonitor=createAMLivelinessMonitor();
   addService(amFinishingMonitor);
-  if (UserGroupInformation.isSecurityEnabled()) {
-    this.delegationTokenRenewer=createDelegationTokenRenewer();
-    addService(delegationTokenRenewer);
-  }
   this.containerTokenSecretManager=createContainerTokenSecretManager(conf);
   this.nmTokenSecretManager=createNMTokenSecretManager(conf);
   boolean isRecoveryEnabled=conf.getBoolean(YarnConfiguration.RECOVERY_ENABLED,YarnConfiguration.DEFAULT_RM_RECOVERY_ENABLED);
@@ -34,6 +30,9 @@
  catch (  Exception e) {
     LOG.error("Failed to init state store",e);
     ExitUtil.terminate(1,e);
+  }
+  if (UserGroupInformation.isSecurityEnabled()) {
+    this.delegationTokenRenewer=createDelegationTokenRenewer();
   }
   this.rmContext=new RMContextImpl(this.rmDispatcher,rmStore,this.containerAllocationExpirer,amLivelinessMonitor,amFinishingMonitor,delegationTokenRenewer,this.amRmTokenSecretManager,this.containerTokenSecretManager,this.nmTokenSecretManager,this.clientToAMSecretManager);
   this.nodesListManager=new NodesListManager(this.rmContext);
@@ -65,13 +64,19 @@
   this.rmAppManager=createRMAppManager();
   this.rmDispatcher.register(RMAppManagerEventType.class,this.rmAppManager);
   this.rmDTSecretManager=createRMDelegationTokenSecretManager(this.rmContext);
+  rmContext.setRMDelegationTokenSecretManager(this.rmDTSecretManager);
   clientRM=createClientRMService();
+  rmContext.setClientRMService(clientRM);
   addService(clientRM);
   adminService=createAdminService(clientRM,masterService,resourceTracker);
   addService(adminService);
   this.applicationMasterLauncher=createAMLauncher();
   this.rmDispatcher.register(AMLauncherEventType.class,this.applicationMasterLauncher);
   addService(applicationMasterLauncher);
+  if (UserGroupInformation.isSecurityEnabled()) {
+    addService(delegationTokenRenewer);
+    delegationTokenRenewer.setRMContext(rmContext);
+  }
   new RMNMInfo(this.rmContext,this.scheduler);
   super.serviceInit(conf);
 }
