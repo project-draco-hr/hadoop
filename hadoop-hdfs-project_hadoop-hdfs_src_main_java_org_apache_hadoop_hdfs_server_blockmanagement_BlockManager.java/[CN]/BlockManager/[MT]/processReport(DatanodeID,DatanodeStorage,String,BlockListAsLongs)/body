@@ -7,19 +7,20 @@
     if (node == null || !node.isAlive) {
       throw new IOException("ProcessReport from dead or unregistered node: " + nodeID);
     }
-    if (namesystem.isInStartupSafeMode() && !node.isFirstBlockReport()) {
+    final DatanodeStorageInfo storageInfo=node.getStorageInfo(storage.getStorageID());
+    if (namesystem.isInStartupSafeMode() && storageInfo.getBlockReportCount() > 0) {
       blockLog.info("BLOCK* processReport: " + "discarded non-initial block report from " + nodeID + " because namenode still in startup phase");
       return;
     }
-    if (node.numBlocks() == 0) {
+    if (storageInfo.numBlocks() == 0) {
       processFirstBlockReport(node,storage.getStorageID(),newReport);
     }
  else {
       processReport(node,storage,newReport);
     }
-    boolean staleBefore=node.areBlockContentsStale();
-    node.receivedBlockReport();
-    if (staleBefore && !node.areBlockContentsStale()) {
+    boolean staleBefore=storageInfo.areBlockContentsStale();
+    storageInfo.receivedBlockReport();
+    if (staleBefore && !storageInfo.areBlockContentsStale()) {
       LOG.info("BLOCK* processReport: Received first block report from " + node + " after starting up or becoming active. Its block "+ "contents are no longer considered stale");
       rescanPostponedMisreplicatedBlocks();
     }
