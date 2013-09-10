@@ -11,7 +11,14 @@
   this.ugi=UserGroupInformation.getCurrentUser();
   this.authority=nameNodeUri == null ? "null" : nameNodeUri.getAuthority();
   this.clientName="DFSClient_" + dfsClientConf.taskId + "_"+ DFSUtil.getRandom().nextInt()+ "_"+ Thread.currentThread().getId();
-  if (rpcNamenode != null) {
+  int numResponseToDrop=conf.getInt(DFSConfigKeys.DFS_CLIENT_TEST_DROP_NAMENODE_RESPONSE_NUM_KEY,DFSConfigKeys.DFS_CLIENT_TEST_DROP_NAMENODE_RESPONSE_NUM_DEFAULT);
+  if (numResponseToDrop > 0) {
+    LOG.warn(DFSConfigKeys.DFS_CLIENT_TEST_DROP_NAMENODE_RESPONSE_NUM_KEY + " is set to " + numResponseToDrop+ ", this hacked client will proactively drop responses");
+    NameNodeProxies.ProxyAndInfo<ClientProtocol> proxyInfo=NameNodeProxies.createProxyWithLossyRetryHandler(conf,nameNodeUri,ClientProtocol.class,numResponseToDrop);
+    this.dtService=proxyInfo.getDelegationTokenService();
+    this.namenode=proxyInfo.getProxy();
+  }
+ else   if (rpcNamenode != null) {
     Preconditions.checkArgument(nameNodeUri == null);
     this.namenode=rpcNamenode;
     dtService=null;

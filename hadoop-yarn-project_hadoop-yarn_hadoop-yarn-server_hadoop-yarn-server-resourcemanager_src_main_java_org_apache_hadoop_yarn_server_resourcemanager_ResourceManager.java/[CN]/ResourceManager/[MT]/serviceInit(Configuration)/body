@@ -1,77 +1,7 @@
 {
   validateConfigs(conf);
   this.conf=conf;
-  this.conf.setBoolean(Dispatcher.DISPATCHER_EXIT_ON_ERROR_KEY,true);
-  this.rmDispatcher=createDispatcher();
-  addIfService(this.rmDispatcher);
-  this.amRmTokenSecretManager=createAMRMTokenSecretManager(conf);
-  this.containerAllocationExpirer=new ContainerAllocationExpirer(this.rmDispatcher);
-  addService(this.containerAllocationExpirer);
-  AMLivelinessMonitor amLivelinessMonitor=createAMLivelinessMonitor();
-  addService(amLivelinessMonitor);
-  AMLivelinessMonitor amFinishingMonitor=createAMLivelinessMonitor();
-  addService(amFinishingMonitor);
-  if (UserGroupInformation.isSecurityEnabled()) {
-    this.delegationTokenRenewer=createDelegationTokenRenewer();
-    addService(delegationTokenRenewer);
-  }
-  this.containerTokenSecretManager=createContainerTokenSecretManager(conf);
-  this.nmTokenSecretManager=createNMTokenSecretManager(conf);
-  boolean isRecoveryEnabled=conf.getBoolean(YarnConfiguration.RECOVERY_ENABLED,YarnConfiguration.DEFAULT_RM_RECOVERY_ENABLED);
-  RMStateStore rmStore=null;
-  if (isRecoveryEnabled) {
-    recoveryEnabled=true;
-    rmStore=RMStateStoreFactory.getStore(conf);
-  }
- else {
-    recoveryEnabled=false;
-    rmStore=new NullRMStateStore();
-  }
-  try {
-    rmStore.init(conf);
-    rmStore.setRMDispatcher(rmDispatcher);
-  }
- catch (  Exception e) {
-    LOG.error("Failed to init state store",e);
-    ExitUtil.terminate(1,e);
-  }
-  this.rmContext=new RMContextImpl(this.rmDispatcher,rmStore,this.containerAllocationExpirer,amLivelinessMonitor,amFinishingMonitor,delegationTokenRenewer,this.amRmTokenSecretManager,this.containerTokenSecretManager,this.nmTokenSecretManager,this.clientToAMSecretManager);
-  this.nodesListManager=new NodesListManager(this.rmContext);
-  this.rmDispatcher.register(NodesListManagerEventType.class,this.nodesListManager);
-  addService(nodesListManager);
-  this.scheduler=createScheduler();
-  this.schedulerDispatcher=createSchedulerEventDispatcher();
-  addIfService(this.schedulerDispatcher);
-  this.rmDispatcher.register(SchedulerEventType.class,this.schedulerDispatcher);
-  this.rmDispatcher.register(RMAppEventType.class,new ApplicationEventDispatcher(this.rmContext));
-  this.rmDispatcher.register(RMAppAttemptEventType.class,new ApplicationAttemptEventDispatcher(this.rmContext));
-  this.rmDispatcher.register(RMNodeEventType.class,new NodeEventDispatcher(this.rmContext));
-  this.nmLivelinessMonitor=createNMLivelinessMonitor();
-  addService(this.nmLivelinessMonitor);
-  this.resourceTracker=createResourceTrackerService();
-  addService(resourceTracker);
-  DefaultMetricsSystem.initialize("ResourceManager");
-  JvmMetrics.initSingleton("ResourceManager",null);
-  try {
-    this.scheduler.reinitialize(conf,this.rmContext);
-  }
- catch (  IOException ioe) {
-    throw new RuntimeException("Failed to initialize scheduler",ioe);
-  }
-  createPolicyMonitors();
-  masterService=createApplicationMasterService();
-  addService(masterService);
-  this.applicationACLsManager=new ApplicationACLsManager(conf);
-  this.rmAppManager=createRMAppManager();
-  this.rmDispatcher.register(RMAppManagerEventType.class,this.rmAppManager);
-  this.rmDTSecretManager=createRMDelegationTokenSecretManager(this.rmContext);
-  clientRM=createClientRMService();
-  addService(clientRM);
-  adminService=createAdminService(clientRM,masterService,resourceTracker);
-  addService(adminService);
-  this.applicationMasterLauncher=createAMLauncher();
-  this.rmDispatcher.register(AMLauncherEventType.class,this.applicationMasterLauncher);
-  addService(applicationMasterLauncher);
-  new RMNMInfo(this.rmContext,this.scheduler);
+  activeServices=new RMActiveServices();
+  addService(activeServices);
   super.serviceInit(conf);
 }

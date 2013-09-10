@@ -1,0 +1,80 @@
+{
+  conf.setBoolean(Dispatcher.DISPATCHER_EXIT_ON_ERROR_KEY,true);
+  rmDispatcher=createDispatcher();
+  addIfService(rmDispatcher);
+  amRmTokenSecretManager=createAMRMTokenSecretManager(conf);
+  containerAllocationExpirer=new ContainerAllocationExpirer(rmDispatcher);
+  addService(containerAllocationExpirer);
+  AMLivelinessMonitor amLivelinessMonitor=createAMLivelinessMonitor();
+  addService(amLivelinessMonitor);
+  AMLivelinessMonitor amFinishingMonitor=createAMLivelinessMonitor();
+  addService(amFinishingMonitor);
+  containerTokenSecretManager=createContainerTokenSecretManager(conf);
+  nmTokenSecretManager=createNMTokenSecretManager(conf);
+  boolean isRecoveryEnabled=conf.getBoolean(YarnConfiguration.RECOVERY_ENABLED,YarnConfiguration.DEFAULT_RM_RECOVERY_ENABLED);
+  RMStateStore rmStore=null;
+  if (isRecoveryEnabled) {
+    recoveryEnabled=true;
+    rmStore=RMStateStoreFactory.getStore(conf);
+  }
+ else {
+    recoveryEnabled=false;
+    rmStore=new NullRMStateStore();
+  }
+  try {
+    rmStore.init(conf);
+    rmStore.setRMDispatcher(rmDispatcher);
+  }
+ catch (  Exception e) {
+    LOG.error("Failed to init state store",e);
+    ExitUtil.terminate(1,e);
+  }
+  if (UserGroupInformation.isSecurityEnabled()) {
+    delegationTokenRenewer=createDelegationTokenRenewer();
+  }
+  rmContext=new RMContextImpl(rmDispatcher,rmStore,containerAllocationExpirer,amLivelinessMonitor,amFinishingMonitor,delegationTokenRenewer,amRmTokenSecretManager,containerTokenSecretManager,nmTokenSecretManager,clientToAMSecretManager);
+  nodesListManager=new NodesListManager(rmContext);
+  rmDispatcher.register(NodesListManagerEventType.class,nodesListManager);
+  addService(nodesListManager);
+  scheduler=createScheduler();
+  schedulerDispatcher=createSchedulerEventDispatcher();
+  addIfService(schedulerDispatcher);
+  rmDispatcher.register(SchedulerEventType.class,schedulerDispatcher);
+  rmDispatcher.register(RMAppEventType.class,new ApplicationEventDispatcher(rmContext));
+  rmDispatcher.register(RMAppAttemptEventType.class,new ApplicationAttemptEventDispatcher(rmContext));
+  rmDispatcher.register(RMNodeEventType.class,new NodeEventDispatcher(rmContext));
+  nmLivelinessMonitor=createNMLivelinessMonitor();
+  addService(nmLivelinessMonitor);
+  resourceTracker=createResourceTrackerService();
+  addService(resourceTracker);
+  DefaultMetricsSystem.initialize("ResourceManager");
+  JvmMetrics.initSingleton("ResourceManager",null);
+  try {
+    scheduler.reinitialize(conf,rmContext);
+  }
+ catch (  IOException ioe) {
+    throw new RuntimeException("Failed to initialize scheduler",ioe);
+  }
+  createPolicyMonitors();
+  masterService=createApplicationMasterService();
+  addService(masterService);
+  applicationACLsManager=new ApplicationACLsManager(conf);
+  rmAppManager=createRMAppManager();
+  rmDispatcher.register(RMAppManagerEventType.class,rmAppManager);
+  rmDTSecretManager=createRMDelegationTokenSecretManager(rmContext);
+  rmContext.setRMDelegationTokenSecretManager(rmDTSecretManager);
+  clientRM=createClientRMService();
+  rmContext.setClientRMService(clientRM);
+  addService(clientRM);
+  adminService=createAdminService(clientRM,masterService,resourceTracker);
+  addService(adminService);
+  applicationMasterLauncher=createAMLauncher();
+  rmDispatcher.register(AMLauncherEventType.class,applicationMasterLauncher);
+  addService(applicationMasterLauncher);
+  if (UserGroupInformation.isSecurityEnabled()) {
+    addService(delegationTokenRenewer);
+    delegationTokenRenewer.setRMContext(rmContext);
+  }
+  new RMNMInfo(rmContext,scheduler);
+  super.serviceInit(conf);
+}
