@@ -1,0 +1,36 @@
+{
+  Configuration conf=new HdfsConfiguration();
+  MiniDFSCluster cluster=null;
+  conf.setInt(DFSConfigKeys.DFS_NAMENODE_LIST_CACHE_POOLS_NUM_RESPONSES,2);
+  conf.setInt(DFSConfigKeys.DFS_NAMENODE_LIST_CACHE_DIRECTIVES_NUM_RESPONSES,2);
+  cluster=new MiniDFSCluster.Builder(conf).numDataNodes(1).build();
+  cluster.waitActive();
+  NamenodeProtocols proto=cluster.getNameNodeRpc();
+  proto.addCachePool(new CachePoolInfo("pool1").setOwnerName("abc").setGroupName("123").setMode(new FsPermission((short)0755)).setWeight(150));
+  RemoteIterator<CachePoolInfo> iter=proto.listCachePools("");
+  CachePoolInfo info=iter.next();
+  assertEquals("pool1",info.getPoolName());
+  assertEquals("abc",info.getOwnerName());
+  assertEquals("123",info.getGroupName());
+  proto.modifyCachePool(new CachePoolInfo("pool1").setOwnerName("def").setGroupName("456"));
+  iter=proto.listCachePools("");
+  info=iter.next();
+  assertEquals("pool1",info.getPoolName());
+  assertEquals("def",info.getOwnerName());
+  assertEquals("456",info.getGroupName());
+  assertEquals(new FsPermission((short)0755),info.getMode());
+  assertEquals(Integer.valueOf(150),info.getWeight());
+  try {
+    proto.removeCachePool("pool99");
+    Assert.fail("expected to get an exception when " + "removing a non-existent pool.");
+  }
+ catch (  IOException ioe) {
+  }
+  proto.removeCachePool("pool1");
+  try {
+    proto.removeCachePool("pool1");
+    Assert.fail("expected to get an exception when " + "removing a non-existent pool.");
+  }
+ catch (  IOException ioe) {
+  }
+}

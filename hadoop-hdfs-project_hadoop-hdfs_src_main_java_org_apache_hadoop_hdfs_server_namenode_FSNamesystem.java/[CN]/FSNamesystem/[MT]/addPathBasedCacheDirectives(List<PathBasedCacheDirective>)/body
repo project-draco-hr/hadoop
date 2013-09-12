@@ -1,0 +1,30 @@
+{
+  CacheEntryWithPayload retryCacheEntry=RetryCache.waitForCompletion(retryCache,null);
+  if (retryCacheEntry != null && retryCacheEntry.isSuccess()) {
+    return (List<Fallible<PathBasedCacheEntry>>)retryCacheEntry.getPayload();
+  }
+  final FSPermissionChecker pc=isPermissionEnabled ? getPermissionChecker() : null;
+  boolean success=false;
+  List<Fallible<PathBasedCacheEntry>> results=null;
+  checkOperation(OperationCategory.WRITE);
+  writeLock();
+  try {
+    checkOperation(OperationCategory.WRITE);
+    if (isInSafeMode()) {
+      throw new SafeModeException("Cannot add PathBasedCache directive",safeMode);
+    }
+    results=cacheManager.addDirectives(directives,pc);
+    success=true;
+  }
+  finally {
+    writeUnlock();
+    if (success) {
+      getEditLog().logSync();
+    }
+    if (isAuditEnabled() && isExternalInvocation()) {
+      logAuditEvent(success,"addPathBasedCacheDirectives",null,null,null);
+    }
+    RetryCache.setState(retryCacheEntry,success,results);
+  }
+  return results;
+}

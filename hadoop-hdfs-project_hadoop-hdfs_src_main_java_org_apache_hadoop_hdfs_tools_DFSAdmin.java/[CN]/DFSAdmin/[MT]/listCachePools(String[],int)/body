@@ -9,40 +9,28 @@
     System.err.println("usage is " + LIST_CACHE_POOLS_USAGE);
     return 1;
   }
-  boolean gotResults=false;
   DistributedFileSystem dfs=getDFS();
+  TableListing listing=new TableListing.Builder().addField("NAME",Justification.LEFT).addField("OWNER",Justification.LEFT).addField("GROUP",Justification.LEFT).addField("MODE",Justification.LEFT).addField("WEIGHT",Justification.RIGHT).build();
+  int numResults=0;
   try {
     RemoteIterator<CachePoolInfo> iter=dfs.listCachePools();
-    if (name != null) {
-      while (iter.hasNext()) {
-        CachePoolInfo info=iter.next();
-        if (info.getPoolName().equals(name)) {
-          listCachePool(info);
-          gotResults=true;
-          return 0;
+    while (iter.hasNext()) {
+      CachePoolInfo info=iter.next();
+      if (name == null || info.getPoolName().equals(name)) {
+        listing.addRow(new String[]{info.getPoolName(),info.getOwnerName(),info.getGroupName(),info.getMode().toString(),info.getWeight().toString()});
+        ++numResults;
+        if (name != null) {
+          break;
         }
-      }
-    }
- else {
-      while (iter.hasNext()) {
-        listCachePool(iter.next());
-        gotResults=true;
       }
     }
   }
  catch (  IOException e) {
     throw new RemoteException(e.getClass().getName(),e.getMessage());
   }
-  int ret=0;
-  if (!gotResults) {
-    if (name != null) {
-      System.out.println("No cache pool named " + name + " found.");
-      ret=1;
-    }
- else {
-      System.out.println("No cache pools found.");
-      ret=1;
-    }
+  System.out.print(String.format("Found %d result%s.\n",numResults,(numResults == 1 ? "" : "s")));
+  if (numResults > 0) {
+    System.out.print(listing.build());
   }
-  return ret;
+  return (numResults == 0) ? 1 : 0;
 }

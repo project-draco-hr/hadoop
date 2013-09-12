@@ -1,0 +1,38 @@
+{
+  try {
+    ArrayList<PathBasedCacheDirective> input=new ArrayList<PathBasedCacheDirective>(request.getElementsCount());
+    for (int i=0; i < request.getElementsCount(); i++) {
+      PathBasedCacheDirectiveProto proto=request.getElements(i);
+      input.add(new PathBasedCacheDirective(proto.getPath(),proto.getPool()));
+    }
+    List<Fallible<PathBasedCacheEntry>> output=server.addPathBasedCacheDirectives(input);
+    AddPathBasedCacheDirectivesResponseProto.Builder builder=AddPathBasedCacheDirectivesResponseProto.newBuilder();
+    for (int idx=0; idx < output.size(); idx++) {
+      try {
+        PathBasedCacheEntry entry=output.get(idx).get();
+        builder.addResults(entry.getEntryId());
+      }
+ catch (      IOException ioe) {
+        if (ioe.getCause() instanceof EmptyPathError) {
+          builder.addResults(AddPathBasedCacheDirectiveErrorProto.EMPTY_PATH_ERROR_VALUE);
+        }
+ else         if (ioe.getCause() instanceof InvalidPathNameError) {
+          builder.addResults(AddPathBasedCacheDirectiveErrorProto.INVALID_PATH_NAME_ERROR_VALUE);
+        }
+ else         if (ioe.getCause() instanceof InvalidPoolNameError) {
+          builder.addResults(AddPathBasedCacheDirectiveErrorProto.INVALID_POOL_NAME_ERROR_VALUE);
+        }
+ else         if (ioe.getCause() instanceof PoolWritePermissionDeniedError) {
+          builder.addResults(AddPathBasedCacheDirectiveErrorProto.ADD_PERMISSION_DENIED_ERROR_VALUE);
+        }
+ else {
+          builder.addResults(AddPathBasedCacheDirectiveErrorProto.UNEXPECTED_ADD_ERROR_VALUE);
+        }
+      }
+    }
+    return builder.build();
+  }
+ catch (  IOException e) {
+    throw new ServiceException(e);
+  }
+}
