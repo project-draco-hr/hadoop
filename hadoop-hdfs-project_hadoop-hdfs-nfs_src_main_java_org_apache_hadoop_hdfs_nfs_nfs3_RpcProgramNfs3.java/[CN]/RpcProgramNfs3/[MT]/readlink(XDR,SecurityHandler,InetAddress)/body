@@ -1,0 +1,55 @@
+{
+  READLINK3Response response=new READLINK3Response(Nfs3Status.NFS3_OK);
+  if (!checkAccessPrivilege(client,AccessPrivilege.READ_ONLY)) {
+    response.setStatus(Nfs3Status.NFS3ERR_ACCES);
+    return response;
+  }
+  DFSClient dfsClient=clientCache.get(securityHandler.getUser());
+  if (dfsClient == null) {
+    response.setStatus(Nfs3Status.NFS3ERR_SERVERFAULT);
+    return response;
+  }
+  READLINK3Request request=null;
+  try {
+    request=new READLINK3Request(xdr);
+  }
+ catch (  IOException e) {
+    LOG.error("Invalid READLINK request");
+    return new READLINK3Response(Nfs3Status.NFS3ERR_INVAL);
+  }
+  FileHandle handle=request.getHandle();
+  if (LOG.isDebugEnabled()) {
+    LOG.debug("NFS READLINK fileId: " + handle.getFileId());
+  }
+  String fileIdPath=Nfs3Utils.getFileIdPath(handle);
+  try {
+    String target=dfsClient.getLinkTarget(fileIdPath);
+    Nfs3FileAttributes postOpAttr=Nfs3Utils.getFileAttr(dfsClient,fileIdPath,iug);
+    if (postOpAttr == null) {
+      LOG.info("Can't get path for fileId:" + handle.getFileId());
+      return new READLINK3Response(Nfs3Status.NFS3ERR_STALE);
+    }
+    if (postOpAttr.getType() != NfsFileType.NFSLNK.toValue()) {
+      LOG.error("Not a symlink, fileId:" + handle.getFileId());
+      return new READLINK3Response(Nfs3Status.NFS3ERR_INVAL);
+    }
+    if (target == null) {
+      LOG.error("Symlink target should not be null, fileId:" + handle.getFileId());
+      return new READLINK3Response(Nfs3Status.NFS3ERR_SERVERFAULT);
+    }
+    if (MAX_READ_TRANSFER_SIZE < target.getBytes().length) {
+      return new READLINK3Response(Nfs3Status.NFS3ERR_IO,postOpAttr,null);
+    }
+    return new READLINK3Response(Nfs3Status.NFS3_OK,postOpAttr,target.getBytes());
+  }
+ catch (  IOException e) {
+    LOG.warn("Readlink error: " + e.getClass(),e);
+    if (e instanceof FileNotFoundException) {
+      return new READLINK3Response(Nfs3Status.NFS3ERR_STALE);
+    }
+ else     if (e instanceof AccessControlException) {
+      return new READLINK3Response(Nfs3Status.NFS3ERR_ACCES);
+    }
+    return new READLINK3Response(Nfs3Status.NFS3ERR_IO);
+  }
+}

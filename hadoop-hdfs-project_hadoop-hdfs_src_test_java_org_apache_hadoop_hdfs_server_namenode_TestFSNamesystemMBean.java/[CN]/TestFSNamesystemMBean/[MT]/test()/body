@@ -1,0 +1,20 @@
+{
+  Configuration conf=new Configuration();
+  MiniDFSCluster cluster=null;
+  try {
+    cluster=new MiniDFSCluster.Builder(conf).build();
+    cluster.waitActive();
+    FSNamesystem fsn=cluster.getNameNode().namesystem;
+    MBeanServer mbs=ManagementFactory.getPlatformMBeanServer();
+    ObjectName mxbeanName=new ObjectName("Hadoop:service=NameNode,name=FSNamesystemState");
+    String snapshotStats=(String)(mbs.getAttribute(mxbeanName,"SnapshotStats"));
+    @SuppressWarnings("unchecked") Map<String,Object> stat=(Map<String,Object>)JSON.parse(snapshotStats);
+    assertTrue(stat.containsKey("SnapshottableDirectories") && (Long)stat.get("SnapshottableDirectories") == fsn.getNumSnapshottableDirs());
+    assertTrue(stat.containsKey("Snapshots") && (Long)stat.get("Snapshots") == fsn.getNumSnapshots());
+  }
+  finally {
+    if (cluster != null) {
+      cluster.shutdown();
+    }
+  }
+}
