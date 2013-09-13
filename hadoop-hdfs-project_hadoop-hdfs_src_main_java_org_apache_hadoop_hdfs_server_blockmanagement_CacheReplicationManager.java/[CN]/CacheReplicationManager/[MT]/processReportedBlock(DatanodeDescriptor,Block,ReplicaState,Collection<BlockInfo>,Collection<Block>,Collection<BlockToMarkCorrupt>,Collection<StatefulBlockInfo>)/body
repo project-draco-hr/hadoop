@@ -1,0 +1,56 @@
+{
+  if (LOG.isDebugEnabled()) {
+    LOG.debug("Reported cached block " + block + " on "+ dn+ " size "+ block.getNumBytes()+ " replicaState = "+ reportedState);
+  }
+  final boolean shouldPostponeBlocksFromFuture=blockManager.shouldPostponeBlocksFromFuture();
+  if (shouldPostponeBlocksFromFuture && namesystem.isGenStampInFuture(block)) {
+    if (LOG.isTraceEnabled()) {
+      LOG.trace("processReportedBlock: block " + block + " has a "+ "genstamp from the future and namenode is in standby mode,"+ " ignoring");
+    }
+    return null;
+  }
+  BlockInfo storedBlock=blockManager.blocksMap.getStoredBlock(block);
+  if (storedBlock == null) {
+    if (LOG.isTraceEnabled()) {
+      LOG.trace("processReportedBlock: block " + block + " not found "+ "in blocksMap, ignoring");
+    }
+    return null;
+  }
+  BlockUCState ucState=storedBlock.getBlockUCState();
+  if (!ucState.equals(BlockUCState.COMPLETE) || block.getGenerationStamp() != storedBlock.getGenerationStamp() || block.getNumBytes() != storedBlock.getNumBytes()) {
+    if (shouldPostponeBlocksFromFuture) {
+      if (LOG.isTraceEnabled()) {
+        LOG.trace("processReportedBlock: block " + block + " has a "+ "mismatching genstamp or length and namenode is in standby"+ " mode, ignoring");
+      }
+      return null;
+    }
+ else {
+      toInvalidate.add(block);
+      if (LOG.isTraceEnabled()) {
+        LOG.trace("processReportedBlock: block " + block + " scheduled"+ " for uncaching because it is misreplicated"+ " or under construction.");
+      }
+      return null;
+    }
+  }
+  BlockInfo cachedBlock=cachedBlocksMap.getStoredBlock(block);
+  if (cachedBlock == null) {
+    cachedBlock=new BlockInfo(block,0);
+    cachedBlocksMap.addBlockCollection(cachedBlock,storedBlock.getBlockCollection());
+  }
+  if (LOG.isDebugEnabled()) {
+    LOG.debug("In memory blockUCState = " + ucState);
+  }
+  if (blocksToUncache.contains(dn.getStorageID(),block)) {
+    if (LOG.isTraceEnabled()) {
+      LOG.trace("processReportedBlock: block " + block + " is already"+ " scheduled to be uncached, not adding it to the cachedBlocksMap");
+    }
+    return cachedBlock;
+  }
+  if (reportedState == ReplicaState.FINALIZED && cachedBlock.findDatanode(dn) < 0) {
+    toAdd.add(cachedBlock);
+  }
+  if (LOG.isTraceEnabled()) {
+    LOG.trace("processReportedBlock: block " + block + " scheduled"+ " to be added to cachedBlocksMap");
+  }
+  return cachedBlock;
+}

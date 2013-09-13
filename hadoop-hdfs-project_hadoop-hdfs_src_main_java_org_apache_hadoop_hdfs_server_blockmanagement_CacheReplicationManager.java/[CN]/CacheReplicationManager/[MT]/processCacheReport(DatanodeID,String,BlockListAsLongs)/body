@@ -1,0 +1,30 @@
+{
+  if (!isCachingEnabled) {
+    String error="cacheReport received from datanode " + nodeID + " but caching is disabled on the namenode ("+ DFSConfigKeys.DFS_NAMENODE_CACHING_ENABLED_KEY+ ")";
+    LOG.warn(error + ", ignoring");
+    throw new IOException(error);
+  }
+  namesystem.writeLock();
+  final long startTime=Time.now();
+  final long endTime;
+  try {
+    final DatanodeDescriptor node=datanodeManager.getDatanode(nodeID);
+    if (node == null || !node.isAlive) {
+      throw new IOException("processCacheReport from dead or unregistered node: " + nodeID);
+    }
+    if (namesystem.isInStartupSafeMode()) {
+      blockLogInfo("#processCacheReport: " + "discarded cache report from " + nodeID + " because namenode still in startup phase");
+      return;
+    }
+    processReport(node,newReport);
+  }
+  finally {
+    endTime=Time.now();
+    namesystem.writeUnlock();
+  }
+  final NameNodeMetrics metrics=NameNode.getNameNodeMetrics();
+  if (metrics != null) {
+    metrics.addCacheBlockReport((int)(endTime - startTime));
+  }
+  blockLogInfo("#processCacheReport: from " + nodeID + ", blocks: "+ newReport.getNumberOfBlocks()+ ", processing time: "+ (endTime - startTime)+ " msecs");
+}

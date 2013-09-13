@@ -21,6 +21,25 @@
     LOG.warn("removeEntry " + entryId + ": failed to find existing entry "+ existing+ " in entriesByDirective");
     return new Fallible<Long>(new UnexpectedRemovePathBasedCacheEntryException(entryId));
   }
+  String path=existing.getDirective().getPath();
+  List<PathBasedCacheEntry> entries=entriesByPath.get(path);
+  if (entries == null || !entries.remove(existing)) {
+    return new Fallible<Long>(new UnexpectedRemovePathBasedCacheEntryException(entryId));
+  }
+  if (entries.size() == 0) {
+    entriesByPath.remove(path);
+  }
   entriesById.remove(entryId);
+  try {
+    INode node=dir.getINode(existing.getDirective().getPath());
+    if (node.isFile()) {
+      namesystem.setCacheReplicationInt(existing.getDirective().getPath(),(short)0);
+    }
+  }
+ catch (  IOException e) {
+    LOG.warn("removeEntry " + entryId + ": failure while setting cache"+ " replication factor",e);
+    return new Fallible<Long>(e);
+  }
+  LOG.info("removeEntry successful for PathCacheEntry id " + entryId);
   return new Fallible<Long>(entryId);
 }

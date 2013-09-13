@@ -1,0 +1,71 @@
+{
+  int requiredRepl, effectiveRepl, additionalRepl;
+  List<DatanodeDescriptor> cachedNodes, storedNodes, targets;
+  final HashMap<Block,List<DatanodeDescriptor>> work=new HashMap<Block,List<DatanodeDescriptor>>();
+  namesystem.writeLock();
+  try {
+synchronized (neededCacheBlocks) {
+      for (      Block block : blocksToCache) {
+        requiredRepl=cacheReplManager.getCacheReplication(block);
+        cachedNodes=cacheReplManager.getSafeReplicas(cacheReplManager.cachedBlocksMap,block);
+        storedNodes=cacheReplManager.getSafeReplicas(blockManager.blocksMap,block);
+        effectiveRepl=cachedNodes.size() + pendingCacheBlocks.getNumReplicas(block);
+        if (effectiveRepl >= requiredRepl) {
+          neededCacheBlocks.remove(block);
+          blockLog.info("BLOCK* Removing " + block + " from neededCacheBlocks as it has enough cached replicas");
+          continue;
+        }
+        additionalRepl=requiredRepl - effectiveRepl;
+        targets=new ArrayList<DatanodeDescriptor>(storedNodes);
+        for (        DatanodeDescriptor dn : storedNodes) {
+          if (!cachedNodes.contains(dn)) {
+            targets.add(dn);
+          }
+        }
+        if (targets.size() < additionalRepl) {
+          if (LOG.isDebugEnabled()) {
+            LOG.debug("Block " + block + " cannot be cached on additional"+ " nodes because there are no more available datanodes"+ " with the block on disk.");
+          }
+        }
+        targets=CacheReplicationPolicy.chooseTargetsToCache(block,targets,additionalRepl);
+        if (targets.size() < additionalRepl) {
+          if (LOG.isDebugEnabled()) {
+            LOG.debug("Block " + block + " cannot be cached on additional"+ " nodes because there is not sufficient cache space on"+ " available target datanodes.");
+          }
+        }
+        if (targets.size() == 0) {
+          continue;
+        }
+        work.put(block,targets);
+        for (        DatanodeDescriptor target : targets) {
+          target.addBlockToBeCached(block);
+        }
+        pendingCacheBlocks.increment(block,targets.toArray(new DatanodeDescriptor[]{}));
+        if (blockLog.isDebugEnabled()) {
+          blockLog.debug("BLOCK* block " + block + " is moved from neededCacheBlocks to pendingCacheBlocks");
+        }
+        if (effectiveRepl + targets.size() >= requiredRepl) {
+          neededCacheBlocks.remove(block);
+        }
+      }
+    }
+  }
+  finally {
+    namesystem.writeUnlock();
+  }
+  if (blockLog.isInfoEnabled()) {
+    for (    Entry<Block,List<DatanodeDescriptor>> item : work.entrySet()) {
+      Block block=item.getKey();
+      List<DatanodeDescriptor> nodes=item.getValue();
+      StringBuilder targetList=new StringBuilder("datanode(s)");
+      for (      DatanodeDescriptor node : nodes) {
+        targetList.append(' ');
+        targetList.append(node);
+      }
+      blockLog.info("BLOCK* ask " + targetList + " to cache "+ block);
+    }
+  }
+  if (blockLog.isDebugEnabled()) {
+    blockLog.debug("BLOCK* neededCacheBlocks = " + neededCacheBlocks.size() + " pendingCacheBlocks = "+ pendingCacheBlocks.size());
+  }
+}

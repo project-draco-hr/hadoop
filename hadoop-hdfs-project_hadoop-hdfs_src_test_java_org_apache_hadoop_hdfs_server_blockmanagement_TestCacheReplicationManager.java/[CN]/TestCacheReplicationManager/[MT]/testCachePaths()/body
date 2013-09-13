@@ -1,0 +1,38 @@
+{
+  final String pool="friendlyPool";
+  nnRpc.addCachePool(new CachePoolInfo("friendlyPool"));
+  final int numFiles=3;
+  final int numBlocksPerFile=2;
+  final List<String> paths=new ArrayList<String>(numFiles);
+  for (int i=0; i < numFiles; i++) {
+    Path p=new Path(rootDir,"testCachePaths-" + i);
+    FileSystemTestHelper.createFile(fs,p,numBlocksPerFile,(int)BLOCK_SIZE);
+    paths.add(p.toUri().getPath());
+  }
+  int expected=0;
+  waitForExpectedNumCachedBlocks(expected);
+  for (int i=0; i < numFiles; i++) {
+    List<PathBasedCacheDirective> toAdd=new ArrayList<PathBasedCacheDirective>();
+    toAdd.add(new PathBasedCacheDirective(paths.get(i),pool));
+    List<Fallible<PathBasedCacheEntry>> fallibles=nnRpc.addPathBasedCacheDirectives(toAdd);
+    assertEquals("Unexpected number of fallibles",1,fallibles.size());
+    PathBasedCacheEntry entry=fallibles.get(0).get();
+    PathBasedCacheDirective directive=entry.getDirective();
+    assertEquals("Directive does not match requested path",paths.get(i),directive.getPath());
+    assertEquals("Directive does not match requested pool",pool,directive.getPool());
+    expected+=numBlocksPerFile;
+    waitForExpectedNumCachedBlocks(expected);
+  }
+  RemoteIterator<PathBasedCacheEntry> entries=nnRpc.listPathBasedCacheEntries(0,null,null);
+  for (int i=0; i < numFiles; i++) {
+    PathBasedCacheEntry entry=entries.next();
+    List<Long> toRemove=new ArrayList<Long>();
+    toRemove.add(entry.getEntryId());
+    List<Fallible<Long>> fallibles=nnRpc.removePathBasedCacheEntries(toRemove);
+    assertEquals("Unexpected number of fallibles",1,fallibles.size());
+    Long l=fallibles.get(0).get();
+    assertEquals("Removed entryId does not match requested",entry.getEntryId(),l.longValue());
+    expected-=numBlocksPerFile;
+    waitForExpectedNumCachedBlocks(expected);
+  }
+}

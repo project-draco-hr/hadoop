@@ -12,7 +12,7 @@
     directive.validate();
   }
  catch (  IOException ioe) {
-    LOG.info("addDirective " + directive + ": validation failed.");
+    LOG.info("addDirective " + directive + ": validation failed: "+ ioe.getClass().getName()+ ": "+ ioe.getMessage());
     return new Fallible<PathBasedCacheEntry>(ioe);
   }
   PathBasedCacheEntry existing=entriesByDirective.get(directive);
@@ -30,5 +30,23 @@
   LOG.info("addDirective " + directive + ": added cache directive "+ directive);
   entriesByDirective.put(directive,entry);
   entriesById.put(entry.getEntryId(),entry);
+  String path=directive.getPath();
+  List<PathBasedCacheEntry> entryList=entriesByPath.get(path);
+  if (entryList == null) {
+    entryList=new ArrayList<PathBasedCacheEntry>(1);
+    entriesByPath.put(path,entryList);
+  }
+  entryList.add(entry);
+  try {
+    INode node=dir.getINode(directive.getPath());
+    if (node.isFile()) {
+      INodeFile file=node.asFile();
+      namesystem.setCacheReplicationInt(directive.getPath(),file.getBlockReplication());
+    }
+  }
+ catch (  IOException ioe) {
+    LOG.info("addDirective " + directive + ": failed to cache file: "+ ioe.getClass().getName()+ ": "+ ioe.getMessage());
+    return new Fallible<PathBasedCacheEntry>(ioe);
+  }
   return new Fallible<PathBasedCacheEntry>(entry);
 }
