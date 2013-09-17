@@ -1,0 +1,38 @@
+{
+  init();
+  Set<String> states=parseQueries(stateQueries,true);
+  Set<String> types=parseQueries(typeQueries,false);
+  if (types.size() == 0) {
+    types.add(ANY);
+  }
+ else   if (types.size() != 1) {
+    throw new BadRequestException("# of applicationTypes = " + types.size() + ", we temporarily support at most one applicationType");
+  }
+  if (states.size() == 0) {
+    for (    YarnApplicationState state : YarnApplicationState.values()) {
+      states.add(state.toString().toLowerCase());
+    }
+  }
+  Map<YarnApplicationState,Map<String,Long>> scoreboard=buildScoreboard(states,types);
+  ConcurrentMap<ApplicationId,RMApp> apps=rm.getRMContext().getRMApps();
+  for (  RMApp rmapp : apps.values()) {
+    YarnApplicationState state=rmapp.createApplicationState();
+    String type=rmapp.getApplicationType().trim().toLowerCase();
+    if (states.contains(state.toString().toLowerCase())) {
+      if (types.contains(ANY)) {
+        countApp(scoreboard,state,ANY);
+      }
+ else       if (types.contains(type)) {
+        countApp(scoreboard,state,type);
+      }
+    }
+  }
+  ApplicationStatisticsInfo appStatInfo=new ApplicationStatisticsInfo();
+  for (  Map.Entry<YarnApplicationState,Map<String,Long>> partScoreboard : scoreboard.entrySet()) {
+    for (    Map.Entry<String,Long> statEntry : partScoreboard.getValue().entrySet()) {
+      StatisticsItemInfo statItem=new StatisticsItemInfo(partScoreboard.getKey(),statEntry.getKey(),statEntry.getValue());
+      appStatInfo.add(statItem);
+    }
+  }
+  return appStatInfo;
+}
