@@ -4,12 +4,20 @@
   ugi=UserGroupInformation.getCurrentUser();
   try {
     this.uri=new URI(uri.getScheme(),uri.getAuthority(),null,null,null);
+    this.nnAddrs=DFSUtil.resolve(this.uri,getDefaultPort(),conf);
   }
  catch (  URISyntaxException e) {
     throw new IllegalArgumentException(e);
   }
-  this.nnAddr=NetUtils.createSocketAddr(uri.getAuthority(),getDefaultPort());
-  this.retryPolicy=RetryUtils.getDefaultRetryPolicy(conf,DFSConfigKeys.DFS_HTTP_CLIENT_RETRY_POLICY_ENABLED_KEY,DFSConfigKeys.DFS_HTTP_CLIENT_RETRY_POLICY_ENABLED_DEFAULT,DFSConfigKeys.DFS_HTTP_CLIENT_RETRY_POLICY_SPEC_KEY,DFSConfigKeys.DFS_HTTP_CLIENT_RETRY_POLICY_SPEC_DEFAULT,SafeModeException.class);
+  if (!HAUtil.isLogicalUri(conf,this.uri)) {
+    this.retryPolicy=RetryUtils.getDefaultRetryPolicy(conf,DFSConfigKeys.DFS_HTTP_CLIENT_RETRY_POLICY_ENABLED_KEY,DFSConfigKeys.DFS_HTTP_CLIENT_RETRY_POLICY_ENABLED_DEFAULT,DFSConfigKeys.DFS_HTTP_CLIENT_RETRY_POLICY_SPEC_KEY,DFSConfigKeys.DFS_HTTP_CLIENT_RETRY_POLICY_SPEC_DEFAULT,SafeModeException.class);
+  }
+ else {
+    int maxFailoverAttempts=conf.getInt(DFSConfigKeys.DFS_HTTP_CLIENT_FAILOVER_MAX_ATTEMPTS_KEY,DFSConfigKeys.DFS_HTTP_CLIENT_FAILOVER_MAX_ATTEMPTS_DEFAULT);
+    int failoverSleepBaseMillis=conf.getInt(DFSConfigKeys.DFS_HTTP_CLIENT_FAILOVER_SLEEPTIME_BASE_KEY,DFSConfigKeys.DFS_HTTP_CLIENT_FAILOVER_SLEEPTIME_BASE_DEFAULT);
+    int failoverSleepMaxMillis=conf.getInt(DFSConfigKeys.DFS_HTTP_CLIENT_FAILOVER_SLEEPTIME_MAX_KEY,DFSConfigKeys.DFS_HTTP_CLIENT_FAILOVER_SLEEPTIME_MAX_DEFAULT);
+    this.retryPolicy=RetryPolicies.failoverOnNetworkException(RetryPolicies.TRY_ONCE_THEN_FAIL,maxFailoverAttempts,failoverSleepBaseMillis,failoverSleepMaxMillis);
+  }
   this.workingDir=getHomeDirectory();
   if (UserGroupInformation.isSecurityEnabled()) {
     initDelegationToken();
