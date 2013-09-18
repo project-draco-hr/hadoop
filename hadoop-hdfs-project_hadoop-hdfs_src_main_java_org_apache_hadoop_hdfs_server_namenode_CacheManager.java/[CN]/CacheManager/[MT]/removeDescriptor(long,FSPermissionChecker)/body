@@ -1,0 +1,41 @@
+{
+  if (id <= 0) {
+    LOG.info("removeDescriptor " + id + ": invalid non-positive "+ "descriptor ID.");
+    return new Fallible<Long>(new InvalidIdException(id));
+  }
+  PathBasedCacheEntry existing=entriesById.get(id);
+  if (existing == null) {
+    LOG.info("removeDescriptor " + id + ": entry not found.");
+    return new Fallible<Long>(new NoSuchIdException(id));
+  }
+  CachePool pool=cachePools.get(existing.getDescriptor().getPool());
+  if (pool == null) {
+    LOG.info("removeDescriptor " + id + ": pool not found for directive "+ existing.getDescriptor());
+    return new Fallible<Long>(new UnexpectedRemovePathBasedCacheDescriptorException(id));
+  }
+  if ((pc != null) && (!pc.checkPermission(pool,FsAction.WRITE))) {
+    LOG.info("removeDescriptor " + id + ": write permission denied to "+ "pool "+ pool+ " for entry "+ existing);
+    return new Fallible<Long>(new RemovePermissionDeniedException(id));
+  }
+  String path=existing.getDescriptor().getPath();
+  List<PathBasedCacheEntry> entries=entriesByPath.get(path);
+  if (entries == null || !entries.remove(existing)) {
+    return new Fallible<Long>(new UnexpectedRemovePathBasedCacheDescriptorException(id));
+  }
+  if (entries.size() == 0) {
+    entriesByPath.remove(path);
+  }
+  entriesById.remove(id);
+  try {
+    INode node=dir.getINode(existing.getDescriptor().getPath());
+    if (node != null && node.isFile()) {
+      namesystem.setCacheReplicationInt(existing.getDescriptor().getPath(),(short)0);
+    }
+  }
+ catch (  IOException e) {
+    LOG.warn("removeDescriptor " + id + ": failure while setting cache"+ " replication factor",e);
+    return new Fallible<Long>(e);
+  }
+  LOG.info("removeDescriptor successful for PathCacheEntry id " + id);
+  return new Fallible<Long>(id);
+}

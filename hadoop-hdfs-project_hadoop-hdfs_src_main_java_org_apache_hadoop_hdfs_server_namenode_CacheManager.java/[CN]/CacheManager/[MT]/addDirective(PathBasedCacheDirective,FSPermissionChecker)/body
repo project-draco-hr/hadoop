@@ -2,33 +2,32 @@
   CachePool pool=cachePools.get(directive.getPool());
   if (pool == null) {
     LOG.info("addDirective " + directive + ": pool not found.");
-    return new Fallible<PathBasedCacheEntry>(new InvalidPoolNameError(directive));
+    return new Fallible<PathBasedCacheDescriptor>(new InvalidPoolNameError(directive));
   }
   if ((pc != null) && (!pc.checkPermission(pool,FsAction.WRITE))) {
     LOG.info("addDirective " + directive + ": write permission denied.");
-    return new Fallible<PathBasedCacheEntry>(new PoolWritePermissionDeniedError(directive));
+    return new Fallible<PathBasedCacheDescriptor>(new PoolWritePermissionDeniedError(directive));
   }
   try {
     directive.validate();
   }
  catch (  IOException ioe) {
     LOG.info("addDirective " + directive + ": validation failed: "+ ioe.getClass().getName()+ ": "+ ioe.getMessage());
-    return new Fallible<PathBasedCacheEntry>(ioe);
+    return new Fallible<PathBasedCacheDescriptor>(ioe);
   }
-  PathBasedCacheEntry existing=entriesByDirective.get(directive);
+  PathBasedCacheEntry existing=findEntry(directive);
   if (existing != null) {
-    LOG.info("addDirective " + directive + ": there is an "+ "existing directive "+ existing);
-    return new Fallible<PathBasedCacheEntry>(existing);
+    LOG.info("addDirective " + directive + ": there is an "+ "existing directive "+ existing+ " in this pool.");
+    return new Fallible<PathBasedCacheDescriptor>(existing.getDescriptor());
   }
   PathBasedCacheEntry entry;
   try {
-    entry=new PathBasedCacheEntry(getNextEntryId(),directive);
+    entry=new PathBasedCacheEntry(getNextEntryId(),directive.getPath(),pool);
   }
  catch (  IOException ioe) {
-    return new Fallible<PathBasedCacheEntry>(new UnexpectedAddPathBasedCacheDirectiveException(directive));
+    return new Fallible<PathBasedCacheDescriptor>(new UnexpectedAddPathBasedCacheDirectiveException(directive));
   }
   LOG.info("addDirective " + directive + ": added cache directive "+ directive);
-  entriesByDirective.put(directive,entry);
   entriesById.put(entry.getEntryId(),entry);
   String path=directive.getPath();
   List<PathBasedCacheEntry> entryList=entriesByPath.get(path);
@@ -39,7 +38,7 @@
   entryList.add(entry);
   try {
     INode node=dir.getINode(directive.getPath());
-    if (node.isFile()) {
+    if (node != null && node.isFile()) {
       INodeFile file=node.asFile();
       namesystem.setCacheReplicationInt(directive.getPath(),file.getBlockReplication());
     }
@@ -49,7 +48,7 @@
   }
  catch (  IOException ioe) {
     LOG.info("addDirective " + directive + ": failed to cache file: "+ ioe.getClass().getName()+ ": "+ ioe.getMessage());
-    return new Fallible<PathBasedCacheEntry>(ioe);
+    return new Fallible<PathBasedCacheDescriptor>(ioe);
   }
-  return new Fallible<PathBasedCacheEntry>(entry);
+  return new Fallible<PathBasedCacheDescriptor>(entry.getDescriptor());
 }
