@@ -1,0 +1,54 @@
+{
+  if (storage.getStorageType() != storageType) {
+    logNodeIsNotChosen(storage,"storage types do not match, where the expected storage type is " + storageType);
+    return false;
+  }
+  if (storage.getState() == State.READ_ONLY) {
+    logNodeIsNotChosen(storage,"storage is read-only");
+    return false;
+  }
+  DatanodeDescriptor node=storage.getDatanodeDescriptor();
+  if (node.isDecommissionInProgress() || node.isDecommissioned()) {
+    logNodeIsNotChosen(storage,"the node is (being) decommissioned ");
+    return false;
+  }
+  if (avoidStaleNodes) {
+    if (node.isStale(this.staleInterval)) {
+      logNodeIsNotChosen(storage,"the node is stale ");
+      return false;
+    }
+  }
+  final long requiredSize=blockSize * HdfsConstants.MIN_BLOCKS_FOR_WRITE;
+  if (requiredSize > storage.getRemaining()) {
+    logNodeIsNotChosen(storage,"the storage does not have enough space ");
+    return false;
+  }
+  long remaining=node.getRemaining() - (node.getBlocksScheduled() * blockSize);
+  if (requiredSize > remaining) {
+    logNodeIsNotChosen(storage,"the node does not have enough space ");
+    return false;
+  }
+  if (considerLoad) {
+    double avgLoad=0;
+    int size=clusterMap.getNumOfLeaves();
+    if (size != 0 && stats != null) {
+      avgLoad=(double)stats.getTotalLoad() / size;
+    }
+    if (node.getXceiverCount() > (2.0 * avgLoad)) {
+      logNodeIsNotChosen(storage,"the node is too busy ");
+      return false;
+    }
+  }
+  String rackname=node.getNetworkLocation();
+  int counter=1;
+  for (  DatanodeStorageInfo resultStorage : results) {
+    if (rackname.equals(resultStorage.getDatanodeDescriptor().getNetworkLocation())) {
+      counter++;
+    }
+  }
+  if (counter > maxTargetPerRack) {
+    logNodeIsNotChosen(storage,"the rack has too many chosen nodes ");
+    return false;
+  }
+  return true;
+}
