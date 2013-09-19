@@ -1,0 +1,42 @@
+{
+  AMRMClientImpl<ContainerRequest> amClient=null;
+  try {
+    amClient=(AMRMClientImpl<ContainerRequest>)AMRMClient.<ContainerRequest>createAMRMClient();
+    amClient.init(conf);
+    amClient.start();
+    amClient.registerApplicationMaster("Host",10000,"");
+    assertTrue(amClient.ask.size() == 0);
+    assertTrue(amClient.release.size() == 0);
+    ContainerRequest storedContainer1=new ContainerRequest(capability,nodes,racks,priority);
+    amClient.addContainerRequest(storedContainer1);
+    assertTrue(amClient.ask.size() == 3);
+    assertTrue(amClient.release.size() == 0);
+    List<String> localNodeBlacklist=new ArrayList<String>();
+    localNodeBlacklist.add(node);
+    amClient.updateBlacklist(localNodeBlacklist,null);
+    int allocatedContainerCount=getAllocatedContainersNumber(amClient,DEFAULT_ITERATION);
+    assertTrue(allocatedContainerCount == 0);
+    amClient.updateBlacklist(null,localNodeBlacklist);
+    ContainerRequest storedContainer2=new ContainerRequest(capability,nodes,racks,priority);
+    amClient.addContainerRequest(storedContainer2);
+    allocatedContainerCount=getAllocatedContainersNumber(amClient,DEFAULT_ITERATION);
+    assertEquals(allocatedContainerCount,2);
+    assertTrue(amClient.blacklistAdditions.isEmpty());
+    assertTrue(amClient.blacklistRemovals.isEmpty());
+    ContainerRequest invalidContainerRequest=new ContainerRequest(Resource.newInstance(-1024,1),nodes,racks,priority);
+    amClient.addContainerRequest(invalidContainerRequest);
+    amClient.updateBlacklist(localNodeBlacklist,null);
+    try {
+      amClient.allocate(0.1f);
+      fail("there should be an exception here.");
+    }
+ catch (    Exception e) {
+      assertEquals(amClient.blacklistAdditions.size(),1);
+    }
+  }
+  finally {
+    if (amClient != null && amClient.getServiceState() == STATE.STARTED) {
+      amClient.stop();
+    }
+  }
+}

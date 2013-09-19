@@ -1,18 +1,31 @@
 {
   Options opts=new Options();
   opts.addOption(STATUS_CMD,true,"Prints the status of the application.");
-  opts.addOption(LIST_CMD,false,"List applications from the RM. " + "Supports optional use of --appTypes to filter applications " + "based on application type.");
+  opts.addOption(LIST_CMD,false,"List applications from the RM. " + "Supports optional use of -appTypes to filter applications " + "based on application type, "+ "and -appStates to filter applications based on application state");
   opts.addOption(KILL_CMD,true,"Kills the application.");
   opts.addOption(HELP_CMD,false,"Displays help for all commands.");
-  Option appTypeOpt=new Option(APP_TYPE_CMD,true,"Works with --list to filter applications based on their type.");
+  Option appTypeOpt=new Option(APP_TYPE_CMD,true,"Works with -list to " + "filter applications based on " + "input comma-separated list of application types.");
   appTypeOpt.setValueSeparator(',');
   appTypeOpt.setArgs(Option.UNLIMITED_VALUES);
-  appTypeOpt.setArgName("Comma-separated list of application types");
+  appTypeOpt.setArgName("Types");
   opts.addOption(appTypeOpt);
+  Option appStateOpt=new Option(APP_STATE_CMD,true,"Works with -list " + "to filter applications based on input comma-separated list of " + "application states. "+ getAllValidApplicationStates());
+  appStateOpt.setValueSeparator(',');
+  appStateOpt.setArgs(Option.UNLIMITED_VALUES);
+  appStateOpt.setArgName("States");
+  opts.addOption(appStateOpt);
   opts.getOption(KILL_CMD).setArgName("Application ID");
   opts.getOption(STATUS_CMD).setArgName("Application ID");
-  CommandLine cliParser=new GnuParser().parse(opts,args);
   int exitCode=-1;
+  CommandLine cliParser=null;
+  try {
+    cliParser=new GnuParser().parse(opts,args);
+  }
+ catch (  MissingArgumentException ex) {
+    sysout.println("Missing argument for options");
+    printUsage(opts);
+    return exitCode;
+  }
   if (cliParser.hasOption(STATUS_CMD)) {
     if (args.length != 2) {
       printUsage(opts);
@@ -21,18 +34,41 @@
     printApplicationReport(cliParser.getOptionValue(STATUS_CMD));
   }
  else   if (cliParser.hasOption(LIST_CMD)) {
+    allAppStates=false;
     Set<String> appTypes=new HashSet<String>();
     if (cliParser.hasOption(APP_TYPE_CMD)) {
       String[] types=cliParser.getOptionValues(APP_TYPE_CMD);
       if (types != null) {
         for (        String type : types) {
           if (!type.trim().isEmpty()) {
-            appTypes.add(type.trim());
+            appTypes.add(type.toUpperCase().trim());
           }
         }
       }
     }
-    listApplications(appTypes);
+    EnumSet<YarnApplicationState> appStates=EnumSet.noneOf(YarnApplicationState.class);
+    if (cliParser.hasOption(APP_STATE_CMD)) {
+      String[] states=cliParser.getOptionValues(APP_STATE_CMD);
+      if (states != null) {
+        for (        String state : states) {
+          if (!state.trim().isEmpty()) {
+            if (state.trim().equalsIgnoreCase(ALLSTATES_OPTION)) {
+              allAppStates=true;
+              break;
+            }
+            try {
+              appStates.add(YarnApplicationState.valueOf(state.toUpperCase().trim()));
+            }
+ catch (            IllegalArgumentException ex) {
+              sysout.println("The application state " + state + " is invalid.");
+              sysout.println(getAllValidApplicationStates());
+              return exitCode;
+            }
+          }
+        }
+      }
+    }
+    listApplications(appTypes,appStates);
   }
  else   if (cliParser.hasOption(KILL_CMD)) {
     if (args.length != 2) {

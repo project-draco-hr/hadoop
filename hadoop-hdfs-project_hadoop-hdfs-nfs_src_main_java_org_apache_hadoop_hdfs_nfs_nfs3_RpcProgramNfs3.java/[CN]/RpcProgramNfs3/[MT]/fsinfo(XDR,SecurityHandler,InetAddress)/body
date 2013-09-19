@@ -1,0 +1,40 @@
+{
+  FSINFO3Response response=new FSINFO3Response(Nfs3Status.NFS3_OK);
+  if (!checkAccessPrivilege(client,AccessPrivilege.READ_ONLY)) {
+    response.setStatus(Nfs3Status.NFS3ERR_ACCES);
+    return response;
+  }
+  DFSClient dfsClient=clientCache.get(securityHandler.getUser());
+  if (dfsClient == null) {
+    response.setStatus(Nfs3Status.NFS3ERR_SERVERFAULT);
+    return response;
+  }
+  FSINFO3Request request=null;
+  try {
+    request=new FSINFO3Request(xdr);
+  }
+ catch (  IOException e) {
+    LOG.error("Invalid FSINFO request");
+    return new FSINFO3Response(Nfs3Status.NFS3ERR_INVAL);
+  }
+  FileHandle handle=request.getHandle();
+  if (LOG.isDebugEnabled()) {
+    LOG.debug("NFS FSINFO fileId: " + handle.getFileId());
+  }
+  try {
+    int rtmax=MAX_READ_TRANSFER_SIZE;
+    int wtmax=MAX_WRITE_TRANSFER_SIZE;
+    int dtperf=MAX_READDIR_TRANSFER_SIZE;
+    Nfs3FileAttributes attrs=Nfs3Utils.getFileAttr(dfsClient,Nfs3Utils.getFileIdPath(handle),iug);
+    if (attrs == null) {
+      LOG.info("Can't get path for fileId:" + handle.getFileId());
+      return new FSINFO3Response(Nfs3Status.NFS3ERR_STALE);
+    }
+    int fsProperty=Nfs3Constant.FSF3_CANSETTIME | Nfs3Constant.FSF3_HOMOGENEOUS;
+    return new FSINFO3Response(Nfs3Status.NFS3_OK,attrs,rtmax,rtmax,1,wtmax,wtmax,1,dtperf,Long.MAX_VALUE,new NfsTime(1),fsProperty);
+  }
+ catch (  IOException e) {
+    LOG.warn("Exception ",e);
+    return new FSINFO3Response(Nfs3Status.NFS3ERR_IO);
+  }
+}

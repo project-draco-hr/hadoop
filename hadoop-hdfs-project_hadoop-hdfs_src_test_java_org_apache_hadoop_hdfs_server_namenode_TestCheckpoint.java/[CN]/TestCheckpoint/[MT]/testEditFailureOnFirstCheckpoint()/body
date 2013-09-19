@@ -1,0 +1,39 @@
+{
+  Configuration conf=new HdfsConfiguration();
+  SecondaryNameNode secondary=null;
+  MiniDFSCluster cluster=null;
+  FileSystem fs=null;
+  try {
+    cluster=new MiniDFSCluster.Builder(conf).numDataNodes(numDatanodes).build();
+    cluster.waitActive();
+    fs=cluster.getFileSystem();
+    fs.mkdirs(new Path("test-file-1"));
+    FSNamesystem fsns=cluster.getNamesystem();
+    fsns.enterSafeMode(false);
+    fsns.saveNamespace();
+    fsns.leaveSafeMode();
+    secondary=startSecondaryNameNode(conf);
+    Mockito.doThrow(new IOException("Injecting failure before edit rename")).when(faultInjector).beforeEditsRename();
+    try {
+      secondary.doCheckpoint();
+      fail("Fault injection failed.");
+    }
+ catch (    IOException ioe) {
+      GenericTestUtils.assertExceptionContains("Injecting failure before edit rename",ioe);
+    }
+    Mockito.reset(faultInjector);
+    secondary.doCheckpoint();
+  }
+  finally {
+    if (secondary != null) {
+      secondary.shutdown();
+    }
+    if (fs != null) {
+      fs.close();
+    }
+    if (cluster != null) {
+      cluster.shutdown();
+    }
+    Mockito.reset(faultInjector);
+  }
+}

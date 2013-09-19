@@ -8,14 +8,21 @@
     throw RPCUtil.getRemoteException(ie);
   }
   Set<String> applicationTypes=request.getApplicationTypes();
-  boolean bypassFilter=applicationTypes.isEmpty();
+  EnumSet<YarnApplicationState> applicationStates=request.getApplicationStates();
   List<ApplicationReport> reports=new ArrayList<ApplicationReport>();
   for (  RMApp application : this.rmContext.getRMApps().values()) {
-    if (!(bypassFilter || applicationTypes.contains(application.getApplicationType()))) {
-      continue;
+    if (applicationTypes != null && !applicationTypes.isEmpty()) {
+      if (!applicationTypes.contains(application.getApplicationType())) {
+        continue;
+      }
+    }
+    if (applicationStates != null && !applicationStates.isEmpty()) {
+      if (!applicationStates.contains(RMServerUtils.createApplicationState(application.getState()))) {
+        continue;
+      }
     }
     boolean allowAccess=checkAccess(callerUGI,application.getUser(),ApplicationAccessType.VIEW_APP,application.getApplicationId());
-    reports.add(application.createAndGetApplicationReport(allowAccess));
+    reports.add(application.createAndGetApplicationReport(callerUGI.getUserName(),allowAccess));
   }
   GetApplicationsResponse response=recordFactory.newRecordInstance(GetApplicationsResponse.class);
   response.setApplicationList(reports);

@@ -1,5 +1,8 @@
 {
   conf.setInt(YarnConfiguration.RM_AM_MAX_ATTEMPTS,2);
+  conf.set(CommonConfigurationKeysPublic.HADOOP_SECURITY_AUTHENTICATION,"kerberos");
+  conf.set(YarnConfiguration.RM_ADDRESS,"localhost:8032");
+  UserGroupInformation.setConfiguration(conf);
   MemoryRMStateStore memStore=new MemoryRMStateStore();
   memStore.init(conf);
   RMState rmState=memStore.getState();
@@ -9,11 +12,11 @@
   MockRM rm1=new TestSecurityMockRM(conf,memStore);
   rm1.start();
   Credentials ts=new Credentials();
-  GetDelegationTokenRequest request1=mock(GetDelegationTokenRequest.class);
-  when(request1.getRenewer()).thenReturn("renewer1");
+  GetDelegationTokenRequest request1=GetDelegationTokenRequest.newInstance("renewer1");
+  UserGroupInformation.getCurrentUser().setAuthenticationMethod(AuthMethod.KERBEROS);
   GetDelegationTokenResponse response1=rm1.getClientRMService().getDelegationToken(request1);
   org.apache.hadoop.yarn.api.records.Token delegationToken1=response1.getRMDelegationToken();
-  Token<RMDelegationTokenIdentifier> token1=ConverterUtils.convertFromYarn(delegationToken1,null);
+  Token<RMDelegationTokenIdentifier> token1=ConverterUtils.convertFromYarn(delegationToken1,rmAddr);
   RMDelegationTokenIdentifier dtId1=token1.decodeIdentifier();
   HashSet<RMDelegationTokenIdentifier> tokenIdentSet=new HashSet<RMDelegationTokenIdentifier>();
   ts.addToken(token1.getService(),token1);
@@ -27,11 +30,10 @@
   Assert.assertEquals(tokenIdentSet,allTokensRM1.keySet());
   Assert.assertEquals(allTokensRM1,rmDTState);
   Assert.assertEquals(rm1.getRMDTSecretManager().getLatestDTSequenceNumber(),rmState.getRMDTSecretManagerState().getDTSequenceNumber());
-  GetDelegationTokenRequest request2=mock(GetDelegationTokenRequest.class);
-  when(request2.getRenewer()).thenReturn("renewer2");
+  GetDelegationTokenRequest request2=GetDelegationTokenRequest.newInstance("renewer2");
   GetDelegationTokenResponse response2=rm1.getClientRMService().getDelegationToken(request2);
   org.apache.hadoop.yarn.api.records.Token delegationToken2=response2.getRMDelegationToken();
-  Token<RMDelegationTokenIdentifier> token2=ConverterUtils.convertFromYarn(delegationToken2,null);
+  Token<RMDelegationTokenIdentifier> token2=ConverterUtils.convertFromYarn(delegationToken2,rmAddr);
   RMDelegationTokenIdentifier dtId2=token2.decodeIdentifier();
   try {
     rm1.getRMDTSecretManager().cancelToken(token2,UserGroupInformation.getCurrentUser().getUserName());
@@ -44,7 +46,7 @@
   MockRM rm2=new TestSecurityMockRM(conf,memStore);
   rm2.start();
   Map<RMDelegationTokenIdentifier,Long> allTokensRM2=rm2.getRMDTSecretManager().getAllTokens();
-  Assert.assertEquals(allTokensRM1,allTokensRM2);
+  Assert.assertEquals(allTokensRM2.keySet(),allTokensRM1.keySet());
   Assert.assertTrue(rm2.getRMDTSecretManager().getAllMasterKeys().containsAll(allKeysRM1));
   Assert.assertEquals(rm1.getRMDTSecretManager().getLatestDTSequenceNumber(),rm2.getRMDTSecretManager().getLatestDTSequenceNumber());
   Long renewDateBeforeRenew=allTokensRM2.get(dtId1);

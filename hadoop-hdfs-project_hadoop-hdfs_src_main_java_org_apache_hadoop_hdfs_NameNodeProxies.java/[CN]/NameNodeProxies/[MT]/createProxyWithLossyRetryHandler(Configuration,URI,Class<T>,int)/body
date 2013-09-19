@@ -1,0 +1,17 @@
+{
+  Preconditions.checkArgument(numResponseToDrop > 0);
+  Class<FailoverProxyProvider<T>> failoverProxyProviderClass=getFailoverProxyProviderClass(config,nameNodeUri,xface);
+  if (failoverProxyProviderClass != null) {
+    FailoverProxyProvider<T> failoverProxyProvider=createFailoverProxyProvider(config,failoverProxyProviderClass,xface,nameNodeUri);
+    int delay=config.getInt(DFS_CLIENT_FAILOVER_SLEEPTIME_BASE_KEY,DFS_CLIENT_FAILOVER_SLEEPTIME_BASE_DEFAULT);
+    int maxCap=config.getInt(DFS_CLIENT_FAILOVER_SLEEPTIME_MAX_KEY,DFS_CLIENT_FAILOVER_SLEEPTIME_MAX_DEFAULT);
+    int maxFailoverAttempts=config.getInt(DFS_CLIENT_FAILOVER_MAX_ATTEMPTS_KEY,DFS_CLIENT_FAILOVER_MAX_ATTEMPTS_DEFAULT);
+    InvocationHandler dummyHandler=new LossyRetryInvocationHandler<T>(numResponseToDrop,failoverProxyProvider,RetryPolicies.failoverOnNetworkException(RetryPolicies.TRY_ONCE_THEN_FAIL,Math.max(numResponseToDrop + 1,maxFailoverAttempts),delay,maxCap));
+    T proxy=(T)Proxy.newProxyInstance(failoverProxyProvider.getInterface().getClassLoader(),new Class[]{xface},dummyHandler);
+    Text dtService=HAUtil.buildTokenServiceForLogicalUri(nameNodeUri);
+    return new ProxyAndInfo<T>(proxy,dtService);
+  }
+ else {
+    throw new IllegalStateException("Currently creating proxy using " + "LossyRetryInvocationHandler requires NN HA setup");
+  }
+}

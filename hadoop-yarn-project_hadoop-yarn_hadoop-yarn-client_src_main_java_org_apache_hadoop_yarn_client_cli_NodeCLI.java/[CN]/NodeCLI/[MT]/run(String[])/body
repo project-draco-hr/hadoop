@@ -1,9 +1,25 @@
 {
   Options opts=new Options();
   opts.addOption(STATUS_CMD,true,"Prints the status report of the node.");
-  opts.addOption(LIST_CMD,false,"Lists all the nodes in the RUNNING state.");
-  CommandLine cliParser=new GnuParser().parse(opts,args);
+  opts.addOption(LIST_CMD,false,"List all running nodes. " + "Supports optional use of -states to filter nodes " + "based on node state, all -all to list all nodes.");
+  Option nodeStateOpt=new Option(NODE_STATE_CMD,true,"Works with -list to filter nodes based on input comma-separated list of node states.");
+  nodeStateOpt.setValueSeparator(',');
+  nodeStateOpt.setArgs(Option.UNLIMITED_VALUES);
+  nodeStateOpt.setArgName("States");
+  opts.addOption(nodeStateOpt);
+  Option allOpt=new Option(NODE_ALL,false,"Works with -list to list all nodes.");
+  opts.addOption(allOpt);
+  opts.getOption(STATUS_CMD).setArgName("NodeId");
   int exitCode=-1;
+  CommandLine cliParser=null;
+  try {
+    cliParser=new GnuParser().parse(opts,args);
+  }
+ catch (  MissingArgumentException ex) {
+    sysout.println("Missing argument for options");
+    printUsage(opts);
+    return exitCode;
+  }
   if (cliParser.hasOption("status")) {
     if (args.length != 2) {
       printUsage(opts);
@@ -12,7 +28,26 @@
     printNodeStatus(cliParser.getOptionValue("status"));
   }
  else   if (cliParser.hasOption("list")) {
-    listClusterNodes();
+    Set<NodeState> nodeStates=new HashSet<NodeState>();
+    if (cliParser.hasOption(NODE_ALL)) {
+      for (      NodeState state : NodeState.values()) {
+        nodeStates.add(state);
+      }
+    }
+ else     if (cliParser.hasOption(NODE_STATE_CMD)) {
+      String[] types=cliParser.getOptionValues(NODE_STATE_CMD);
+      if (types != null) {
+        for (        String type : types) {
+          if (!type.trim().isEmpty()) {
+            nodeStates.add(NodeState.valueOf(type.trim().toUpperCase()));
+          }
+        }
+      }
+    }
+ else {
+      nodeStates.add(NodeState.RUNNING);
+    }
+    listClusterNodes(nodeStates);
   }
  else {
     syserr.println("Invalid Command Usage : ");

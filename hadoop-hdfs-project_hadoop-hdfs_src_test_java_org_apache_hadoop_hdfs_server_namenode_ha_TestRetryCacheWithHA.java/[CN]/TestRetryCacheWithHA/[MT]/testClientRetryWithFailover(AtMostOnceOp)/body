@@ -1,0 +1,36 @@
+{
+  final Map<String,Object> results=new HashMap<String,Object>();
+  op.prepare();
+  DummyRetryInvocationHandler.block.set(true);
+  new Thread(){
+    @Override public void run(){
+      try {
+        op.invoke();
+        Object result=op.getResult();
+        LOG.info("Operation " + op.name + " finished");
+synchronized (TestRetryCacheWithHA.this) {
+          results.put(op.name,result == null ? "SUCCESS" : result);
+          TestRetryCacheWithHA.this.notifyAll();
+        }
+      }
+ catch (      Exception e) {
+        LOG.info("Got Exception while calling " + op.name,e);
+      }
+ finally {
+        IOUtils.cleanup(null,op.client);
+      }
+    }
+  }
+.start();
+  assertTrue("After waiting the operation " + op.name + " still has not taken effect on NN yet",op.checkNamenodeBeforeReturn());
+  cluster.transitionToStandby(0);
+  cluster.transitionToActive(1);
+  LOG.info("Setting block to false");
+  DummyRetryInvocationHandler.block.set(false);
+synchronized (this) {
+    while (!results.containsKey(op.name)) {
+      this.wait();
+    }
+    LOG.info("Got the result of " + op.name + ": "+ results.get(op.name));
+  }
+}
