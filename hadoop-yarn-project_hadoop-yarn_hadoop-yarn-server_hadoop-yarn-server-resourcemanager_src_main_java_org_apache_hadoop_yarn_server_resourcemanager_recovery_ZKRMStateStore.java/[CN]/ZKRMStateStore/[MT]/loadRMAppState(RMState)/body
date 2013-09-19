@@ -1,0 +1,49 @@
+{
+  List<String> childNodes=zkClient.getChildren(rmAppRoot,true);
+  List<ApplicationAttemptState> attempts=new ArrayList<ApplicationAttemptState>();
+  for (  String childNodeName : childNodes) {
+    String childNodePath=getNodePath(rmAppRoot,childNodeName);
+    byte[] childData=getDataWithRetries(childNodePath,true);
+    if (childNodeName.startsWith(ApplicationId.appIdStrPrefix)) {
+      LOG.info("Loading application from znode: " + childNodeName);
+      ApplicationId appId=ConverterUtils.toApplicationId(childNodeName);
+      ApplicationStateDataPBImpl appStateData=new ApplicationStateDataPBImpl(ApplicationStateDataProto.parseFrom(childData));
+      ApplicationState appState=new ApplicationState(appStateData.getSubmitTime(),appStateData.getApplicationSubmissionContext(),appStateData.getUser());
+      if (!appId.equals(appState.context.getApplicationId())) {
+        throw new YarnRuntimeException("The child node name is different " + "from the application id");
+      }
+      rmState.appState.put(appId,appState);
+    }
+ else     if (childNodeName.startsWith(ApplicationAttemptId.appAttemptIdStrPrefix)) {
+      LOG.info("Loading application attempt from znode: " + childNodeName);
+      ApplicationAttemptId attemptId=ConverterUtils.toApplicationAttemptId(childNodeName);
+      ApplicationAttemptStateDataPBImpl attemptStateData=new ApplicationAttemptStateDataPBImpl(ApplicationAttemptStateDataProto.parseFrom(childData));
+      Credentials credentials=null;
+      if (attemptStateData.getAppAttemptTokens() != null) {
+        credentials=new Credentials();
+        DataInputByteBuffer dibb=new DataInputByteBuffer();
+        dibb.reset(attemptStateData.getAppAttemptTokens());
+        credentials.readTokenStorageStream(dibb);
+      }
+      ApplicationAttemptState attemptState=new ApplicationAttemptState(attemptId,attemptStateData.getMasterContainer(),credentials);
+      if (!attemptId.equals(attemptState.getAttemptId())) {
+        throw new YarnRuntimeException("The child node name is different " + "from the application attempt id");
+      }
+      attempts.add(attemptState);
+    }
+ else {
+      LOG.info("Unknown child node with name: " + childNodeName);
+    }
+  }
+  for (  ApplicationAttemptState attemptState : attempts) {
+    ApplicationId appId=attemptState.getAttemptId().getApplicationId();
+    ApplicationState appState=rmState.appState.get(appId);
+    if (appState != null) {
+      appState.attempts.put(attemptState.getAttemptId(),attemptState);
+    }
+ else {
+      LOG.info("Application node not found for attempt: " + attemptState.getAttemptId());
+      deleteWithRetries(getNodePath(rmAppRoot,attemptState.getAttemptId().toString()),0);
+    }
+  }
+}

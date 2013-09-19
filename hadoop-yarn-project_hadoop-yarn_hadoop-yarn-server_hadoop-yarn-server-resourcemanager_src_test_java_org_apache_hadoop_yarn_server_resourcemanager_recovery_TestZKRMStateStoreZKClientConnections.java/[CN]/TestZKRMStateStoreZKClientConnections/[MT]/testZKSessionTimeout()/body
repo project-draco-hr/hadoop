@@ -1,0 +1,23 @@
+{
+  TestZKClient zkClientTester=new TestZKClient();
+  String path="/test";
+  YarnConfiguration conf=new YarnConfiguration();
+  conf.setInt(YarnConfiguration.ZK_RM_STATE_STORE_TIMEOUT_MS,100);
+  ZKRMStateStore store=(ZKRMStateStore)zkClientTester.getRMStateStore(conf);
+  TestDispatcher dispatcher=new TestDispatcher();
+  store.setRMDispatcher(dispatcher);
+  zkClientTester.forExpire=true;
+  store.createWithRetries(path,null,ZooDefs.Ids.OPEN_ACL_UNSAFE,CreateMode.PERSISTENT);
+  store.getDataWithRetries(path,true);
+  store.setDataWithRetries(path,"bytes".getBytes(),0);
+  zkClientTester.syncBarrier.await();
+  try {
+    byte[] ret=store.getDataWithRetries(path,false);
+    Assert.assertEquals("bytes",new String(ret));
+  }
+ catch (  Exception e) {
+    String error="New session creation failed";
+    LOG.error(error,e);
+    fail(error);
+  }
+}
