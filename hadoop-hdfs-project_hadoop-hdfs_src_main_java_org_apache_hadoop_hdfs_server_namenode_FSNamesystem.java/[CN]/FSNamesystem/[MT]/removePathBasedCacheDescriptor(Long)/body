@@ -1,0 +1,26 @@
+{
+  CacheEntry retryCacheEntry=RetryCache.waitForCompletion(retryCache);
+  if (retryCacheEntry != null && retryCacheEntry.isSuccess()) {
+    return;
+  }
+  final FSPermissionChecker pc=isPermissionEnabled ? getPermissionChecker() : null;
+  boolean success=false;
+  checkOperation(OperationCategory.WRITE);
+  writeLock();
+  try {
+    checkOperation(OperationCategory.WRITE);
+    if (isInSafeMode()) {
+      throw new SafeModeException("Cannot remove PathBasedCache directives",safeMode);
+    }
+    cacheManager.removeDescriptor(id,pc);
+    success=true;
+  }
+  finally {
+    writeUnlock();
+    if (isAuditEnabled() && isExternalInvocation()) {
+      logAuditEvent(success,"removePathBasedCacheDescriptors",null,null,null);
+    }
+    RetryCache.setState(retryCacheEntry,success);
+  }
+  getEditLog().logSync();
+}

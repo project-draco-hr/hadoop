@@ -1,0 +1,93 @@
+{
+  proto.addCachePool(new CachePoolInfo("pool1").setMode(new FsPermission((short)0777)));
+  proto.addCachePool(new CachePoolInfo("pool2").setMode(new FsPermission((short)0777)));
+  proto.addCachePool(new CachePoolInfo("pool3").setMode(new FsPermission((short)0777)));
+  proto.addCachePool(new CachePoolInfo("pool4").setMode(new FsPermission((short)0)));
+  PathBasedCacheDirective alpha=new PathBasedCacheDirective("/alpha","pool1");
+  PathBasedCacheDirective beta=new PathBasedCacheDirective("/beta","pool2");
+  PathBasedCacheDirective delta=new PathBasedCacheDirective("/delta","pool1");
+  PathBasedCacheDescriptor alphaD=addAsUnprivileged(alpha);
+  PathBasedCacheDescriptor alphaD2=addAsUnprivileged(alpha);
+  assertEquals("Expected to get the same descriptor when re-adding" + "an existing PathBasedCacheDirective",alphaD,alphaD2);
+  PathBasedCacheDescriptor betaD=addAsUnprivileged(beta);
+  try {
+    addAsUnprivileged(new PathBasedCacheDirective("","pool3"));
+    fail("expected an error when adding an empty path");
+  }
+ catch (  IOException ioe) {
+    assertTrue(ioe instanceof EmptyPathError);
+  }
+  try {
+    addAsUnprivileged(new PathBasedCacheDirective("/unicorn","no_such_pool"));
+    fail("expected an error when adding to a non-existent pool.");
+  }
+ catch (  IOException ioe) {
+    assertTrue(ioe instanceof InvalidPoolNameError);
+  }
+  try {
+    addAsUnprivileged(new PathBasedCacheDirective("/blackhole","pool4"));
+    fail("expected an error when adding to a pool with " + "mode 0 (no permissions for anyone).");
+  }
+ catch (  IOException ioe) {
+    assertTrue(ioe instanceof PoolWritePermissionDeniedError);
+  }
+  try {
+    addAsUnprivileged(new PathBasedCacheDirective("//illegal/path/","pool1"));
+    fail("expected an error when adding a malformed path " + "to the cache directives.");
+  }
+ catch (  IOException ioe) {
+    assertTrue(ioe instanceof InvalidPathNameError);
+  }
+  try {
+    addAsUnprivileged(new PathBasedCacheDirective("/emptypoolname",""));
+    Assert.fail("expected an error when adding a PathBasedCache " + "directive with an empty pool name.");
+  }
+ catch (  IOException ioe) {
+    Assert.assertTrue(ioe instanceof InvalidPoolNameError);
+  }
+  try {
+    addAsUnprivileged(new PathBasedCacheDirective("bogus","pool1"));
+    Assert.fail("expected an error when adding a PathBasedCache " + "directive with a non-absolute path name.");
+  }
+ catch (  IOException ioe) {
+    Assert.assertTrue(ioe instanceof InvalidPathNameError);
+  }
+  PathBasedCacheDescriptor deltaD=addAsUnprivileged(delta);
+  RemoteIterator<PathBasedCacheDescriptor> iter;
+  iter=proto.listPathBasedCacheDescriptors(0,null,null);
+  validateListAll(iter,alphaD,betaD,deltaD);
+  iter=proto.listPathBasedCacheDescriptors(0,"pool3",null);
+  Assert.assertFalse(iter.hasNext());
+  iter=proto.listPathBasedCacheDescriptors(0,"pool1",null);
+  validateListAll(iter,alphaD,deltaD);
+  iter=proto.listPathBasedCacheDescriptors(0,"pool2",null);
+  validateListAll(iter,betaD);
+  dfs.removePathBasedCacheDescriptor(betaD);
+  iter=proto.listPathBasedCacheDescriptors(0,"pool2",null);
+  Assert.assertFalse(iter.hasNext());
+  try {
+    dfs.removePathBasedCacheDescriptor(betaD);
+    Assert.fail("expected an error when removing a non-existent ID");
+  }
+ catch (  IOException ioe) {
+    Assert.assertTrue(ioe instanceof NoSuchIdException);
+  }
+  try {
+    proto.removePathBasedCacheDescriptor(-42l);
+    Assert.fail("expected an error when removing a negative ID");
+  }
+ catch (  IOException ioe) {
+    Assert.assertTrue(ioe instanceof InvalidIdException);
+  }
+  try {
+    proto.removePathBasedCacheDescriptor(43l);
+    Assert.fail("expected an error when removing a non-existent ID");
+  }
+ catch (  IOException ioe) {
+    Assert.assertTrue(ioe instanceof NoSuchIdException);
+  }
+  dfs.removePathBasedCacheDescriptor(alphaD);
+  dfs.removePathBasedCacheDescriptor(deltaD);
+  iter=proto.listPathBasedCacheDescriptors(0,null,null);
+  assertFalse(iter.hasNext());
+}
