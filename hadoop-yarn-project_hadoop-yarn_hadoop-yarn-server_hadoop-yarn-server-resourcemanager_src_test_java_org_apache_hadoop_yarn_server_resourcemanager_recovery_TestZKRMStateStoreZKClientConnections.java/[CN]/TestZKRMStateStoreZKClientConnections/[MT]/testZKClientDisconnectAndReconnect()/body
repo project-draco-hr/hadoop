@@ -1,0 +1,33 @@
+{
+  TestZKClient zkClientTester=new TestZKClient();
+  String path="/test";
+  YarnConfiguration conf=new YarnConfiguration();
+  conf.setInt(YarnConfiguration.ZK_RM_STATE_STORE_TIMEOUT_MS,100);
+  ZKRMStateStore store=(ZKRMStateStore)zkClientTester.getRMStateStore(conf);
+  TestDispatcher dispatcher=new TestDispatcher();
+  store.setRMDispatcher(dispatcher);
+  store.createWithRetries(path,null,ZooDefs.Ids.OPEN_ACL_UNSAFE,CreateMode.PERSISTENT);
+  store.getDataWithRetries(path,true);
+  store.setDataWithRetries(path,"newBytes".getBytes(),0);
+  stopServer();
+  zkClientTester.watcher.waitForDisconnected(ZK_OP_WAIT_TIME);
+  try {
+    store.getDataWithRetries(path,true);
+    fail("Expected ZKClient time out exception");
+  }
+ catch (  Exception e) {
+    assertTrue(e.getMessage().contains("Wait for ZKClient creation timed out"));
+  }
+  startServer();
+  zkClientTester.watcher.waitForConnected(ZK_OP_WAIT_TIME);
+  byte[] ret=null;
+  try {
+    ret=store.getDataWithRetries(path,true);
+  }
+ catch (  Exception e) {
+    String error="ZKRMStateStore Session restore failed";
+    LOG.error(error,e);
+    fail(error);
+  }
+  Assert.assertEquals("newBytes",new String(ret));
+}

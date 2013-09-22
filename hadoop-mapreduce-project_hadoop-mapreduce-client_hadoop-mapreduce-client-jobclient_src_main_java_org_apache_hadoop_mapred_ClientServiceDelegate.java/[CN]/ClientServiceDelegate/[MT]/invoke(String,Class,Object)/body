@@ -9,23 +9,42 @@
 catch (  NoSuchMethodException e) {
     throw new YarnRuntimeException("Method name mismatch",e);
   }
-  int maxRetries=this.conf.getInt(MRJobConfig.MR_CLIENT_MAX_RETRIES,MRJobConfig.DEFAULT_MR_CLIENT_MAX_RETRIES);
+  maxClientRetry=this.conf.getInt(MRJobConfig.MR_CLIENT_MAX_RETRIES,MRJobConfig.DEFAULT_MR_CLIENT_MAX_RETRIES);
   IOException lastException=null;
-  while (maxRetries > 0) {
+  while (maxClientRetry > 0) {
+    MRClientProtocol MRClientProxy=null;
     try {
-      return methodOb.invoke(getProxy(),args);
+      MRClientProxy=getProxy();
+      return methodOb.invoke(MRClientProxy,args);
     }
  catch (    InvocationTargetException e) {
       LOG.debug("Failed to contact AM/History for job " + jobId + " retrying..",e.getTargetException());
       realProxy=null;
-      maxRetries--;
+      if (!usingAMProxy.get()) {
+        maxClientRetry--;
+      }
+      usingAMProxy.set(false);
       lastException=new IOException(e.getTargetException());
+      try {
+        Thread.sleep(100);
+      }
+ catch (      InterruptedException ie) {
+        LOG.warn("ClientServiceDelegate invoke call interrupted",ie);
+        throw new YarnRuntimeException(ie);
+      }
     }
 catch (    Exception e) {
       LOG.debug("Failed to contact AM/History for job " + jobId + "  Will retry..",e);
       realProxy=null;
-      maxRetries--;
+      maxClientRetry--;
       lastException=new IOException(e.getMessage());
+      try {
+        Thread.sleep(100);
+      }
+ catch (      InterruptedException ie) {
+        LOG.warn("ClientServiceDelegate invoke call interrupted",ie);
+        throw new YarnRuntimeException(ie);
+      }
     }
   }
   throw lastException;
