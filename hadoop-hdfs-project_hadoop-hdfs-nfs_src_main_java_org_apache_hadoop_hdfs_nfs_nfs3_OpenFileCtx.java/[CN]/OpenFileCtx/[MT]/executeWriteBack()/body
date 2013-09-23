@@ -1,56 +1,21 @@
 {
-  long nextOffset;
-  OffsetRange key;
-  WriteCtx writeCtx;
+  Preconditions.checkState(asyncStatus,"The openFileCtx has false async status");
   try {
-    while (true) {
-      lockCtx();
-      if (!asyncStatus) {
-        LOG.fatal("The openFileCtx has false async status");
-        throw new RuntimeException("The openFileCtx has false async status");
-      }
-      if (pendingWrites.isEmpty()) {
-        if (LOG.isDebugEnabled()) {
-          LOG.debug("The asyn write task has no pendding writes, fileId: " + latestAttr.getFileId());
-        }
-        break;
-      }
-      if (!activeState) {
-        if (LOG.isDebugEnabled()) {
-          LOG.debug("The openFileCtx is not active anymore, fileId: " + latestAttr.getFileId());
-        }
-        break;
-      }
-      nextOffset=getNextOffsetUnprotected();
-      key=pendingWrites.firstKey();
-      if (LOG.isTraceEnabled()) {
-        LOG.trace("key.getMin()=" + key.getMin() + " nextOffset="+ nextOffset);
-      }
-      if (key.getMin() > nextOffset) {
-        if (LOG.isDebugEnabled()) {
-          LOG.info("The next sequencial write has not arrived yet");
-        }
-        break;
-      }
- else       if (key.getMin() < nextOffset && key.getMax() > nextOffset) {
-        LOG.fatal("Got a overlapping write (" + key.getMin() + ","+ key.getMax()+ "), nextOffset="+ nextOffset);
-        throw new RuntimeException("Got a overlapping write (" + key.getMin() + ","+ key.getMax()+ "), nextOffset="+ nextOffset);
-      }
- else {
-        if (LOG.isTraceEnabled()) {
-          LOG.trace("Remove write(" + key.getMin() + "-"+ key.getMax()+ ") from the list");
-        }
-        writeCtx=pendingWrites.remove(key);
-        doSingleWrite(writeCtx);
+    while (activeState) {
+      WriteCtx toWrite=offerNextToWrite();
+      if (toWrite != null) {
+        doSingleWrite(toWrite);
         updateLastAccessTime();
       }
-      unlockCtx();
+ else {
+        break;
+      }
+    }
+    if (!activeState && LOG.isDebugEnabled()) {
+      LOG.debug("The openFileCtx is not active anymore, fileId: " + +latestAttr.getFileId());
     }
   }
   finally {
     asyncStatus=false;
-    if (ctxLock.isHeldByCurrentThread()) {
-      unlockCtx();
-    }
   }
 }

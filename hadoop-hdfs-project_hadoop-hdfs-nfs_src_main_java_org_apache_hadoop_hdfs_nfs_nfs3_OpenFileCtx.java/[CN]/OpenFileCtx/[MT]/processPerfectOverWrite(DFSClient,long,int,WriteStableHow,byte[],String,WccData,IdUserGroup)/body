@@ -1,21 +1,29 @@
 {
-  assert(ctxLock.isLocked());
   WRITE3Response response=null;
   byte[] readbuffer=new byte[count];
   int readCount=0;
   FSDataInputStream fis=null;
   try {
     fos.hsync(EnumSet.of(SyncFlag.UPDATE_LENGTH));
+  }
+ catch (  ClosedChannelException closedException) {
+    LOG.info("The FSDataOutputStream has been closed. " + "Continue processing the perfect overwrite.");
+  }
+catch (  IOException e) {
+    LOG.info("hsync failed when processing possible perfect overwrite, path=" + path + " error:"+ e);
+    return new WRITE3Response(Nfs3Status.NFS3ERR_IO,wccData,0,stableHow,Nfs3Constant.WRITE_COMMIT_VERF);
+  }
+  try {
     fis=new FSDataInputStream(dfsClient.open(path));
     readCount=fis.read(offset,readbuffer,0,count);
     if (readCount < count) {
       LOG.error("Can't read back " + count + " bytes, partial read size:"+ readCount);
-      return response=new WRITE3Response(Nfs3Status.NFS3ERR_IO,wccData,0,stableHow,Nfs3Constant.WRITE_COMMIT_VERF);
+      return new WRITE3Response(Nfs3Status.NFS3ERR_IO,wccData,0,stableHow,Nfs3Constant.WRITE_COMMIT_VERF);
     }
   }
  catch (  IOException e) {
     LOG.info("Read failed when processing possible perfect overwrite, path=" + path + " error:"+ e);
-    return response=new WRITE3Response(Nfs3Status.NFS3ERR_IO,wccData,0,stableHow,Nfs3Constant.WRITE_COMMIT_VERF);
+    return new WRITE3Response(Nfs3Status.NFS3ERR_IO,wccData,0,stableHow,Nfs3Constant.WRITE_COMMIT_VERF);
   }
  finally {
     IOUtils.cleanup(LOG,fis);

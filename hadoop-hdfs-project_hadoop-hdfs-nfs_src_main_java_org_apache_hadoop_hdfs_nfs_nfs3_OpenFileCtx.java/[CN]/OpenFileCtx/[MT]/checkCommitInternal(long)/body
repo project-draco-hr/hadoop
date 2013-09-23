@@ -1,9 +1,11 @@
 {
   if (commitOffset == 0) {
-    commitOffset=getNextOffsetUnprotected();
+    commitOffset=nextOffset.get();
   }
   long flushed=getFlushedOffset();
-  LOG.info("getFlushedOffset=" + flushed + " commitOffset="+ commitOffset);
+  if (LOG.isDebugEnabled()) {
+    LOG.debug("getFlushedOffset=" + flushed + " commitOffset="+ commitOffset);
+  }
   if (flushed < commitOffset) {
     updateLastAccessTime();
     return COMMIT_WAIT;
@@ -13,7 +15,16 @@
     fos.hsync(EnumSet.of(SyncFlag.UPDATE_LENGTH));
     ret=COMMIT_FINISHED;
   }
- catch (  IOException e) {
+ catch (  ClosedChannelException cce) {
+    ret=COMMIT_INACTIVE_CTX;
+    if (pendingWrites.isEmpty()) {
+      ret=COMMIT_INACTIVE_CTX;
+    }
+ else {
+      ret=COMMIT_INACTIVE_WITH_PENDING_WRITE;
+    }
+  }
+catch (  IOException e) {
     LOG.error("Got stream error during data sync:" + e);
     ret=COMMIT_ERROR;
   }
