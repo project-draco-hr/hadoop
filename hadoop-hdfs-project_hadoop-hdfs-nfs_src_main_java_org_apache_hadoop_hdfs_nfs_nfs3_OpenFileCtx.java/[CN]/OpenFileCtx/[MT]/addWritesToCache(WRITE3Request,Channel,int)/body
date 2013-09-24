@@ -1,0 +1,30 @@
+{
+  long offset=request.getOffset();
+  int count=request.getCount();
+  long cachedOffset=nextOffset.get();
+  if (LOG.isDebugEnabled()) {
+    LOG.debug("requesed offset=" + offset + " and current offset="+ cachedOffset);
+  }
+  if (offset < cachedOffset) {
+    LOG.warn("(offset,count,nextOffset):" + "(" + offset + ","+ count+ ","+ nextOffset+ ")");
+    return null;
+  }
+ else {
+    DataState dataState=offset == cachedOffset ? WriteCtx.DataState.NO_DUMP : WriteCtx.DataState.ALLOW_DUMP;
+    WriteCtx writeCtx=new WriteCtx(request.getHandle(),request.getOffset(),request.getCount(),request.getStableHow(),request.getData().array(),channel,xid,false,dataState);
+    if (LOG.isDebugEnabled()) {
+      LOG.debug("Add new write to the list with nextOffset " + cachedOffset + " and requesed offset="+ offset);
+    }
+    if (writeCtx.getDataState() == WriteCtx.DataState.ALLOW_DUMP) {
+      updateNonSequentialWriteInMemory(count);
+    }
+    WriteCtx oldWriteCtx=checkRepeatedWriteRequest(request,channel,xid);
+    if (oldWriteCtx == null) {
+      addWrite(writeCtx);
+    }
+ else {
+      LOG.warn("Got a repeated request, same range, with xid:" + writeCtx.getXid());
+    }
+    return writeCtx;
+  }
+}

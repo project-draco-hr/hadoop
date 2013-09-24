@@ -1,5 +1,4 @@
 {
-  assert(ctxLock.isLocked());
   Channel channel=writeCtx.getChannel();
   int xid=writeCtx.getXid();
   long offset=writeCtx.getOffset();
@@ -9,23 +8,32 @@
   try {
     data=writeCtx.getData();
   }
- catch (  IOException e1) {
+ catch (  Exception e1) {
     LOG.error("Failed to get request data offset:" + offset + " count:"+ count+ " error:"+ e1);
     cleanup();
     return;
   }
-  assert(data.length == count);
+  Preconditions.checkState(data.length == count);
   FileHandle handle=writeCtx.getHandle();
-  LOG.info("do write, fileId: " + handle.getFileId() + " offset: "+ offset+ " length:"+ count+ " stableHow:"+ stableHow.getValue());
+  if (LOG.isDebugEnabled()) {
+    LOG.debug("do write, fileId: " + handle.getFileId() + " offset: "+ offset+ " length:"+ count+ " stableHow:"+ stableHow.getValue());
+  }
   try {
     fos.write(data,0,count);
     long flushedOffset=getFlushedOffset();
     if (flushedOffset != (offset + count)) {
       throw new IOException("output stream is out of sync, pos=" + flushedOffset + " and nextOffset should be"+ (offset + count));
     }
-    nextOffset=flushedOffset;
-    if (writeCtx.getDataState() == DataState.ALLOW_DUMP) {
-      updateNonSequentialWriteInMemory(-count);
+    if (LOG.isDebugEnabled()) {
+      LOG.debug("After writing " + handle.getFileId() + " at offset "+ offset+ ", update the memory count.");
+    }
+    if (writeCtx.getDataState() == WriteCtx.DataState.ALLOW_DUMP) {
+synchronized (writeCtx) {
+        if (writeCtx.getDataState() == WriteCtx.DataState.ALLOW_DUMP) {
+          writeCtx.setDataState(WriteCtx.DataState.NO_DUMP);
+          updateNonSequentialWriteInMemory(-count);
+        }
+      }
     }
     if (!writeCtx.getReplied()) {
       WccAttr preOpAttr=latestAttr.getWccAttr();

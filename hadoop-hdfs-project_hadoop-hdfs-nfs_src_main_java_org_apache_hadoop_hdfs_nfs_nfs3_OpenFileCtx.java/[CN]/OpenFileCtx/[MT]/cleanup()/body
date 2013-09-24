@@ -1,6 +1,17 @@
 {
-  assert(ctxLock.isLocked());
+  if (!activeState) {
+    LOG.info("Current OpenFileCtx is already inactive, no need to cleanup.");
+    return;
+  }
   activeState=false;
+  if (dumpThread != null) {
+    dumpThread.interrupt();
+    try {
+      dumpThread.join(3000);
+    }
+ catch (    InterruptedException e) {
+    }
+  }
   try {
     if (fos != null) {
       fos.close();
@@ -13,7 +24,7 @@
   WccAttr preOpAttr=latestAttr.getWccAttr();
   while (!pendingWrites.isEmpty()) {
     OffsetRange key=pendingWrites.firstKey();
-    LOG.info("Fail pending write: (" + key.getMin() + ","+ key.getMax()+ "), nextOffset="+ getNextOffsetUnprotected());
+    LOG.info("Fail pending write: (" + key.getMin() + ","+ key.getMax()+ "), nextOffset="+ nextOffset.get());
     WriteCtx writeCtx=pendingWrites.remove(key);
     if (!writeCtx.getReplied()) {
       WccData fileWcc=new WccData(preOpAttr,latestAttr);
@@ -28,6 +39,10 @@
  catch (    IOException e) {
       e.printStackTrace();
     }
+    File dumpFile=new File(dumpFilePath);
+    if (dumpFile.exists() && !dumpFile.delete()) {
+      LOG.error("Failed to delete dumpfile: " + dumpFile);
+    }
   }
   if (raf != null) {
     try {
@@ -36,9 +51,5 @@
  catch (    IOException e) {
       e.printStackTrace();
     }
-  }
-  File dumpFile=new File(dumpFilePath);
-  if (dumpFile.delete()) {
-    LOG.error("Failed to delete dumpfile: " + dumpFile);
   }
 }

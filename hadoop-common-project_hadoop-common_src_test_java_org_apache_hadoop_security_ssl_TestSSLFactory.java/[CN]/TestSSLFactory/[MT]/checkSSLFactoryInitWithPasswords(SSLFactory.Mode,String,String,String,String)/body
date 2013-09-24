@@ -1,0 +1,30 @@
+{
+  String keystore=new File(KEYSTORES_DIR,"keystore.jks").getAbsolutePath();
+  String truststore=new File(KEYSTORES_DIR,"truststore.jks").getAbsolutePath();
+  String trustPassword="trustP";
+  KeyPair keyPair=KeyStoreTestUtil.generateKeyPair("RSA");
+  X509Certificate cert=KeyStoreTestUtil.generateCertificate("CN=Test",keyPair,30,"SHA1withRSA");
+  KeyStoreTestUtil.createKeyStore(keystore,password,keyPassword,"Test",keyPair.getPrivate(),cert);
+  Map<String,X509Certificate> certs=Collections.singletonMap("server",cert);
+  KeyStoreTestUtil.createTrustStore(truststore,trustPassword,certs);
+  final String sslConfFileName;
+  final Configuration sslConf;
+  if (mode == SSLFactory.Mode.SERVER) {
+    sslConfFileName="ssl-server.xml";
+    sslConf=KeyStoreTestUtil.createServerSSLConfig(keystore,confPassword,confKeyPassword,truststore);
+  }
+ else {
+    sslConfFileName="ssl-client.xml";
+    sslConf=KeyStoreTestUtil.createClientSSLConfig(keystore,confPassword,confKeyPassword,truststore);
+  }
+  KeyStoreTestUtil.saveConfig(new File(sslConfsDir,sslConfFileName),sslConf);
+  Configuration conf=new Configuration();
+  conf.setBoolean(SSLFactory.SSL_REQUIRE_CLIENT_CERT_KEY,true);
+  SSLFactory sslFactory=new SSLFactory(mode,conf);
+  try {
+    sslFactory.init();
+  }
+  finally {
+    sslFactory.destroy();
+  }
+}
