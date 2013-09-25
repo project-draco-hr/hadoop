@@ -16,28 +16,41 @@
  else {
       candidates.add(new FileStatus(0,true,0,0,0,new Path(scheme,authority,Path.SEPARATOR)));
     }
-    for (    String component : components) {
+    for (int componentIdx=0; componentIdx < components.size(); componentIdx++) {
       ArrayList<FileStatus> newCandidates=new ArrayList<FileStatus>(candidates.size());
-      GlobFilter globFilter=new GlobFilter(component);
+      GlobFilter globFilter=new GlobFilter(components.get(componentIdx));
+      String component=unescapePathComponent(components.get(componentIdx));
       if (globFilter.hasPattern()) {
         sawWildcard=true;
       }
       if (candidates.isEmpty() && sawWildcard) {
         break;
       }
+      if ((componentIdx < components.size() - 1) && (!globFilter.hasPattern())) {
+        for (        FileStatus candidate : candidates) {
+          candidate.setPath(new Path(candidate.getPath(),component));
+        }
+        continue;
+      }
       for (      FileStatus candidate : candidates) {
-        FileStatus resolvedCandidate=candidate;
-        if (candidate.isSymlink()) {
-          resolvedCandidate=getFileStatus(candidate.getPath());
+        if (globFilter.hasPattern()) {
+          FileStatus[] children=listStatus(candidate.getPath());
+          if (children.length == 1) {
+            if (!getFileStatus(candidate.getPath()).isDirectory()) {
+              continue;
+            }
+          }
+          for (          FileStatus child : children) {
+            child.setPath(new Path(candidate.getPath(),child.getPath().getName()));
+            if (globFilter.accept(child.getPath())) {
+              newCandidates.add(child);
+            }
+          }
         }
-        if (resolvedCandidate == null || resolvedCandidate.isDirectory() == false) {
-          continue;
-        }
-        FileStatus[] children=listStatus(candidate.getPath());
-        for (        FileStatus child : children) {
-          child.setPath(new Path(candidate.getPath(),child.getPath().getName()));
-          if (globFilter.accept(child.getPath())) {
-            newCandidates.add(child);
+ else {
+          FileStatus childStatus=getFileStatus(new Path(candidate.getPath(),component));
+          if (childStatus != null) {
+            newCandidates.add(childStatus);
           }
         }
       }
