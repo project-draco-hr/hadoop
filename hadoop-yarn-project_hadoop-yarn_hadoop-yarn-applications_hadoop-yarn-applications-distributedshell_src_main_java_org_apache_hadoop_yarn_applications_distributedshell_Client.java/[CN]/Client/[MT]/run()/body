@@ -120,6 +120,23 @@
   Resource capability=Records.newRecord(Resource.class);
   capability.setMemory(amMemory);
   appContext.setResource(capability);
+  if (UserGroupInformation.isSecurityEnabled()) {
+    Credentials credentials=new Credentials();
+    String tokenRenewer=conf.get(YarnConfiguration.RM_PRINCIPAL);
+    if (tokenRenewer == null || tokenRenewer.length() == 0) {
+      throw new IOException("Can't get Master Kerberos principal for the RM to use as renewer");
+    }
+    final Token<?> tokens[]=fs.addDelegationTokens(tokenRenewer,credentials);
+    if (tokens != null) {
+      for (      Token<?> token : tokens) {
+        LOG.info("Got dt for " + fs.getUri() + "; "+ token);
+      }
+    }
+    DataOutputBuffer dob=new DataOutputBuffer();
+    credentials.writeTokenStorageToStream(dob);
+    ByteBuffer fsTokens=ByteBuffer.wrap(dob.getData(),0,dob.getLength());
+    amContainer.setTokens(fsTokens);
+  }
   appContext.setAMContainerSpec(amContainer);
   Priority pri=Records.newRecord(Priority.class);
   pri.setPriority(amPriority);
