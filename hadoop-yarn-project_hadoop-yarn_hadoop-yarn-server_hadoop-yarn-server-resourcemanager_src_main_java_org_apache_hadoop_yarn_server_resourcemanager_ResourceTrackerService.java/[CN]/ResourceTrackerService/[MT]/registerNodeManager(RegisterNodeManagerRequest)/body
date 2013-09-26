@@ -4,7 +4,20 @@
   int cmPort=nodeId.getPort();
   int httpPort=request.getHttpPort();
   Resource capability=request.getResource();
+  String nodeManagerVersion=request.getNMVersion();
   RegisterNodeManagerResponse response=recordFactory.newRecordInstance(RegisterNodeManagerResponse.class);
+  if (!minimumNodeManagerVersion.equals("NONE")) {
+    if (minimumNodeManagerVersion.equals("EqualToRM")) {
+      minimumNodeManagerVersion=YarnVersionInfo.getVersion();
+    }
+    if ((nodeManagerVersion == null) || (VersionUtil.compareVersions(nodeManagerVersion,minimumNodeManagerVersion)) < 0) {
+      String message="Disallowed NodeManager Version " + nodeManagerVersion + ", is less than the minimum version "+ minimumNodeManagerVersion+ " sending SHUTDOWN signal to "+ "NodeManager.";
+      LOG.info(message);
+      response.setDiagnosticsMessage(message);
+      response.setNodeAction(NodeAction.SHUTDOWN);
+      return response;
+    }
+  }
   if (!this.nodesListManager.isValidNode(host)) {
     String message="Disallowed NodeManager from  " + host + ", Sending SHUTDOWN signal to the NodeManager.";
     LOG.info(message);
@@ -37,5 +50,6 @@
   LOG.info(message);
   response.setNodeAction(NodeAction.NORMAL);
   response.setRMIdentifier(ResourceManager.getClusterTimeStamp());
+  response.setRMVersion(YarnVersionInfo.getVersion());
   return response;
 }
