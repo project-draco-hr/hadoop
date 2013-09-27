@@ -1,0 +1,39 @@
+{
+  samplerLock.lock();
+  try {
+    schedulerAllocateCounter=metrics.counter("counter.scheduler.operation.allocate");
+    schedulerHandleCounter=metrics.counter("counter.scheduler.operation.handle");
+    schedulerHandleCounterMap=new HashMap<SchedulerEventType,Counter>();
+    for (    SchedulerEventType e : SchedulerEventType.values()) {
+      Counter counter=metrics.counter("counter.scheduler.operation.handle." + e);
+      schedulerHandleCounterMap.put(e,counter);
+    }
+    int timeWindowSize=conf.getInt(SLSConfiguration.METRICS_TIMER_WINDOW_SIZE,SLSConfiguration.METRICS_TIMER_WINDOW_SIZE_DEFAULT);
+    schedulerAllocateTimer=new Timer(new SlidingWindowReservoir(timeWindowSize));
+    schedulerHandleTimer=new Timer(new SlidingWindowReservoir(timeWindowSize));
+    schedulerHandleTimerMap=new HashMap<SchedulerEventType,Timer>();
+    for (    SchedulerEventType e : SchedulerEventType.values()) {
+      Timer timer=new Timer(new SlidingWindowReservoir(timeWindowSize));
+      schedulerHandleTimerMap.put(e,timer);
+    }
+    schedulerHistogramList=new ArrayList<Histogram>();
+    histogramTimerMap=new HashMap<Histogram,Timer>();
+    Histogram schedulerAllocateHistogram=new Histogram(new SlidingWindowReservoir(SAMPLING_SIZE));
+    metrics.register("sampler.scheduler.operation.allocate.timecost",schedulerAllocateHistogram);
+    schedulerHistogramList.add(schedulerAllocateHistogram);
+    histogramTimerMap.put(schedulerAllocateHistogram,schedulerAllocateTimer);
+    Histogram schedulerHandleHistogram=new Histogram(new SlidingWindowReservoir(SAMPLING_SIZE));
+    metrics.register("sampler.scheduler.operation.handle.timecost",schedulerHandleHistogram);
+    schedulerHistogramList.add(schedulerHandleHistogram);
+    histogramTimerMap.put(schedulerHandleHistogram,schedulerHandleTimer);
+    for (    SchedulerEventType e : SchedulerEventType.values()) {
+      Histogram histogram=new Histogram(new SlidingWindowReservoir(SAMPLING_SIZE));
+      metrics.register("sampler.scheduler.operation.handle." + e + ".timecost",histogram);
+      schedulerHistogramList.add(histogram);
+      histogramTimerMap.put(histogram,schedulerHandleTimerMap.get(e));
+    }
+  }
+  finally {
+    samplerLock.unlock();
+  }
+}

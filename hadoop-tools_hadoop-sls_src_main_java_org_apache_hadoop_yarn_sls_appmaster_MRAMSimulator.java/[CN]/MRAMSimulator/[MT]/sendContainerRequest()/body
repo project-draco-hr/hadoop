@@ -1,0 +1,58 @@
+{
+  if (isFinished) {
+    return;
+  }
+  List<ResourceRequest> ask=null;
+  if (isAMContainerRunning) {
+    if (mapFinished != mapTotal) {
+      if (!pendingMaps.isEmpty()) {
+        ask=packageRequests(pendingMaps,PRIORITY_MAP);
+        LOG.debug(MessageFormat.format("Application {0} sends out " + "request for {1} mappers.",appId,pendingMaps.size()));
+        scheduledMaps.addAll(pendingMaps);
+        pendingMaps.clear();
+      }
+ else       if (!pendingFailedMaps.isEmpty() && scheduledMaps.isEmpty()) {
+        ask=packageRequests(pendingFailedMaps,PRIORITY_MAP);
+        LOG.debug(MessageFormat.format("Application {0} sends out " + "requests for {1} failed mappers.",appId,pendingFailedMaps.size()));
+        scheduledMaps.addAll(pendingFailedMaps);
+        pendingFailedMaps.clear();
+      }
+    }
+ else     if (reduceFinished != reduceTotal) {
+      if (!pendingReduces.isEmpty()) {
+        ask=packageRequests(pendingReduces,PRIORITY_REDUCE);
+        LOG.debug(MessageFormat.format("Application {0} sends out " + "requests for {1} reducers.",appId,pendingReduces.size()));
+        scheduledReduces.addAll(pendingReduces);
+        pendingReduces.clear();
+      }
+ else       if (!pendingFailedReduces.isEmpty() && scheduledReduces.isEmpty()) {
+        ask=packageRequests(pendingFailedReduces,PRIORITY_REDUCE);
+        LOG.debug(MessageFormat.format("Application {0} sends out " + "request for {1} failed reducers.",appId,pendingFailedReduces.size()));
+        scheduledReduces.addAll(pendingFailedReduces);
+        pendingFailedReduces.clear();
+      }
+    }
+  }
+  if (ask == null) {
+    ask=new ArrayList<ResourceRequest>();
+  }
+  final AllocateRequest request=createAllocateRequest(ask);
+  if (totalContainers == 0) {
+    request.setProgress(1.0f);
+  }
+ else {
+    request.setProgress((float)finishedContainers / totalContainers);
+  }
+  UserGroupInformation ugi=UserGroupInformation.createRemoteUser(appAttemptId.toString());
+  Token<AMRMTokenIdentifier> token=rm.getRMContext().getRMApps().get(appAttemptId.getApplicationId()).getRMAppAttempt(appAttemptId).getAMRMToken();
+  ugi.addTokenIdentifier(token.decodeIdentifier());
+  AllocateResponse response=ugi.doAs(new PrivilegedExceptionAction<AllocateResponse>(){
+    @Override public AllocateResponse run() throws Exception {
+      return rm.getApplicationMasterService().allocate(request);
+    }
+  }
+);
+  if (response != null) {
+    responseQueue.put(response);
+  }
+}
