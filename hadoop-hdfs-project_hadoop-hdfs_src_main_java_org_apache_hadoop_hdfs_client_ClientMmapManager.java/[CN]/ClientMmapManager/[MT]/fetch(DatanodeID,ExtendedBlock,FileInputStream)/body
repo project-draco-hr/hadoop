@@ -1,0 +1,28 @@
+{
+  LOG.debug("fetching mmap with datanodeID=" + datanodeID + ", "+ "block="+ block);
+  Key key=new Key(block,datanodeID);
+  ClientMmap mmap=null;
+  try {
+    lock.lock();
+    if (closed) {
+      throw new IOException("ClientMmapManager is closed.");
+    }
+    while (mmap == null) {
+      Waitable<ClientMmap> entry=mmaps.get(key);
+      if (entry == null) {
+        return create(key,in);
+      }
+      mmap=entry.await();
+    }
+    if (mmap.ref() == 1) {
+      evictable.remove(mmap.getLastEvictableTimeNs());
+    }
+  }
+  finally {
+    lock.unlock();
+  }
+  if (LOG.isDebugEnabled()) {
+    LOG.debug("reusing existing mmap with datanodeID=" + datanodeID + ", "+ "block="+ block);
+  }
+  return mmap;
+}
