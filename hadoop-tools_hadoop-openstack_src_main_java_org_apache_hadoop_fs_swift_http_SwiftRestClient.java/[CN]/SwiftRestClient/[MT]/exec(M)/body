@@ -1,0 +1,30 @@
+{
+  final HttpClient client=new HttpClient();
+  if (proxyHost != null) {
+    client.getParams().setParameter(ConnRoutePNames.DEFAULT_PROXY,new HttpHost(proxyHost,proxyPort));
+  }
+  int statusCode=execWithDebugOutput(method,client);
+  if ((statusCode == HttpStatus.SC_UNAUTHORIZED || statusCode == HttpStatus.SC_BAD_REQUEST) && method instanceof AuthPostMethod && !useKeystoneAuthentication) {
+    if (LOG.isDebugEnabled()) {
+      LOG.debug("Operation failed with status " + method.getStatusCode() + " attempting keystone auth");
+    }
+    useKeystoneAuthentication=true;
+    final AuthPostMethod authentication=(AuthPostMethod)method;
+    authentication.setRequestEntity(getAuthenticationRequst(keystoneAuthRequest));
+    statusCode=execWithDebugOutput(method,client);
+  }
+  if (statusCode == HttpStatus.SC_UNAUTHORIZED) {
+    if (method instanceof AuthPostMethod) {
+      throw new SwiftAuthenticationFailedException(authRequest.toString(),"auth",authUri,method);
+    }
+    if (LOG.isDebugEnabled()) {
+      LOG.debug("Reauthenticating");
+    }
+    authenticate();
+    if (LOG.isDebugEnabled()) {
+      LOG.debug("Retrying original request");
+    }
+    statusCode=execWithDebugOutput(method,client);
+  }
+  return statusCode;
+}

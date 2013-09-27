@@ -1,0 +1,32 @@
+{
+  preRemoteCommand("findObjectsByPrefix");
+  URI uri;
+  String dataLocationURI=getEndpointURI().toString();
+  try {
+    String object=path.getObject();
+    if (object.startsWith("/")) {
+      object=object.substring(1);
+    }
+    object=encodeUrl(object);
+    dataLocationURI=dataLocationURI.concat("/").concat(path.getContainer()).concat("/?prefix=").concat(object);
+    uri=new URI(dataLocationURI);
+  }
+ catch (  URISyntaxException e) {
+    throw new SwiftException("Bad URI: " + dataLocationURI,e);
+  }
+  return perform("findObjectsByPrefix",uri,new GetMethodProcessor<byte[]>(){
+    @Override public byte[] extractResult(    GetMethod method) throws IOException {
+      if (method.getStatusCode() == SC_NOT_FOUND) {
+        throw new FileNotFoundException("Not found " + method.getURI());
+      }
+      return method.getResponseBody();
+    }
+    @Override protected int[] getAllowedStatusCodes(){
+      return new int[]{SC_OK,SC_NOT_FOUND};
+    }
+    @Override protected void setup(    GetMethod method) throws SwiftInternalStateException {
+      setHeaders(method,requestHeaders);
+    }
+  }
+);
+}

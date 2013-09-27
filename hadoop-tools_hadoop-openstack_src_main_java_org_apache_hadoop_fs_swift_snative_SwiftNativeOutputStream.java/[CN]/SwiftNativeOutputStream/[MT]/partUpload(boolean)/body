@@ -1,0 +1,34 @@
+{
+  if (backupStream != null) {
+    backupStream.close();
+  }
+  if (closingUpload && partUpload && backupFile.length() == 0) {
+    SwiftUtils.debug(LOG,"skipping upload of 0 byte final partition");
+    delete(backupFile);
+  }
+ else {
+    partUpload=true;
+    boolean uploadSuccess=false;
+    int attempt=0;
+    while (!uploadSuccess) {
+      try {
+        ++attempt;
+        bytesUploaded+=uploadFilePartAttempt(attempt);
+        uploadSuccess=true;
+      }
+ catch (      IOException e) {
+        LOG.info("Upload failed " + e,e);
+        if (attempt > ATTEMPT_LIMIT) {
+          throw e;
+        }
+      }
+    }
+    delete(backupFile);
+    partNumber++;
+    blockOffset=0;
+    if (!closingUpload) {
+      backupFile=newBackupFile();
+      backupStream=new BufferedOutputStream(new FileOutputStream(backupFile));
+    }
+  }
+}

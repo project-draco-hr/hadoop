@@ -1,0 +1,29 @@
+{
+  if (!isLocationAware()) {
+    return null;
+  }
+  preRemoteCommand("getObjectLocation");
+  try {
+    return perform("getObjectLocation",pathToObjectLocation(path),new GetMethodProcessor<byte[]>(){
+      @Override protected int[] getAllowedStatusCodes(){
+        return new int[]{SC_OK,SC_FORBIDDEN,SC_NO_CONTENT};
+      }
+      @Override public byte[] extractResult(      GetMethod method) throws IOException {
+        if (method.getStatusCode() == SC_NOT_FOUND || method.getStatusCode() == SC_FORBIDDEN || method.getStatusCode() == SC_NO_CONTENT || method.getResponseBodyAsStream() == null) {
+          return null;
+        }
+        final InputStream responseBodyAsStream=method.getResponseBodyAsStream();
+        final byte[] locationData=new byte[1024];
+        return responseBodyAsStream.read(locationData) > 0 ? locationData : null;
+      }
+      @Override protected void setup(      GetMethod method) throws SwiftInternalStateException {
+        setHeaders(method,requestHeaders);
+      }
+    }
+);
+  }
+ catch (  IOException e) {
+    LOG.warn("Failed to get the location of " + path + ": "+ e,e);
+    return null;
+  }
+}
