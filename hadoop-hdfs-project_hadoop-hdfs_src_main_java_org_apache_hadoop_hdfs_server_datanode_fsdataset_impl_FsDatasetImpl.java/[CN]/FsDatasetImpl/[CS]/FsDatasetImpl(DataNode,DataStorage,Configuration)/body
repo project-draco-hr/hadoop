@@ -14,19 +14,21 @@
   }
   final List<FsVolumeImpl> volArray=new ArrayList<FsVolumeImpl>(storage.getNumStorageDirs());
   for (int idx=0; idx < storage.getNumStorageDirs(); idx++) {
-    final File dir=storage.getStorageDir(idx).getCurrentDir();
+    Storage.StorageDirectory sd=storage.getStorageDir(idx);
+    final File dir=sd.getCurrentDir();
     final StorageType storageType=getStorageTypeFromLocations(dataLocations,dir);
-    volArray.add(new FsVolumeImpl(this,storage.getStorageID(),dir,conf,storageType));
+    volArray.add(new FsVolumeImpl(this,sd.getStorageUuid(),dir,conf,storageType));
     LOG.info("Added volume - " + dir + ", StorageType: "+ storageType);
   }
   volumeMap=new ReplicaMap(this);
+  perVolumeReplicaMap=new HashMap<FsVolumeImpl,ReplicaMap>();
   @SuppressWarnings("unchecked") final VolumeChoosingPolicy<FsVolumeImpl> blockChooserImpl=ReflectionUtils.newInstance(conf.getClass(DFSConfigKeys.DFS_DATANODE_FSDATASET_VOLUME_CHOOSING_POLICY_KEY,RoundRobinVolumeChoosingPolicy.class,VolumeChoosingPolicy.class),conf);
   volumes=new FsVolumeList(volArray,volsFailed,blockChooserImpl);
-  volumes.getVolumeMap(volumeMap);
+  volumes.initializeReplicaMaps(perVolumeReplicaMap,volumeMap,this);
   File[] roots=new File[storage.getNumStorageDirs()];
   for (int idx=0; idx < storage.getNumStorageDirs(); idx++) {
     roots[idx]=storage.getStorageDir(idx).getCurrentDir();
   }
   asyncDiskService=new FsDatasetAsyncDiskService(datanode,roots);
-  registerMBean(storage.getStorageID());
+  registerMBean(datanode.getDatanodeUuid());
 }
