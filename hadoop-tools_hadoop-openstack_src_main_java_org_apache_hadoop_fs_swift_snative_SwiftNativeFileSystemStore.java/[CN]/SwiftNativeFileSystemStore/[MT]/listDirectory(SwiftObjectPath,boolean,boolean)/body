@@ -1,0 +1,54 @@
+{
+  final byte[] bytes;
+  final ArrayList<FileStatus> files=new ArrayList<FileStatus>();
+  final Path correctSwiftPath=getCorrectSwiftPath(path);
+  try {
+    bytes=swiftRestClient.listDeepObjectsInDirectory(path,listDeep);
+  }
+ catch (  FileNotFoundException e) {
+    if (LOG.isDebugEnabled()) {
+      LOG.debug("" + "File/Directory not found " + path);
+    }
+    if (SwiftUtils.isRootDir(path)) {
+      return Collections.emptyList();
+    }
+ else {
+      throw e;
+    }
+  }
+catch (  SwiftInvalidResponseException e) {
+    if (e.getStatusCode() == HttpStatus.SC_NO_CONTENT) {
+      if (SwiftUtils.isRootDir(path)) {
+        return Collections.emptyList();
+      }
+ else {
+        FileStatus stat=getObjectMetadata(correctSwiftPath,newest);
+        if (stat.isDirectory()) {
+          return Collections.emptyList();
+        }
+ else {
+          files.add(stat);
+          return files;
+        }
+      }
+    }
+ else {
+      throw e;
+    }
+  }
+  final CollectionType collectionType=JSONUtil.getJsonMapper().getTypeFactory().constructCollectionType(List.class,SwiftObjectFileStatus.class);
+  final List<SwiftObjectFileStatus> fileStatusList=JSONUtil.toObject(new String(bytes),collectionType);
+  if (fileStatusList.isEmpty()) {
+    SwiftFileStatus objectMetadata=getObjectMetadata(correctSwiftPath,newest);
+    if (objectMetadata.isFile()) {
+      files.add(objectMetadata);
+    }
+    return files;
+  }
+  for (  SwiftObjectFileStatus status : fileStatusList) {
+    if (status.getName() != null) {
+      files.add(new SwiftFileStatus(status.getBytes(),status.getBytes() == 0,1,getBlocksize(),status.getLast_modified().getTime(),getCorrectSwiftPath(new Path(status.getName()))));
+    }
+  }
+  return files;
+}

@@ -1,0 +1,47 @@
+{
+  Path swiftPath=getCorrectSwiftPath(absolutePath);
+  SwiftUtils.debug(LOG,"Deleting path '%s' recursive=%b",absolutePath,recursive);
+  boolean askForNewest=true;
+  SwiftFileStatus fileStatus=getObjectMetadata(swiftPath,askForNewest);
+  FileStatus[] statuses=listSubPaths(absolutePath,true,askForNewest);
+  if (statuses == null) {
+    SwiftUtils.debug(LOG,"Path '%s' has no status -it has 'gone away'",absolutePath,recursive);
+    return false;
+  }
+  int filecount=statuses.length;
+  SwiftUtils.debug(LOG,"Path '%s' %d status entries'",absolutePath,filecount);
+  if (filecount == 0) {
+    rmdir(absolutePath);
+    return true;
+  }
+  if (LOG.isDebugEnabled()) {
+    SwiftUtils.debug(LOG,SwiftUtils.fileStatsToString(statuses,"\n"));
+  }
+  if (filecount == 1 && swiftPath.equals(statuses[0].getPath())) {
+    SwiftUtils.debug(LOG,"Deleting simple file %s",absolutePath);
+    deleteObject(absolutePath);
+    return true;
+  }
+  if (!fileStatus.isDir()) {
+    LOG.debug("Multiple child entries but entry has data: assume partitioned");
+  }
+ else   if (!recursive) {
+    throw new SwiftOperationFailedException("Directory " + fileStatus + " is not empty: "+ SwiftUtils.fileStatsToString(statuses,"; "));
+  }
+  for (  FileStatus entryStatus : statuses) {
+    Path entryPath=entryStatus.getPath();
+    try {
+      boolean deleted=deleteObject(entryPath);
+      if (!deleted) {
+        SwiftUtils.debug(LOG,"Failed to delete entry '%s'; continuing",entryPath);
+      }
+    }
+ catch (    FileNotFoundException e) {
+      SwiftUtils.debug(LOG,"Path '%s' is no longer present; continuing",entryPath);
+    }
+    throttle();
+  }
+  SwiftUtils.debug(LOG,"Deleting base entry %s",absolutePath);
+  deleteObject(absolutePath);
+  return true;
+}

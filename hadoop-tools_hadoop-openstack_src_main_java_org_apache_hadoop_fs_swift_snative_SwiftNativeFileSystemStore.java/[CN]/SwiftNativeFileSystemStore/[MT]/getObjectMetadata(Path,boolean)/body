@@ -1,0 +1,34 @@
+{
+  SwiftObjectPath objectPath=toObjectPath(path);
+  final Header[] headers=stat(objectPath,newest);
+  if (headers.length == 0) {
+    throw new FileNotFoundException("Not Found " + path.toUri());
+  }
+  boolean isDir=false;
+  long length=0;
+  long lastModified=0;
+  for (  Header header : headers) {
+    String headerName=header.getName();
+    if (headerName.equals(SwiftProtocolConstants.X_CONTAINER_OBJECT_COUNT) || headerName.equals(SwiftProtocolConstants.X_CONTAINER_BYTES_USED)) {
+      length=0;
+      isDir=true;
+    }
+    if (SwiftProtocolConstants.HEADER_CONTENT_LENGTH.equals(headerName)) {
+      length=Long.parseLong(header.getValue());
+    }
+    if (SwiftProtocolConstants.HEADER_LAST_MODIFIED.equals(headerName)) {
+      final SimpleDateFormat simpleDateFormat=new SimpleDateFormat(PATTERN);
+      try {
+        lastModified=simpleDateFormat.parse(header.getValue()).getTime();
+      }
+ catch (      ParseException e) {
+        throw new SwiftException("Failed to parse " + header.toString(),e);
+      }
+    }
+  }
+  if (lastModified == 0) {
+    lastModified=System.currentTimeMillis();
+  }
+  Path correctSwiftPath=getCorrectSwiftPath(path);
+  return new SwiftFileStatus(length,isDir,1,getBlocksize(),lastModified,correctSwiftPath);
+}

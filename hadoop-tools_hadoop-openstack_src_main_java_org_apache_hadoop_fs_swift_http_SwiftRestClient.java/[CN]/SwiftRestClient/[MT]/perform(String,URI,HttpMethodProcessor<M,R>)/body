@@ -1,0 +1,38 @@
+{
+  checkNotNull(uri);
+  checkNotNull(processor);
+  final M method=processor.createMethod(uri.toString());
+  HttpMethodParams methodParams=method.getParams();
+  methodParams.setParameter(HttpMethodParams.RETRY_HANDLER,new DefaultHttpMethodRetryHandler(retryCount,false));
+  methodParams.setIntParameter(HttpConnectionParams.CONNECTION_TIMEOUT,connectTimeout);
+  methodParams.setSoTimeout(socketTimeout);
+  method.addRequestHeader(HEADER_USER_AGENT,SWIFT_USER_AGENT);
+  Duration duration=new Duration();
+  boolean success=false;
+  try {
+    int statusCode=0;
+    try {
+      statusCode=exec(method);
+    }
+ catch (    IOException e) {
+      throw ExceptionDiags.wrapException(uri.toString(),method.getName(),e);
+    }
+    int[] allowedStatusCodes=processor.getAllowedStatusCodes();
+    boolean validResponse=isStatusCodeExpected(statusCode,allowedStatusCodes);
+    if (!validResponse) {
+      IOException ioe=buildException(uri,method,statusCode);
+      throw ioe;
+    }
+    R r=processor.extractResult(method);
+    success=true;
+    return r;
+  }
+ catch (  IOException e) {
+    method.releaseConnection();
+    throw e;
+  }
+ finally {
+    duration.finished();
+    durationStats.add(method.getName() + " " + reason,duration,success);
+  }
+}
