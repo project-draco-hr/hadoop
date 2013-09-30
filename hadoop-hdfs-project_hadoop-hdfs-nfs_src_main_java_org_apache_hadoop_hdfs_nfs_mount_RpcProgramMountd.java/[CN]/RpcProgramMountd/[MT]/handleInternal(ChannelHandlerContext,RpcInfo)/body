@@ -1,0 +1,36 @@
+{
+  RpcCall rpcCall=(RpcCall)info.header();
+  final MNTPROC mntproc=MNTPROC.fromValue(rpcCall.getProcedure());
+  int xid=rpcCall.getXid();
+  byte[] data=new byte[info.data().readableBytes()];
+  info.data().readBytes(data);
+  XDR xdr=new XDR(data);
+  XDR out=new XDR();
+  InetAddress client=((InetSocketAddress)info.remoteAddress()).getAddress();
+  if (mntproc == MNTPROC.NULL) {
+    out=nullOp(out,xid,client);
+  }
+ else   if (mntproc == MNTPROC.MNT) {
+    out=mnt(xdr,out,xid,client);
+  }
+ else   if (mntproc == MNTPROC.DUMP) {
+    out=dump(out,xid,client);
+  }
+ else   if (mntproc == MNTPROC.UMNT) {
+    out=umnt(xdr,out,xid,client);
+  }
+ else   if (mntproc == MNTPROC.UMNTALL) {
+    umntall(out,xid,client);
+  }
+ else   if (mntproc == MNTPROC.EXPORT) {
+    List<NfsExports> hostsMatchers=new ArrayList<NfsExports>();
+    hostsMatchers.add(hostsMatcher);
+    out=MountResponse.writeExportList(out,xid,exports,hostsMatchers);
+  }
+ else {
+    RpcAcceptedReply.getInstance(xid,RpcAcceptedReply.AcceptState.PROC_UNAVAIL,new VerifierNone()).write(out);
+  }
+  ChannelBuffer buf=ChannelBuffers.wrappedBuffer(out.asReadOnlyWrap().buffer());
+  RpcResponse rsp=new RpcResponse(buf,info.remoteAddress());
+  RpcUtil.sendRpcResponse(ctx,rsp);
+}
