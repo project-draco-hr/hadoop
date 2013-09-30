@@ -1,0 +1,62 @@
+{
+  while (!responseQueue.isEmpty()) {
+    AllocateResponse response=responseQueue.take();
+    if (!response.getCompletedContainersStatuses().isEmpty()) {
+      for (      ContainerStatus cs : response.getCompletedContainersStatuses()) {
+        ContainerId containerId=cs.getContainerId();
+        if (cs.getExitStatus() == ContainerExitStatus.SUCCESS) {
+          if (assignedMaps.containsKey(containerId)) {
+            LOG.debug(MessageFormat.format("Application {0} has one" + "mapper finished ({1}).",appId,containerId));
+            assignedMaps.remove(containerId);
+            mapFinished++;
+            finishedContainers++;
+          }
+ else           if (assignedReduces.containsKey(containerId)) {
+            LOG.debug(MessageFormat.format("Application {0} has one" + "reducer finished ({1}).",appId,containerId));
+            assignedReduces.remove(containerId);
+            reduceFinished++;
+            finishedContainers++;
+          }
+ else {
+            isFinished=true;
+            LOG.info(MessageFormat.format("Application {0} goes to " + "finish.",appId));
+          }
+        }
+ else {
+          if (assignedMaps.containsKey(containerId)) {
+            LOG.debug(MessageFormat.format("Application {0} has one " + "mapper killed ({1}).",appId,containerId));
+            pendingFailedMaps.add(assignedMaps.remove(containerId));
+          }
+ else           if (assignedReduces.containsKey(containerId)) {
+            LOG.debug(MessageFormat.format("Application {0} has one " + "reducer killed ({1}).",appId,containerId));
+            pendingFailedReduces.add(assignedReduces.remove(containerId));
+          }
+ else {
+            LOG.info(MessageFormat.format("Application {0}'s AM is " + "going to be killed. Restarting...",appId));
+            restart();
+          }
+        }
+      }
+    }
+    if (isAMContainerRunning && (mapFinished == mapTotal) && (reduceFinished == reduceTotal)) {
+      se.getNmMap().get(amContainer.getNodeId()).cleanupContainer(amContainer.getId());
+      isAMContainerRunning=false;
+      LOG.debug(MessageFormat.format("Application {0} sends out event " + "to clean up its AM container.",appId));
+      isFinished=true;
+    }
+    for (    Container container : response.getAllocatedContainers()) {
+      if (!scheduledMaps.isEmpty()) {
+        ContainerSimulator cs=scheduledMaps.remove();
+        LOG.debug(MessageFormat.format("Application {0} starts a " + "launch a mapper ({1}).",appId,container.getId()));
+        assignedMaps.put(container.getId(),cs);
+        se.getNmMap().get(container.getNodeId()).addNewContainer(container,cs.getLifeTime());
+      }
+ else       if (!this.scheduledReduces.isEmpty()) {
+        ContainerSimulator cs=scheduledReduces.remove();
+        LOG.debug(MessageFormat.format("Application {0} starts a " + "launch a reducer ({1}).",appId,container.getId()));
+        assignedReduces.put(container.getId(),cs);
+        se.getNmMap().get(container.getNodeId()).addNewContainer(container,cs.getLifeTime());
+      }
+    }
+  }
+}

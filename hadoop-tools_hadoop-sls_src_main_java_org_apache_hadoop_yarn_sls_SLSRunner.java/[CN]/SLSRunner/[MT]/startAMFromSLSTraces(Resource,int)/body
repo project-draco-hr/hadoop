@@ -1,0 +1,50 @@
+{
+  JsonFactory jsonF=new JsonFactory();
+  ObjectMapper mapper=new ObjectMapper();
+  for (  String inputTrace : inputTraces) {
+    Reader input=new FileReader(inputTrace);
+    try {
+      Iterator<Map> i=mapper.readValues(jsonF.createJsonParser(input),Map.class);
+      while (i.hasNext()) {
+        Map jsonJob=i.next();
+        long jobStartTime=Long.parseLong(jsonJob.get("job.start.ms").toString());
+        long jobFinishTime=Long.parseLong(jsonJob.get("job.end.ms").toString());
+        String user=(String)jsonJob.get("job.user");
+        if (user == null)         user="default";
+        String queue=jsonJob.get("job.queue.name").toString();
+        String oldAppId=jsonJob.get("job.id").toString();
+        boolean isTracked=trackedApps.contains(oldAppId);
+        int queueSize=queueAppNumMap.containsKey(queue) ? queueAppNumMap.get(queue) : 0;
+        queueSize++;
+        queueAppNumMap.put(queue,queueSize);
+        List tasks=(List)jsonJob.get("job.tasks");
+        if (tasks == null || tasks.size() == 0) {
+          continue;
+        }
+        List<ContainerSimulator> containerList=new ArrayList<ContainerSimulator>();
+        for (        Object o : tasks) {
+          Map jsonTask=(Map)o;
+          String hostname=jsonTask.get("container.host").toString();
+          long taskStart=Long.parseLong(jsonTask.get("container.start.ms").toString());
+          long taskFinish=Long.parseLong(jsonTask.get("container.end.ms").toString());
+          long lifeTime=taskFinish - taskStart;
+          int priority=Integer.parseInt(jsonTask.get("container.priority").toString());
+          String type=jsonTask.get("container.type").toString();
+          containerList.add(new ContainerSimulator(containerResource,lifeTime,hostname,priority,type));
+        }
+        String amType=jsonJob.get("am.type").toString();
+        AMSimulator amSim=(AMSimulator)ReflectionUtils.newInstance(amClassMap.get(amType),new Configuration());
+        if (amSim != null) {
+          amSim.init(AM_ID++,heartbeatInterval,containerList,rm,this,jobStartTime,jobFinishTime,user,queue,isTracked,oldAppId);
+          runner.schedule(amSim);
+          maxRuntime=Math.max(maxRuntime,jobFinishTime);
+          numTasks+=containerList.size();
+          amMap.put(oldAppId,amSim);
+        }
+      }
+    }
+  finally {
+      input.close();
+    }
+  }
+}

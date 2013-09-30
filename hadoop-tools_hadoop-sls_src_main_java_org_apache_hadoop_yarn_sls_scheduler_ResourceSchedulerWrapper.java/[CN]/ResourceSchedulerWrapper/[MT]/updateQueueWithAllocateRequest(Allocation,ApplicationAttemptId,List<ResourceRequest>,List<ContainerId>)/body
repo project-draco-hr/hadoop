@@ -1,0 +1,80 @@
+{
+  Resource pendingResource=Resources.createResource(0,0);
+  Resource allocatedResource=Resources.createResource(0,0);
+  String queueName=appQueueMap.get(attemptId);
+  for (  ResourceRequest request : resourceRequests) {
+    if (request.getResourceName().equals(ResourceRequest.ANY)) {
+      Resources.addTo(pendingResource,Resources.multiply(request.getCapability(),request.getNumContainers()));
+    }
+  }
+  for (  Container container : allocation.getContainers()) {
+    Resources.addTo(allocatedResource,container.getResource());
+    Resources.subtractFrom(pendingResource,container.getResource());
+  }
+  SchedulerAppReport report=scheduler.getSchedulerAppInfo(attemptId);
+  for (  ContainerId containerId : containerIds) {
+    Container container=null;
+    for (    RMContainer c : report.getLiveContainers()) {
+      if (c.getContainerId().equals(containerId)) {
+        container=c.getContainer();
+        break;
+      }
+    }
+    if (container != null) {
+      Resources.subtractFrom(allocatedResource,container.getResource());
+    }
+ else {
+      for (      RMContainer c : report.getReservedContainers()) {
+        if (c.getContainerId().equals(containerId)) {
+          container=c.getContainer();
+          break;
+        }
+      }
+      if (container != null) {
+        Resources.subtractFrom(pendingResource,container.getResource());
+      }
+    }
+  }
+  Set<ContainerId> preemptionContainers=new HashSet<ContainerId>();
+  if (allocation.getContainerPreemptions() != null) {
+    preemptionContainers.addAll(allocation.getContainerPreemptions());
+  }
+  if (allocation.getStrictContainerPreemptions() != null) {
+    preemptionContainers.addAll(allocation.getStrictContainerPreemptions());
+  }
+  if (!preemptionContainers.isEmpty()) {
+    for (    ContainerId containerId : preemptionContainers) {
+      if (!preemptionContainerMap.containsKey(containerId)) {
+        Container container=null;
+        for (        RMContainer c : report.getLiveContainers()) {
+          if (c.getContainerId().equals(containerId)) {
+            container=c.getContainer();
+            break;
+          }
+        }
+        if (container != null) {
+          preemptionContainerMap.put(containerId,container.getResource());
+        }
+      }
+    }
+  }
+  SortedMap<String,Counter> counterMap=metrics.getCounters();
+  String names[]=new String[]{"counter.queue." + queueName + ".pending.memory","counter.queue." + queueName + ".pending.cores","counter.queue." + queueName + ".allocated.memory","counter.queue." + queueName + ".allocated.cores"};
+  int values[]=new int[]{pendingResource.getMemory(),pendingResource.getVirtualCores(),allocatedResource.getMemory(),allocatedResource.getVirtualCores()};
+  for (int i=names.length - 1; i >= 0; i--) {
+    if (!counterMap.containsKey(names[i])) {
+      metrics.counter(names[i]);
+      counterMap=metrics.getCounters();
+    }
+    counterMap.get(names[i]).inc(values[i]);
+  }
+  queueLock.lock();
+  try {
+    if (!schedulerMetrics.isTracked(queueName)) {
+      schedulerMetrics.trackQueue(queueName);
+    }
+  }
+  finally {
+    queueLock.unlock();
+  }
+}

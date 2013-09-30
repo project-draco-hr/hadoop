@@ -1,0 +1,18 @@
+{
+  HttpServer server=startHttpServer();
+  MRApp app=spy(new MRApp(2,2,true,this.getClass().getName(),true,2));
+  app.safeToReportTerminationToUser.set(false);
+  doNothing().when(app).sysexit();
+  Configuration conf=new Configuration();
+  conf.set(JobContext.MR_JOB_END_NOTIFICATION_URL,JobEndServlet.baseUrl + "jobend?jobid=$jobId&status=$jobStatus");
+  JobImpl job=(JobImpl)app.submit(conf);
+  app.waitForInternalState(job,JobStateInternal.SUCCEEDED);
+  app.waitForState(job,JobState.RUNNING);
+  app.shutDownJob();
+  app.waitForState(job,JobState.SUCCEEDED);
+  Assert.assertEquals(true,app.isLastAMRetry());
+  Assert.assertEquals(1,JobEndServlet.calledTimes);
+  Assert.assertEquals("jobid=" + job.getID() + "&status=SUCCEEDED",JobEndServlet.requestUri.getQuery());
+  Assert.assertEquals(JobState.SUCCEEDED.toString(),JobEndServlet.foundJobState);
+  server.stop();
+}

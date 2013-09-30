@@ -1,0 +1,49 @@
+{
+  ContainerSimulator cs=null;
+synchronized (completedContainerList) {
+    while ((cs=containerQueue.poll()) != null) {
+      runningContainers.remove(cs.getId());
+      completedContainerList.add(cs.getId());
+      LOG.debug(MessageFormat.format("Container {0} has completed",cs.getId()));
+    }
+  }
+  NodeHeartbeatRequest beatRequest=Records.newRecord(NodeHeartbeatRequest.class);
+  beatRequest.setLastKnownNMTokenMasterKey(masterKey);
+  NodeStatus ns=Records.newRecord(NodeStatus.class);
+  ns.setContainersStatuses(generateContainerStatusList());
+  ns.setNodeId(node.getNodeID());
+  ns.setKeepAliveApplications(new ArrayList<ApplicationId>());
+  ns.setResponseId(RESPONSE_ID++);
+  ns.setNodeHealthStatus(NodeHealthStatus.newInstance(true,"",0));
+  beatRequest.setNodeStatus(ns);
+  try {
+    NodeHeartbeatResponse beatResponse=rm.getResourceTrackerService().nodeHeartbeat(beatRequest);
+    if (!beatResponse.getContainersToCleanup().isEmpty()) {
+synchronized (releasedContainerList) {
+        for (        ContainerId containerId : beatResponse.getContainersToCleanup()) {
+          if (amContainerList.contains(containerId)) {
+synchronized (amContainerList) {
+              amContainerList.remove(containerId);
+            }
+            LOG.debug(MessageFormat.format("NodeManager {0} releases " + "an AM ({1}).",node.getNodeID(),containerId));
+          }
+ else {
+            cs=runningContainers.remove(containerId);
+            containerQueue.remove(cs);
+            releasedContainerList.add(containerId);
+            LOG.debug(MessageFormat.format("NodeManager {0} releases a " + "container ({1}).",node.getNodeID(),containerId));
+          }
+        }
+      }
+    }
+    if (beatResponse.getNodeAction() == NodeAction.SHUTDOWN) {
+      lastStep();
+    }
+  }
+ catch (  YarnException e) {
+    e.printStackTrace();
+  }
+catch (  IOException e) {
+    e.printStackTrace();
+  }
+}
