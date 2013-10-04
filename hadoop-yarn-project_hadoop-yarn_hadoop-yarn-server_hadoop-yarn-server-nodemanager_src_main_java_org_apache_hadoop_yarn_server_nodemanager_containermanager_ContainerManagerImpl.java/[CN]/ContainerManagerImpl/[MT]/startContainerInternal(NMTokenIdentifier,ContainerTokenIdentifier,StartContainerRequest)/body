@@ -26,14 +26,25 @@
     NMAuditLogger.logFailure(user,AuditConstants.START_CONTAINER,"ContainerManagerImpl","Container already running on this node!",applicationID,containerId);
     throw RPCUtil.getRemoteException("Container " + containerIdStr + " already is running on this node!!");
   }
-  Application application=new ApplicationImpl(dispatcher,user,applicationID,credentials,context);
-  if (null == context.getApplications().putIfAbsent(applicationID,application)) {
-    LOG.info("Creating a new application reference for app " + applicationID);
-    dispatcher.getEventHandler().handle(new ApplicationInitEvent(applicationID,container.getLaunchContext().getApplicationACLs()));
+  this.readLock.lock();
+  try {
+    if (!serviceStopped) {
+      Application application=new ApplicationImpl(dispatcher,user,applicationID,credentials,context);
+      if (null == context.getApplications().putIfAbsent(applicationID,application)) {
+        LOG.info("Creating a new application reference for app " + applicationID);
+        dispatcher.getEventHandler().handle(new ApplicationInitEvent(applicationID,container.getLaunchContext().getApplicationACLs()));
+      }
+      dispatcher.getEventHandler().handle(new ApplicationContainerInitEvent(container));
+      this.context.getContainerTokenSecretManager().startContainerSuccessful(containerTokenIdentifier);
+      NMAuditLogger.logSuccess(user,AuditConstants.START_CONTAINER,"ContainerManageImpl",applicationID,containerId);
+      metrics.launchedContainer();
+      metrics.allocateContainer(containerTokenIdentifier.getResource());
+    }
+ else {
+      throw new YarnException("Container start failed as the NodeManager is " + "in the process of shutting down");
+    }
   }
-  dispatcher.getEventHandler().handle(new ApplicationContainerInitEvent(container));
-  this.context.getContainerTokenSecretManager().startContainerSuccessful(containerTokenIdentifier);
-  NMAuditLogger.logSuccess(user,AuditConstants.START_CONTAINER,"ContainerManageImpl",applicationID,containerId);
-  metrics.launchedContainer();
-  metrics.allocateContainer(containerTokenIdentifier.getResource());
+  finally {
+    this.readLock.unlock();
+  }
 }
