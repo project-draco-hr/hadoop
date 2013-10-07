@@ -1,0 +1,43 @@
+{
+  Configuration configuration=new Configuration();
+  configuration.set(YarnConfiguration.PROXY_ADDRESS,"localhost:9090");
+  configuration.setInt("hadoop.http.max.threads",5);
+  WebAppProxyServerForTest proxy=new WebAppProxyServerForTest();
+  proxy.init(configuration);
+  proxy.start();
+  int proxyPort=proxy.proxy.proxyServer.getPort();
+  AppReportFetcherForTest appReportFetcher=proxy.proxy.appReportFetcher;
+  try {
+    URL wrongUrl=new URL("http://localhost:" + proxyPort + "/proxy/app");
+    HttpURLConnection proxyConn=(HttpURLConnection)wrongUrl.openConnection();
+    proxyConn.connect();
+    assertEquals(HttpURLConnection.HTTP_INTERNAL_ERROR,proxyConn.getResponseCode());
+    URL url=new URL("http://localhost:" + proxyPort + "/proxy/application_00_0");
+    proxyConn=(HttpURLConnection)url.openConnection();
+    proxyConn.setRequestProperty("Cookie","checked_application_0_0000=true");
+    proxyConn.connect();
+    assertEquals(HttpURLConnection.HTTP_OK,proxyConn.getResponseCode());
+    assertTrue(isResponseCookiePresent(proxyConn,"checked_application_0_0000","true"));
+    appReportFetcher.answer=1;
+    proxyConn=(HttpURLConnection)url.openConnection();
+    proxyConn.setRequestProperty("Cookie","checked_application_0_0000=true");
+    proxyConn.connect();
+    assertEquals(HttpURLConnection.HTTP_NOT_FOUND,proxyConn.getResponseCode());
+    assertFalse(isResponseCookiePresent(proxyConn,"checked_application_0_0000","true"));
+    appReportFetcher.answer=2;
+    proxyConn=(HttpURLConnection)url.openConnection();
+    proxyConn.connect();
+    assertEquals(HttpURLConnection.HTTP_OK,proxyConn.getResponseCode());
+    String s=readInputStream(proxyConn.getInputStream());
+    assertTrue(s.contains("to continue to an Application Master web interface owned by"));
+    assertTrue(s.contains("WARNING: The following page may not be safe!"));
+    appReportFetcher.answer=3;
+    proxyConn=(HttpURLConnection)url.openConnection();
+    proxyConn.setRequestProperty("Cookie","checked_application_0_0000=true");
+    proxyConn.connect();
+    assertEquals(HttpURLConnection.HTTP_OK,proxyConn.getResponseCode());
+  }
+  finally {
+    proxy.close();
+  }
+}
