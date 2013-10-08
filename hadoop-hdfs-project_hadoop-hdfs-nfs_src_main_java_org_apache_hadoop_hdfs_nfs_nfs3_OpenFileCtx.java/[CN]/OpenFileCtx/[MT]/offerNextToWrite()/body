@@ -3,37 +3,39 @@
     if (LOG.isDebugEnabled()) {
       LOG.debug("The asyn write task has no pending writes, fileId: " + latestAttr.getFileId());
     }
+    processCommits(nextOffset.get());
+    this.asyncStatus=false;
+    return null;
+  }
+  Entry<OffsetRange,WriteCtx> lastEntry=pendingWrites.lastEntry();
+  OffsetRange range=lastEntry.getKey();
+  WriteCtx toWrite=lastEntry.getValue();
+  if (LOG.isTraceEnabled()) {
+    LOG.trace("range.getMin()=" + range.getMin() + " nextOffset="+ nextOffset);
+  }
+  long offset=nextOffset.get();
+  if (range.getMin() > offset) {
+    if (LOG.isDebugEnabled()) {
+      LOG.debug("The next sequencial write has not arrived yet");
+    }
+    processCommits(nextOffset.get());
     this.asyncStatus=false;
   }
+ else   if (range.getMin() < offset && range.getMax() > offset) {
+    LOG.warn("Got a overlapping write (" + range.getMin() + ","+ range.getMax()+ "), nextOffset="+ offset+ ". Silently drop it now");
+    pendingWrites.remove(range);
+    processCommits(nextOffset.get());
+  }
  else {
-    Entry<OffsetRange,WriteCtx> lastEntry=pendingWrites.lastEntry();
-    OffsetRange range=lastEntry.getKey();
-    WriteCtx toWrite=lastEntry.getValue();
-    if (LOG.isTraceEnabled()) {
-      LOG.trace("range.getMin()=" + range.getMin() + " nextOffset="+ nextOffset);
+    if (LOG.isDebugEnabled()) {
+      LOG.debug("Remove write(" + range.getMin() + "-"+ range.getMax()+ ") from the list");
     }
-    long offset=nextOffset.get();
-    if (range.getMin() > offset) {
-      if (LOG.isDebugEnabled()) {
-        LOG.debug("The next sequencial write has not arrived yet");
-      }
-      this.asyncStatus=false;
+    pendingWrites.remove(range);
+    nextOffset.addAndGet(toWrite.getCount());
+    if (LOG.isDebugEnabled()) {
+      LOG.debug("Change nextOffset to " + nextOffset.get());
     }
- else     if (range.getMin() < offset && range.getMax() > offset) {
-      LOG.warn("Got a overlapping write (" + range.getMin() + ","+ range.getMax()+ "), nextOffset="+ offset+ ". Silently drop it now");
-      pendingWrites.remove(range);
-    }
- else {
-      if (LOG.isDebugEnabled()) {
-        LOG.debug("Remove write(" + range.getMin() + "-"+ range.getMax()+ ") from the list");
-      }
-      pendingWrites.remove(range);
-      nextOffset.addAndGet(toWrite.getCount());
-      if (LOG.isDebugEnabled()) {
-        LOG.debug("Change nextOffset to " + nextOffset.get());
-      }
-      return toWrite;
-    }
+    return toWrite;
   }
   return null;
 }

@@ -1,0 +1,26 @@
+{
+  updateLastAccessTime();
+  Preconditions.checkState(commitOffset >= 0);
+  COMMIT_STATUS ret=checkCommitInternal(commitOffset,channel,xid,preOpAttr);
+  if (LOG.isDebugEnabled()) {
+    LOG.debug("Got commit status: " + ret.name());
+  }
+  if (ret == COMMIT_STATUS.COMMIT_DO_SYNC) {
+    try {
+      fos.hsync(EnumSet.of(SyncFlag.UPDATE_LENGTH));
+    }
+ catch (    ClosedChannelException cce) {
+      if (pendingWrites.isEmpty()) {
+        ret=COMMIT_STATUS.COMMIT_FINISHED;
+      }
+ else {
+        ret=COMMIT_STATUS.COMMIT_ERROR;
+      }
+    }
+catch (    IOException e) {
+      LOG.error("Got stream error during data sync:" + e);
+      ret=COMMIT_STATUS.COMMIT_ERROR;
+    }
+  }
+  return ret;
+}
