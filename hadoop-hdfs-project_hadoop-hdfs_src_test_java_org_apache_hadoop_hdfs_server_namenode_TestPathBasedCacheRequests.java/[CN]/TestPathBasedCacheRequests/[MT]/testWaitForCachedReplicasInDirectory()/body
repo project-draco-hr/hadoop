@@ -1,0 +1,32 @@
+{
+  Assume.assumeTrue(canTestDatanodeCaching());
+  HdfsConfiguration conf=createCachingConf();
+  MiniDFSCluster cluster=new MiniDFSCluster.Builder(conf).numDataNodes(NUM_DATANODES).build();
+  try {
+    cluster.waitActive();
+    DistributedFileSystem dfs=cluster.getFileSystem();
+    NameNode namenode=cluster.getNameNode();
+    final String pool="friendlyPool";
+    dfs.addCachePool(new CachePoolInfo(pool));
+    final List<Path> paths=new LinkedList<Path>();
+    paths.add(new Path("/foo/bar"));
+    paths.add(new Path("/foo/baz"));
+    paths.add(new Path("/foo2/bar2"));
+    paths.add(new Path("/foo2/baz2"));
+    dfs.mkdir(new Path("/foo"),FsPermission.getDirDefault());
+    dfs.mkdir(new Path("/foo2"),FsPermission.getDirDefault());
+    final int numBlocksPerFile=2;
+    for (    Path path : paths) {
+      FileSystemTestHelper.createFile(dfs,path,numBlocksPerFile,(int)BLOCK_SIZE,(short)3,false);
+    }
+    waitForCachedBlocks(namenode,0,0);
+    PathBasedCacheDescriptor descriptor=dfs.addPathBasedCacheDirective(new PathBasedCacheDirective.Builder().setPath(new Path("/foo")).setReplication((short)2).setPool(pool).build());
+    assertEquals("Descriptor does not match requested pool",pool,descriptor.getPool());
+    waitForCachedBlocks(namenode,4,8);
+    dfs.removePathBasedCacheDescriptor(descriptor);
+    waitForCachedBlocks(namenode,0,0);
+  }
+  finally {
+    cluster.shutdown();
+  }
+}

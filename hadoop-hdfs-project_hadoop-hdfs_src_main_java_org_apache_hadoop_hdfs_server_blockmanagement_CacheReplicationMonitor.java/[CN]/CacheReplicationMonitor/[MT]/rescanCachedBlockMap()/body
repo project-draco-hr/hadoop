@@ -1,0 +1,43 @@
+{
+  for (Iterator<CachedBlock> cbIter=cachedBlocks.iterator(); cbIter.hasNext(); ) {
+    scannedBlocks++;
+    CachedBlock cblock=cbIter.next();
+    List<DatanodeDescriptor> pendingCached=cblock.getDatanodes(Type.PENDING_CACHED);
+    List<DatanodeDescriptor> cached=cblock.getDatanodes(Type.CACHED);
+    List<DatanodeDescriptor> pendingUncached=cblock.getDatanodes(Type.PENDING_UNCACHED);
+    for (Iterator<DatanodeDescriptor> iter=pendingUncached.iterator(); iter.hasNext(); ) {
+      DatanodeDescriptor datanode=iter.next();
+      if (!cblock.isInList(datanode.getCached())) {
+        datanode.getPendingUncached().remove(cblock);
+        iter.remove();
+      }
+    }
+    int neededCached=(cblock.getMark() != mark) ? 0 : cblock.getReplication();
+    int numCached=cached.size();
+    if (numCached >= neededCached) {
+      for (      DatanodeDescriptor datanode : pendingCached) {
+        datanode.getPendingCached().remove(cblock);
+      }
+      pendingCached.clear();
+    }
+    if (numCached < neededCached) {
+      for (      DatanodeDescriptor datanode : pendingUncached) {
+        datanode.getPendingUncached().remove(cblock);
+      }
+      pendingUncached.clear();
+    }
+    int neededUncached=numCached - (pendingUncached.size() + neededCached);
+    if (neededUncached > 0) {
+      addNewPendingUncached(neededUncached,cblock,cached,pendingUncached);
+    }
+ else {
+      int additionalCachedNeeded=neededCached - (numCached + pendingCached.size());
+      if (additionalCachedNeeded > 0) {
+        addNewPendingCached(additionalCachedNeeded,cblock,cached,pendingCached);
+      }
+    }
+    if ((neededCached == 0) && pendingUncached.isEmpty() && pendingCached.isEmpty()) {
+      cbIter.remove();
+    }
+  }
+}

@@ -11,8 +11,19 @@
     short replication=in.readShort();
     String poolName=Text.readString(in);
     CachePool pool=cachePools.get(poolName);
+    if (pool != null) {
+      throw new IOException("Entry refers to pool " + poolName + ", which does not exist.");
+    }
     PathBasedCacheEntry entry=new PathBasedCacheEntry(entryId,path,replication,pool);
-    unprotectedAddEntry(entry);
+    if (entriesById.put(entry.getEntryId(),entry) != null) {
+      throw new IOException("An entry with ID " + entry.getEntryId() + " already exists");
+    }
+    List<PathBasedCacheEntry> entries=entriesByPath.get(entry.getPath());
+    if (entries == null) {
+      entries=new LinkedList<PathBasedCacheEntry>();
+      entriesByPath.put(entry.getPath(),entries);
+    }
+    entries.add(entry);
     counter.increment();
   }
   prog.endStep(Phase.LOADING_FSIMAGE,step);

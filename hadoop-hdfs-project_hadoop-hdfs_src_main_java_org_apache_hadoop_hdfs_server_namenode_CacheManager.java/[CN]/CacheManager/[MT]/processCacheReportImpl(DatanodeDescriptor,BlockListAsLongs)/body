@@ -1,0 +1,37 @@
+{
+  CachedBlocksList cached=datanode.getCached();
+  cached.clear();
+  BlockReportIterator itBR=report.getBlockReportIterator();
+  while (itBR.hasNext()) {
+    Block block=itBR.next();
+    ReplicaState iState=itBR.getCurrentReplicaState();
+    if (iState != ReplicaState.FINALIZED) {
+      LOG.error("Cached block report contained unfinalized block " + block);
+      continue;
+    }
+    BlockInfo blockInfo=blockManager.getStoredBlock(block);
+    if (blockInfo.getGenerationStamp() < block.getGenerationStamp()) {
+      LOG.warn("Genstamp in cache report disagrees with our genstamp for " + block + ": expected genstamp "+ blockInfo.getGenerationStamp());
+      continue;
+    }
+    Collection<DatanodeDescriptor> corruptReplicas=blockManager.getCorruptReplicas(blockInfo);
+    if ((corruptReplicas != null) && corruptReplicas.contains(datanode)) {
+      LOG.warn("Ignoring cached replica on " + datanode + " of "+ block+ " because it is corrupt.");
+      continue;
+    }
+    CachedBlock cachedBlock=new CachedBlock(block.getBlockId(),(short)0,false);
+    CachedBlock prevCachedBlock=cachedBlocks.get(cachedBlock);
+    if (prevCachedBlock != null) {
+      cachedBlock=prevCachedBlock;
+    }
+ else {
+      cachedBlocks.put(cachedBlock);
+    }
+    if (!cachedBlock.isPresent(datanode.getCached())) {
+      datanode.getCached().add(cachedBlock);
+    }
+    if (cachedBlock.isPresent(datanode.getPendingCached())) {
+      datanode.getPendingCached().remove(cachedBlock);
+    }
+  }
+}
