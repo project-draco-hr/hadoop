@@ -1,0 +1,81 @@
+{
+  Options opts=new Options();
+  Option appIdOpt=new Option(APPLICATION_ID_OPTION,true,"ApplicationId (required)");
+  appIdOpt.setRequired(true);
+  opts.addOption(appIdOpt);
+  opts.addOption(CONTAINER_ID_OPTION,true,"ContainerId (must be specified if node address is specified)");
+  opts.addOption(NODE_ADDRESS_OPTION,true,"NodeAddress in the format " + "nodename:port (must be specified if container id is specified)");
+  opts.addOption(APP_OWNER_OPTION,true,"AppOwner (assumed to be current user if not specified)");
+  opts.getOption(APPLICATION_ID_OPTION).setArgName("Application ID");
+  opts.getOption(CONTAINER_ID_OPTION).setArgName("Container ID");
+  opts.getOption(NODE_ADDRESS_OPTION).setArgName("Node Address");
+  opts.getOption(APP_OWNER_OPTION).setArgName("Application Owner");
+  Options printOpts=new Options();
+  printOpts.addOption(opts.getOption(CONTAINER_ID_OPTION));
+  printOpts.addOption(opts.getOption(NODE_ADDRESS_OPTION));
+  printOpts.addOption(opts.getOption(APP_OWNER_OPTION));
+  if (args.length < 1) {
+    printHelpMessage(printOpts);
+    return -1;
+  }
+  CommandLineParser parser=new GnuParser();
+  String appIdStr=null;
+  String containerIdStr=null;
+  String nodeAddress=null;
+  String appOwner=null;
+  try {
+    CommandLine commandLine=parser.parse(opts,args,true);
+    appIdStr=commandLine.getOptionValue(APPLICATION_ID_OPTION);
+    containerIdStr=commandLine.getOptionValue(CONTAINER_ID_OPTION);
+    nodeAddress=commandLine.getOptionValue(NODE_ADDRESS_OPTION);
+    appOwner=commandLine.getOptionValue(APP_OWNER_OPTION);
+  }
+ catch (  ParseException e) {
+    System.err.println("options parsing failed: " + e.getMessage());
+    printHelpMessage(printOpts);
+    return -1;
+  }
+  if (appIdStr == null) {
+    System.err.println("ApplicationId cannot be null!");
+    printHelpMessage(printOpts);
+    return -1;
+  }
+  ApplicationId appId=null;
+  try {
+    appId=ConverterUtils.toApplicationId(appIdStr);
+  }
+ catch (  Exception e) {
+    System.err.println("Invalid ApplicationId specified");
+    return -1;
+  }
+  try {
+    int resultCode=verifyApplicationState(appId);
+    if (resultCode != 0) {
+      System.out.println("Application has not completed." + " Logs are only available after an application completes");
+      return resultCode;
+    }
+  }
+ catch (  Exception e) {
+    System.err.println("Unable to get ApplicationState." + " Attempting to fetch logs directly from the filesystem.");
+  }
+  LogCLIHelpers logCliHelper=new LogCLIHelpers();
+  logCliHelper.setConf(getConf());
+  if (appOwner == null || appOwner.isEmpty()) {
+    appOwner=UserGroupInformation.getCurrentUser().getShortUserName();
+  }
+  int resultCode=0;
+  if (containerIdStr == null && nodeAddress == null) {
+    resultCode=logCliHelper.dumpAllContainersLogs(appId,appOwner,System.out);
+  }
+ else   if ((containerIdStr == null && nodeAddress != null) || (containerIdStr != null && nodeAddress == null)) {
+    System.out.println("ContainerId or NodeAddress cannot be null!");
+    printHelpMessage(printOpts);
+    resultCode=-1;
+  }
+ else {
+    Path remoteRootLogDir=new Path(getConf().get(YarnConfiguration.NM_REMOTE_APP_LOG_DIR,YarnConfiguration.DEFAULT_NM_REMOTE_APP_LOG_DIR));
+    AggregatedLogFormat.LogReader reader=new AggregatedLogFormat.LogReader(getConf(),LogAggregationUtils.getRemoteNodeLogFileForApp(remoteRootLogDir,appId,appOwner,ConverterUtils.toNodeId(nodeAddress),LogAggregationUtils.getRemoteNodeLogDirSuffix(getConf())));
+    resultCode=logCliHelper.dumpAContainerLogs(containerIdStr,reader,System.out);
+  }
+  return resultCode;
+}

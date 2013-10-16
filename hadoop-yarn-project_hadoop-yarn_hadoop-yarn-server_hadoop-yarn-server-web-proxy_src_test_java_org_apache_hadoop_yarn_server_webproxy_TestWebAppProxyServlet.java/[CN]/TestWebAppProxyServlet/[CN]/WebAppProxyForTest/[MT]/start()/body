@@ -1,0 +1,23 @@
+{
+  try {
+    Configuration conf=getConfig();
+    String bindAddress=conf.get(YarnConfiguration.PROXY_ADDRESS);
+    bindAddress=StringUtils.split(bindAddress,':')[0];
+    AccessControlList acl=new AccessControlList(conf.get(YarnConfiguration.YARN_ADMIN_ACL,YarnConfiguration.DEFAULT_YARN_ADMIN_ACL));
+    proxyServer=new HttpServer.Builder().setName("proxy").setBindAddress(bindAddress).setPort(0).setFindPort(true).setConf(conf).setACL(acl).build();
+    proxyServer.addServlet(ProxyUriUtils.PROXY_SERVLET_NAME,ProxyUriUtils.PROXY_PATH_SPEC,WebAppProxyServlet.class);
+    appReportFetcher=new AppReportFetcherForTest(conf);
+    proxyServer.setAttribute(FETCHER_ATTRIBUTE,appReportFetcher);
+    proxyServer.setAttribute(IS_SECURITY_ENABLED_ATTRIBUTE,Boolean.TRUE);
+    String proxy=WebAppUtils.getProxyHostAndPort(conf);
+    String[] proxyParts=proxy.split(":");
+    String proxyHost=proxyParts[0];
+    proxyServer.setAttribute(PROXY_HOST_ATTRIBUTE,proxyHost);
+    proxyServer.start();
+    System.out.println("Proxy server is started at port " + proxyServer.getPort());
+  }
+ catch (  Exception e) {
+    LOG.fatal("Could not start proxy web server",e);
+    throw new YarnRuntimeException("Could not start proxy web server",e);
+  }
+}

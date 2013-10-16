@@ -1,0 +1,45 @@
+{
+  Preconditions.checkState(offset > 0);
+  long flushedOffset=getFlushedOffset();
+  Entry<Long,CommitCtx> entry=pendingCommits.firstEntry();
+  if (entry == null || entry.getValue().offset > flushedOffset) {
+    return;
+  }
+  int status=Nfs3Status.NFS3ERR_IO;
+  try {
+    fos.hsync(EnumSet.of(SyncFlag.UPDATE_LENGTH));
+    status=Nfs3Status.NFS3_OK;
+  }
+ catch (  ClosedChannelException cce) {
+    if (!pendingWrites.isEmpty()) {
+      LOG.error("Can't sync for fileId: " + latestAttr.getFileId() + ". Channel closed with writes pending");
+    }
+    status=Nfs3Status.NFS3ERR_IO;
+  }
+catch (  IOException e) {
+    LOG.error("Got stream error during data sync:" + e);
+    status=Nfs3Status.NFS3ERR_IO;
+  }
+  try {
+    latestAttr=Nfs3Utils.getFileAttr(client,Nfs3Utils.getFileIdPath(latestAttr.getFileId()),iug);
+  }
+ catch (  IOException e) {
+    LOG.error("Can't get new file attr for fileId: " + latestAttr.getFileId());
+    status=Nfs3Status.NFS3ERR_IO;
+  }
+  if (latestAttr.getSize() != offset) {
+    LOG.error("After sync, the expect file size: " + offset + ", however actual file size is: "+ latestAttr.getSize());
+    status=Nfs3Status.NFS3ERR_IO;
+  }
+  WccData wccData=new WccData(Nfs3Utils.getWccAttr(latestAttr),latestAttr);
+  while (entry != null && entry.getValue().offset <= flushedOffset) {
+    pendingCommits.remove(entry.getKey());
+    CommitCtx commit=entry.getValue();
+    COMMIT3Response response=new COMMIT3Response(status,wccData,Nfs3Constant.WRITE_COMMIT_VERF);
+    Nfs3Utils.writeChannelCommit(commit.getChannel(),response.writeHeaderAndResponse(new XDR(),commit.getXid(),new VerifierNone()),commit.getXid());
+    if (LOG.isDebugEnabled()) {
+      LOG.debug("FileId: " + latestAttr.getFileid() + " Service time:"+ (System.currentTimeMillis() - commit.getStartTime())+ "ms. Sent response for commit:"+ commit);
+    }
+    entry=pendingCommits.firstEntry();
+  }
+}

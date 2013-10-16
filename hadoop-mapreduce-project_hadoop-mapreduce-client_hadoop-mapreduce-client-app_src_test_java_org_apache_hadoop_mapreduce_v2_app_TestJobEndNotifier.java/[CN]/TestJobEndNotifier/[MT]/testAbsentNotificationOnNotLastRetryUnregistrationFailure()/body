@@ -1,0 +1,18 @@
+{
+  HttpServer server=startHttpServer();
+  MRApp app=spy(new MRAppWithCustomContainerAllocator(2,2,false,this.getClass().getName(),true,1,false));
+  doNothing().when(app).sysexit();
+  Configuration conf=new Configuration();
+  conf.set(JobContext.MR_JOB_END_NOTIFICATION_URL,JobEndServlet.baseUrl + "jobend?jobid=$jobId&status=$jobStatus");
+  JobImpl job=(JobImpl)app.submit(conf);
+  app.waitForState(job,JobState.RUNNING);
+  app.getContext().getEventHandler().handle(new JobEvent(app.getJobId(),JobEventType.JOB_AM_REBOOT));
+  app.waitForInternalState(job,JobStateInternal.REBOOT);
+  app.shutDownJob();
+  app.waitForState(job,JobState.RUNNING);
+  Assert.assertEquals(false,app.isLastAMRetry());
+  Assert.assertEquals(0,JobEndServlet.calledTimes);
+  Assert.assertEquals(null,JobEndServlet.requestUri);
+  Assert.assertEquals(null,JobEndServlet.foundJobState);
+  server.stop();
+}

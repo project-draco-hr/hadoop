@@ -1,12 +1,14 @@
 {
   final NameNode nn=NameNodeHttpServer.getNameNodeFromContext(context);
   final FSNamesystem ns=nn.getNamesystem();
+  if (ns == null) {
+    return;
+  }
   final DatanodeManager dm=ns.getBlockManager().getDatanodeManager();
   final List<DatanodeDescriptor> live=new ArrayList<DatanodeDescriptor>();
   final List<DatanodeDescriptor> dead=new ArrayList<DatanodeDescriptor>();
   dm.fetchDatanodes(live,dead,true);
-  InetSocketAddress nnSocketAddress=(InetSocketAddress)context.getAttribute(NameNodeHttpServer.NAMENODE_ADDRESS_ATTRIBUTE_KEY);
-  String nnaddr=nnSocketAddress.getAddress().getHostAddress() + ":" + nnSocketAddress.getPort();
+  String nnaddr=nn.getServiceRpcAddress().getAddress().getHostName() + ":" + nn.getServiceRpcAddress().getPort();
   whatNodes=request.getParameter("whatNodes");
   if (null == whatNodes || whatNodes.isEmpty()) {
     out.print("Invalid input");
@@ -32,16 +34,11 @@
     }
   }
   counterReset();
-  try {
-    Thread.sleep(1000);
-  }
- catch (  InterruptedException e) {
-  }
   if (live.isEmpty() && dead.isEmpty()) {
     out.print("There are no datanodes in the cluster");
   }
  else {
-    int nnHttpPort=nn.getHttpAddress().getPort();
+    int nnInfoPort=request.getServerPort();
     out.print("<div id=\"dfsnodetable\"> ");
     if (whatNodes.equals("LIVE")) {
       out.print("<a name=\"LiveNodes\" id=\"title\">" + "Live Datanodes : " + live.size() + "</a>"+ "<br><br>\n<table class=\"nodes\">\n");
@@ -54,7 +51,7 @@
         out.print("<tr class=\"headerRow\"> <th " + nodeHeaderStr("name") + "> Node <th "+ nodeHeaderStr("address")+ "> Transferring<br>Address <th "+ nodeHeaderStr("lastcontact")+ "> Last <br>Contact <th "+ nodeHeaderStr("adminstate")+ "> Admin State <th "+ nodeHeaderStr("capacity")+ "> Configured <br>Capacity ("+ diskByteStr+ ") <th "+ nodeHeaderStr("used")+ "> Used <br>("+ diskByteStr+ ") <th "+ nodeHeaderStr("nondfsused")+ "> Non DFS <br>Used ("+ diskByteStr+ ") <th "+ nodeHeaderStr("remaining")+ "> Remaining <br>("+ diskByteStr+ ") <th "+ nodeHeaderStr("pcused")+ "> Used <br>(%) <th "+ nodeHeaderStr("pcused")+ "> Used <br>(%) <th "+ nodeHeaderStr("pcremaining")+ "> Remaining <br>(%) <th "+ nodeHeaderStr("blocks")+ "> Blocks <th "+ nodeHeaderStr("bpused")+ "> Block Pool<br>Used ("+ diskByteStr+ ") <th "+ nodeHeaderStr("pcbpused")+ "> Block Pool<br>Used (%)"+ " <th "+ nodeHeaderStr("volfails")+ "> Failed Volumes <th "+ nodeHeaderStr("versionString")+ "> Version\n");
         JspHelper.sortNodeList(live,sorterField,sorterOrder);
         for (int i=0; i < live.size(); i++) {
-          generateNodeData(out,live.get(i),port_suffix,true,nnHttpPort,nnaddr);
+          generateNodeData(out,live.get(i),port_suffix,true,nnInfoPort,nnaddr,request.getScheme());
         }
       }
       out.print("</table>\n");
@@ -65,7 +62,7 @@
         out.print("<table border=1 cellspacing=0> <tr id=\"row1\"> " + "<th " + nodeHeaderStr("node") + "> Node <th "+ nodeHeaderStr("address")+ "> Transferring<br>Address <th "+ nodeHeaderStr("lastcontact")+ "> Last <br>Contact <th "+ nodeHeaderStr("decommissioned")+ "> Decommissioned\n");
         JspHelper.sortNodeList(dead,sorterField,sorterOrder);
         for (int i=0; i < dead.size(); i++) {
-          generateNodeData(out,dead.get(i),port_suffix,false,nnHttpPort,nnaddr);
+          generateNodeData(out,dead.get(i),port_suffix,false,nnInfoPort,nnaddr,request.getScheme());
         }
         out.print("</table>\n");
       }
@@ -77,7 +74,7 @@
         out.print("<table border=1 cellspacing=0> <tr class=\"headRow\"> " + "<th " + nodeHeaderStr("name") + "> Node <th "+ nodeHeaderStr("address")+ "> Transferring<br>Address <th "+ nodeHeaderStr("lastcontact")+ "> Last <br>Contact <th "+ nodeHeaderStr("underreplicatedblocks")+ "> Under Replicated Blocks <th "+ nodeHeaderStr("blockswithonlydecommissioningreplicas")+ "> Blocks With No <br> Live Replicas <th "+ nodeHeaderStr("underrepblocksinfilesunderconstruction")+ "> Under Replicated Blocks <br> In Files Under Construction"+ " <th "+ nodeHeaderStr("timesincedecommissionrequest")+ "> Time Since Decommissioning Started");
         JspHelper.sortNodeList(decommissioning,"name","ASC");
         for (int i=0; i < decommissioning.size(); i++) {
-          generateDecommissioningNodeData(out,decommissioning.get(i),port_suffix,true,nnHttpPort,nnaddr);
+          generateDecommissioningNodeData(out,decommissioning.get(i),port_suffix,true,nnInfoPort,nnaddr,request.getScheme());
         }
         out.print("</table>\n");
       }
