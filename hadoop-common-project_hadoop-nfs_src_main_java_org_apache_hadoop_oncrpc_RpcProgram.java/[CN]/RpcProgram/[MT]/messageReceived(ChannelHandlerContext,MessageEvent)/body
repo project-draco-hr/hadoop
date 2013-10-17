@@ -1,0 +1,31 @@
+{
+  RpcInfo info=(RpcInfo)e.getMessage();
+  RpcCall call=(RpcCall)info.header();
+  if (LOG.isTraceEnabled()) {
+    LOG.trace(program + " procedure #" + call.getProcedure());
+  }
+  if (this.progNumber != call.getProgram()) {
+    LOG.warn("Invalid RPC call program " + call.getProgram());
+    RpcAcceptedReply reply=RpcAcceptedReply.getInstance(call.getXid(),AcceptState.PROG_UNAVAIL,Verifier.VERIFIER_NONE);
+    XDR out=new XDR();
+    reply.write(out);
+    ChannelBuffer b=ChannelBuffers.wrappedBuffer(out.asReadOnlyWrap().buffer());
+    RpcResponse rsp=new RpcResponse(b,info.remoteAddress());
+    RpcUtil.sendRpcResponse(ctx,rsp);
+    return;
+  }
+  int ver=call.getVersion();
+  if (ver < lowProgVersion || ver > highProgVersion) {
+    LOG.warn("Invalid RPC call version " + ver);
+    RpcAcceptedReply reply=RpcAcceptedReply.getInstance(call.getXid(),AcceptState.PROG_MISMATCH,Verifier.VERIFIER_NONE);
+    XDR out=new XDR();
+    reply.write(out);
+    out.writeInt(lowProgVersion);
+    out.writeInt(highProgVersion);
+    ChannelBuffer b=ChannelBuffers.wrappedBuffer(out.asReadOnlyWrap().buffer());
+    RpcResponse rsp=new RpcResponse(b,info.remoteAddress());
+    RpcUtil.sendRpcResponse(ctx,rsp);
+    return;
+  }
+  handleInternal(ctx,info);
+}

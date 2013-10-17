@@ -1,0 +1,40 @@
+{
+  if (file == null) {
+    return null;
+  }
+  if (start < 0 || len < 0) {
+    throw new IllegalArgumentException("Negative start or len parameter" + " to getFileBlockLocations");
+  }
+  if (file.getLen() <= start) {
+    return new BlockLocation[0];
+  }
+  final FileStatus[] listOfFileBlocks=store.listSubPaths(file.getPath(),false,true);
+  List<URI> locations=new ArrayList<URI>();
+  if (listOfFileBlocks.length > 1) {
+    for (    FileStatus fileStatus : listOfFileBlocks) {
+      if (SwiftObjectPath.fromPath(uri,fileStatus.getPath()).equals(SwiftObjectPath.fromPath(uri,file.getPath()))) {
+        continue;
+      }
+      locations.addAll(store.getObjectLocation(fileStatus.getPath()));
+    }
+  }
+ else {
+    locations=store.getObjectLocation(file.getPath());
+  }
+  if (locations.isEmpty()) {
+    LOG.debug("No locations returned for " + file.getPath());
+    String[] name={SwiftProtocolConstants.BLOCK_LOCATION};
+    String[] host={"localhost"};
+    String[] topology={SwiftProtocolConstants.TOPOLOGY_PATH};
+    return new BlockLocation[]{new BlockLocation(name,host,topology,0,file.getLen())};
+  }
+  final String[] names=new String[locations.size()];
+  final String[] hosts=new String[locations.size()];
+  int i=0;
+  for (  URI location : locations) {
+    hosts[i]=location.getHost();
+    names[i]=location.getAuthority();
+    i++;
+  }
+  return new BlockLocation[]{new BlockLocation(names,hosts,0,file.getLen())};
+}

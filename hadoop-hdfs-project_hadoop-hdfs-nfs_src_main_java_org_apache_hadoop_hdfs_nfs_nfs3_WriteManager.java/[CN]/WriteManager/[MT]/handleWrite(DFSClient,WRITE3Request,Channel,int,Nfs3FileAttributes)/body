@@ -8,7 +8,7 @@
   byte[] data=request.getData().array();
   if (data.length < count) {
     WRITE3Response response=new WRITE3Response(Nfs3Status.NFS3ERR_INVAL);
-    Nfs3Utils.writeChannel(channel,response.send(new XDR(),xid));
+    Nfs3Utils.writeChannel(channel,response.writeHeaderAndResponse(new XDR(),xid,new VerifierNone()),xid);
     return;
   }
   FileHandle handle=request.getHandle();
@@ -34,28 +34,16 @@
       }
       WccData fileWcc=new WccData(Nfs3Utils.getWccAttr(preOpAttr),preOpAttr);
       WRITE3Response response=new WRITE3Response(Nfs3Status.NFS3ERR_IO,fileWcc,count,request.getStableHow(),Nfs3Constant.WRITE_COMMIT_VERF);
-      Nfs3Utils.writeChannel(channel,response.send(new XDR(),xid));
+      Nfs3Utils.writeChannel(channel,response.writeHeaderAndResponse(new XDR(),xid,new VerifierNone()),xid);
       return;
     }
     String writeDumpDir=config.get(Nfs3Constant.FILE_DUMP_DIR_KEY,Nfs3Constant.FILE_DUMP_DIR_DEFAULT);
-    openFileCtx=new OpenFileCtx(fos,latestAttr,writeDumpDir + "/" + fileHandle.getFileId());
+    openFileCtx=new OpenFileCtx(fos,latestAttr,writeDumpDir + "/" + fileHandle.getFileId(),dfsClient,iug);
     addOpenFileStream(fileHandle,openFileCtx);
     if (LOG.isDebugEnabled()) {
       LOG.debug("opened stream for file:" + fileHandle.getFileId());
     }
   }
   openFileCtx.receivedNewWrite(dfsClient,request,channel,xid,asyncDataService,iug);
-  if (request.getStableHow() != WriteStableHow.UNSTABLE) {
-    if (handleCommit(fileHandle,offset + count)) {
-      Nfs3FileAttributes postOpAttr=getFileAttr(dfsClient,handle,iug);
-      WccData fileWcc=new WccData(Nfs3Utils.getWccAttr(preOpAttr),postOpAttr);
-      WRITE3Response response=new WRITE3Response(Nfs3Status.NFS3_OK,fileWcc,count,request.getStableHow(),Nfs3Constant.WRITE_COMMIT_VERF);
-      Nfs3Utils.writeChannel(channel,response.send(new XDR(),xid));
-    }
- else {
-      WRITE3Response response=new WRITE3Response(Nfs3Status.NFS3ERR_IO);
-      Nfs3Utils.writeChannel(channel,response.send(new XDR(),xid));
-    }
-  }
   return;
 }

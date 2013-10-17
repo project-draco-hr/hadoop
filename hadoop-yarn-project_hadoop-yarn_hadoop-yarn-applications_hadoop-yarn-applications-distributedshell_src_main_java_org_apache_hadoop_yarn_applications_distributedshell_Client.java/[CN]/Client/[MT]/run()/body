@@ -24,6 +24,12 @@
     LOG.info("AM memory specified above max threshold of cluster. Using max value." + ", specified=" + amMemory + ", max="+ maxMem);
     amMemory=maxMem;
   }
+  int maxVCores=appResponse.getMaximumResourceCapability().getVirtualCores();
+  LOG.info("Max virtual cores capabililty of resources in this cluster " + maxVCores);
+  if (amVCores > maxVCores) {
+    LOG.info("AM virtual cores specified above max threshold of cluster. " + "Using max value." + ", specified=" + amVCores + ", max="+ maxVCores);
+    amVCores=maxVCores;
+  }
   ApplicationSubmissionContext appContext=app.getApplicationSubmissionContext();
   ApplicationId appId=appContext.getApplicationId();
   appContext.setApplicationName(appName);
@@ -93,6 +99,7 @@
   vargs.add("-Xmx" + amMemory + "m");
   vargs.add(appMasterMainClass);
   vargs.add("--container_memory " + String.valueOf(containerMemory));
+  vargs.add("--container_vcores " + String.valueOf(containerVirtualCores));
   vargs.add("--num_containers " + String.valueOf(numContainers));
   vargs.add("--priority " + String.valueOf(shellCmdPriority));
   if (!shellCommand.isEmpty()) {
@@ -119,7 +126,25 @@
   amContainer.setCommands(commands);
   Resource capability=Records.newRecord(Resource.class);
   capability.setMemory(amMemory);
+  capability.setVirtualCores(amVCores);
   appContext.setResource(capability);
+  if (UserGroupInformation.isSecurityEnabled()) {
+    Credentials credentials=new Credentials();
+    String tokenRenewer=conf.get(YarnConfiguration.RM_PRINCIPAL);
+    if (tokenRenewer == null || tokenRenewer.length() == 0) {
+      throw new IOException("Can't get Master Kerberos principal for the RM to use as renewer");
+    }
+    final Token<?> tokens[]=fs.addDelegationTokens(tokenRenewer,credentials);
+    if (tokens != null) {
+      for (      Token<?> token : tokens) {
+        LOG.info("Got dt for " + fs.getUri() + "; "+ token);
+      }
+    }
+    DataOutputBuffer dob=new DataOutputBuffer();
+    credentials.writeTokenStorageToStream(dob);
+    ByteBuffer fsTokens=ByteBuffer.wrap(dob.getData(),0,dob.getLength());
+    amContainer.setTokens(fsTokens);
+  }
   appContext.setAMContainerSpec(amContainer);
   Priority pri=Records.newRecord(Priority.class);
   pri.setPriority(amPriority);

@@ -8,7 +8,7 @@
   final DrainDispatcher dispatcher=new DrainDispatcher();
   MockRM rm=new MockRMWithCustomAMLauncher(conf,containerManager){
     protected ClientRMService createClientRMService(){
-      return new ClientRMService(this.rmContext,scheduler,this.rmAppManager,this.applicationACLsManager,this.rmDTSecretManager);
+      return new ClientRMService(this.rmContext,scheduler,this.rmAppManager,this.applicationACLsManager,this.queueACLsManager,this.rmDTSecretManager);
     }
     @Override protected Dispatcher createDispatcher(){
       return dispatcher;
@@ -24,11 +24,6 @@
   dispatcher.await();
   nm1.nodeHeartbeat(true);
   dispatcher.await();
-  GetApplicationReportRequest request=Records.newRecord(GetApplicationReportRequest.class);
-  request.setApplicationId(app.getApplicationId());
-  GetApplicationReportResponse reportResponse=rm.getClientRMService().getApplicationReport(request);
-  ApplicationReport appReport=reportResponse.getApplicationReport();
-  org.apache.hadoop.yarn.api.records.Token originalClientToAMToken=appReport.getClientToAMToken();
   ApplicationAttemptId appAttempt=app.getCurrentAppAttempt().getAppAttemptId();
   final MockAM mockAM=new MockAM(rm.getRMContext(),rm.getApplicationMasterService(),app.getCurrentAppAttempt().getAppAttemptId());
   UserGroupInformation appUgi=UserGroupInformation.createRemoteUser(appAttempt.toString());
@@ -45,6 +40,11 @@
     }
   }
 );
+  GetApplicationReportRequest request=Records.newRecord(GetApplicationReportRequest.class);
+  request.setApplicationId(app.getApplicationId());
+  GetApplicationReportResponse reportResponse=rm.getClientRMService().getApplicationReport(request);
+  ApplicationReport appReport=reportResponse.getApplicationReport();
+  org.apache.hadoop.yarn.api.records.Token originalClientToAMToken=appReport.getClientToAMToken();
   Assert.assertNotNull(response.getClientToAMTokenMasterKey());
   Assert.assertTrue(response.getClientToAMTokenMasterKey().array().length > 0);
   ApplicationAttemptId appAttemptId=app.getAppAttempts().keySet().iterator().next();

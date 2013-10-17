@@ -25,6 +25,27 @@
       }
       long estimatedEndTime=estimatedRunTime + taskAttemptStartTime;
       long estimatedReplacementEndTime=now + estimator.estimatedNewAttemptRuntime(taskID);
+      float progress=taskAttempt.getProgress();
+      TaskAttemptHistoryStatistics data=runningTaskAttemptStatistics.get(runningTaskAttemptID);
+      if (data == null) {
+        runningTaskAttemptStatistics.put(runningTaskAttemptID,new TaskAttemptHistoryStatistics(estimatedRunTime,progress,now));
+      }
+ else {
+        if (estimatedRunTime == data.getEstimatedRunTime() && progress == data.getProgress()) {
+          if (data.notHeartbeatedInAWhile(now)) {
+            TaskAttemptStatus taskAttemptStatus=new TaskAttemptStatus();
+            taskAttemptStatus.id=runningTaskAttemptID;
+            taskAttemptStatus.progress=progress;
+            taskAttemptStatus.taskState=taskAttempt.getState();
+            handleAttempt(taskAttemptStatus);
+          }
+        }
+ else {
+          data.setEstimatedRunTime(estimatedRunTime);
+          data.setProgress(progress);
+          data.resetHeartBeatTime(now);
+        }
+      }
       if (estimatedEndTime < now) {
         return PROGRESS_IS_GOOD;
       }

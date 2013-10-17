@@ -2,10 +2,20 @@
   if (conf.getBoolean(YarnConfiguration.IS_MINI_YARN_CLUSTER,false)) {
     Apps.addToEnvironment(environment,Environment.CLASSPATH.name(),System.getProperty("java.class.path"));
   }
-  for (  String c : conf.getStrings(YarnConfiguration.YARN_APPLICATION_CLASSPATH,YarnConfiguration.DEFAULT_YARN_APPLICATION_CLASSPATH)) {
-    Apps.addToEnvironment(environment,Environment.CLASSPATH.name(),c.trim());
+  String frameworkName=getMRFrameworkName(conf);
+  if (frameworkName == null) {
+    for (    String c : conf.getStrings(YarnConfiguration.YARN_APPLICATION_CLASSPATH,YarnConfiguration.DEFAULT_YARN_APPLICATION_CLASSPATH)) {
+      Apps.addToEnvironment(environment,Environment.CLASSPATH.name(),c.trim());
+    }
   }
-  for (  String c : conf.getStrings(MRJobConfig.MAPREDUCE_APPLICATION_CLASSPATH,MRJobConfig.DEFAULT_MAPREDUCE_APPLICATION_CLASSPATH)) {
+  boolean foundFrameworkInClasspath=(frameworkName == null);
+  for (  String c : conf.getStrings(MRJobConfig.MAPREDUCE_APPLICATION_CLASSPATH,StringUtils.getStrings(MRJobConfig.DEFAULT_MAPREDUCE_APPLICATION_CLASSPATH))) {
     Apps.addToEnvironment(environment,Environment.CLASSPATH.name(),c.trim());
+    if (!foundFrameworkInClasspath) {
+      foundFrameworkInClasspath=c.contains(frameworkName);
+    }
+  }
+  if (!foundFrameworkInClasspath) {
+    throw new IllegalArgumentException("Could not locate MapReduce framework name '" + frameworkName + "' in "+ MRJobConfig.MAPREDUCE_APPLICATION_CLASSPATH);
   }
 }

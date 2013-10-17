@@ -1,26 +1,44 @@
 {
   LOG.info("Starting ApplicationMaster");
+  Credentials credentials=UserGroupInformation.getCurrentUser().getCredentials();
+  DataOutputBuffer dob=new DataOutputBuffer();
+  credentials.writeTokenStorageToStream(dob);
+  Iterator<Token<?>> iter=credentials.getAllTokens().iterator();
+  while (iter.hasNext()) {
+    Token<?> token=iter.next();
+    if (token.getKind().equals(AMRMTokenIdentifier.KIND_NAME)) {
+      iter.remove();
+    }
+  }
+  allTokens=ByteBuffer.wrap(dob.getData(),0,dob.getLength());
   AMRMClientAsync.CallbackHandler allocListener=new RMCallbackHandler();
-  resourceManager=AMRMClientAsync.createAMRMClientAsync(1000,allocListener);
-  resourceManager.init(conf);
-  resourceManager.start();
-  containerListener=new NMCallbackHandler();
+  amRMClient=AMRMClientAsync.createAMRMClientAsync(1000,allocListener);
+  amRMClient.init(conf);
+  amRMClient.start();
+  containerListener=createNMCallbackHandler();
   nmClientAsync=new NMClientAsyncImpl(containerListener);
   nmClientAsync.init(conf);
   nmClientAsync.start();
-  RegisterApplicationMasterResponse response=resourceManager.registerApplicationMaster(appMasterHostname,appMasterRpcPort,appMasterTrackingUrl);
+  appMasterHostname=NetUtils.getHostname();
+  RegisterApplicationMasterResponse response=amRMClient.registerApplicationMaster(appMasterHostname,appMasterRpcPort,appMasterTrackingUrl);
   int maxMem=response.getMaximumResourceCapability().getMemory();
   LOG.info("Max mem capabililty of resources in this cluster " + maxMem);
+  int maxVCores=response.getMaximumResourceCapability().getVirtualCores();
+  LOG.info("Max vcores capabililty of resources in this cluster " + maxVCores);
   if (containerMemory > maxMem) {
     LOG.info("Container memory specified above max threshold of cluster." + " Using max value." + ", specified=" + containerMemory + ", max="+ maxMem);
     containerMemory=maxMem;
   }
+  if (containerVirtualCores > maxVCores) {
+    LOG.info("Container virtual cores specified above max threshold of cluster." + " Using max value." + ", specified=" + containerVirtualCores + ", max="+ maxVCores);
+    containerVirtualCores=maxVCores;
+  }
   for (int i=0; i < numTotalContainers; ++i) {
     ContainerRequest containerAsk=setupContainerAskForRM();
-    resourceManager.addContainerRequest(containerAsk);
+    amRMClient.addContainerRequest(containerAsk);
   }
   numRequestedContainers.set(numTotalContainers);
-  while (!done) {
+  while (!done && (numCompletedContainers.get() != numTotalContainers)) {
     try {
       Thread.sleep(200);
     }

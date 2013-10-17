@@ -1,7 +1,8 @@
 {
   checkSpecs(job);
-  Path jobStagingArea=JobSubmissionFiles.getStagingDir(cluster,job.getConfiguration());
   Configuration conf=job.getConfiguration();
+  addMRFrameworkToDistributedCache(conf);
+  Path jobStagingArea=JobSubmissionFiles.getStagingDir(cluster,conf);
   InetAddress ip=InetAddress.getLocalHost();
   if (ip != null) {
     submitHostAddress=ip.getHostAddress();
@@ -42,6 +43,13 @@
     AccessControlList acl=submitClient.getQueueAdmins(queue);
     conf.set(toFullPropertyName(queue,QueueACL.ADMINISTER_JOBS.getAclName()),acl.getAclString());
     TokenCache.cleanUpTokenReferral(conf);
+    if (conf.getBoolean(MRJobConfig.JOB_TOKEN_TRACKING_IDS_ENABLED,MRJobConfig.DEFAULT_JOB_TOKEN_TRACKING_IDS_ENABLED)) {
+      ArrayList<String> trackingIds=new ArrayList<String>();
+      for (      Token<? extends TokenIdentifier> t : job.getCredentials().getAllTokens()) {
+        trackingIds.add(t.decodeIdentifier().getTrackingId());
+      }
+      conf.setStrings(MRJobConfig.JOB_TOKEN_TRACKING_IDS,trackingIds.toArray(new String[trackingIds.size()]));
+    }
     writeConf(conf,submitJobFile);
     printTokens(jobId,job.getCredentials());
     status=submitClient.submitJob(jobId,submitJobDir.toString(),job.getCredentials());

@@ -1,0 +1,28 @@
+{
+  LOG.info(MessageFormat.format("Application {0} is shutting down.",appId));
+  if (isTracked) {
+    untrackApp();
+  }
+  final FinishApplicationMasterRequest finishAMRequest=recordFactory.newRecordInstance(FinishApplicationMasterRequest.class);
+  finishAMRequest.setFinalApplicationStatus(FinalApplicationStatus.SUCCEEDED);
+  try {
+    UserGroupInformation ugi=UserGroupInformation.createRemoteUser(appAttemptId.toString());
+    Token<AMRMTokenIdentifier> token=rm.getRMContext().getRMApps().get(appAttemptId.getApplicationId()).getRMAppAttempt(appAttemptId).getAMRMToken();
+    ugi.addTokenIdentifier(token.decodeIdentifier());
+    ugi.doAs(new PrivilegedExceptionAction<Object>(){
+      @Override public Object run() throws Exception {
+        rm.getApplicationMasterService().finishApplicationMaster(finishAMRequest);
+        return null;
+      }
+    }
+);
+  }
+ catch (  IOException e) {
+    e.printStackTrace();
+  }
+catch (  InterruptedException e) {
+    e.printStackTrace();
+  }
+  simulateFinishTimeMS=System.currentTimeMillis() - SLSRunner.getRunner().getStartTimeMS();
+  ((ResourceSchedulerWrapper)rm.getResourceScheduler()).addAMRuntime(appId,traceStartTimeMS,traceFinishTimeMS,simulateStartTimeMS,simulateFinishTimeMS);
+}

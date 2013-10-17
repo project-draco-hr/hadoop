@@ -1,0 +1,115 @@
+{
+  if (LOG.isDebugEnabled()) {
+    LOG.debug("mv " + src + " "+ dst);
+  }
+  boolean renamingOnToSelf=src.equals(dst);
+  SwiftObjectPath srcObject=toObjectPath(src);
+  SwiftObjectPath destObject=toObjectPath(dst);
+  if (SwiftUtils.isRootDir(srcObject)) {
+    throw new SwiftOperationFailedException("cannot rename root dir");
+  }
+  final SwiftFileStatus srcMetadata;
+  srcMetadata=getObjectMetadata(src);
+  SwiftFileStatus dstMetadata;
+  try {
+    dstMetadata=getObjectMetadata(dst);
+  }
+ catch (  FileNotFoundException e) {
+    LOG.debug("Destination does not exist");
+    dstMetadata=null;
+  }
+  Path srcParent=src.getParent();
+  Path dstParent=dst.getParent();
+  if (dstParent != null && !dstParent.equals(srcParent)) {
+    try {
+      getObjectMetadata(dstParent);
+    }
+ catch (    FileNotFoundException e) {
+      LOG.debug("destination parent directory " + dstParent + " doesn't exist");
+      throw e;
+    }
+  }
+  boolean destExists=dstMetadata != null;
+  boolean destIsDir=destExists && SwiftUtils.isDirectory(dstMetadata);
+  SwiftObjectPath destPath;
+  List<FileStatus> childStats=listDirectory(srcObject,true,true);
+  boolean srcIsFile=!srcMetadata.isDir();
+  if (srcIsFile) {
+    if (destExists) {
+      if (destIsDir) {
+        destPath=toObjectPath(new Path(dst,src.getName()));
+      }
+ else {
+        if (!renamingOnToSelf) {
+          throw new SwiftOperationFailedException("cannot rename a file over one that already exists");
+        }
+ else {
+          LOG.debug("Renaming file onto self: no-op => success");
+          return;
+        }
+      }
+    }
+ else {
+      destPath=toObjectPath(dst);
+    }
+    int childCount=childStats.size();
+    if (childCount == 0) {
+      copyThenDeleteObject(srcObject,destPath);
+    }
+ else {
+      SwiftUtils.debug(LOG,"Source file appears to be partitioned." + " copying file and deleting children");
+      copyObject(srcObject,destPath);
+      for (      FileStatus stat : childStats) {
+        SwiftUtils.debug(LOG,"Deleting partitioned file %s ",stat);
+        deleteObject(stat.getPath());
+      }
+      swiftRestClient.delete(srcObject);
+    }
+  }
+ else {
+    if (destExists && !destIsDir) {
+      throw new SwiftOperationFailedException("the source is a directory, but not the destination");
+    }
+    Path targetPath;
+    if (destExists) {
+      targetPath=new Path(dst,src.getName());
+    }
+ else {
+      targetPath=dst;
+    }
+    SwiftObjectPath targetObjectPath=toObjectPath(targetPath);
+    if (srcObject.isEqualToOrParentOf(targetObjectPath)) {
+      throw new SwiftOperationFailedException("cannot move a directory under itself");
+    }
+    LOG.info("mv  " + srcObject + " "+ targetPath);
+    logDirectory("Directory to copy ",srcObject,childStats);
+    String srcURI=src.toUri().toString();
+    int prefixStripCount=srcURI.length() + 1;
+    for (    FileStatus fileStatus : childStats) {
+      Path copySourcePath=fileStatus.getPath();
+      String copySourceURI=copySourcePath.toUri().toString();
+      String copyDestSubPath=copySourceURI.substring(prefixStripCount);
+      Path copyDestPath=new Path(targetPath,copyDestSubPath);
+      if (LOG.isTraceEnabled()) {
+        LOG.trace("srcURI=" + srcURI + "; copySourceURI="+ copySourceURI+ "; copyDestSubPath="+ copyDestSubPath+ "; copyDestPath="+ copyDestPath);
+      }
+      SwiftObjectPath copyDestination=toObjectPath(copyDestPath);
+      try {
+        copyThenDeleteObject(toObjectPath(copySourcePath),copyDestination);
+      }
+ catch (      FileNotFoundException e) {
+        LOG.info("Skipping rename of " + copySourcePath);
+      }
+      throttle();
+    }
+    if (!SwiftUtils.isRootDir(srcObject)) {
+      try {
+        copyThenDeleteObject(srcObject,targetObjectPath);
+      }
+ catch (      FileNotFoundException e) {
+        LOG.warn("Source directory deleted during rename",e);
+        innerCreateDirectory(destObject);
+      }
+    }
+  }
+}

@@ -3,11 +3,26 @@
   request.setHttpPort(this.httpPort);
   request.setResource(this.totalResource);
   request.setNodeId(this.nodeId);
+  request.setNMVersion(this.nodeManagerVersionId);
   RegisterNodeManagerResponse regNMResponse=resourceTracker.registerNodeManager(request);
   this.rmIdentifier=regNMResponse.getRMIdentifier();
   if (NodeAction.SHUTDOWN.equals(regNMResponse.getNodeAction())) {
     String message="Message from ResourceManager: " + regNMResponse.getDiagnosticsMessage();
     throw new YarnRuntimeException("Recieved SHUTDOWN signal from Resourcemanager ,Registration of NodeManager failed, " + message);
+  }
+  if (!minimumResourceManagerVersion.equals("NONE")) {
+    if (minimumResourceManagerVersion.equals("EqualToNM")) {
+      minimumResourceManagerVersion=nodeManagerVersionId;
+    }
+    String rmVersion=regNMResponse.getRMVersion();
+    if (rmVersion == null) {
+      String message="The Resource Manager's did not return a version. " + "Valid version cannot be checked.";
+      throw new YarnRuntimeException("Shutting down the Node Manager. " + message);
+    }
+    if (VersionUtil.compareVersions(rmVersion,minimumResourceManagerVersion) < 0) {
+      String message="The Resource Manager's version (" + rmVersion + ") is less than the minimum "+ "allowed version "+ minimumResourceManagerVersion;
+      throw new YarnRuntimeException("Shutting down the Node Manager on RM " + "version error, " + message);
+    }
   }
   MasterKey masterKey=regNMResponse.getContainerTokenMasterKey();
   if (masterKey != null) {

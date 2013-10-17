@@ -1,36 +1,30 @@
 {
-  lockCtx();
-  try {
-    if (!activeState) {
-      LOG.info("OpenFileCtx is inactive, fileId:" + request.getHandle().getFileId());
-      WccData fileWcc=new WccData(latestAttr.getWccAttr(),latestAttr);
-      WRITE3Response response=new WRITE3Response(Nfs3Status.NFS3ERR_IO,fileWcc,0,request.getStableHow(),Nfs3Constant.WRITE_COMMIT_VERF);
-      Nfs3Utils.writeChannel(channel,response.send(new XDR(),xid));
-    }
- else {
-      WriteCtx existantWriteCtx=checkRepeatedWriteRequest(request,channel,xid);
-      if (existantWriteCtx != null) {
-        if (!existantWriteCtx.getReplied()) {
-          if (LOG.isDebugEnabled()) {
-            LOG.debug("Repeated write request which hasn't be served: xid=" + xid + ", drop it.");
-          }
-        }
- else {
-          if (LOG.isDebugEnabled()) {
-            LOG.debug("Repeated write request which is already served: xid=" + xid + ", resend response.");
-          }
-          WccData fileWcc=new WccData(latestAttr.getWccAttr(),latestAttr);
-          WRITE3Response response=new WRITE3Response(Nfs3Status.NFS3_OK,fileWcc,request.getCount(),request.getStableHow(),Nfs3Constant.WRITE_COMMIT_VERF);
-          Nfs3Utils.writeChannel(channel,response.send(new XDR(),xid));
-        }
-        updateLastAccessTime();
-      }
- else {
-        receivedNewWriteInternal(dfsClient,request,channel,xid,asyncDataService,iug);
-      }
-    }
+  if (!activeState) {
+    LOG.info("OpenFileCtx is inactive, fileId:" + request.getHandle().getFileId());
+    WccData fileWcc=new WccData(latestAttr.getWccAttr(),latestAttr);
+    WRITE3Response response=new WRITE3Response(Nfs3Status.NFS3ERR_IO,fileWcc,0,request.getStableHow(),Nfs3Constant.WRITE_COMMIT_VERF);
+    Nfs3Utils.writeChannel(channel,response.writeHeaderAndResponse(new XDR(),xid,new VerifierNone()),xid);
   }
-  finally {
-    unlockCtx();
+ else {
+    updateLastAccessTime();
+    WriteCtx existantWriteCtx=checkRepeatedWriteRequest(request,channel,xid);
+    if (existantWriteCtx != null) {
+      if (!existantWriteCtx.getReplied()) {
+        if (LOG.isDebugEnabled()) {
+          LOG.debug("Repeated write request which hasn't be served: xid=" + xid + ", drop it.");
+        }
+      }
+ else {
+        if (LOG.isDebugEnabled()) {
+          LOG.debug("Repeated write request which is already served: xid=" + xid + ", resend response.");
+        }
+        WccData fileWcc=new WccData(latestAttr.getWccAttr(),latestAttr);
+        WRITE3Response response=new WRITE3Response(Nfs3Status.NFS3_OK,fileWcc,request.getCount(),request.getStableHow(),Nfs3Constant.WRITE_COMMIT_VERF);
+        Nfs3Utils.writeChannel(channel,response.writeHeaderAndResponse(new XDR(),xid,new VerifierNone()),xid);
+      }
+    }
+ else {
+      receivedNewWriteInternal(dfsClient,request,channel,xid,asyncDataService,iug);
+    }
   }
 }

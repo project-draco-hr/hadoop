@@ -1,0 +1,64 @@
+{
+  Clock actualClock=new SystemClock();
+  ControlledClock clock=new ControlledClock(actualClock);
+  clock.setTime(System.currentTimeMillis());
+  MRApp app=new MRApp(NUM_MAPPERS,NUM_REDUCERS,false,"test",true,clock);
+  Job job=app.submit(new Configuration(),true,true);
+  app.waitForState(job,JobState.RUNNING);
+  Map<TaskId,Task> tasks=job.getTasks();
+  Assert.assertEquals("Num tasks is not correct",NUM_MAPPERS + NUM_REDUCERS,tasks.size());
+  Iterator<Task> taskIter=tasks.values().iterator();
+  while (taskIter.hasNext()) {
+    app.waitForState(taskIter.next(),TaskState.RUNNING);
+  }
+  clock.setTime(System.currentTimeMillis() + 1000);
+  EventHandler appEventHandler=app.getContext().getEventHandler();
+  for (  Map.Entry<TaskId,Task> mapTask : tasks.entrySet()) {
+    for (    Map.Entry<TaskAttemptId,TaskAttempt> taskAttempt : mapTask.getValue().getAttempts().entrySet()) {
+      TaskAttemptStatus status=createTaskAttemptStatus(taskAttempt.getKey(),(float)0.5,TaskAttemptState.RUNNING);
+      TaskAttemptStatusUpdateEvent event=new TaskAttemptStatusUpdateEvent(taskAttempt.getKey(),status);
+      appEventHandler.handle(event);
+    }
+  }
+  Task speculatedTask=null;
+  int numTasksToFinish=NUM_MAPPERS + NUM_REDUCERS - 1;
+  clock.setTime(System.currentTimeMillis() + 1000);
+  for (  Map.Entry<TaskId,Task> task : tasks.entrySet()) {
+    for (    Map.Entry<TaskAttemptId,TaskAttempt> taskAttempt : task.getValue().getAttempts().entrySet()) {
+      if (numTasksToFinish > 0) {
+        appEventHandler.handle(new TaskAttemptEvent(taskAttempt.getKey(),TaskAttemptEventType.TA_DONE));
+        appEventHandler.handle(new TaskAttemptEvent(taskAttempt.getKey(),TaskAttemptEventType.TA_CONTAINER_CLEANED));
+        numTasksToFinish--;
+        app.waitForState(taskAttempt.getValue(),TaskAttemptState.SUCCEEDED);
+      }
+ else {
+        TaskAttemptStatus status=createTaskAttemptStatus(taskAttempt.getKey(),(float)0.75,TaskAttemptState.RUNNING);
+        speculatedTask=task.getValue();
+        TaskAttemptStatusUpdateEvent event=new TaskAttemptStatusUpdateEvent(taskAttempt.getKey(),status);
+        appEventHandler.handle(event);
+      }
+    }
+  }
+  clock.setTime(System.currentTimeMillis() + 15000);
+  for (  Map.Entry<TaskId,Task> task : tasks.entrySet()) {
+    for (    Map.Entry<TaskAttemptId,TaskAttempt> taskAttempt : task.getValue().getAttempts().entrySet()) {
+      if (taskAttempt.getValue().getState() != TaskAttemptState.SUCCEEDED) {
+        TaskAttemptStatus status=createTaskAttemptStatus(taskAttempt.getKey(),(float)0.75,TaskAttemptState.RUNNING);
+        TaskAttemptStatusUpdateEvent event=new TaskAttemptStatusUpdateEvent(taskAttempt.getKey(),status);
+        appEventHandler.handle(event);
+      }
+    }
+  }
+  int maxTimeWait=5;
+  boolean successfullySpeculated=false;
+  while (maxTimeWait > 0 && !successfullySpeculated) {
+    if (speculatedTask.getAttempts().size() != 2) {
+      Thread.sleep(1000);
+    }
+ else {
+      successfullySpeculated=true;
+    }
+    maxTimeWait--;
+  }
+  Assert.assertTrue("Couldn't speculate successfully",successfullySpeculated);
+}

@@ -1,0 +1,20 @@
+{
+  WccData wccData=new WccData(latestAttr.getWccAttr(),null);
+  long offset=request.getOffset();
+  int count=request.getCount();
+  WriteStableHow stableHow=request.getStableHow();
+  WRITE3Response response;
+  long cachedOffset=nextOffset.get();
+  if (offset + count > cachedOffset) {
+    LOG.warn("Treat this jumbo write as a real random write, no support.");
+    response=new WRITE3Response(Nfs3Status.NFS3ERR_INVAL,wccData,0,WriteStableHow.UNSTABLE,Nfs3Constant.WRITE_COMMIT_VERF);
+  }
+ else {
+    if (LOG.isDebugEnabled()) {
+      LOG.debug("Process perfectOverWrite");
+    }
+    response=processPerfectOverWrite(dfsClient,offset,count,stableHow,request.getData().array(),Nfs3Utils.getFileIdPath(request.getHandle()),wccData,iug);
+  }
+  updateLastAccessTime();
+  Nfs3Utils.writeChannel(channel,response.writeHeaderAndResponse(new XDR(),xid,new VerifierNone()),xid);
+}

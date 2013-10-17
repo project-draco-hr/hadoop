@@ -3,7 +3,7 @@
     return new RetryAction(RetryAction.RetryDecision.FAIL,0,"failovers (" + failovers + ") exceeded maximum allowed ("+ maxFailovers+ ")");
   }
   if (e instanceof ConnectException || e instanceof NoRouteToHostException || e instanceof UnknownHostException|| e instanceof StandbyException|| e instanceof ConnectTimeoutException|| isWrappedStandbyException(e)) {
-    return new RetryAction(RetryAction.RetryDecision.FAILOVER_AND_RETRY,failovers == 0 ? 0 : calculateExponentialTime(delayMillis,failovers,maxDelayBase));
+    return new RetryAction(RetryAction.RetryDecision.FAILOVER_AND_RETRY,getFailoverOrRetrySleepTime(failovers));
   }
  else   if (e instanceof SocketException || (e instanceof IOException && !(e instanceof RemoteException))) {
     if (isIdempotentOrAtMostOnce) {
@@ -14,6 +14,12 @@
     }
   }
  else {
-    return fallbackPolicy.shouldRetry(e,retries,failovers,isIdempotentOrAtMostOnce);
+    RetriableException re=getWrappedRetriableException(e);
+    if (re != null) {
+      return new RetryAction(RetryAction.RetryDecision.RETRY,getFailoverOrRetrySleepTime(retries));
+    }
+ else {
+      return fallbackPolicy.shouldRetry(e,retries,failovers,isIdempotentOrAtMostOnce);
+    }
   }
 }

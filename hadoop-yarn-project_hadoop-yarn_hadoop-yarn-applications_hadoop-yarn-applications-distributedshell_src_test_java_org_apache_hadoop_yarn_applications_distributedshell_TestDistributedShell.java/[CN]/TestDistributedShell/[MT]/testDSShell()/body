@@ -1,11 +1,44 @@
 {
-  String[] args={"--jar",APPMASTER_JAR,"--num_containers","2","--shell_command",Shell.WINDOWS ? "dir" : "ls","--master_memory","512","--container_memory","128"};
+  String[] args={"--jar",APPMASTER_JAR,"--num_containers","2","--shell_command",Shell.WINDOWS ? "dir" : "ls","--master_memory","512","--master_vcores","2","--container_memory","128","--container_vcores","1"};
   LOG.info("Initializing DS Client");
-  Client client=new Client(new Configuration(yarnCluster.getConfig()));
+  final Client client=new Client(new Configuration(yarnCluster.getConfig()));
   boolean initSuccess=client.init(args);
   Assert.assertTrue(initSuccess);
   LOG.info("Running DS Client");
-  boolean result=client.run();
+  final AtomicBoolean result=new AtomicBoolean(false);
+  Thread t=new Thread(){
+    public void run(){
+      try {
+        result.set(client.run());
+      }
+ catch (      Exception e) {
+        throw new RuntimeException(e);
+      }
+    }
+  }
+;
+  t.start();
+  YarnClient yarnClient=YarnClient.createYarnClient();
+  yarnClient.init(new Configuration(yarnCluster.getConfig()));
+  yarnClient.start();
+  String hostName=NetUtils.getHostname();
+  boolean verified=false;
+  while (!verified) {
+    List<ApplicationReport> apps=yarnClient.getApplications();
+    if (apps.size() == 0) {
+      Thread.sleep(10);
+      continue;
+    }
+    ApplicationReport appReport=apps.get(0);
+    if (appReport.getHost().startsWith(hostName) && appReport.getRpcPort() == -1) {
+      verified=true;
+    }
+    if (appReport.getYarnApplicationState() == YarnApplicationState.FINISHED) {
+      break;
+    }
+  }
+  Assert.assertTrue(verified);
+  t.join();
   LOG.info("Client run completed. Result=" + result);
-  Assert.assertTrue(result);
+  Assert.assertTrue(result.get());
 }

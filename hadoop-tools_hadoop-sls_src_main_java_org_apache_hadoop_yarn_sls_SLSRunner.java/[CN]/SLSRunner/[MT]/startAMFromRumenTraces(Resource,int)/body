@@ -1,0 +1,58 @@
+{
+  Configuration conf=new Configuration();
+  conf.set("fs.defaultFS","file:///");
+  long baselineTimeMS=0;
+  for (  String inputTrace : inputTraces) {
+    File fin=new File(inputTrace);
+    JobTraceReader reader=new JobTraceReader(new Path(fin.getAbsolutePath()),conf);
+    try {
+      LoggedJob job=null;
+      while ((job=reader.getNext()) != null) {
+        String jobType="mapreduce";
+        String user=job.getUser() == null ? "default" : job.getUser().getValue();
+        String jobQueue=job.getQueue().getValue();
+        String oldJobId=job.getJobID().toString();
+        long jobStartTimeMS=job.getSubmitTime();
+        long jobFinishTimeMS=job.getFinishTime();
+        if (baselineTimeMS == 0) {
+          baselineTimeMS=jobStartTimeMS;
+        }
+        jobStartTimeMS-=baselineTimeMS;
+        jobFinishTimeMS-=baselineTimeMS;
+        if (jobStartTimeMS < 0) {
+          LOG.warn("Warning: reset job " + oldJobId + " start time to 0.");
+          jobFinishTimeMS=jobFinishTimeMS - jobStartTimeMS;
+          jobStartTimeMS=0;
+        }
+        boolean isTracked=trackedApps.contains(oldJobId);
+        int queueSize=queueAppNumMap.containsKey(jobQueue) ? queueAppNumMap.get(jobQueue) : 0;
+        queueSize++;
+        queueAppNumMap.put(jobQueue,queueSize);
+        List<ContainerSimulator> containerList=new ArrayList<ContainerSimulator>();
+        for (        LoggedTask mapTask : job.getMapTasks()) {
+          LoggedTaskAttempt taskAttempt=mapTask.getAttempts().get(mapTask.getAttempts().size() - 1);
+          String hostname=taskAttempt.getHostName().getValue();
+          long containerLifeTime=taskAttempt.getFinishTime() - taskAttempt.getStartTime();
+          containerList.add(new ContainerSimulator(containerResource,containerLifeTime,hostname,10,"map"));
+        }
+        for (        LoggedTask reduceTask : job.getReduceTasks()) {
+          LoggedTaskAttempt taskAttempt=reduceTask.getAttempts().get(reduceTask.getAttempts().size() - 1);
+          String hostname=taskAttempt.getHostName().getValue();
+          long containerLifeTime=taskAttempt.getFinishTime() - taskAttempt.getStartTime();
+          containerList.add(new ContainerSimulator(containerResource,containerLifeTime,hostname,20,"reduce"));
+        }
+        AMSimulator amSim=(AMSimulator)ReflectionUtils.newInstance(amClassMap.get(jobType),conf);
+        if (amSim != null) {
+          amSim.init(AM_ID++,heartbeatInterval,containerList,rm,this,jobStartTimeMS,jobFinishTimeMS,user,jobQueue,isTracked,oldJobId);
+          runner.schedule(amSim);
+          maxRuntime=Math.max(maxRuntime,jobFinishTimeMS);
+          numTasks+=containerList.size();
+          amMap.put(oldJobId,amSim);
+        }
+      }
+    }
+  finally {
+      reader.close();
+    }
+  }
+}

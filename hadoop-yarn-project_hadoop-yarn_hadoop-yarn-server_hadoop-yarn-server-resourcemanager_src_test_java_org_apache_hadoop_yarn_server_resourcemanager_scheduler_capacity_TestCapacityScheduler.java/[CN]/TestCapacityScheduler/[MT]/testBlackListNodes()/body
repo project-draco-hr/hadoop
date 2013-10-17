@@ -1,0 +1,19 @@
+{
+  Configuration conf=new Configuration();
+  conf.setClass(YarnConfiguration.RM_SCHEDULER,CapacityScheduler.class,ResourceScheduler.class);
+  MockRM rm=new MockRM(conf);
+  rm.start();
+  CapacityScheduler cs=(CapacityScheduler)rm.getResourceScheduler();
+  String host="127.0.0.1";
+  RMNode node=MockNodes.newNodeInfo(0,MockNodes.newResource(4 * GB),1,host);
+  cs.handle(new NodeAddedSchedulerEvent(node));
+  ApplicationId appId=BuilderUtils.newApplicationId(100,1);
+  ApplicationAttemptId appAttemptId=BuilderUtils.newApplicationAttemptId(appId,1);
+  SchedulerEvent event=new AppAddedSchedulerEvent(appAttemptId,"default","user");
+  cs.handle(event);
+  cs.allocate(appAttemptId,Collections.<ResourceRequest>emptyList(),Collections.<ContainerId>emptyList(),Collections.singletonList(host),null);
+  Assert.assertTrue(cs.getApplication(appAttemptId).isBlacklisted(host));
+  cs.allocate(appAttemptId,Collections.<ResourceRequest>emptyList(),Collections.<ContainerId>emptyList(),null,Collections.singletonList(host));
+  Assert.assertFalse(cs.getApplication(appAttemptId).isBlacklisted(host));
+  rm.stop();
+}

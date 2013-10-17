@@ -1,0 +1,33 @@
+{
+  RMNodeWrapper node=(RMNodeWrapper)eventWrapper.getRMNode();
+  List<UpdatedContainerInfo> containerList=node.getContainerUpdates();
+  for (  UpdatedContainerInfo info : containerList) {
+    for (    ContainerStatus status : info.getCompletedContainers()) {
+      ContainerId containerId=status.getContainerId();
+      SchedulerAppReport app=scheduler.getSchedulerAppInfo(containerId.getApplicationAttemptId());
+      if (app == null) {
+        continue;
+      }
+      String queue=appQueueMap.get(containerId.getApplicationAttemptId());
+      int releasedMemory=0, releasedVCores=0;
+      if (status.getExitStatus() == ContainerExitStatus.SUCCESS) {
+        for (        RMContainer rmc : app.getLiveContainers()) {
+          if (rmc.getContainerId() == containerId) {
+            releasedMemory+=rmc.getContainer().getResource().getMemory();
+            releasedVCores+=rmc.getContainer().getResource().getVirtualCores();
+            break;
+          }
+        }
+      }
+ else       if (status.getExitStatus() == ContainerExitStatus.ABORTED) {
+        if (preemptionContainerMap.containsKey(containerId)) {
+          Resource preResource=preemptionContainerMap.get(containerId);
+          releasedMemory+=preResource.getMemory();
+          releasedVCores+=preResource.getVirtualCores();
+          preemptionContainerMap.remove(containerId);
+        }
+      }
+      updateQueueMetrics(queue,releasedMemory,releasedVCores);
+    }
+  }
+}

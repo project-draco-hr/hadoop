@@ -1,0 +1,34 @@
+{
+  GetNewApplicationRequest newAppRequest=Records.newRecord(GetNewApplicationRequest.class);
+  GetNewApplicationResponse newAppResponse=rm.getClientRMService().getNewApplication(newAppRequest);
+  appId=newAppResponse.getApplicationId();
+  final SubmitApplicationRequest subAppRequest=Records.newRecord(SubmitApplicationRequest.class);
+  ApplicationSubmissionContext appSubContext=Records.newRecord(ApplicationSubmissionContext.class);
+  appSubContext.setApplicationId(appId);
+  appSubContext.setMaxAppAttempts(1);
+  appSubContext.setQueue(queue);
+  appSubContext.setPriority(Priority.newInstance(0));
+  ContainerLaunchContext conLauContext=Records.newRecord(ContainerLaunchContext.class);
+  conLauContext.setApplicationACLs(new HashMap<ApplicationAccessType,String>());
+  conLauContext.setCommands(new ArrayList<String>());
+  conLauContext.setEnvironment(new HashMap<String,String>());
+  conLauContext.setLocalResources(new HashMap<String,LocalResource>());
+  conLauContext.setServiceData(new HashMap<String,ByteBuffer>());
+  appSubContext.setAMContainerSpec(conLauContext);
+  appSubContext.setUnmanagedAM(true);
+  subAppRequest.setApplicationSubmissionContext(appSubContext);
+  UserGroupInformation ugi=UserGroupInformation.createRemoteUser(user);
+  ugi.doAs(new PrivilegedExceptionAction<Object>(){
+    @Override public Object run() throws YarnException {
+      rm.getClientRMService().submitApplication(subAppRequest);
+      return null;
+    }
+  }
+);
+  LOG.info(MessageFormat.format("Submit a new application {0}",appId));
+  RMApp app=rm.getRMContext().getRMApps().get(appId);
+  while (app.getState() != RMAppState.ACCEPTED) {
+    Thread.sleep(50);
+  }
+  appAttemptId=rm.getRMContext().getRMApps().get(appId).getCurrentAppAttempt().getAppAttemptId();
+}
