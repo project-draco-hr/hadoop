@@ -1,0 +1,29 @@
+{
+  Configuration conf=new Configuration();
+  conf.setBoolean(DFSConfigKeys.DFS_CLIENT_USE_LEGACY_BLOCKREADER,true);
+  conf.setBoolean(DFSConfigKeys.DFS_CLIENT_READ_SHORTCIRCUIT_KEY,true);
+  MiniDFSCluster cluster=new MiniDFSCluster.Builder(conf).numDataNodes(1).format(true).build();
+  FileSystem fs=cluster.getFileSystem();
+  Path path=new Path("/");
+  URI uri=cluster.getURI();
+  assertTrue("/ should be a directory",fs.getFileStatus(path).isDirectory() == true);
+  byte[] fileData=AppendTestUtil.randomBytes(seed,size);
+  Path file1=new Path("filelocal.dat");
+  FSDataOutputStream stm=createFile(fs,file1,1);
+  stm.write(fileData);
+  stm.close();
+  try {
+    checkFileContent(uri,file1,fileData,readOffset,shortCircuitUser,conf,shortCircuitFails);
+    assertTrue("RemoteBlockReader unsupported method read(ByteBuffer bf) error",checkUnsupportedMethod(fs,file1,fileData,readOffset));
+  }
+ catch (  IOException e) {
+    throw new IOException("doTestShortCircuitReadWithRemoteBlockReader ex error ",e);
+  }
+catch (  InterruptedException inEx) {
+    throw inEx;
+  }
+ finally {
+    fs.close();
+    cluster.shutdown();
+  }
+}
