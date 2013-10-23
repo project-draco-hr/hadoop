@@ -1,29 +1,28 @@
 {
-  ReceivedDeletedBlockInfo[] receivedAndDeletedBlockArray=null;
-synchronized (pendingIncrementalBR) {
-    int numBlocks=pendingIncrementalBR.size();
-    if (numBlocks > 0) {
-      receivedAndDeletedBlockArray=pendingIncrementalBR.values().toArray(new ReceivedDeletedBlockInfo[numBlocks]);
+  for (  Map.Entry<String,PerStoragePendingIncrementalBR> entry : pendingIncrementalBRperStorage.entrySet()) {
+    final String storageUuid=entry.getKey();
+    final PerStoragePendingIncrementalBR perStorageMap=entry.getValue();
+    ReceivedDeletedBlockInfo[] receivedAndDeletedBlockArray=null;
+synchronized (pendingIncrementalBRperStorage) {
+      if (perStorageMap.getBlockInfoCount() > 0) {
+        receivedAndDeletedBlockArray=perStorageMap.dequeueBlockInfos();
+        pendingReceivedRequests-=receivedAndDeletedBlockArray.length;
+      }
     }
-    pendingIncrementalBR.clear();
-  }
-  if (receivedAndDeletedBlockArray != null) {
-    StorageReceivedDeletedBlocks[] report={new StorageReceivedDeletedBlocks(bpRegistration.getDatanodeUuid(),receivedAndDeletedBlockArray)};
-    boolean success=false;
-    try {
-      bpNamenode.blockReceivedAndDeleted(bpRegistration,bpos.getBlockPoolId(),report);
-      success=true;
-    }
+    if (receivedAndDeletedBlockArray != null) {
+      StorageReceivedDeletedBlocks[] report={new StorageReceivedDeletedBlocks(storageUuid,receivedAndDeletedBlockArray)};
+      boolean success=false;
+      try {
+        bpNamenode.blockReceivedAndDeleted(bpRegistration,bpos.getBlockPoolId(),report);
+        success=true;
+      }
   finally {
-synchronized (pendingIncrementalBR) {
-        if (!success) {
-          for (          ReceivedDeletedBlockInfo rdbi : receivedAndDeletedBlockArray) {
-            if (!pendingIncrementalBR.containsKey(rdbi.getBlock().getBlockId())) {
-              pendingIncrementalBR.put(rdbi.getBlock().getBlockId(),rdbi);
-            }
+synchronized (pendingIncrementalBRperStorage) {
+          if (!success) {
+            perStorageMap.putMissingBlockInfos(receivedAndDeletedBlockArray);
+            pendingReceivedRequests+=perStorageMap.getBlockInfoCount();
           }
         }
-        pendingReceivedRequests=pendingIncrementalBR.size();
       }
     }
   }
