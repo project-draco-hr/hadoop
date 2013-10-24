@@ -1,7 +1,5 @@
 {
   JobConf job=new JobConf();
-  String separator="\u0001";
-  job.set("mapreduce.output.textoutputformat.separator",separator);
   job.set(JobContext.TASK_ATTEMPT_ID,attempt);
   job.set(org.apache.hadoop.mapreduce.lib.output.FileOutputFormat.COMPRESS,"true");
   FileOutputFormat.setOutputPath(job,workDir.getParent().getParent());
@@ -10,7 +8,7 @@
   if (!fs.mkdirs(workDir)) {
     fail("Failed to create output directory");
   }
-  String file="test.txt";
+  String file="test_compress.txt";
   Reporter reporter=Reporter.NULL;
   TextOutputFormat<Object,Object> theOutputFormat=new TextOutputFormat<Object,Object>();
   RecordWriter<Object,Object> theRecordWriter=theOutputFormat.getRecordWriter(localFs,job,file,reporter);
@@ -32,14 +30,25 @@
   finally {
     theRecordWriter.close(reporter);
   }
-  File expectedFile=new File(new Path(workDir,file).toString());
   StringBuffer expectedOutput=new StringBuffer();
-  expectedOutput.append(key1).append(separator).append(val1).append("\n");
+  expectedOutput.append(key1).append("\t").append(val1).append("\n");
   expectedOutput.append(val1).append("\n");
   expectedOutput.append(val2).append("\n");
   expectedOutput.append(key2).append("\n");
   expectedOutput.append(key1).append("\n");
-  expectedOutput.append(key2).append(separator).append(val2).append("\n");
-  String output=UtilsForTests.slurp(expectedFile);
-  assertEquals(output,expectedOutput.toString());
+  expectedOutput.append(key2).append("\t").append(val2).append("\n");
+  DefaultCodec codec=new DefaultCodec();
+  codec.setConf(job);
+  Path expectedFile=new Path(workDir,file + codec.getDefaultExtension());
+  final FileInputStream istream=new FileInputStream(expectedFile.toString());
+  CompressionInputStream cistream=codec.createInputStream(istream);
+  LineReader reader=new LineReader(cistream);
+  String output="";
+  Text out=new Text();
+  while (reader.readLine(out) > 0) {
+    output+=out;
+    output+="\n";
+  }
+  reader.close();
+  assertEquals(expectedOutput.toString(),output);
 }
