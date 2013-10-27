@@ -1,0 +1,26 @@
+{
+  final int GB=1024;
+  String host="127.0.0.1";
+  RMNode node=MockNodes.newNodeInfo(1,Resources.createResource(16 * GB,16),0,host);
+  NodeAddedSchedulerEvent nodeEvent=new NodeAddedSchedulerEvent(node);
+  NodeUpdateSchedulerEvent updateEvent=new NodeUpdateSchedulerEvent(node);
+  scheduler.handle(nodeEvent);
+  ApplicationAttemptId appAttemptId=createSchedulingRequest(GB,"root.default","user",1);
+  FSSchedulerApp app=scheduler.applications.get(appAttemptId);
+  scheduler.allocate(appAttemptId,Collections.<ResourceRequest>emptyList(),Collections.<ContainerId>emptyList(),Collections.singletonList(host),null);
+  assertTrue(app.isBlacklisted(host));
+  scheduler.allocate(appAttemptId,Collections.<ResourceRequest>emptyList(),Collections.<ContainerId>emptyList(),null,Collections.singletonList(host));
+  assertFalse(scheduler.applications.get(appAttemptId).isBlacklisted(host));
+  List<ResourceRequest> update=Arrays.asList(createResourceRequest(GB,node.getHostName(),1,0,true));
+  scheduler.allocate(appAttemptId,update,Collections.<ContainerId>emptyList(),Collections.singletonList(host),null);
+  assertTrue(app.isBlacklisted(host));
+  scheduler.update();
+  scheduler.handle(updateEvent);
+  assertEquals("Incorrect number of containers allocated",0,app.getLiveContainers().size());
+  scheduler.allocate(appAttemptId,update,Collections.<ContainerId>emptyList(),null,Collections.singletonList(host));
+  assertFalse(app.isBlacklisted(host));
+  createSchedulingRequest(GB,"root.default","user",1);
+  scheduler.update();
+  scheduler.handle(updateEvent);
+  assertEquals("Incorrect number of containers allocated",1,app.getLiveContainers().size());
+}
