@@ -1,0 +1,30 @@
+{
+  checkOperation(OperationCategory.WRITE);
+  final FSPermissionChecker pc=isPermissionEnabled ? getPermissionChecker() : null;
+  CacheEntry cacheEntry=RetryCache.waitForCompletion(retryCache);
+  if (cacheEntry != null && cacheEntry.isSuccess()) {
+    return;
+  }
+  writeLock();
+  boolean success=false;
+  try {
+    checkOperation(OperationCategory.WRITE);
+    if (isInSafeMode()) {
+      throw new SafeModeException("Cannot modify cache pool " + req.getPoolName(),safeMode);
+    }
+    if (pc != null) {
+      pc.checkSuperuserPrivilege();
+    }
+    cacheManager.modifyCachePool(req);
+    getEditLog().logModifyCachePool(req,cacheEntry != null);
+    success=true;
+  }
+  finally {
+    writeUnlock();
+    if (isAuditEnabled() && isExternalInvocation()) {
+      logAuditEvent(success,"modifyCachePool",req.getPoolName(),null,null);
+    }
+    RetryCache.setState(cacheEntry,success);
+  }
+  getEditLog().logSync();
+}

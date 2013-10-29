@@ -1,0 +1,39 @@
+{
+  if (!cacheManager.isActive()) {
+    return;
+  }
+  BlockInfo blockInfo=blockManager.getStoredBlock(new Block(cachedBlock.getBlockId()));
+  if (blockInfo == null) {
+    LOG.debug("Not caching block " + cachedBlock + " because it "+ "was deleted from all DataNodes.");
+    return;
+  }
+  if (!blockInfo.isComplete()) {
+    if (LOG.isDebugEnabled()) {
+      LOG.debug("Not caching block " + cachedBlock + " because it "+ "is not yet complete.");
+    }
+    return;
+  }
+  List<DatanodeDescriptor> possibilities=new LinkedList<DatanodeDescriptor>();
+  int numReplicas=blockInfo.getCapacity();
+  Collection<DatanodeDescriptor> corrupt=blockManager.getCorruptReplicas(blockInfo);
+  for (int i=0; i < numReplicas; i++) {
+    DatanodeDescriptor datanode=blockInfo.getDatanode(i);
+    if ((datanode != null) && ((!pendingCached.contains(datanode)) && ((corrupt == null) || (!corrupt.contains(datanode))))) {
+      possibilities.add(datanode);
+    }
+  }
+  while (neededCached > 0) {
+    if (possibilities.isEmpty()) {
+      LOG.warn("We need " + neededCached + " more replica(s) than "+ "actually exist to provide a cache replication of "+ cachedBlock.getReplication()+ " for "+ cachedBlock);
+      return;
+    }
+    DatanodeDescriptor datanode=possibilities.remove(random.nextInt(possibilities.size()));
+    if (LOG.isDebugEnabled()) {
+      LOG.debug("AddNewPendingCached: datanode " + datanode + " will now cache block "+ cachedBlock);
+    }
+    pendingCached.add(datanode);
+    boolean added=datanode.getPendingCached().add(cachedBlock);
+    assert added;
+    neededCached--;
+  }
+}

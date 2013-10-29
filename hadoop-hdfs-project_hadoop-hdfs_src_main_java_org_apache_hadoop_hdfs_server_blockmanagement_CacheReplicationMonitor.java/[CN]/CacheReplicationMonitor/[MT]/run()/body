@@ -1,0 +1,40 @@
+{
+  shutdown=false;
+  rescanImmediately=true;
+  scanTimeMs=0;
+  LOG.info("Starting CacheReplicationMonitor with interval " + intervalMs + " milliseconds");
+  try {
+    long curTimeMs=Time.monotonicNow();
+    while (true) {
+synchronized (this) {
+        while (true) {
+          if (shutdown) {
+            LOG.info("Shutting down CacheReplicationMonitor");
+            return;
+          }
+          if (rescanImmediately) {
+            LOG.info("Rescanning on request");
+            rescanImmediately=false;
+            break;
+          }
+          long delta=(scanTimeMs + intervalMs) - curTimeMs;
+          if (delta <= 0) {
+            LOG.info("Rescanning after " + (curTimeMs - scanTimeMs) + " milliseconds");
+            break;
+          }
+          this.wait(delta);
+          curTimeMs=Time.monotonicNow();
+        }
+      }
+      scanTimeMs=curTimeMs;
+      mark=!mark;
+      rescan();
+      curTimeMs=Time.monotonicNow();
+      LOG.info("Scanned " + scannedDirectives + " directive(s) and "+ scannedBlocks+ " block(s) in "+ (curTimeMs - scanTimeMs)+ " "+ "millisecond(s).");
+    }
+  }
+ catch (  Throwable t) {
+    LOG.fatal("Thread exiting",t);
+    terminate(1,t);
+  }
+}
