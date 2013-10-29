@@ -1,0 +1,32 @@
+{
+  ReplicaInfo info;
+  FsVolumeImpl volume;
+synchronized (this) {
+    if (!validToCache(bpid,blockId)) {
+      return;
+    }
+    info=volumeMap.get(bpid,blockId);
+    volume=(FsVolumeImpl)info.getVolume();
+  }
+  FileInputStream blockIn=null;
+  FileInputStream metaIn=null;
+  boolean success=false;
+  ExtendedBlock extBlk=new ExtendedBlock(bpid,blockId,info.getBytesOnDisk(),info.getGenerationStamp());
+  try {
+    blockIn=(FileInputStream)getBlockInputStream(extBlk,0);
+    metaIn=(FileInputStream)getMetaDataInputStream(extBlk).getWrappedStream();
+    success=true;
+  }
+ catch (  ClassCastException e) {
+    LOG.warn("Failed to cache replica " + extBlk + ": Underlying blocks"+ " are not backed by files.",e);
+  }
+catch (  IOException e) {
+    LOG.warn("Failed to cache replica " + extBlk + ": IOException while"+ " trying to open block or meta files.",e);
+  }
+  if (!success) {
+    IOUtils.closeQuietly(blockIn);
+    IOUtils.closeQuietly(metaIn);
+    return;
+  }
+  cacheManager.cacheBlock(bpid,extBlk.getLocalBlock(),volume,blockIn,metaIn);
+}

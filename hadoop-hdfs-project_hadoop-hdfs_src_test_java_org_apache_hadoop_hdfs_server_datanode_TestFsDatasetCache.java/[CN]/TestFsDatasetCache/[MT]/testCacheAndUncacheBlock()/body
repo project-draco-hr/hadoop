@@ -1,0 +1,22 @@
+{
+  final int NUM_BLOCKS=5;
+  final Path testFile=new Path("/testCacheBlock");
+  final long testFileLen=BLOCK_SIZE * NUM_BLOCKS;
+  DFSTestUtil.createFile(fs,testFile,testFileLen,(short)1,0xABBAl);
+  HdfsBlockLocation[] locs=(HdfsBlockLocation[])fs.getFileBlockLocations(testFile,0,testFileLen);
+  assertEquals("Unexpected number of blocks",NUM_BLOCKS,locs.length);
+  final long[] blockSizes=getBlockSizes(locs);
+  final long cacheCapacity=fsd.getDnCacheCapacity();
+  long cacheUsed=fsd.getDnCacheUsed();
+  long current=0;
+  assertEquals("Unexpected cache capacity",CACHE_CAPACITY,cacheCapacity);
+  assertEquals("Unexpected amount of cache used",current,cacheUsed);
+  for (int i=0; i < NUM_BLOCKS; i++) {
+    setHeartbeatResponse(cacheBlock(locs[i]));
+    current=verifyExpectedCacheUsage(current + blockSizes[i]);
+  }
+  for (int i=0; i < NUM_BLOCKS; i++) {
+    setHeartbeatResponse(uncacheBlock(locs[i]));
+    current=verifyExpectedCacheUsage(current - blockSizes[i]);
+  }
+}

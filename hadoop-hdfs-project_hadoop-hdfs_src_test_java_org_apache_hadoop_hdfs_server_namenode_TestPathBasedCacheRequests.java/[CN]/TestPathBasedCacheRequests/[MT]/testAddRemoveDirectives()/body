@@ -1,0 +1,81 @@
+{
+  proto.addCachePool(new CachePoolInfo("pool1").setMode(new FsPermission((short)0777)));
+  proto.addCachePool(new CachePoolInfo("pool2").setMode(new FsPermission((short)0777)));
+  proto.addCachePool(new CachePoolInfo("pool3").setMode(new FsPermission((short)0777)));
+  proto.addCachePool(new CachePoolInfo("pool4").setMode(new FsPermission((short)0)));
+  PathBasedCacheDirective alpha=new PathBasedCacheDirective.Builder().setPath(new Path("/alpha")).setPool("pool1").build();
+  PathBasedCacheDirective beta=new PathBasedCacheDirective.Builder().setPath(new Path("/beta")).setPool("pool2").build();
+  PathBasedCacheDirective delta=new PathBasedCacheDirective.Builder().setPath(new Path("/delta")).setPool("pool1").build();
+  PathBasedCacheDescriptor alphaD=addAsUnprivileged(alpha);
+  PathBasedCacheDescriptor alphaD2=addAsUnprivileged(alpha);
+  assertFalse("Expected to get unique descriptors when re-adding an " + "existing PathBasedCacheDirective",alphaD.getEntryId() == alphaD2.getEntryId());
+  PathBasedCacheDescriptor betaD=addAsUnprivileged(beta);
+  try {
+    addAsUnprivileged(new PathBasedCacheDirective.Builder().setPath(new Path("/unicorn")).setPool("no_such_pool").build());
+    fail("expected an error when adding to a non-existent pool.");
+  }
+ catch (  IOException ioe) {
+    assertTrue(ioe instanceof InvalidPoolNameError);
+  }
+  try {
+    addAsUnprivileged(new PathBasedCacheDirective.Builder().setPath(new Path("/blackhole")).setPool("pool4").build());
+    fail("expected an error when adding to a pool with " + "mode 0 (no permissions for anyone).");
+  }
+ catch (  IOException ioe) {
+    assertTrue(ioe instanceof PoolWritePermissionDeniedError);
+  }
+  try {
+    addAsUnprivileged(new PathBasedCacheDirective.Builder().setPath(new Path("/illegal:path/")).setPool("pool1").build());
+    fail("expected an error when adding a malformed path " + "to the cache directives.");
+  }
+ catch (  IllegalArgumentException e) {
+  }
+  try {
+    addAsUnprivileged(new PathBasedCacheDirective.Builder().setPath(new Path("/emptypoolname")).setReplication((short)1).setPool("").build());
+    Assert.fail("expected an error when adding a PathBasedCache " + "directive with an empty pool name.");
+  }
+ catch (  IOException ioe) {
+    Assert.assertTrue(ioe instanceof InvalidPoolNameError);
+  }
+  PathBasedCacheDescriptor deltaD=addAsUnprivileged(delta);
+  PathBasedCacheDescriptor relativeD=addAsUnprivileged(new PathBasedCacheDirective.Builder().setPath(new Path("relative")).setPool("pool1").build());
+  RemoteIterator<PathBasedCacheDescriptor> iter;
+  iter=dfs.listPathBasedCacheDescriptors(null,null);
+  validateListAll(iter,alphaD,alphaD2,betaD,deltaD,relativeD);
+  iter=dfs.listPathBasedCacheDescriptors("pool3",null);
+  Assert.assertFalse(iter.hasNext());
+  iter=dfs.listPathBasedCacheDescriptors("pool1",null);
+  validateListAll(iter,alphaD,alphaD2,deltaD,relativeD);
+  iter=dfs.listPathBasedCacheDescriptors("pool2",null);
+  validateListAll(iter,betaD);
+  dfs.removePathBasedCacheDescriptor(betaD);
+  iter=dfs.listPathBasedCacheDescriptors("pool2",null);
+  Assert.assertFalse(iter.hasNext());
+  try {
+    dfs.removePathBasedCacheDescriptor(betaD);
+    Assert.fail("expected an error when removing a non-existent ID");
+  }
+ catch (  IOException ioe) {
+    Assert.assertTrue(ioe instanceof NoSuchIdException);
+  }
+  try {
+    proto.removePathBasedCacheDescriptor(-42l);
+    Assert.fail("expected an error when removing a negative ID");
+  }
+ catch (  IOException ioe) {
+    Assert.assertTrue(ioe instanceof InvalidIdException);
+  }
+  try {
+    proto.removePathBasedCacheDescriptor(43l);
+    Assert.fail("expected an error when removing a non-existent ID");
+  }
+ catch (  IOException ioe) {
+    Assert.assertTrue(ioe instanceof NoSuchIdException);
+  }
+  dfs.removePathBasedCacheDescriptor(alphaD);
+  dfs.removePathBasedCacheDescriptor(alphaD2);
+  dfs.removePathBasedCacheDescriptor(deltaD);
+  dfs.removePathBasedCacheDescriptor(relativeD);
+  iter=dfs.listPathBasedCacheDescriptors(null,null);
+  assertFalse(iter.hasNext());
+}

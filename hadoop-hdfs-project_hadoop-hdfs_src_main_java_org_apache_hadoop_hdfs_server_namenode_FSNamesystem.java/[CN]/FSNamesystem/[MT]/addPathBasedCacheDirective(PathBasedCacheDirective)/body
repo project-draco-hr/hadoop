@@ -1,0 +1,31 @@
+{
+  checkOperation(OperationCategory.WRITE);
+  final FSPermissionChecker pc=isPermissionEnabled ? getPermissionChecker() : null;
+  CacheEntryWithPayload cacheEntry=RetryCache.waitForCompletion(retryCache,null);
+  if (cacheEntry != null && cacheEntry.isSuccess()) {
+    return (PathBasedCacheDescriptor)cacheEntry.getPayload();
+  }
+  boolean success=false;
+  PathBasedCacheDescriptor result=null;
+  writeLock();
+  try {
+    checkOperation(OperationCategory.WRITE);
+    if (isInSafeMode()) {
+      throw new SafeModeException("Cannot add PathBasedCache directive",safeMode);
+    }
+    result=cacheManager.addDirective(directive,pc);
+    getEditLog().logAddPathBasedCacheDirective(directive,cacheEntry != null);
+    success=true;
+  }
+  finally {
+    writeUnlock();
+    if (success) {
+      getEditLog().logSync();
+    }
+    if (isAuditEnabled() && isExternalInvocation()) {
+      logAuditEvent(success,"addPathBasedCacheDirective",null,null,null);
+    }
+    RetryCache.setState(cacheEntry,success,result);
+  }
+  return result;
+}

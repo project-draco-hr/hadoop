@@ -1,0 +1,43 @@
+{
+  Assume.assumeTrue(canTestDatanodeCaching());
+  HdfsConfiguration conf=createCachingConf();
+  FileSystemTestHelper helper=new FileSystemTestHelper();
+  MiniDFSCluster cluster=new MiniDFSCluster.Builder(conf).numDataNodes(NUM_DATANODES).build();
+  try {
+    cluster.waitActive();
+    DistributedFileSystem dfs=cluster.getFileSystem();
+    NameNode namenode=cluster.getNameNode();
+    NamenodeProtocols nnRpc=namenode.getRpcServer();
+    Path rootDir=helper.getDefaultWorkingDirectory(dfs);
+    final String pool="friendlyPool";
+    nnRpc.addCachePool(new CachePoolInfo("friendlyPool"));
+    final int numFiles=2;
+    final int numBlocksPerFile=2;
+    final List<String> paths=new ArrayList<String>(numFiles);
+    for (int i=0; i < numFiles; i++) {
+      Path p=new Path(rootDir,"testCachePaths-" + i);
+      FileSystemTestHelper.createFile(dfs,p,numBlocksPerFile,(int)BLOCK_SIZE);
+      paths.add(p.toUri().getPath());
+    }
+    waitForCachedBlocks(namenode,0,0);
+    int expected=0;
+    for (int i=0; i < numFiles; i++) {
+      PathBasedCacheDirective directive=new PathBasedCacheDirective.Builder().setPath(new Path(paths.get(i))).setPool(pool).build();
+      PathBasedCacheDescriptor descriptor=nnRpc.addPathBasedCacheDirective(directive);
+      assertEquals("Descriptor does not match requested path",new Path(paths.get(i)),descriptor.getPath());
+      assertEquals("Descriptor does not match requested pool",pool,descriptor.getPool());
+      expected+=numBlocksPerFile;
+      waitForCachedBlocks(namenode,expected,expected);
+    }
+    RemoteIterator<PathBasedCacheDescriptor> entries=nnRpc.listPathBasedCacheDescriptors(0,null,null);
+    for (int i=0; i < numFiles; i++) {
+      PathBasedCacheDescriptor descriptor=entries.next();
+      nnRpc.removePathBasedCacheDescriptor(descriptor.getEntryId());
+      expected-=numBlocksPerFile;
+      waitForCachedBlocks(namenode,expected,expected);
+    }
+  }
+  finally {
+    cluster.shutdown();
+  }
+}
