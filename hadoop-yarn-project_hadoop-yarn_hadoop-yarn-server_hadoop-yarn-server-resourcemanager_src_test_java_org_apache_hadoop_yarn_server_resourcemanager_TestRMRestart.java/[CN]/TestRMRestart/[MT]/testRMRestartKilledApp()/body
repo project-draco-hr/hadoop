@@ -1,0 +1,27 @@
+{
+  conf.setInt(YarnConfiguration.RM_AM_MAX_ATTEMPTS,YarnConfiguration.DEFAULT_RM_AM_MAX_ATTEMPTS);
+  MemoryRMStateStore memStore=new MemoryRMStateStore();
+  memStore.init(conf);
+  RMState rmState=memStore.getState();
+  Map<ApplicationId,ApplicationState> rmAppState=rmState.getApplicationState();
+  MockRM rm1=new MockRM(conf,memStore);
+  rm1.start();
+  MockNM nm1=new MockNM("127.0.0.1:1234",15120,rm1.getResourceTrackerService());
+  nm1.registerNode();
+  RMApp app0=rm1.submitApp(200);
+  MockAM am0=launchAM(app0,rm1,nm1);
+  rm1.killApp(app0.getApplicationId());
+  rm1.waitForState(app0.getApplicationId(),RMAppState.KILLED);
+  rm1.waitForState(am0.getApplicationAttemptId(),RMAppAttemptState.KILLED);
+  ApplicationState appState=rmAppState.get(app0.getApplicationId());
+  Assert.assertEquals(RMAppState.KILLED,appState.getState());
+  Assert.assertEquals(RMAppAttemptState.KILLED,appState.getAttempt(am0.getApplicationAttemptId()).getState());
+  MockRM rm2=new MockRM(conf,memStore);
+  rm2.start();
+  RMApp loadedApp0=rm2.getRMContext().getRMApps().get(app0.getApplicationId());
+  rm2.waitForState(app0.getApplicationId(),RMAppState.KILLED);
+  rm2.waitForState(am0.getApplicationAttemptId(),RMAppAttemptState.KILLED);
+  Assert.assertEquals(1,loadedApp0.getAppAttempts().size());
+  ApplicationReport appReport=verifyAppReportAfterRMRestart(app0,rm2);
+  Assert.assertEquals(app0.getDiagnostics().toString(),appReport.getDiagnostics());
+}
