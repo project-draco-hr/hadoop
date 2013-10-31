@@ -1,5 +1,6 @@
 {
   long submitTime=System.currentTimeMillis();
+  long startTime=System.currentTimeMillis() + 1234;
   Configuration conf=new YarnConfiguration();
   RMStateStore store=stateStoreHelper.getRMStateStore();
   TestDispatcher dispatcher=new TestDispatcher();
@@ -8,7 +9,7 @@
   ClientToAMTokenSecretManagerInRM clientToAMTokenMgr=new ClientToAMTokenSecretManagerInRM();
   ApplicationAttemptId attemptId1=ConverterUtils.toApplicationAttemptId("appattempt_1352994193343_0001_000001");
   ApplicationId appId1=attemptId1.getApplicationId();
-  storeApp(store,appId1,submitTime);
+  storeApp(store,appId1,submitTime,startTime);
   Token<AMRMTokenIdentifier> appAttemptToken1=generateAMRMToken(attemptId1,appTokenMgr);
   HashSet<Token<?>> attemptTokenSet1=new HashSet<Token<?>>();
   attemptTokenSet1.add(appAttemptToken1);
@@ -23,7 +24,7 @@
   ContainerId containerId2=storeAttempt(store,attemptId2,"container_1352994193343_0001_02_000001",appAttemptToken2,clientTokenKey2,dispatcher);
   ApplicationAttemptId attemptIdRemoved=ConverterUtils.toApplicationAttemptId("appattempt_1352994193343_0002_000001");
   ApplicationId appIdRemoved=attemptIdRemoved.getApplicationId();
-  storeApp(store,appIdRemoved,submitTime);
+  storeApp(store,appIdRemoved,submitTime,startTime);
   storeAttempt(store,attemptIdRemoved,"container_1352994193343_0002_01_000001",null,null,dispatcher);
   RMApp mockRemovedApp=mock(RMApp.class);
   HashMap<ApplicationAttemptId,RMAppAttempt> attempts=new HashMap<ApplicationAttemptId,RMAppAttempt>();
@@ -39,11 +40,13 @@
   Thread.sleep(1000);
   store.close();
   store=stateStoreHelper.getRMStateStore();
+  store.setRMDispatcher(dispatcher);
   RMState state=store.loadState();
   Map<ApplicationId,ApplicationState> rmAppState=state.getApplicationState();
   ApplicationState appState=rmAppState.get(appId1);
   assertNotNull(appState);
   assertEquals(submitTime,appState.getSubmitTime());
+  assertEquals(startTime,appState.getStartTime());
   assertEquals(appId1,appState.getApplicationSubmissionContext().getApplicationId());
   ApplicationAttemptState attemptState=appState.getAttempt(attemptId1);
   assertNotNull(attemptState);
@@ -61,6 +64,34 @@
   savedTokens.addAll(attemptState.getAppAttemptCredentials().getAllTokens());
   assertEquals(attemptTokenSet2,savedTokens);
   assertArrayEquals(clientTokenKey2.getEncoded(),attemptState.getAppAttemptCredentials().getSecretKey(RMStateStore.AM_CLIENT_TOKEN_MASTER_KEY_NAME));
+  ApplicationState appState2=new ApplicationState(appState.submitTime,appState.startTime,appState.context,appState.user,RMAppState.FINISHED,"appDiagnostics",1234);
+  appState2.attempts.putAll(appState.attempts);
+  store.updateApplicationState(appState2);
+  ApplicationAttemptState oldAttemptState=attemptState;
+  ApplicationAttemptState newAttemptState=new ApplicationAttemptState(oldAttemptState.getAttemptId(),oldAttemptState.getMasterContainer(),oldAttemptState.getAppAttemptCredentials(),oldAttemptState.getStartTime(),RMAppAttemptState.FINISHED,"myTrackingUrl","attemptDiagnostics",FinalApplicationStatus.SUCCEEDED);
+  store.updateApplicationAttemptState(newAttemptState);
+  Thread.sleep(1000);
+  store.close();
+  store=stateStoreHelper.getRMStateStore();
+  store.setRMDispatcher(dispatcher);
+  RMState newRMState=store.loadState();
+  Map<ApplicationId,ApplicationState> newRMAppState=newRMState.getApplicationState();
+  ApplicationState updatedAppState=newRMAppState.get(appId1);
+  assertEquals(appState.getAppId(),updatedAppState.getAppId());
+  assertEquals(appState.getSubmitTime(),updatedAppState.getSubmitTime());
+  assertEquals(appState.getStartTime(),updatedAppState.getStartTime());
+  assertEquals(appState.getUser(),updatedAppState.getUser());
+  assertEquals(RMAppState.FINISHED,updatedAppState.getState());
+  assertEquals("appDiagnostics",updatedAppState.getDiagnostics());
+  assertEquals(1234,updatedAppState.getFinishTime());
+  ApplicationAttemptState updatedAttemptState=updatedAppState.getAttempt(newAttemptState.getAttemptId());
+  assertEquals(oldAttemptState.getAttemptId(),updatedAttemptState.getAttemptId());
+  assertEquals(containerId2,updatedAttemptState.getMasterContainer().getId());
+  assertArrayEquals(clientTokenKey2.getEncoded(),updatedAttemptState.getAppAttemptCredentials().getSecretKey(RMStateStore.AM_CLIENT_TOKEN_MASTER_KEY_NAME));
+  assertEquals(RMAppAttemptState.FINISHED,updatedAttemptState.getState());
+  assertEquals("myTrackingUrl",updatedAttemptState.getFinalTrackingUrl());
+  assertEquals("attemptDiagnostics",updatedAttemptState.getDiagnostics());
+  assertEquals(FinalApplicationStatus.SUCCEEDED,updatedAttemptState.getFinalApplicationStatus());
   assertTrue(stateStoreHelper.isFinalStateValid());
   store.close();
 }

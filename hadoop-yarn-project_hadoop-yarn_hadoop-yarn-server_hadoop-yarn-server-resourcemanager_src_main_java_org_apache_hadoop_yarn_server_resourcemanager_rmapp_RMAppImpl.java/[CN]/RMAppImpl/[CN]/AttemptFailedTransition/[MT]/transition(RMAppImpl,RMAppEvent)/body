@@ -1,23 +1,10 @@
 {
-  RMAppFailedAttemptEvent failedEvent=((RMAppFailedAttemptEvent)event);
-  boolean retryApp=true;
-  String msg=null;
-  if (app.submissionContext.getUnmanagedAM()) {
-    retryApp=false;
-    msg="Unmanaged application " + app.getApplicationId() + " failed due to "+ failedEvent.getDiagnostics()+ ". Failing the application.";
-  }
- else   if (app.attempts.size() >= app.maxAppAttempts) {
-    retryApp=false;
-    msg="Application " + app.getApplicationId() + " failed "+ app.maxAppAttempts+ " times due to "+ failedEvent.getDiagnostics()+ ". Failing the application.";
-  }
-  if (retryApp) {
+  if (!app.submissionContext.getUnmanagedAM() && app.attempts.size() < app.maxAppAttempts) {
     app.createNewAttempt(true);
     return initialState;
   }
  else {
-    LOG.info(msg);
-    app.diagnostics.append(msg);
-    FINAL_TRANSITION.transition(app,event);
-    return RMAppState.FAILED;
+    app.rememberTargetTransitionsAndStoreState(event,new AttemptFailedFinalStateSavedTransition(),RMAppState.FAILED,RMAppState.FAILED);
+    return RMAppState.FINAL_SAVING;
   }
 }

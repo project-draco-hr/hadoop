@@ -1,5 +1,4 @@
 {
-  Assert.assertTrue(YarnConfiguration.DEFAULT_RM_AM_MAX_ATTEMPTS > 1);
   conf.setInt(YarnConfiguration.RM_AM_MAX_ATTEMPTS,YarnConfiguration.DEFAULT_RM_AM_MAX_ATTEMPTS);
   MemoryRMStateStore memStore=new MemoryRMStateStore();
   memStore.init(conf);
@@ -17,11 +16,7 @@
   nm1.nodeHeartbeat(true);
   MockAM am0=rm1.sendAMLaunched(attempt0.getAppAttemptId());
   am0.registerAppAttempt();
-  am0.unregisterAppAttempt();
-  nm1.nodeHeartbeat(attempt0.getAppAttemptId(),1,ContainerState.COMPLETE);
-  am0.waitForState(RMAppAttemptState.FINISHED);
-  rm1.waitForState(app0.getApplicationId(),RMAppState.FINISHED);
-  Assert.assertEquals(0,rmAppState.size());
+  finishApplicationMaster(app0,rm1,nm1,am0);
   RMApp app1=rm1.submitApp(200);
   ApplicationState appState=rmAppState.get(app1.getApplicationId());
   Assert.assertNotNull(appState);
@@ -63,7 +58,9 @@
   rm2.start();
   nm1.setResourceTrackerService(rm2.getResourceTrackerService());
   nm2.setResourceTrackerService(rm2.getResourceTrackerService());
-  Assert.assertEquals(2,rm2.getRMContext().getRMApps().size());
+  Assert.assertEquals(4,rm2.getRMContext().getRMApps().size());
+  rm2.waitForState(app0.getApplicationId(),RMAppState.FINISHED);
+  rm2.waitForState(am0.getApplicationAttemptId(),RMAppAttemptState.FINISHED);
   RMApp loadedApp1=rm2.getRMContext().getRMApps().get(app1.getApplicationId());
   Assert.assertNotNull(loadedApp1);
   Assert.assertEquals(app1.getApplicationSubmissionContext().getApplicationId(),loadedApp1.getApplicationSubmissionContext().getApplicationId());
@@ -124,15 +121,9 @@
     conts.addAll(am1.allocate(new ArrayList<ResourceRequest>(),new ArrayList<ContainerId>()).getAllocatedContainers());
     Thread.sleep(500);
   }
-  am1.unregisterAppAttempt();
-  rm2.waitForState(loadedApp1.getApplicationId(),RMAppState.FINISHING);
-  am1Node.nodeHeartbeat(attempt1.getAppAttemptId(),1,ContainerState.COMPLETE);
-  am1.waitForState(RMAppAttemptState.FINISHED);
-  am2.unregisterAppAttempt();
-  rm2.waitForState(loadedApp2.getApplicationId(),RMAppState.FINISHING);
-  am2Node.nodeHeartbeat(attempt2.getAppAttemptId(),1,ContainerState.COMPLETE);
-  am2.waitForState(RMAppAttemptState.FINISHED);
+  finishApplicationMaster(loadedApp1,rm2,am1Node,am1);
+  finishApplicationMaster(loadedApp2,rm2,am2Node,am2);
   rm2.stop();
   rm1.stop();
-  Assert.assertEquals(0,rmAppState.size());
+  Assert.assertEquals(4,rmAppState.size());
 }

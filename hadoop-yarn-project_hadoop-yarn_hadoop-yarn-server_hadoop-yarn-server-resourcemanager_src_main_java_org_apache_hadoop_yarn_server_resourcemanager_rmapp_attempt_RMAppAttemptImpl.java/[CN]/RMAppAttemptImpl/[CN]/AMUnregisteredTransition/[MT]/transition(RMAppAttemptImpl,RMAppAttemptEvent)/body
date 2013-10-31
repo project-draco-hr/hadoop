@@ -1,18 +1,11 @@
 {
-  ApplicationAttemptId appAttemptId=appAttempt.getAppAttemptId();
-  appAttempt.rmContext.getAMLivelinessMonitor().unregister(appAttemptId);
-  appAttempt.progress=1.0f;
-  RMAppAttemptUnregistrationEvent unregisterEvent=(RMAppAttemptUnregistrationEvent)event;
-  appAttempt.diagnostics.append(unregisterEvent.getDiagnostics());
-  appAttempt.origTrackingUrl=sanitizeTrackingUrl(unregisterEvent.getTrackingUrl());
-  appAttempt.proxiedTrackingUrl=appAttempt.generateProxyUriWithScheme(appAttempt.origTrackingUrl);
-  appAttempt.finalStatus=unregisterEvent.getFinalApplicationStatus();
   if (appAttempt.getSubmissionContext().getUnmanagedAM()) {
+    appAttempt.updateInfoOnAMUnregister(event);
     new FinalTransition(RMAppAttemptState.FINISHED).transition(appAttempt,event);
     return RMAppAttemptState.FINISHED;
   }
-  appAttempt.rmContext.getAMFinishingMonitor().register(appAttemptId);
+  appAttempt.rememberTargetTransitionsAndStoreState(event,new FinalStateSavedAfterAMUnregisterTransition(),RMAppAttemptState.FINISHING,RMAppAttemptState.FINISHED);
   ApplicationId applicationId=appAttempt.getAppAttemptId().getApplicationId();
   appAttempt.eventHandler.handle(new RMAppEvent(applicationId,RMAppEventType.ATTEMPT_UNREGISTERED));
-  return RMAppAttemptState.FINISHING;
+  return RMAppAttemptState.FINAL_SAVING;
 }
