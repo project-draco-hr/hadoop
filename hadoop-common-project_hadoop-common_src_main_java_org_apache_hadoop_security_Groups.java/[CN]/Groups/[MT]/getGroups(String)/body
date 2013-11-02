@@ -1,13 +1,19 @@
 {
   CachedGroups groups=userToGroupsMap.get(user);
-  long now=Time.now();
-  if (groups != null && (groups.getTimestamp() + cacheTimeout > now)) {
+  long startMs=Time.monotonicNow();
+  if (groups != null && (groups.getTimestamp() + cacheTimeout > startMs)) {
     if (LOG.isDebugEnabled()) {
       LOG.debug("Returning cached groups for '" + user + "'");
     }
     return groups.getGroups();
   }
-  groups=new CachedGroups(impl.getGroups(user));
+  List<String> groupList=impl.getGroups(user);
+  long endMs=Time.monotonicNow();
+  long deltaMs=endMs - startMs;
+  if (deltaMs > warningDeltaMs) {
+    LOG.warn("Potential performance problem: getGroups(user=" + user + ") "+ "took "+ deltaMs+ " milliseconds.");
+  }
+  groups=new CachedGroups(groupList,endMs);
   if (groups.getGroups().isEmpty()) {
     throw new IOException("No groups found for user " + user);
   }
