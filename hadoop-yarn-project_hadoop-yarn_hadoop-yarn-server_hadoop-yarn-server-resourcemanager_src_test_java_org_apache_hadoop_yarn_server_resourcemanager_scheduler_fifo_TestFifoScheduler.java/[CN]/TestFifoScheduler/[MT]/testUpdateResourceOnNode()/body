@@ -1,0 +1,52 @@
+{
+  AsyncDispatcher dispatcher=new InlineDispatcher();
+  Configuration conf=new Configuration();
+  RMContainerTokenSecretManager containerTokenSecretManager=new RMContainerTokenSecretManager(conf);
+  containerTokenSecretManager.rollMasterKey();
+  NMTokenSecretManagerInRM nmTokenSecretManager=new NMTokenSecretManagerInRM(conf);
+  nmTokenSecretManager.rollMasterKey();
+  RMContext rmContext=new RMContextImpl(dispatcher,null,null,null,null,null,containerTokenSecretManager,nmTokenSecretManager,null);
+  FifoScheduler scheduler=new FifoScheduler(){
+    @SuppressWarnings("unused") public Map<NodeId,FiCaSchedulerNode> getNodes(){
+      return nodes;
+    }
+  }
+;
+  scheduler.reinitialize(new Configuration(),rmContext);
+  RMNode node0=MockNodes.newNodeInfo(1,Resources.createResource(2048,4),1,"127.0.0.1");
+  NodeAddedSchedulerEvent nodeEvent1=new NodeAddedSchedulerEvent(node0);
+  scheduler.handle(nodeEvent1);
+  Method method=scheduler.getClass().getDeclaredMethod("getNodes");
+  @SuppressWarnings("unchecked") Map<NodeId,FiCaSchedulerNode> schedulerNodes=(Map<NodeId,FiCaSchedulerNode>)method.invoke(scheduler);
+  assertEquals(schedulerNodes.values().size(),1);
+  node0.setResourceOption(ResourceOption.newInstance(Resources.createResource(1024,4),RMNode.OVER_COMMIT_TIMEOUT_MILLIS_DEFAULT));
+  assertEquals(node0.getTotalCapability().getMemory(),1024);
+  assertEquals(schedulerNodes.get(node0.getNodeID()).getAvailableResource().getMemory(),2048);
+  NodeUpdateSchedulerEvent node0Update=new NodeUpdateSchedulerEvent(node0);
+  scheduler.handle(node0Update);
+  assertEquals(schedulerNodes.get(node0.getNodeID()).getAvailableResource().getMemory(),1024);
+  QueueInfo queueInfo=scheduler.getQueueInfo(null,false,false);
+  Assert.assertEquals(0.0f,queueInfo.getCurrentCapacity());
+  int _appId=1;
+  int _appAttemptId=1;
+  ApplicationAttemptId appAttemptId=createAppAttemptId(_appId,_appAttemptId);
+  AppAddedSchedulerEvent appEvent1=new AppAddedSchedulerEvent(appAttemptId,"queue1","user1");
+  scheduler.handle(appEvent1);
+  int memory=1024;
+  int priority=1;
+  List<ResourceRequest> ask=new ArrayList<ResourceRequest>();
+  ResourceRequest nodeLocal=createResourceRequest(memory,node0.getHostName(),priority,1);
+  ResourceRequest rackLocal=createResourceRequest(memory,node0.getRackName(),priority,1);
+  ResourceRequest any=createResourceRequest(memory,ResourceRequest.ANY,priority,1);
+  ask.add(nodeLocal);
+  ask.add(rackLocal);
+  ask.add(any);
+  scheduler.allocate(appAttemptId,ask,new ArrayList<ContainerId>(),null,null);
+  Assert.assertEquals(1,nodeLocal.getNumContainers());
+  scheduler.handle(node0Update);
+  Assert.assertEquals(0,nodeLocal.getNumContainers());
+  SchedulerAppReport info=scheduler.getSchedulerAppInfo(appAttemptId);
+  Assert.assertEquals(1,info.getLiveContainers().size());
+  queueInfo=scheduler.getQueueInfo(null,false,false);
+  Assert.assertEquals(1.0f,queueInfo.getCurrentCapacity());
+}
