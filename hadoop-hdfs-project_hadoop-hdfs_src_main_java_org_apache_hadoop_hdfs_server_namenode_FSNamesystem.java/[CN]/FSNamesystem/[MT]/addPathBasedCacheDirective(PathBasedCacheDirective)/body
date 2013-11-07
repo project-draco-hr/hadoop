@@ -3,18 +3,22 @@
   final FSPermissionChecker pc=isPermissionEnabled ? getPermissionChecker() : null;
   CacheEntryWithPayload cacheEntry=RetryCache.waitForCompletion(retryCache,null);
   if (cacheEntry != null && cacheEntry.isSuccess()) {
-    return (PathBasedCacheDescriptor)cacheEntry.getPayload();
+    return (Long)cacheEntry.getPayload();
   }
   boolean success=false;
-  PathBasedCacheDescriptor result=null;
   writeLock();
+  Long result=null;
   try {
     checkOperation(OperationCategory.WRITE);
     if (isInSafeMode()) {
       throw new SafeModeException("Cannot add PathBasedCache directive",safeMode);
     }
-    result=cacheManager.addDirective(directive,pc);
-    getEditLog().logAddPathBasedCacheDirective(directive,cacheEntry != null);
+    if (directive.getId() != null) {
+      throw new IOException("addDirective: you cannot specify an ID " + "for this operation.");
+    }
+    PathBasedCacheDirective effectiveDirective=cacheManager.addDirective(directive,pc);
+    getEditLog().logAddPathBasedCacheDirective(effectiveDirective,cacheEntry != null);
+    result=effectiveDirective.getId();
     success=true;
   }
   finally {
