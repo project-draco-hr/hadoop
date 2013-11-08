@@ -1,5 +1,5 @@
 {
-  LOG.info("beginning testCacheAndUncacheBlock");
+  LOG.info("beginning testUncachingBlocksBeforeCachingFinishes");
   final int NUM_BLOCKS=5;
   verifyExpectedCacheUsage(0);
   final Path testFile=new Path("/testCacheBlock");
@@ -13,13 +13,23 @@
   long current=0;
   assertEquals("Unexpected cache capacity",CACHE_CAPACITY,cacheCapacity);
   assertEquals("Unexpected amount of cache used",current,cacheUsed);
+  MappableBlock.mlocker=new MappableBlock.Mlocker(){
+    @Override public void mlock(    MappedByteBuffer mmap,    long length) throws IOException {
+      LOG.info("An mlock operation is starting.");
+      try {
+        Thread.sleep(3000);
+      }
+ catch (      InterruptedException e) {
+        Assert.fail();
+      }
+    }
+  }
+;
   for (int i=0; i < NUM_BLOCKS; i++) {
     setHeartbeatResponse(cacheBlock(locs[i]));
     current=verifyExpectedCacheUsage(current + blockSizes[i]);
   }
-  for (int i=0; i < NUM_BLOCKS; i++) {
-    setHeartbeatResponse(uncacheBlock(locs[i]));
-    current=verifyExpectedCacheUsage(current - blockSizes[i]);
-  }
-  LOG.info("finishing testCacheAndUncacheBlock");
+  setHeartbeatResponse(new DatanodeCommand[]{getResponse(locs,DatanodeProtocol.DNA_UNCACHE)});
+  current=verifyExpectedCacheUsage(0);
+  LOG.info("finishing testUncachingBlocksBeforeCachingFinishes");
 }
