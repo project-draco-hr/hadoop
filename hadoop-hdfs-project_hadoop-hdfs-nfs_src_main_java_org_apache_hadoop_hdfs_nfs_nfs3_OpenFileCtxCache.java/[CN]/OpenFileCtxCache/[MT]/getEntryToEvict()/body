@@ -1,0 +1,45 @@
+{
+  Iterator<Entry<FileHandle,OpenFileCtx>> it=openFileMap.entrySet().iterator();
+  if (LOG.isTraceEnabled()) {
+    LOG.trace("openFileMap size:" + openFileMap.size());
+  }
+  Entry<FileHandle,OpenFileCtx> idlest=null;
+  while (it.hasNext()) {
+    Entry<FileHandle,OpenFileCtx> pairs=it.next();
+    OpenFileCtx ctx=pairs.getValue();
+    if (!ctx.getActiveState()) {
+      if (LOG.isDebugEnabled()) {
+        LOG.debug("Got one inactive stream: " + ctx);
+      }
+      return pairs;
+    }
+    if (ctx.hasPendingWork()) {
+      continue;
+    }
+    if (idlest == null) {
+      idlest=pairs;
+    }
+ else {
+      if (ctx.getLastAccessTime() < idlest.getValue().getLastAccessTime()) {
+        idlest=pairs;
+      }
+    }
+  }
+  if (idlest == null) {
+    LOG.warn("No eviction candidate. All streams have pending work.");
+    return null;
+  }
+ else {
+    long idleTime=System.currentTimeMillis() - idlest.getValue().getLastAccessTime();
+    if (idleTime < Nfs3Constant.OUTPUT_STREAM_TIMEOUT_MIN_DEFAULT) {
+      if (LOG.isDebugEnabled()) {
+        LOG.debug("idlest stream's idle time:" + idleTime);
+      }
+      LOG.warn("All opened streams are busy, can't remove any from cache.");
+      return null;
+    }
+ else {
+      return idlest;
+    }
+  }
+}
