@@ -1,16 +1,30 @@
 {
-  MappableBlock mapBlock=cachedBlocks.get(blockId);
-  if (mapBlock != null && mapBlock.getBlockPoolId().equals(bpid) && mapBlock.getBlock().getBlockId() == blockId) {
-    mapBlock.close();
-    cachedBlocks.remove(blockId);
-    long bytes=mapBlock.getNumBytes();
-    long used=usedBytes.get();
-    while (!usedBytes.compareAndSet(used,used - bytes)) {
-      used=usedBytes.get();
+  Key key=new Key(blockId,bpid);
+  Value prevValue=mappableBlockMap.get(key);
+  if (prevValue == null) {
+    if (LOG.isDebugEnabled()) {
+      LOG.debug("Block with id " + blockId + ", pool "+ bpid+ " "+ "does not need to be uncached, because it is not currently "+ "in the mappableBlockMap.");
     }
-    LOG.info("Successfully uncached block " + blockId);
+    return;
   }
- else {
-    LOG.info("Could not uncache block " + blockId + ": unknown block.");
-  }
+switch (prevValue.state) {
+case CACHING:
+    if (LOG.isDebugEnabled()) {
+      LOG.debug("Cancelling caching for block with id " + blockId + ", pool "+ bpid+ ".");
+    }
+  mappableBlockMap.put(key,new Value(prevValue.mappableBlock,State.CACHING_CANCELLED));
+break;
+case CACHED:
+if (LOG.isDebugEnabled()) {
+LOG.debug("Block with id " + blockId + ", pool "+ bpid+ " "+ "has been scheduled for uncaching.");
+}
+mappableBlockMap.put(key,new Value(prevValue.mappableBlock,State.UNCACHING));
+uncachingExecutor.execute(new UncachingTask(key));
+break;
+default :
+if (LOG.isDebugEnabled()) {
+LOG.debug("Block with id " + blockId + ", pool "+ bpid+ " "+ "does not need to be uncached, because it is "+ "in state "+ prevValue.state+ ".");
+}
+break;
+}
 }
