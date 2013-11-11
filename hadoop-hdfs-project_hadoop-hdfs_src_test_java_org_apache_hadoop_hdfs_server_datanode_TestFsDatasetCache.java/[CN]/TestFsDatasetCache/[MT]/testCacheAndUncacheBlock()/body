@@ -8,18 +8,29 @@
   HdfsBlockLocation[] locs=(HdfsBlockLocation[])fs.getFileBlockLocations(testFile,0,testFileLen);
   assertEquals("Unexpected number of blocks",NUM_BLOCKS,locs.length);
   final long[] blockSizes=getBlockSizes(locs);
-  final long cacheCapacity=fsd.getDnCacheCapacity();
-  long cacheUsed=fsd.getDnCacheUsed();
+  final long cacheCapacity=fsd.getCacheCapacity();
+  long cacheUsed=fsd.getCacheUsed();
   long current=0;
   assertEquals("Unexpected cache capacity",CACHE_CAPACITY,cacheCapacity);
   assertEquals("Unexpected amount of cache used",current,cacheUsed);
+  MetricsRecordBuilder dnMetrics;
+  long numCacheCommands=0;
+  long numUncacheCommands=0;
   for (int i=0; i < NUM_BLOCKS; i++) {
     setHeartbeatResponse(cacheBlock(locs[i]));
     current=verifyExpectedCacheUsage(current + blockSizes[i]);
+    dnMetrics=getMetrics(dn.getMetrics().name());
+    long cmds=MetricsAsserts.getLongCounter("BlocksCached",dnMetrics);
+    assertTrue("Expected more cache requests from the NN (" + cmds + " <= "+ numCacheCommands+ ")",cmds > numCacheCommands);
+    numCacheCommands=cmds;
   }
   for (int i=0; i < NUM_BLOCKS; i++) {
     setHeartbeatResponse(uncacheBlock(locs[i]));
     current=verifyExpectedCacheUsage(current - blockSizes[i]);
+    dnMetrics=getMetrics(dn.getMetrics().name());
+    long cmds=MetricsAsserts.getLongCounter("BlocksUncached",dnMetrics);
+    assertTrue("Expected more uncache requests from the NN",cmds > numUncacheCommands);
+    numUncacheCommands=cmds;
   }
   LOG.info("finishing testCacheAndUncacheBlock");
 }

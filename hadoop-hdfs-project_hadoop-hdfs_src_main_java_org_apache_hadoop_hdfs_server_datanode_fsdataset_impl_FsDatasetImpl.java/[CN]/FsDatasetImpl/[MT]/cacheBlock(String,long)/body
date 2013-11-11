@@ -5,24 +5,33 @@
   Executor volumeExecutor;
 synchronized (this) {
     ReplicaInfo info=volumeMap.get(bpid,blockId);
-    if (info == null) {
-      LOG.warn("Failed to cache block with id " + blockId + ", pool "+ bpid+ ": ReplicaInfo not found.");
-      return;
-    }
-    if (info.getState() != ReplicaState.FINALIZED) {
-      LOG.warn("Failed to cache block with id " + blockId + ", pool "+ bpid+ ": replica is not finalized; it is in state "+ info.getState());
-      return;
-    }
+    boolean success=false;
     try {
-      volume=(FsVolumeImpl)info.getVolume();
-      if (volume == null) {
-        LOG.warn("Failed to cache block with id " + blockId + ", pool "+ bpid+ ": volume not found.");
+      if (info == null) {
+        LOG.warn("Failed to cache block with id " + blockId + ", pool "+ bpid+ ": ReplicaInfo not found.");
         return;
       }
+      if (info.getState() != ReplicaState.FINALIZED) {
+        LOG.warn("Failed to cache block with id " + blockId + ", pool "+ bpid+ ": replica is not finalized; it is in state "+ info.getState());
+        return;
+      }
+      try {
+        volume=(FsVolumeImpl)info.getVolume();
+        if (volume == null) {
+          LOG.warn("Failed to cache block with id " + blockId + ", pool "+ bpid+ ": volume not found.");
+          return;
+        }
+      }
+ catch (      ClassCastException e) {
+        LOG.warn("Failed to cache block with id " + blockId + ": volume was not an instance of FsVolumeImpl.");
+        return;
+      }
+      success=true;
     }
- catch (    ClassCastException e) {
-      LOG.warn("Failed to cache block with id " + blockId + ": volume was not an instance of FsVolumeImpl.");
-      return;
+  finally {
+      if (!success) {
+        cacheManager.numBlocksFailedToCache.incrementAndGet();
+      }
     }
     blockFileName=info.getBlockFile().getAbsolutePath();
     length=info.getVisibleLength();
