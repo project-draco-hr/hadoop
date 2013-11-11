@@ -1,0 +1,52 @@
+{
+  UserGroupInformation callerUGI;
+  try {
+    callerUGI=UserGroupInformation.getCurrentUser();
+  }
+ catch (  IOException ie) {
+    LOG.info("Error getting UGI ",ie);
+    throw RPCUtil.getRemoteException(ie);
+  }
+  Set<String> applicationTypes=request.getApplicationTypes();
+  EnumSet<YarnApplicationState> applicationStates=request.getApplicationStates();
+  Set<String> users=request.getUsers();
+  Set<String> queues=request.getQueues();
+  long limit=request.getLimit();
+  LongRange start=request.getStartRange();
+  LongRange finish=request.getFinishRange();
+  List<ApplicationReport> reports=new ArrayList<ApplicationReport>();
+  long count=0;
+  for (  RMApp application : this.rmContext.getRMApps().values()) {
+    if (++count > limit) {
+      break;
+    }
+    if (applicationTypes != null && !applicationTypes.isEmpty()) {
+      String appTypeToMatch=caseSensitive ? application.getApplicationType() : application.getApplicationType().toLowerCase();
+      if (!applicationTypes.contains(appTypeToMatch)) {
+        continue;
+      }
+    }
+    if (applicationStates != null && !applicationStates.isEmpty()) {
+      if (!applicationStates.contains(application.createApplicationState())) {
+        continue;
+      }
+    }
+    if (users != null && !users.isEmpty() && !users.contains(application.getUser())) {
+      continue;
+    }
+    if (queues != null && !queues.isEmpty() && !queues.contains(application.getQueue())) {
+      continue;
+    }
+    if (start != null && !start.containsLong(application.getStartTime())) {
+      continue;
+    }
+    if (finish != null && !finish.containsLong(application.getFinishTime())) {
+      continue;
+    }
+    boolean allowAccess=checkAccess(callerUGI,application.getUser(),ApplicationAccessType.VIEW_APP,application);
+    reports.add(application.createAndGetApplicationReport(callerUGI.getUserName(),allowAccess));
+  }
+  GetApplicationsResponse response=recordFactory.newRecordInstance(GetApplicationsResponse.class);
+  response.setApplicationList(reports);
+  return response;
+}
