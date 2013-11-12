@@ -1,0 +1,26 @@
+{
+  CompressionCodec gzip=new GzipCodec();
+  localFs.delete(workDir,true);
+  writeFile(localFs,new Path(workDir,"part1.txt.gz"),gzip,"one  two  threefour five six  seveneightnine ten  ");
+  writeFile(localFs,new Path(workDir,"part2.txt.gz"),gzip,"ten  nine eightsevensix  five four threetwo  one  ");
+  FixedLengthInputFormat format=new FixedLengthInputFormat();
+  format.setRecordLength(defaultConf,5);
+  JobConf job=new JobConf(defaultConf);
+  FileInputFormat.setInputPaths(job,workDir);
+  ReflectionUtils.setConf(gzip,job);
+  format.configure(job);
+  InputSplit[] splits=format.getSplits(job,100);
+  assertEquals("compressed splits == 2",2,splits.length);
+  FileSplit tmp=(FileSplit)splits[0];
+  if (tmp.getPath().getName().equals("part2.txt.gz")) {
+    splits[0]=splits[1];
+    splits[1]=tmp;
+  }
+  List<String> results=readSplit(format,splits[0],job);
+  assertEquals("splits[0] length",10,results.size());
+  assertEquals("splits[0][5]","six  ",results.get(5));
+  results=readSplit(format,splits[1],job);
+  assertEquals("splits[1] length",10,results.size());
+  assertEquals("splits[1][0]","ten  ",results.get(0));
+  assertEquals("splits[1][1]","nine ",results.get(1));
+}
