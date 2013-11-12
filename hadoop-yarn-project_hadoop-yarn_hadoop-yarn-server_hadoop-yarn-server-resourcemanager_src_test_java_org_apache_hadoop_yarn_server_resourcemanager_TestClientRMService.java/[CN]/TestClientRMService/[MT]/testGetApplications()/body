@@ -1,0 +1,45 @@
+{
+  YarnScheduler yarnScheduler=mockYarnScheduler();
+  RMContext rmContext=mock(RMContext.class);
+  mockRMContext(yarnScheduler,rmContext);
+  RMStateStore stateStore=mock(RMStateStore.class);
+  when(rmContext.getStateStore()).thenReturn(stateStore);
+  RMAppManager appManager=new RMAppManager(rmContext,yarnScheduler,null,mock(ApplicationACLsManager.class),new Configuration());
+  when(rmContext.getDispatcher().getEventHandler()).thenReturn(new EventHandler<Event>(){
+    public void handle(    Event event){
+    }
+  }
+);
+  ApplicationACLsManager mockAclsManager=mock(ApplicationACLsManager.class);
+  QueueACLsManager mockQueueACLsManager=mock(QueueACLsManager.class);
+  when(mockQueueACLsManager.checkAccess(any(UserGroupInformation.class),any(QueueACL.class),anyString())).thenReturn(true);
+  ClientRMService rmService=new ClientRMService(rmContext,yarnScheduler,appManager,mockAclsManager,mockQueueACLsManager,null);
+  String[] queues={"Q-1","Q-2"};
+  String[] appNames={MockApps.newAppName(),MockApps.newAppName(),MockApps.newAppName()};
+  ApplicationId[] appIds={getApplicationId(101),getApplicationId(102),getApplicationId(103)};
+  for (int i=0; i < appIds.length; i++) {
+    ApplicationId appId=appIds[i];
+    when(mockAclsManager.checkAccess(UserGroupInformation.getCurrentUser(),ApplicationAccessType.VIEW_APP,null,appId)).thenReturn(true);
+    SubmitApplicationRequest submitRequest=mockSubmitAppRequest(appId,appNames[i],queues[i % queues.length]);
+    rmService.submitApplication(submitRequest);
+  }
+  GetApplicationsRequest request=GetApplicationsRequest.newInstance();
+  assertEquals("Incorrect total number of apps",6,rmService.getApplications(request).getApplicationList().size());
+  request.setLimit(1L);
+  assertEquals("Failed to limit applications",1,rmService.getApplications(request).getApplicationList().size());
+  request=GetApplicationsRequest.newInstance();
+  Set<String> queueSet=new HashSet<String>();
+  request.setQueues(queueSet);
+  queueSet.add(queues[0]);
+  assertEquals("Incorrect number of applications in queue",2,rmService.getApplications(request).getApplicationList().size());
+  assertEquals("Incorrect number of applications in queue",2,rmService.getApplications(request,false).getApplicationList().size());
+  queueSet.add(queues[1]);
+  assertEquals("Incorrect number of applications in queue",3,rmService.getApplications(request).getApplicationList().size());
+  request=GetApplicationsRequest.newInstance();
+  Set<String> userSet=new HashSet<String>();
+  request.setUsers(userSet);
+  userSet.add("random-user-name");
+  assertEquals("Incorrect number of applications for user",0,rmService.getApplications(request).getApplicationList().size());
+  userSet.add(UserGroupInformation.getCurrentUser().getShortUserName());
+  assertEquals("Incorrect number of applications for user",3,rmService.getApplications(request).getApplicationList().size());
+}
