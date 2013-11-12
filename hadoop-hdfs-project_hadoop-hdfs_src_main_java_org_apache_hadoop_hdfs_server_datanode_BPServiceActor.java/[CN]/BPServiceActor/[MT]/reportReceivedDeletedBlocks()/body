@@ -1,27 +1,32 @@
 {
-  for (  Map.Entry<String,PerStoragePendingIncrementalBR> entry : pendingIncrementalBRperStorage.entrySet()) {
-    final String storageUuid=entry.getKey();
-    final PerStoragePendingIncrementalBR perStorageMap=entry.getValue();
-    ReceivedDeletedBlockInfo[] receivedAndDeletedBlockArray=null;
+  Map<String,ReceivedDeletedBlockInfo[]> blockArrays=Maps.newHashMap();
 synchronized (pendingIncrementalBRperStorage) {
+    for (    Map.Entry<String,PerStoragePendingIncrementalBR> entry : pendingIncrementalBRperStorage.entrySet()) {
+      final String storageUuid=entry.getKey();
+      final PerStoragePendingIncrementalBR perStorageMap=entry.getValue();
+      ReceivedDeletedBlockInfo[] receivedAndDeletedBlockArray=null;
       if (perStorageMap.getBlockInfoCount() > 0) {
         receivedAndDeletedBlockArray=perStorageMap.dequeueBlockInfos();
         pendingReceivedRequests-=receivedAndDeletedBlockArray.length;
+        blockArrays.put(storageUuid,receivedAndDeletedBlockArray);
       }
     }
-    if (receivedAndDeletedBlockArray != null) {
-      StorageReceivedDeletedBlocks[] report={new StorageReceivedDeletedBlocks(storageUuid,receivedAndDeletedBlockArray)};
-      boolean success=false;
-      try {
-        bpNamenode.blockReceivedAndDeleted(bpRegistration,bpos.getBlockPoolId(),report);
-        success=true;
-      }
+  }
+  for (  Map.Entry<String,ReceivedDeletedBlockInfo[]> entry : blockArrays.entrySet()) {
+    final String storageUuid=entry.getKey();
+    final ReceivedDeletedBlockInfo[] rdbi=entry.getValue();
+    StorageReceivedDeletedBlocks[] report={new StorageReceivedDeletedBlocks(storageUuid,rdbi)};
+    boolean success=false;
+    try {
+      bpNamenode.blockReceivedAndDeleted(bpRegistration,bpos.getBlockPoolId(),report);
+      success=true;
+    }
   finally {
+      if (!success) {
 synchronized (pendingIncrementalBRperStorage) {
-          if (!success) {
-            perStorageMap.putMissingBlockInfos(receivedAndDeletedBlockArray);
-            pendingReceivedRequests+=perStorageMap.getBlockInfoCount();
-          }
+          PerStoragePendingIncrementalBR perStorageMap=pendingIncrementalBRperStorage.get(storageUuid);
+          perStorageMap.putMissingBlockInfos(rdbi);
+          pendingReceivedRequests+=perStorageMap.getBlockInfoCount();
         }
       }
     }
