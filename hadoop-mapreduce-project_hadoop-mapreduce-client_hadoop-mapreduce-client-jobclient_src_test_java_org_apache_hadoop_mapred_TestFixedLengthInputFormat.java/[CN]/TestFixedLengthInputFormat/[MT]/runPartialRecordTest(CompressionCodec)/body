@@ -1,0 +1,31 @@
+{
+  localFs.delete(workDir,true);
+  StringBuilder fileName=new StringBuilder("testFormat.txt");
+  if (codec != null) {
+    fileName.append(".gz");
+  }
+  writeFile(localFs,new Path(workDir,fileName.toString()),codec,"one  two  threefour five six  seveneightnine ten");
+  FixedLengthInputFormat format=new FixedLengthInputFormat();
+  format.setRecordLength(defaultConf,5);
+  JobConf job=new JobConf(defaultConf);
+  FileInputFormat.setInputPaths(job,workDir);
+  if (codec != null) {
+    ReflectionUtils.setConf(codec,job);
+  }
+  format.configure(job);
+  InputSplit[] splits=format.getSplits(job,100);
+  if (codec != null) {
+    assertEquals("compressed splits == 1",1,splits.length);
+  }
+  boolean exceptionThrown=false;
+  for (  InputSplit split : splits) {
+    try {
+      List<String> results=readSplit(format,split,job);
+    }
+ catch (    IOException ioe) {
+      exceptionThrown=true;
+      LOG.info("Exception message:" + ioe.getMessage());
+    }
+  }
+  assertTrue("Exception for partial record:",exceptionThrown);
+}
