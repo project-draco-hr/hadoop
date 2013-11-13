@@ -3,6 +3,7 @@
   assumeTrue(NativeIO.getMemlockLimit() >= CACHE_CAPACITY);
   conf=new HdfsConfiguration();
   conf.setBoolean(DFSConfigKeys.DFS_NAMENODE_CACHING_ENABLED_KEY,true);
+  conf.setLong(DFSConfigKeys.DFS_NAMENODE_PATH_BASED_CACHE_RETRY_INTERVAL_MS,500);
   conf.setLong(DFSConfigKeys.DFS_BLOCK_SIZE_KEY,BLOCK_SIZE);
   conf.setLong(DFSConfigKeys.DFS_DATANODE_MAX_LOCKED_MEMORY_KEY,CACHE_CAPACITY);
   conf.setLong(DFSConfigKeys.DFS_HEARTBEAT_INTERVAL_KEY,1);
@@ -15,5 +16,11 @@
   dn=cluster.getDataNodes().get(0);
   fsd=dn.getFSDataset();
   spyNN=DataNodeTestUtils.spyOnBposToNN(dn,nn);
-  mlocker=MappableBlock.mlocker;
+  prevCacheManipulator=NativeIO.POSIX.cacheManipulator;
+  NativeIO.POSIX.cacheManipulator=new CacheManipulator(){
+    @Override public void mlock(    String identifier,    ByteBuffer mmap,    long length) throws IOException {
+      LOG.info("mlocking " + identifier);
+    }
+  }
+;
 }
