@@ -1,0 +1,28 @@
+{
+  StateChangeRequestInfo req=new StateChangeRequestInfo(HAServiceProtocol.RequestSource.REQUEST_BY_USER);
+  Configuration conf1=createHARMConf("rm1,rm2","rm1",1234);
+  ResourceManager rm1=new ResourceManager();
+  rm1.init(conf1);
+  rm1.start();
+  rm1.getHAService().transitionToActive(req);
+  assertEquals("RM with ZKStore didn't start",Service.STATE.STARTED,rm1.getServiceState());
+  assertEquals("RM should be Active",HAServiceProtocol.HAServiceState.ACTIVE,rm1.getHAService().getServiceStatus().getState());
+  Configuration conf2=createHARMConf("rm1,rm2","rm2",5678);
+  ResourceManager rm2=new ResourceManager();
+  rm2.init(conf2);
+  rm2.start();
+  rm2.getHAService().transitionToActive(req);
+  assertEquals("RM with ZKStore didn't start",Service.STATE.STARTED,rm2.getServiceState());
+  assertEquals("RM should be Active",HAServiceProtocol.HAServiceState.ACTIVE,rm2.getHAService().getServiceStatus().getState());
+  Map mockMap=mock(Map.class);
+  ApplicationSubmissionContext asc=ApplicationSubmissionContext.newInstance(ApplicationId.newInstance(1000,1),"testApplication","default",Priority.newInstance(0),ContainerLaunchContext.newInstance(mockMap,mockMap,new ArrayList<String>(),mockMap,mock(ByteBuffer.class),mockMap),false,true,1,Resource.newInstance(1024,1));
+  ClientRMService rmService=rm1.getClientRMService();
+  rmService.submitApplication(SubmitApplicationRequest.newInstance(asc));
+  for (int i=0; i < 30; i++) {
+    if (HAServiceProtocol.HAServiceState.ACTIVE == rm1.getHAService().getServiceStatus().getState()) {
+      Thread.sleep(100);
+    }
+  }
+  assertEquals("RM should have been fenced",HAServiceProtocol.HAServiceState.STANDBY,rm1.getHAService().getServiceStatus().getState());
+  assertEquals("RM should be Active",HAServiceProtocol.HAServiceState.ACTIVE,rm2.getHAService().getServiceStatus().getState());
+}
