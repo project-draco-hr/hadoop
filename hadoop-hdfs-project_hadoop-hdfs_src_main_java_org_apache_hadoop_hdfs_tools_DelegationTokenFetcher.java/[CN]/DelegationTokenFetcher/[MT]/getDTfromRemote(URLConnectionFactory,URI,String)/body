@@ -1,0 +1,33 @@
+{
+  StringBuilder buf=new StringBuilder(nnUri.toString()).append(GetDelegationTokenServlet.PATH_SPEC);
+  if (renewer != null) {
+    buf.append("?").append(GetDelegationTokenServlet.RENEWER).append("=").append(renewer);
+  }
+  HttpURLConnection conn=null;
+  DataInputStream dis=null;
+  InetSocketAddress serviceAddr=NetUtils.createSocketAddr(nnUri.getAuthority());
+  try {
+    if (LOG.isDebugEnabled()) {
+      LOG.debug("Retrieving token from: " + buf);
+    }
+    conn=run(factory,new URL(buf.toString()));
+    InputStream in=conn.getInputStream();
+    Credentials ts=new Credentials();
+    dis=new DataInputStream(in);
+    ts.readFields(dis);
+    for (    Token<?> token : ts.getAllTokens()) {
+      token.setKind(HftpFileSystem.TOKEN_KIND);
+      SecurityUtil.setTokenService(token,serviceAddr);
+    }
+    return ts;
+  }
+ catch (  Exception e) {
+    throw new IOException("Unable to obtain remote token",e);
+  }
+ finally {
+    IOUtils.cleanup(LOG,dis);
+    if (conn != null) {
+      conn.disconnect();
+    }
+  }
+}

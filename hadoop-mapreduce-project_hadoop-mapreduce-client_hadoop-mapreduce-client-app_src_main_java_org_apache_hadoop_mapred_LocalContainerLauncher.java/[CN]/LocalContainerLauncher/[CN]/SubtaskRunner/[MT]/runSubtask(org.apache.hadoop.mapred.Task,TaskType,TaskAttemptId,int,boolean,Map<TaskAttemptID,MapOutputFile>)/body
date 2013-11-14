@@ -1,0 +1,70 @@
+{
+  org.apache.hadoop.mapred.TaskAttemptID classicAttemptID=TypeConverter.fromYarn(attemptID);
+  try {
+    JobConf conf=new JobConf(getConfig());
+    conf.set(JobContext.TASK_ID,task.getTaskID().toString());
+    conf.set(JobContext.TASK_ATTEMPT_ID,classicAttemptID.toString());
+    conf.setBoolean(JobContext.TASK_ISMAP,(taskType == TaskType.MAP));
+    conf.setInt(JobContext.TASK_PARTITION,task.getPartition());
+    conf.set(JobContext.ID,task.getJobID().toString());
+    String[] localSysDirs=StringUtils.getTrimmedStrings(System.getenv(Environment.LOCAL_DIRS.name()));
+    conf.setStrings(MRConfig.LOCAL_DIR,localSysDirs);
+    LOG.info(MRConfig.LOCAL_DIR + " for uber task: " + conf.get(MRConfig.LOCAL_DIR));
+    conf.setBoolean("mapreduce.task.uberized",true);
+    if (taskType == TaskType.MAP) {
+      if (doneWithMaps) {
+        LOG.error("CONTAINER_REMOTE_LAUNCH contains a map task (" + attemptID + "), but should be finished with maps");
+        throw new RuntimeException();
+      }
+      MapTask map=(MapTask)task;
+      map.setConf(conf);
+      map.run(conf,umbilical);
+      if (renameOutputs) {
+        MapOutputFile renamed=renameMapOutputForReduce(conf,attemptID,map.getMapOutputFile());
+        localMapFiles.put(classicAttemptID,renamed);
+      }
+      relocalize();
+      if (++finishedSubMaps == numMapTasks) {
+        doneWithMaps=true;
+      }
+    }
+ else {
+      if (!doneWithMaps) {
+        LOG.error("CONTAINER_REMOTE_LAUNCH contains a reduce task (" + attemptID + "), but not yet finished with maps");
+        throw new RuntimeException();
+      }
+      conf.set(MRConfig.FRAMEWORK_NAME,MRConfig.LOCAL_FRAMEWORK_NAME);
+      conf.set(MRConfig.MASTER_ADDRESS,"local");
+      ReduceTask reduce=(ReduceTask)task;
+      reduce.setLocalMapFiles(localMapFiles);
+      reduce.setConf(conf);
+      reduce.run(conf,umbilical);
+      relocalize();
+    }
+  }
+ catch (  FSError e) {
+    LOG.fatal("FSError from child",e);
+    umbilical.fsError(classicAttemptID,e.getMessage());
+    throw new RuntimeException();
+  }
+catch (  Exception exception) {
+    LOG.warn("Exception running local (uberized) 'child' : " + StringUtils.stringifyException(exception));
+    try {
+      if (task != null) {
+        task.taskCleanup(umbilical);
+      }
+    }
+ catch (    Exception e) {
+      LOG.info("Exception cleaning up: " + StringUtils.stringifyException(e));
+    }
+    umbilical.reportDiagnosticInfo(classicAttemptID,StringUtils.stringifyException(exception));
+    throw new RuntimeException();
+  }
+catch (  Throwable throwable) {
+    LOG.fatal("Error running local (uberized) 'child' : " + StringUtils.stringifyException(throwable));
+    Throwable tCause=throwable.getCause();
+    String cause=(tCause == null) ? throwable.getMessage() : StringUtils.stringifyException(tCause);
+    umbilical.fatalError(classicAttemptID,cause);
+    throw new RuntimeException();
+  }
+}

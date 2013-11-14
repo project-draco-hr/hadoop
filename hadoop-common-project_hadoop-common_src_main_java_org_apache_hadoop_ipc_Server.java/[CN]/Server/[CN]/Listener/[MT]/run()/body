@@ -1,6 +1,7 @@
 {
   LOG.info(getName() + ": starting");
   SERVER.set(Server.this);
+  connectionManager.startIdleScan();
   while (running) {
     SelectionKey key=null;
     try {
@@ -22,7 +23,7 @@
  catch (    OutOfMemoryError e) {
       LOG.warn("Out of Memory in server select",e);
       closeCurrentConnection(key,e);
-      cleanupConnections(true);
+      connectionManager.closeIdle(true);
       try {
         Thread.sleep(60000);
       }
@@ -32,7 +33,6 @@
 catch (    Exception e) {
       closeCurrentConnection(key,e);
     }
-    cleanupConnections(false);
   }
   LOG.info("Stopping " + this.getName());
 synchronized (this) {
@@ -44,8 +44,7 @@ synchronized (this) {
     }
     selector=null;
     acceptChannel=null;
-    while (!connectionList.isEmpty()) {
-      closeConnection(connectionList.remove(0));
-    }
+    connectionManager.stopIdleScan();
+    connectionManager.closeAll();
   }
 }

@@ -51,13 +51,22 @@ synchronized (datanodeMap) {
       if (blks != null) {
         cmds.add(new BlockCommand(DatanodeProtocol.DNA_INVALIDATE,blockPoolId,blks));
       }
-      DatanodeCommand pendingCacheCommand=getCacheCommand(nodeinfo.getPendingCached(),nodeinfo,DatanodeProtocol.DNA_CACHE,blockPoolId);
-      if (pendingCacheCommand != null) {
-        cmds.add(pendingCacheCommand);
-      }
-      DatanodeCommand pendingUncacheCommand=getCacheCommand(nodeinfo.getPendingUncached(),nodeinfo,DatanodeProtocol.DNA_UNCACHE,blockPoolId);
-      if (pendingUncacheCommand != null) {
-        cmds.add(pendingUncacheCommand);
+      boolean sendingCachingCommands=false;
+      long nowMs=Time.monotonicNow();
+      if (shouldSendCachingCommands && ((nowMs - nodeinfo.getLastCachingDirectiveSentTimeMs()) >= timeBetweenResendingCachingDirectivesMs)) {
+        DatanodeCommand pendingCacheCommand=getCacheCommand(nodeinfo.getPendingCached(),nodeinfo,DatanodeProtocol.DNA_CACHE,blockPoolId);
+        if (pendingCacheCommand != null) {
+          cmds.add(pendingCacheCommand);
+          sendingCachingCommands=true;
+        }
+        DatanodeCommand pendingUncacheCommand=getCacheCommand(nodeinfo.getPendingUncached(),nodeinfo,DatanodeProtocol.DNA_UNCACHE,blockPoolId);
+        if (pendingUncacheCommand != null) {
+          cmds.add(pendingUncacheCommand);
+          sendingCachingCommands=true;
+        }
+        if (sendingCachingCommands) {
+          nodeinfo.setLastCachingDirectiveSentTimeMs(nowMs);
+        }
       }
       blockManager.addKeyUpdateCommand(cmds,nodeinfo);
       if (nodeinfo.getBalancerBandwidth() > 0) {

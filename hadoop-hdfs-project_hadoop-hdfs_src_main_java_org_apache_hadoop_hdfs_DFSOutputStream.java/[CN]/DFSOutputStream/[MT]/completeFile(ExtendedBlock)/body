@@ -1,6 +1,8 @@
 {
   long localstart=Time.now();
+  long localTimeout=400;
   boolean fileComplete=false;
+  int retries=dfsClient.getConf().nBlockWriteLocateFollowingRetry;
   while (!fileComplete) {
     fileComplete=dfsClient.namenode.complete(src,dfsClient.clientName,last,fileId);
     if (!fileComplete) {
@@ -11,7 +13,12 @@
         throw new IOException(msg);
       }
       try {
-        Thread.sleep(400);
+        Thread.sleep(localTimeout);
+        if (retries == 0) {
+          throw new IOException("Unable to close file because the last block" + " does not have enough number of replicas.");
+        }
+        retries--;
+        localTimeout*=2;
         if (Time.now() - localstart > 5000) {
           DFSClient.LOG.info("Could not complete " + src + " retrying...");
         }
