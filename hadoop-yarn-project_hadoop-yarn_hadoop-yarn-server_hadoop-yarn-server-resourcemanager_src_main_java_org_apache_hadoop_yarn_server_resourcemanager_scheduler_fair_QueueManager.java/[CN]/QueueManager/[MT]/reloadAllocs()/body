@@ -13,6 +13,7 @@
   long fairSharePreemptionTimeout=Long.MAX_VALUE;
   long defaultMinSharePreemptionTimeout=Long.MAX_VALUE;
   SchedulingPolicy defaultSchedPolicy=SchedulingPolicy.getDefault();
+  QueuePlacementPolicy newPlacementPolicy=null;
   List<String> queueNamesInAllocFile=new ArrayList<String>();
   DocumentBuilderFactory docBuilderFactory=DocumentBuilderFactory.newInstance();
   docBuilderFactory.setIgnoringComments(true);
@@ -22,6 +23,7 @@
   if (!"allocations".equals(root.getTagName()))   throw new AllocationConfigurationException("Bad fair scheduler config " + "file: top-level element not <allocations>");
   NodeList elements=root.getChildNodes();
   List<Element> queueElements=new ArrayList<Element>();
+  Element placementPolicyElement=null;
   for (int i=0; i < elements.getLength(); i++) {
     Node node=elements.item(i);
     if (node instanceof Element) {
@@ -68,6 +70,9 @@
         SchedulingPolicy.setDefault(text);
         defaultSchedPolicy=SchedulingPolicy.getDefault();
       }
+ else       if ("queuePlacementPolicy".equals(element.getTagName())) {
+        placementPolicyElement=element;
+      }
  else {
         LOG.warn("Bad element in allocations file: " + element.getTagName());
       }
@@ -83,8 +88,15 @@
     }
     loadQueue(parent,element,minQueueResources,maxQueueResources,queueMaxApps,userMaxApps,queueWeights,queuePolicies,minSharePreemptionTimeouts,queueAcls,queueNamesInAllocFile);
   }
+  if (placementPolicyElement != null) {
+    newPlacementPolicy=QueuePlacementPolicy.fromXml(placementPolicyElement,new HashSet<String>(queueNamesInAllocFile),scheduler.getConf());
+  }
+ else {
+    newPlacementPolicy=new QueuePlacementPolicy(getSimplePlacementRules(),new HashSet<String>(queueNamesInAllocFile),scheduler.getConf());
+  }
 synchronized (this) {
     info=new QueueManagerInfo(minQueueResources,maxQueueResources,queueMaxApps,userMaxApps,queueWeights,userMaxAppsDefault,queueMaxAppsDefault,defaultSchedPolicy,minSharePreemptionTimeouts,queueAcls,fairSharePreemptionTimeout,defaultMinSharePreemptionTimeout);
+    placementPolicy=newPlacementPolicy;
     for (    String name : queueNamesInAllocFile) {
       getLeafQueue(name,true);
     }
