@@ -1,0 +1,31 @@
+{
+  ApplicationId applicationId=evt.getApplicationId();
+  Credentials ts=evt.getCredentials();
+  boolean shouldCancelAtEnd=evt.shouldCancelAtEnd();
+  if (ts == null) {
+    return;
+  }
+  if (LOG.isDebugEnabled()) {
+    LOG.debug("Registering tokens for renewal for:" + " appId = " + applicationId);
+  }
+  Collection<Token<?>> tokens=ts.getAllTokens();
+  long now=System.currentTimeMillis();
+  List<DelegationTokenToRenew> tokenList=new ArrayList<DelegationTokenRenewer.DelegationTokenToRenew>();
+  for (  Token<?> token : tokens) {
+    if (token.isManaged()) {
+      tokenList.add(new DelegationTokenToRenew(applicationId,token,getConfig(),now,shouldCancelAtEnd));
+    }
+  }
+  if (!tokenList.isEmpty()) {
+    for (    DelegationTokenToRenew dtr : tokenList) {
+      renewToken(dtr);
+    }
+    for (    DelegationTokenToRenew dtr : tokenList) {
+      addTokenToList(dtr);
+      setTimerForTokenRenewal(dtr);
+      if (LOG.isDebugEnabled()) {
+        LOG.debug("Registering token for renewal for:" + " service = " + dtr.token.getService() + " for appId = "+ dtr.applicationId);
+      }
+    }
+  }
+}

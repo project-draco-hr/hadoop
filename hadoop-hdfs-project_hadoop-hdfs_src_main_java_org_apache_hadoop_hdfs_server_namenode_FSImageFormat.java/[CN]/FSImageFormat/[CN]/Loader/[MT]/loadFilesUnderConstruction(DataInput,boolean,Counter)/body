@@ -6,8 +6,16 @@
     INodeFileUnderConstruction cons=FSImageSerialization.readINodeUnderConstruction(in,namesystem,getLayoutVersion());
     counter.increment();
     String path=cons.getLocalName();
-    final INodesInPath iip=fsDir.getLastINodeInPath(path);
-    INodeFile oldnode=INodeFile.valueOf(iip.getINode(0),path);
+    INodeFile oldnode=null;
+    boolean inSnapshot=false;
+    if (path != null && FSDirectory.isReservedName(path) && LayoutVersion.supports(Feature.ADD_INODE_ID,getLayoutVersion())) {
+      oldnode=namesystem.dir.getInode(cons.getId()).asFile();
+      inSnapshot=true;
+    }
+ else {
+      final INodesInPath iip=fsDir.getLastINodeInPath(path);
+      oldnode=INodeFile.valueOf(iip.getINode(0),path);
+    }
     cons.setLocalName(oldnode.getLocalNameBytes());
     INodeReference parentRef=oldnode.getParentReference();
     if (parentRef != null) {
@@ -19,7 +27,19 @@
     if (oldnode instanceof INodeFileWithSnapshot) {
       cons=new INodeFileUnderConstructionWithSnapshot(cons,((INodeFileWithSnapshot)oldnode).getDiffs());
     }
-    fsDir.replaceINodeFile(path,oldnode,cons);
-    namesystem.leaseManager.addLease(cons.getClientName(),path);
+    if (!inSnapshot) {
+      fsDir.replaceINodeFile(path,oldnode,cons);
+      namesystem.leaseManager.addLease(cons.getClientName(),path);
+    }
+ else {
+      if (parentRef != null) {
+        parentRef.setReferredINode(cons);
+      }
+ else {
+        oldnode.getParent().replaceChildFileInSnapshot(oldnode,cons);
+        namesystem.dir.addToInodeMap(cons);
+        updateBlocksMap(cons);
+      }
+    }
   }
 }
