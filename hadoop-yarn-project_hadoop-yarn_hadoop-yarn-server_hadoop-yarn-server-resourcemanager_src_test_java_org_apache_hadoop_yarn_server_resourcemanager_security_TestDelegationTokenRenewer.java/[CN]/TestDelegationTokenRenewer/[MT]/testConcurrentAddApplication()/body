@@ -1,0 +1,42 @@
+{
+  final CyclicBarrier startBarrier=new CyclicBarrier(2);
+  final CyclicBarrier endBarrier=new CyclicBarrier(2);
+  final Credentials creds1=new Credentials();
+  final Token<?> token1=mock(Token.class);
+  creds1.addToken(new Text("token"),token1);
+  doReturn(true).when(token1).isManaged();
+  doAnswer(new Answer<Long>(){
+    public Long answer(    InvocationOnMock invocation) throws InterruptedException, BrokenBarrierException {
+      startBarrier.await();
+      endBarrier.await();
+      return Long.MAX_VALUE;
+    }
+  }
+).when(token1).renew(any(Configuration.class));
+  final Credentials creds2=new Credentials();
+  final Token<?> token2=mock(Token.class);
+  creds2.addToken(new Text("token"),token2);
+  doReturn(true).when(token2).isManaged();
+  doReturn(Long.MAX_VALUE).when(token2).renew(any(Configuration.class));
+  final DelegationTokenRenewer dtr=createNewDelegationTokenRenewer(conf,counter);
+  dtr.init(conf);
+  RMContext mockContext=mock(RMContext.class);
+  ClientRMService mockClientRMService=mock(ClientRMService.class);
+  when(mockContext.getClientRMService()).thenReturn(mockClientRMService);
+  InetSocketAddress sockAddr=InetSocketAddress.createUnresolved("localhost",1234);
+  when(mockClientRMService.getBindAddress()).thenReturn(sockAddr);
+  dtr.setRMContext(mockContext);
+  when(mockContext.getDelegationTokenRenewer()).thenReturn(dtr);
+  dtr.start();
+  Thread submitThread=new Thread(){
+    @Override public void run(){
+      dtr.addApplication(mock(ApplicationId.class),creds1,false,false);
+    }
+  }
+;
+  submitThread.start();
+  startBarrier.await();
+  dtr.addApplication(mock(ApplicationId.class),creds2,false,false);
+  endBarrier.await();
+  submitThread.join();
+}
