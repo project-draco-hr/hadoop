@@ -7,16 +7,23 @@
   List<ContainerId> containerIds=new ArrayList<ContainerId>(containers.keySet());
   LOG.info("Waiting for containers to be killed");
   this.handle(new CMgrCompletedContainersEvent(containerIds,CMgrCompletedContainersEvent.Reason.ON_NODEMANAGER_RESYNC));
-  while (!containers.isEmpty()) {
-    try {
-      Thread.sleep(1000);
-      nodeStatusUpdater.getNodeStatusAndUpdateContainersInContext();
-    }
- catch (    InterruptedException ex) {
-      LOG.warn("Interrupted while sleeping on container kill on resync",ex);
+  boolean allContainersCompleted=false;
+  while (!containers.isEmpty() && !allContainersCompleted) {
+    allContainersCompleted=true;
+    for (    Entry<ContainerId,Container> container : containers.entrySet()) {
+      if (((ContainerImpl)container.getValue()).getCurrentState() != ContainerState.COMPLETE) {
+        allContainersCompleted=false;
+        try {
+          Thread.sleep(1000);
+        }
+ catch (        InterruptedException ex) {
+          LOG.warn("Interrupted while sleeping on container kill on resync",ex);
+        }
+        break;
+      }
     }
   }
-  if (containers.isEmpty()) {
+  if (allContainersCompleted) {
     LOG.info("All containers in DONE state");
   }
  else {
