@@ -8,18 +8,32 @@
   if (poolFilter != null) {
     builder.setPool(poolFilter);
   }
+  boolean printStats=StringUtils.popOption("-stats",args);
   if (!args.isEmpty()) {
     System.err.println("Can't understand argument: " + args.get(0));
     return 1;
   }
-  TableListing tableListing=new TableListing.Builder().addField("ID",Justification.LEFT).addField("POOL",Justification.LEFT).addField("REPLICATION",Justification.LEFT).addField("PATH",Justification.LEFT).build();
+  TableListing.Builder tableBuilder=new TableListing.Builder().addField("ID",Justification.RIGHT).addField("POOL",Justification.LEFT).addField("REPLICATION",Justification.RIGHT).addField("PATH",Justification.LEFT);
+  if (printStats) {
+    tableBuilder.addField("NEEDED",Justification.RIGHT).addField("CACHED",Justification.RIGHT).addField("FILES",Justification.RIGHT);
+  }
+  TableListing tableListing=tableBuilder.build();
   DistributedFileSystem dfs=getDFS(conf);
   RemoteIterator<PathBasedCacheDirective> iter=dfs.listPathBasedCacheDirectives(builder.build());
   int numEntries=0;
   while (iter.hasNext()) {
     PathBasedCacheDirective directive=iter.next();
-    String row[]=new String[]{"" + directive.getId(),directive.getPool(),"" + directive.getReplication(),directive.getPath().toUri().getPath()};
-    tableListing.addRow(row);
+    List<String> row=new LinkedList<String>();
+    row.add("" + directive.getId());
+    row.add(directive.getPool());
+    row.add("" + directive.getReplication());
+    row.add(directive.getPath().toUri().getPath());
+    if (printStats) {
+      row.add("" + directive.getBytesNeeded());
+      row.add("" + directive.getBytesCached());
+      row.add("" + directive.getFilesAffected());
+    }
+    tableListing.addRow(row.toArray(new String[0]));
     numEntries++;
   }
   System.out.print(String.format("Found %d entr%s\n",numEntries,numEntries == 1 ? "y" : "ies"));
