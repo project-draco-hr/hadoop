@@ -1,0 +1,34 @@
+{
+  byte[] rawData=null;
+  rawData=generate(rawDataSize);
+  ByteArrayOutputStream baos=new ByteArrayOutputStream(rawDataSize + 12);
+  DeflaterOutputStream dos=new DeflaterOutputStream(baos);
+  dos.write(rawData);
+  dos.flush();
+  dos.close();
+  byte[] compressedResult=baos.toByteArray();
+  int compressedSize=compressedResult.length;
+  ZlibDirectDecompressor decompressor=new ZlibDirectDecompressor();
+  ByteBuffer inBuf=ByteBuffer.allocateDirect(compressedSize);
+  ByteBuffer outBuf=ByteBuffer.allocateDirect(rawDataSize);
+  inBuf.put(compressedResult,0,compressedSize);
+  inBuf.flip();
+  ByteBuffer expected=ByteBuffer.wrap(rawData);
+  outBuf.clear();
+  while (!decompressor.finished()) {
+    decompressor.decompress(inBuf,outBuf);
+    if (outBuf.remaining() == 0) {
+      outBuf.flip();
+      while (outBuf.remaining() > 0) {
+        assertEquals(expected.get(),outBuf.get());
+      }
+      outBuf.clear();
+    }
+  }
+  outBuf.flip();
+  while (outBuf.remaining() > 0) {
+    assertEquals(expected.get(),outBuf.get());
+  }
+  outBuf.clear();
+  assertEquals(0,expected.remaining());
+}

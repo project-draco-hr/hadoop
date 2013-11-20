@@ -1,14 +1,13 @@
 {
   ApplicationAttemptId applicationAttemptId=authorizeRequest();
   ApplicationId appID=applicationAttemptId.getApplicationId();
-  AllocateResponse lastResponse=responseMap.get(applicationAttemptId);
-  if (lastResponse == null) {
-    String message="Application doesn't exist in cache " + applicationAttemptId;
-    LOG.error(message);
-    RMAuditLogger.logFailure(this.rmContext.getRMApps().get(appID).getUser(),AuditConstants.REGISTER_AM,message,"ApplicationMasterService","Error in registering application master",appID,applicationAttemptId);
-    throw RPCUtil.getRemoteException(message);
+  AllocateResponseLock lock=responseMap.get(applicationAttemptId);
+  if (lock == null) {
+    RMAuditLogger.logFailure(this.rmContext.getRMApps().get(appID).getUser(),AuditConstants.REGISTER_AM,"Application doesn't exist in cache " + applicationAttemptId,"ApplicationMasterService","Error in registering application master",appID,applicationAttemptId);
+    throwApplicationDoesNotExistInCacheException(applicationAttemptId);
   }
-synchronized (lastResponse) {
+synchronized (lock) {
+    AllocateResponse lastResponse=lock.getAllocateResponse();
     if (hasApplicationMasterRegistered(applicationAttemptId)) {
       String message="Application Master is already registered : " + applicationAttemptId.getApplicationId();
       LOG.warn(message);
@@ -18,7 +17,7 @@ synchronized (lastResponse) {
     this.amLivelinessMonitor.receivedPing(applicationAttemptId);
     RMApp app=this.rmContext.getRMApps().get(appID);
     lastResponse.setResponseId(0);
-    responseMap.put(applicationAttemptId,lastResponse);
+    lock.setAllocateResponse(lastResponse);
     LOG.info("AM registration " + applicationAttemptId);
     this.rmContext.getDispatcher().getEventHandler().handle(new RMAppAttemptRegistrationEvent(applicationAttemptId,request.getHost(),request.getRpcPort(),request.getTrackingUrl()));
     RMAuditLogger.logSuccess(app.getUser(),AuditConstants.REGISTER_AM,"ApplicationMasterService",appID,applicationAttemptId);
