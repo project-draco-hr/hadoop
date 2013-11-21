@@ -75,6 +75,26 @@
     hdfsShellScriptLen=shellFileStatus.getLen();
     hdfsShellScriptTimestamp=shellFileStatus.getModificationTime();
   }
+  if (!shellCommand.isEmpty()) {
+    String shellCommandSuffix=appName + "/" + appId.getId()+ "/"+ shellCommandPath;
+    Path shellCommandDst=new Path(fs.getHomeDirectory(),shellCommandSuffix);
+    FSDataOutputStream ostream=null;
+    try {
+      ostream=FileSystem.create(fs,shellCommandDst,new FsPermission((short)0710));
+      ostream.writeUTF(shellCommand);
+    }
+  finally {
+      IOUtils.closeQuietly(ostream);
+    }
+    FileStatus scFileStatus=fs.getFileStatus(shellCommandDst);
+    LocalResource scRsrc=Records.newRecord(LocalResource.class);
+    scRsrc.setType(LocalResourceType.FILE);
+    scRsrc.setVisibility(LocalResourceVisibility.APPLICATION);
+    scRsrc.setResource(ConverterUtils.getYarnUrlFromURI(shellCommandDst.toUri()));
+    scRsrc.setTimestamp(scFileStatus.getModificationTime());
+    scRsrc.setSize(scFileStatus.getLen());
+    localResources.put("shellCommands",scRsrc);
+  }
   amContainer.setLocalResources(localResources);
   LOG.info("Set the environment for the application master");
   Map<String,String> env=new HashMap<String,String>();
@@ -103,7 +123,7 @@
   vargs.add("--num_containers " + String.valueOf(numContainers));
   vargs.add("--priority " + String.valueOf(shellCmdPriority));
   if (!shellCommand.isEmpty()) {
-    vargs.add("--shell_command " + shellCommand + "");
+    vargs.add("--shell_command " + shellCommandPath + "");
   }
   if (!shellArgs.isEmpty()) {
     vargs.add("--shell_args " + shellArgs + "");
