@@ -1,0 +1,46 @@
+{
+  CacheDirectiveInfo.Builder builder=new CacheDirectiveInfo.Builder();
+  String pathFilter=StringUtils.popOptionWithArgument("-path",args);
+  if (pathFilter != null) {
+    builder.setPath(new Path(pathFilter));
+  }
+  String poolFilter=StringUtils.popOptionWithArgument("-pool",args);
+  if (poolFilter != null) {
+    builder.setPool(poolFilter);
+  }
+  boolean printStats=StringUtils.popOption("-stats",args);
+  if (!args.isEmpty()) {
+    System.err.println("Can't understand argument: " + args.get(0));
+    return 1;
+  }
+  TableListing.Builder tableBuilder=new TableListing.Builder().addField("ID",Justification.RIGHT).addField("POOL",Justification.LEFT).addField("REPLICATION",Justification.RIGHT).addField("PATH",Justification.LEFT);
+  if (printStats) {
+    tableBuilder.addField("NEEDED",Justification.RIGHT).addField("CACHED",Justification.RIGHT).addField("FILES",Justification.RIGHT);
+  }
+  TableListing tableListing=tableBuilder.build();
+  DistributedFileSystem dfs=getDFS(conf);
+  RemoteIterator<CacheDirectiveEntry> iter=dfs.listCacheDirectives(builder.build());
+  int numEntries=0;
+  while (iter.hasNext()) {
+    CacheDirectiveEntry entry=iter.next();
+    CacheDirectiveInfo directive=entry.getInfo();
+    CacheDirectiveStats stats=entry.getStats();
+    List<String> row=new LinkedList<String>();
+    row.add("" + directive.getId());
+    row.add(directive.getPool());
+    row.add("" + directive.getReplication());
+    row.add(directive.getPath().toUri().getPath());
+    if (printStats) {
+      row.add("" + stats.getBytesNeeded());
+      row.add("" + stats.getBytesCached());
+      row.add("" + stats.getFilesAffected());
+    }
+    tableListing.addRow(row.toArray(new String[0]));
+    numEntries++;
+  }
+  System.out.print(String.format("Found %d entr%s\n",numEntries,numEntries == 1 ? "y" : "ies"));
+  if (numEntries > 0) {
+    System.out.print(tableListing);
+  }
+  return 0;
+}
