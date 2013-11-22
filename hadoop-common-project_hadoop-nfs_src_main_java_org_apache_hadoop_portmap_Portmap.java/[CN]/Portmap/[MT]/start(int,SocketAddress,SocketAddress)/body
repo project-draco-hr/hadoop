@@ -1,0 +1,18 @@
+{
+  tcpServer=new ServerBootstrap(new NioServerSocketChannelFactory(Executors.newCachedThreadPool(),Executors.newCachedThreadPool()));
+  tcpServer.setPipelineFactory(new ChannelPipelineFactory(){
+    private final HashedWheelTimer timer=new HashedWheelTimer();
+    private final IdleStateHandler idleStateHandler=new IdleStateHandler(timer,0,0,idleTimeMilliSeconds,TimeUnit.MILLISECONDS);
+    @Override public ChannelPipeline getPipeline() throws Exception {
+      return Channels.pipeline(RpcUtil.constructRpcFrameDecoder(),RpcUtil.STAGE_RPC_MESSAGE_PARSER,idleStateHandler,handler,RpcUtil.STAGE_RPC_TCP_RESPONSE);
+    }
+  }
+);
+  udpServer=new ConnectionlessBootstrap(new NioDatagramChannelFactory(Executors.newCachedThreadPool()));
+  udpServer.setPipeline(Channels.pipeline(RpcUtil.STAGE_RPC_MESSAGE_PARSER,handler,RpcUtil.STAGE_RPC_UDP_RESPONSE));
+  tcpChannel=tcpServer.bind(tcpAddress);
+  udpChannel=udpServer.bind(udpAddress);
+  allChannels.add(tcpChannel);
+  allChannels.add(udpChannel);
+  LOG.info("Portmap server started at tcp://" + tcpChannel.getLocalAddress() + ", udp://"+ udpChannel.getLocalAddress());
+}
