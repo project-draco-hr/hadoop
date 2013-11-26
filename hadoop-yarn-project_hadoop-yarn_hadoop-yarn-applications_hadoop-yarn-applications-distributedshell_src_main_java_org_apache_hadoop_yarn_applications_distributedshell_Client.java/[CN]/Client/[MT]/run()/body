@@ -37,26 +37,9 @@
   Map<String,LocalResource> localResources=new HashMap<String,LocalResource>();
   LOG.info("Copy App Master jar from local filesystem and add to local environment");
   FileSystem fs=FileSystem.get(conf);
-  Path src=new Path(appMasterJar);
-  String pathSuffix=appName + "/" + appId.getId()+ "/AppMaster.jar";
-  Path dst=new Path(fs.getHomeDirectory(),pathSuffix);
-  fs.copyFromLocalFile(false,true,src,dst);
-  FileStatus destStatus=fs.getFileStatus(dst);
-  LocalResource amJarRsrc=Records.newRecord(LocalResource.class);
-  amJarRsrc.setType(LocalResourceType.FILE);
-  amJarRsrc.setVisibility(LocalResourceVisibility.APPLICATION);
-  amJarRsrc.setResource(ConverterUtils.getYarnUrlFromPath(dst));
-  amJarRsrc.setTimestamp(destStatus.getModificationTime());
-  amJarRsrc.setSize(destStatus.getLen());
-  localResources.put("AppMaster.jar",amJarRsrc);
+  addToLocalResources(fs,appMasterJar,appMasterJarPath,appId.getId(),localResources,null);
   if (!log4jPropFile.isEmpty()) {
-    Path log4jSrc=new Path(log4jPropFile);
-    String log4jPathSuffix=appName + "/" + appId.getId()+ "/"+ log4jPath;
-    Path log4jDst=new Path(fs.getHomeDirectory(),log4jPathSuffix);
-    fs.copyFromLocalFile(false,true,log4jSrc,log4jDst);
-    FileStatus log4jFileStatus=fs.getFileStatus(log4jDst);
-    LocalResource log4jRsrc=LocalResource.newInstance(ConverterUtils.getYarnUrlFromURI(log4jDst.toUri()),LocalResourceType.FILE,LocalResourceVisibility.APPLICATION,log4jFileStatus.getLen(),log4jFileStatus.getModificationTime());
-    localResources.put(log4jPath,log4jRsrc);
+    addToLocalResources(fs,log4jPropFile,log4jPath,appId.getId(),localResources,null);
   }
   String hdfsShellScriptLocation="";
   long hdfsShellScriptLen=0;
@@ -72,19 +55,10 @@
     hdfsShellScriptTimestamp=shellFileStatus.getModificationTime();
   }
   if (!shellCommand.isEmpty()) {
-    String shellCommandSuffix=appName + "/" + appId.getId()+ "/"+ shellCommandPath;
-    Path shellCommandDst=new Path(fs.getHomeDirectory(),shellCommandSuffix);
-    FSDataOutputStream ostream=null;
-    try {
-      ostream=FileSystem.create(fs,shellCommandDst,new FsPermission((short)0710));
-      ostream.writeUTF(shellCommand);
-    }
-  finally {
-      IOUtils.closeQuietly(ostream);
-    }
-    FileStatus scFileStatus=fs.getFileStatus(shellCommandDst);
-    LocalResource scRsrc=LocalResource.newInstance(ConverterUtils.getYarnUrlFromURI(shellCommandDst.toUri()),LocalResourceType.FILE,LocalResourceVisibility.APPLICATION,scFileStatus.getLen(),scFileStatus.getModificationTime());
-    localResources.put(shellCommandPath,scRsrc);
+    addToLocalResources(fs,null,shellCommandPath,appId.getId(),localResources,shellCommand);
+  }
+  if (shellArgs.length > 0) {
+    addToLocalResources(fs,null,shellArgsPath,appId.getId(),localResources,StringUtils.join(shellArgs," "));
   }
   amContainer.setLocalResources(localResources);
   LOG.info("Set the environment for the application master");
@@ -113,9 +87,6 @@
   vargs.add("--container_vcores " + String.valueOf(containerVirtualCores));
   vargs.add("--num_containers " + String.valueOf(numContainers));
   vargs.add("--priority " + String.valueOf(shellCmdPriority));
-  if (!shellArgs.isEmpty()) {
-    vargs.add("--shell_args " + shellArgs + "");
-  }
   for (  Map.Entry<String,String> entry : shellEnv.entrySet()) {
     vargs.add("--shell_env " + entry.getKey() + "="+ entry.getValue());
   }
