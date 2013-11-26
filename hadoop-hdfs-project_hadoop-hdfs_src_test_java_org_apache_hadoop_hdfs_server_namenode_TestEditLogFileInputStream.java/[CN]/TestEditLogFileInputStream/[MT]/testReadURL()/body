@@ -1,18 +1,16 @@
 {
-  HttpServer server=new HttpServer.Builder().setName("test").setBindAddress("0.0.0.0").setPort(0).setFindPort(true).build();
-  server.start();
-  try {
-    server.addServlet("fakeLog","/fakeLog",FakeLogServlet.class);
-    URL url=new URL("http://localhost:" + server.getPort() + "/fakeLog");
-    EditLogInputStream elis=EditLogFileInputStream.fromUrl(url,HdfsConstants.INVALID_TXID,HdfsConstants.INVALID_TXID,false);
-    EnumMap<FSEditLogOpCodes,Holder<Integer>> counts=FSImageTestUtil.countEditLogOpTypes(elis);
-    assertThat(counts.get(FSEditLogOpCodes.OP_ADD).held,is(1));
-    assertThat(counts.get(FSEditLogOpCodes.OP_SET_GENSTAMP_V1).held,is(1));
-    assertThat(counts.get(FSEditLogOpCodes.OP_CLOSE).held,is(1));
-    assertEquals(FAKE_LOG_DATA.length,elis.length());
-    elis.close();
-  }
-  finally {
-    server.stop();
-  }
+  HttpURLConnection conn=mock(HttpURLConnection.class);
+  doReturn(new ByteArrayInputStream(FAKE_LOG_DATA)).when(conn).getInputStream();
+  doReturn(HttpURLConnection.HTTP_OK).when(conn).getResponseCode();
+  doReturn(Integer.toString(FAKE_LOG_DATA.length)).when(conn).getHeaderField("Content-Length");
+  URLConnectionFactory factory=mock(URLConnectionFactory.class);
+  doReturn(conn).when(factory).openConnection(Mockito.<URL>any(),anyBoolean());
+  URL url=new URL("http://localhost/fakeLog");
+  EditLogInputStream elis=EditLogFileInputStream.fromUrl(factory,url,HdfsConstants.INVALID_TXID,HdfsConstants.INVALID_TXID,false);
+  EnumMap<FSEditLogOpCodes,Holder<Integer>> counts=FSImageTestUtil.countEditLogOpTypes(elis);
+  assertThat(counts.get(FSEditLogOpCodes.OP_ADD).held,is(1));
+  assertThat(counts.get(FSEditLogOpCodes.OP_SET_GENSTAMP_V1).held,is(1));
+  assertThat(counts.get(FSEditLogOpCodes.OP_CLOSE).held,is(1));
+  assertEquals(FAKE_LOG_DATA.length,elis.length());
+  elis.close();
 }
