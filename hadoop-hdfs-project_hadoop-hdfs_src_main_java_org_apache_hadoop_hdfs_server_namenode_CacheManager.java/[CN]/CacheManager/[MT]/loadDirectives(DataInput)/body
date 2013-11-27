@@ -1,0 +1,32 @@
+{
+  StartupProgress prog=NameNode.getStartupProgress();
+  Step step=new Step(StepType.CACHE_ENTRIES);
+  prog.beginStep(Phase.LOADING_FSIMAGE,step);
+  int numDirectives=in.readInt();
+  prog.setTotal(Phase.LOADING_FSIMAGE,step,numDirectives);
+  Counter counter=prog.getCounter(Phase.LOADING_FSIMAGE,step);
+  for (int i=0; i < numDirectives; i++) {
+    long directiveId=in.readLong();
+    String path=Text.readString(in);
+    short replication=in.readShort();
+    String poolName=Text.readString(in);
+    CachePool pool=cachePools.get(poolName);
+    if (pool == null) {
+      throw new IOException("Directive refers to pool " + poolName + ", which does not exist.");
+    }
+    CacheDirective directive=new CacheDirective(directiveId,path,replication);
+    boolean addedDirective=pool.getDirectiveList().add(directive);
+    assert addedDirective;
+    if (directivesById.put(directive.getId(),directive) != null) {
+      throw new IOException("A directive with ID " + directive.getId() + " already exists");
+    }
+    List<CacheDirective> directives=directivesByPath.get(directive.getPath());
+    if (directives == null) {
+      directives=new LinkedList<CacheDirective>();
+      directivesByPath.put(directive.getPath(),directives);
+    }
+    directives.add(directive);
+    counter.increment();
+  }
+  prog.endStep(Phase.LOADING_FSIMAGE,step);
+}
