@@ -1,0 +1,51 @@
+{
+  String user=app.getUser();
+  int newUserNumRunning=usersNumRunnableApps.get(user) - 1;
+  if (newUserNumRunning == 0) {
+    usersNumRunnableApps.remove(user);
+  }
+ else {
+    usersNumRunnableApps.put(user,newUserNumRunning);
+  }
+  FSLeafQueue queue=app.getQueue();
+  FSQueue highestQueueWithAppsNowRunnable=(queue.getNumRunnableApps() == queueMgr.getQueueMaxApps(queue.getName()) - 1) ? queue : null;
+  FSParentQueue parent=queue.getParent();
+  while (parent != null) {
+    if (parent.getNumRunnableApps() == queueMgr.getQueueMaxApps(parent.getName())) {
+      highestQueueWithAppsNowRunnable=parent;
+    }
+    parent.decrementRunnableApps();
+    parent=parent.getParent();
+  }
+  List<List<AppSchedulable>> appsNowMaybeRunnable=new ArrayList<List<AppSchedulable>>();
+  if (highestQueueWithAppsNowRunnable != null) {
+    gatherPossiblyRunnableAppLists(highestQueueWithAppsNowRunnable,appsNowMaybeRunnable);
+  }
+  if (newUserNumRunning == queueMgr.getUserMaxApps(user) - 1) {
+    List<AppSchedulable> userWaitingApps=usersNonRunnableApps.get(user);
+    if (userWaitingApps != null) {
+      appsNowMaybeRunnable.add(userWaitingApps);
+    }
+  }
+  Iterator<FSSchedulerApp> iter=new MultiListStartTimeIterator(appsNowMaybeRunnable);
+  FSSchedulerApp prev=null;
+  int numNowRunnable=0;
+  while (iter.hasNext()) {
+    FSSchedulerApp next=iter.next();
+    if (next == prev) {
+      continue;
+    }
+    if (canAppBeRunnable(next.getQueue(),next.getUser())) {
+      trackRunnableApp(next);
+      AppSchedulable appSched=next.getAppSchedulable();
+      next.getQueue().makeAppRunnable(appSched);
+      if (!usersNonRunnableApps.remove(next.getUser(),appSched)) {
+        throw new IllegalStateException("Waiting app " + next + " expected to be in usersNonRunnableApps");
+      }
+      if (numNowRunnable >= appsNowMaybeRunnable.size()) {
+        break;
+      }
+    }
+    prev=next;
+  }
+}
