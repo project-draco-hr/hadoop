@@ -1,0 +1,30 @@
+{
+  int status;
+  OpenFileCtx openFileCtx=fileContextCache.get(fileHandle);
+  if (openFileCtx == null) {
+    if (LOG.isDebugEnabled()) {
+      LOG.debug("No opened stream for fileId:" + fileHandle.getFileId() + " commitOffset="+ commitOffset+ ". Return success in this case.");
+    }
+    status=Nfs3Status.NFS3_OK;
+  }
+ else {
+    COMMIT_STATUS ret=openFileCtx.checkCommit(dfsClient,commitOffset,null,0,null,true);
+switch (ret) {
+case COMMIT_FINISHED:
+case COMMIT_INACTIVE_CTX:
+      status=Nfs3Status.NFS3_OK;
+    break;
+case COMMIT_INACTIVE_WITH_PENDING_WRITE:
+case COMMIT_ERROR:
+  status=Nfs3Status.NFS3ERR_IO;
+break;
+case COMMIT_WAIT:
+status=Nfs3Status.NFS3ERR_JUKEBOX;
+break;
+default :
+LOG.error("Should not get commit return code:" + ret.name());
+throw new RuntimeException("Should not get commit return code:" + ret.name());
+}
+}
+return status;
+}

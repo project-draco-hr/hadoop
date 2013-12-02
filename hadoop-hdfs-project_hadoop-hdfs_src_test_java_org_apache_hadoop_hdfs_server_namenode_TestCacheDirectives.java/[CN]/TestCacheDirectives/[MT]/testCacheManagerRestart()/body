@@ -10,9 +10,9 @@
   FsPermission mode=new FsPermission((short)0777);
   int weight=747;
   dfs.addCachePool(new CachePoolInfo(pool).setGroupName(groupName).setMode(mode).setWeight(weight));
-  RemoteIterator<CachePoolInfo> pit=dfs.listCachePools();
+  RemoteIterator<CachePoolEntry> pit=dfs.listCachePools();
   assertTrue("No cache pools found",pit.hasNext());
-  CachePoolInfo info=pit.next();
+  CachePoolInfo info=pit.next().getInfo();
   assertEquals(pool,info.getPoolName());
   assertEquals(groupName,info.getGroupName());
   assertEquals(mode,info.getMode());
@@ -21,8 +21,9 @@
   int numEntries=10;
   String entryPrefix="/party-";
   long prevId=-1;
+  final Date expiry=new Date();
   for (int i=0; i < numEntries; i++) {
-    prevId=dfs.addCacheDirective(new CacheDirectiveInfo.Builder().setPath(new Path(entryPrefix + i)).setPool(pool).build());
+    prevId=dfs.addCacheDirective(new CacheDirectiveInfo.Builder().setPath(new Path(entryPrefix + i)).setPool(pool).setExpiration(CacheDirectiveInfo.Expiration.newAbsolute(expiry.getTime())).build());
   }
   RemoteIterator<CacheDirectiveEntry> dit=dfs.listCacheDirectives(null);
   for (int i=0; i < numEntries; i++) {
@@ -36,7 +37,7 @@
   cluster.restartNameNode();
   pit=dfs.listCachePools();
   assertTrue("No cache pools found",pit.hasNext());
-  info=pit.next();
+  info=pit.next().getInfo();
   assertEquals(pool,info.getPoolName());
   assertEquals(pool,info.getPoolName());
   assertEquals(groupName,info.getGroupName());
@@ -50,6 +51,7 @@
     assertEquals(i + 1,cd.getId().longValue());
     assertEquals(entryPrefix + i,cd.getPath().toUri().getPath());
     assertEquals(pool,cd.getPool());
+    assertEquals(expiry.getTime(),cd.getExpiration().getMillis());
   }
   assertFalse("Unexpected # of cache directives found",dit.hasNext());
   long nextId=dfs.addCacheDirective(new CacheDirectiveInfo.Builder().setPath(new Path("/foobar")).setPool(pool).build());

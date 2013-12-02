@@ -1,25 +1,39 @@
 {
+  CacheDirectiveInfo.Builder builder=new CacheDirectiveInfo.Builder();
   String path=StringUtils.popOptionWithArgument("-path",args);
   if (path == null) {
     System.err.println("You must specify a path with -path.");
     return 1;
   }
-  short replication=1;
-  String replicationString=StringUtils.popOptionWithArgument("-replication",args);
-  if (replicationString != null) {
-    replication=Short.parseShort(replicationString);
-  }
+  builder.setPath(new Path(path));
   String poolName=StringUtils.popOptionWithArgument("-pool",args);
   if (poolName == null) {
     System.err.println("You must specify a pool name with -pool.");
     return 1;
+  }
+  builder.setPool(poolName);
+  String replicationString=StringUtils.popOptionWithArgument("-replication",args);
+  if (replicationString != null) {
+    Short replication=Short.parseShort(replicationString);
+    builder.setReplication(replication);
+  }
+  String ttlString=StringUtils.popOptionWithArgument("-ttl",args);
+  if (ttlString != null) {
+    try {
+      long ttl=DFSUtil.parseRelativeTime(ttlString);
+      builder.setExpiration(CacheDirectiveInfo.Expiration.newRelative(ttl));
+    }
+ catch (    IOException e) {
+      System.err.println("Error while parsing ttl value: " + e.getMessage());
+      return 1;
+    }
   }
   if (!args.isEmpty()) {
     System.err.println("Can't understand argument: " + args.get(0));
     return 1;
   }
   DistributedFileSystem dfs=getDFS(conf);
-  CacheDirectiveInfo directive=new CacheDirectiveInfo.Builder().setPath(new Path(path)).setReplication(replication).setPool(poolName).build();
+  CacheDirectiveInfo directive=builder.build();
   try {
     long id=dfs.addCacheDirective(directive);
     System.out.println("Added cache directive " + id);

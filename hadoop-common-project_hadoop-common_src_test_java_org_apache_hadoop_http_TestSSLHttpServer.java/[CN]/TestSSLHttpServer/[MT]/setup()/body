@@ -1,22 +1,20 @@
 {
-  HttpConfig.setPolicy(HttpConfig.Policy.HTTPS_ONLY);
+  conf=new Configuration();
+  conf.setInt(HttpServer.HTTP_MAX_THREADS,10);
   File base=new File(BASEDIR);
   FileUtil.fullyDelete(base);
   base.mkdirs();
-  String classpathDir=KeyStoreTestUtil.getClasspathDir(TestSSLHttpServer.class);
-  Configuration conf=new Configuration();
-  String keystoresDir=new File(BASEDIR).getAbsolutePath();
-  String sslConfsDir=KeyStoreTestUtil.getClasspathDir(TestSSLHttpServer.class);
-  KeyStoreTestUtil.setupSSLConfig(keystoresDir,sslConfsDir,conf,false);
-  conf.setBoolean(CommonConfigurationKeysPublic.HADOOP_SSL_ENABLED_KEY,true);
-  Writer writer=new FileWriter(new File(classpathDir,CONFIG_SITE_XML));
-  conf.writeXml(writer);
-  writer.close();
-  conf.setInt(HttpServer.HTTP_MAX_THREADS,10);
-  conf.addResource(CONFIG_SITE_XML);
-  server=createServer("test",conf);
+  keystoresDir=new File(BASEDIR).getAbsolutePath();
+  sslConfDir=KeyStoreTestUtil.getClasspathDir(TestSSLHttpServer.class);
+  KeyStoreTestUtil.setupSSLConfig(keystoresDir,sslConfDir,conf,false);
+  Configuration sslConf=new Configuration(false);
+  sslConf.addResource("ssl-server.xml");
+  sslConf.addResource("ssl-client.xml");
+  clientSslFactory=new SSLFactory(SSLFactory.Mode.CLIENT,sslConf);
+  clientSslFactory.init();
+  server=new HttpServer.Builder().setName("test").addEndpoint(new URI("https://localhost")).setConf(conf).keyPassword(sslConf.get("ssl.server.keystore.keypassword")).keyStore(sslConf.get("ssl.server.keystore.location"),sslConf.get("ssl.server.keystore.password"),sslConf.get("ssl.server.keystore.type","jks")).trustStore(sslConf.get("ssl.server.truststore.location"),sslConf.get("ssl.server.truststore.password"),sslConf.get("ssl.server.truststore.type","jks")).build();
   server.addServlet("echo","/echo",TestHttpServer.EchoServlet.class);
   server.start();
-  baseUrl=new URL("https://localhost:" + server.getPort() + "/");
+  baseUrl=new URL("https://" + NetUtils.getHostPortString(server.getConnectorAddress(0)));
   LOG.info("HTTP server started: " + baseUrl);
 }

@@ -1,5 +1,6 @@
 {
   Configuration conf=new Configuration();
+  conf.setLong(DFSConfigKeys.DFS_DATANODE_MAX_LOCKED_MEMORY_KEY,NativeIO.POSIX.getCacheManipulator().getMemlockLimit());
   MiniDFSCluster cluster=null;
   try {
     cluster=new MiniDFSCluster.Builder(conf).build();
@@ -63,7 +64,7 @@
     }
     assertEquals(2,statusMap.get("active").size());
     assertEquals(0,statusMap.get("failed").size());
-    File failedNameDir=new File(nameDirUris.toArray(new URI[0])[0]);
+    File failedNameDir=new File(nameDirUris.iterator().next());
     assertEquals(0,FileUtil.chmod(new File(failedNameDir,"current").getAbsolutePath(),"000"));
     cluster.getNameNodeRpc().rollEditLog();
     nameDirStatuses=(String)(mbs.getAttribute(mxbeanName,"NameDirStatuses"));
@@ -76,6 +77,8 @@
     }
     assertEquals(1,statusMap.get("active").size());
     assertEquals(1,statusMap.get("failed").size());
+    assertEquals(0L,mbs.getAttribute(mxbeanName,"CacheUsed"));
+    assertEquals(NativeIO.POSIX.getCacheManipulator().getMemlockLimit() * cluster.getDataNodes().size(),mbs.getAttribute(mxbeanName,"CacheCapacity"));
   }
   finally {
     if (cluster != null) {

@@ -1,0 +1,39 @@
+{
+  if (!activeState) {
+    if (pendingWrites.isEmpty()) {
+      return COMMIT_STATUS.COMMIT_INACTIVE_CTX;
+    }
+ else {
+      return COMMIT_STATUS.COMMIT_INACTIVE_WITH_PENDING_WRITE;
+    }
+  }
+  long flushed=getFlushedOffset();
+  if (LOG.isDebugEnabled()) {
+    LOG.debug("getFlushedOffset=" + flushed + " commitOffset="+ commitOffset);
+  }
+  if (commitOffset > 0) {
+    if (commitOffset > flushed) {
+      if (!fromRead) {
+        CommitCtx commitCtx=new CommitCtx(commitOffset,channel,xid,preOpAttr);
+        pendingCommits.put(commitOffset,commitCtx);
+      }
+      return COMMIT_STATUS.COMMIT_WAIT;
+    }
+ else {
+      return COMMIT_STATUS.COMMIT_DO_SYNC;
+    }
+  }
+  Entry<OffsetRange,WriteCtx> key=pendingWrites.firstEntry();
+  if (pendingWrites.isEmpty()) {
+    return COMMIT_STATUS.COMMIT_FINISHED;
+  }
+ else {
+    if (!fromRead) {
+      long maxOffset=key.getKey().getMax() - 1;
+      Preconditions.checkState(maxOffset > 0);
+      CommitCtx commitCtx=new CommitCtx(maxOffset,channel,xid,preOpAttr);
+      pendingCommits.put(maxOffset,commitCtx);
+    }
+    return COMMIT_STATUS.COMMIT_WAIT;
+  }
+}
