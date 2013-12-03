@@ -2,15 +2,24 @@
   conf.setBoolean(Dispatcher.DISPATCHER_EXIT_ON_ERROR_KEY,true);
   rmDispatcher=createDispatcher();
   addIfService(rmDispatcher);
+  rmContext.setDispatcher(rmDispatcher);
+  clientToAMSecretManager=new ClientToAMTokenSecretManagerInRM();
+  rmContext.setClientToAMTokenSecretManager(clientToAMSecretManager);
   amRmTokenSecretManager=createAMRMTokenSecretManager(conf);
+  rmContext.setAMRMTokenSecretManager(amRmTokenSecretManager);
   containerAllocationExpirer=new ContainerAllocationExpirer(rmDispatcher);
   addService(containerAllocationExpirer);
+  rmContext.setContainerAllocationExpirer(containerAllocationExpirer);
   AMLivelinessMonitor amLivelinessMonitor=createAMLivelinessMonitor();
   addService(amLivelinessMonitor);
+  rmContext.setAMLivelinessMonitor(amLivelinessMonitor);
   AMLivelinessMonitor amFinishingMonitor=createAMLivelinessMonitor();
   addService(amFinishingMonitor);
+  rmContext.setAMFinishingMonitor(amFinishingMonitor);
   containerTokenSecretManager=createContainerTokenSecretManager(conf);
+  rmContext.setContainerTokenSecretManager(containerTokenSecretManager);
   nmTokenSecretManager=createNMTokenSecretManager(conf);
+  rmContext.setNMTokenSecretManager(nmTokenSecretManager);
   boolean isRecoveryEnabled=conf.getBoolean(YarnConfiguration.RECOVERY_ENABLED,YarnConfiguration.DEFAULT_RM_RECOVERY_ENABLED);
   RMStateStore rmStore=null;
   if (isRecoveryEnabled) {
@@ -30,14 +39,17 @@
     LOG.error("Failed to init state store",e);
     ExitUtil.terminate(1,e);
   }
+  rmContext.setStateStore(rmStore);
   if (UserGroupInformation.isSecurityEnabled()) {
     delegationTokenRenewer=createDelegationTokenRenewer();
+    rmContext.setDelegationTokenRenewer(delegationTokenRenewer);
   }
-  rmContext=new RMContextImpl(rmDispatcher,rmStore,containerAllocationExpirer,amLivelinessMonitor,amFinishingMonitor,delegationTokenRenewer,amRmTokenSecretManager,containerTokenSecretManager,nmTokenSecretManager,clientToAMSecretManager);
   nodesListManager=new NodesListManager(rmContext);
   rmDispatcher.register(NodesListManagerEventType.class,nodesListManager);
   addService(nodesListManager);
+  rmContext.setNodesListManager(nodesListManager);
   scheduler=createScheduler();
+  rmContext.setScheduler(scheduler);
   schedulerDispatcher=createSchedulerEventDispatcher();
   addIfService(schedulerDispatcher);
   rmDispatcher.register(SchedulerEventType.class,schedulerDispatcher);
@@ -48,6 +60,7 @@
   addService(nmLivelinessMonitor);
   resourceTracker=createResourceTrackerService();
   addService(resourceTracker);
+  rmContext.setResourceTrackerService(resourceTracker);
   DefaultMetricsSystem.initialize("ResourceManager");
   JvmMetrics.initSingleton("ResourceManager",null);
   try {
@@ -59,6 +72,7 @@
   createPolicyMonitors();
   masterService=createApplicationMasterService();
   addService(masterService);
+  rmContext.setApplicationMasterService(masterService);
   applicationACLsManager=new ApplicationACLsManager(conf);
   queueACLsManager=createQueueACLsManager(scheduler,conf);
   rmAppManager=createRMAppManager();
@@ -68,8 +82,7 @@
   clientRM=createClientRMService();
   rmContext.setClientRMService(clientRM);
   addService(clientRM);
-  adminService=createAdminService(clientRM,masterService,resourceTracker);
-  addService(adminService);
+  rmContext.setClientRMService(clientRM);
   applicationMasterLauncher=createAMLauncher();
   rmDispatcher.register(AMLauncherEventType.class,applicationMasterLauncher);
   addService(applicationMasterLauncher);

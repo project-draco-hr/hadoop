@@ -1,0 +1,16 @@
+{
+  Configuration conf=getConfig();
+  YarnRPC rpc=YarnRPC.create(conf);
+  this.server=(Server)rpc.getServer(ResourceManagerAdministrationProtocol.class,this,masterServiceAddress,conf,null,conf.getInt(YarnConfiguration.RM_ADMIN_CLIENT_THREAD_COUNT,YarnConfiguration.DEFAULT_RM_ADMIN_CLIENT_THREAD_COUNT));
+  if (conf.getBoolean(CommonConfigurationKeysPublic.HADOOP_SECURITY_AUTHORIZATION,false)) {
+    refreshServiceAcls(conf,new RMPolicyProvider());
+  }
+  if (haEnabled) {
+    RPC.setProtocolEngine(conf,HAServiceProtocolPB.class,ProtobufRpcEngine.class);
+    HAServiceProtocolServerSideTranslatorPB haServiceProtocolXlator=new HAServiceProtocolServerSideTranslatorPB(this);
+    BlockingService haPbService=HAServiceProtocolProtos.HAServiceProtocolService.newReflectiveBlockingService(haServiceProtocolXlator);
+    server.addProtocol(RPC.RpcKind.RPC_PROTOCOL_BUFFER,HAServiceProtocol.class,haPbService);
+  }
+  this.server.start();
+  conf.updateConnectAddr(YarnConfiguration.RM_ADMIN_ADDRESS,server.getListenerAddress());
+}
