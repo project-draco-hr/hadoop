@@ -1,0 +1,34 @@
+{
+  HdfsConfiguration conf=new HdfsConfiguration();
+  MiniDFSCluster cluster=new MiniDFSCluster.Builder(conf).numDataNodes(2).build();
+  cluster.waitActive();
+  try {
+    TestFSRMStateStoreTester fsTester=new TestFSRMStateStoreTester(cluster);
+    final RMStateStore store=fsTester.getRMStateStore();
+    store.setRMDispatcher(new TestDispatcher());
+    final AtomicBoolean assertionFailedInThread=new AtomicBoolean(false);
+    cluster.shutdownNameNodes();
+    Thread clientThread=new Thread(){
+      @Override public void run(){
+        try {
+          store.storeApplicationStateInternal("application1",(ApplicationStateDataPBImpl)ApplicationStateDataPBImpl.newApplicationStateData(111,111,"user",null,RMAppState.ACCEPTED,"diagnostics",333));
+        }
+ catch (        Exception e) {
+          if (!e.getMessage().contains("could only be replicated" + " to 0 nodes instead of minReplication (=1)")) {
+            assertionFailedInThread.set(true);
+          }
+          e.printStackTrace();
+        }
+      }
+    }
+;
+    Thread.sleep(2000);
+    clientThread.start();
+    cluster.restartNameNode();
+    clientThread.join();
+    Assert.assertFalse(assertionFailedInThread.get());
+  }
+  finally {
+    cluster.shutdown();
+  }
+}
