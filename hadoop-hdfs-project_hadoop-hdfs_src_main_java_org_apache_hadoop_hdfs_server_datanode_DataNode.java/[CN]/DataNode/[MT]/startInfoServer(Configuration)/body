@@ -1,22 +1,33 @@
 {
+  HttpServer.Builder builder=new HttpServer.Builder().setName("datanode").setConf(conf).setACL(new AccessControlList(conf.get(DFS_ADMIN," ")));
+  HttpConfig.Policy policy=DFSUtil.getHttpPolicy(conf);
   InetSocketAddress infoSocAddr=DataNode.getInfoAddr(conf);
   String infoHost=infoSocAddr.getHostName();
-  int tmpInfoPort=infoSocAddr.getPort();
-  HttpServer.Builder builder=new HttpServer.Builder().setName("datanode").addEndpoint(URI.create("http://" + NetUtils.getHostPortString(infoSocAddr))).setFindPort(tmpInfoPort == 0).setConf(conf).setACL(new AccessControlList(conf.get(DFS_ADMIN," ")));
-  LOG.info("Opened info server at " + infoHost + ":"+ tmpInfoPort);
-  if (conf.getBoolean(DFS_HTTPS_ENABLE_KEY,false)) {
-    InetSocketAddress secInfoSocAddr=NetUtils.createSocketAddr(conf.get(DFS_DATANODE_HTTPS_ADDRESS_KEY,infoHost + ":" + 0));
-    builder.addEndpoint(URI.create("https://" + NetUtils.getHostPortString(secInfoSocAddr)));
-    Configuration sslConf=new Configuration(false);
-    sslConf.setBoolean(DFSConfigKeys.DFS_CLIENT_HTTPS_NEED_AUTH_KEY,conf.getBoolean(DFSConfigKeys.DFS_CLIENT_HTTPS_NEED_AUTH_KEY,DFSConfigKeys.DFS_CLIENT_HTTPS_NEED_AUTH_DEFAULT));
-    sslConf.addResource(conf.get(DFSConfigKeys.DFS_SERVER_HTTPS_KEYSTORE_RESOURCE_KEY,DFSConfigKeys.DFS_SERVER_HTTPS_KEYSTORE_RESOURCE_DEFAULT));
-    DFSUtil.loadSslConfToHttpServerBuilder(builder,sslConf);
-    if (LOG.isDebugEnabled()) {
-      LOG.debug("Datanode listening for SSL on " + secInfoSocAddr);
+  if (policy.isHttpEnabled()) {
+    if (secureResources == null) {
+      int port=infoSocAddr.getPort();
+      builder.addEndpoint(URI.create("http://" + infoHost + ":"+ port));
+      if (port == 0) {
+        builder.setFindPort(true);
+      }
     }
-    infoSecurePort=secInfoSocAddr.getPort();
+ else {
+      builder.setConnector(secureResources.getListener());
+    }
   }
-  this.infoServer=(secureResources == null) ? builder.build() : builder.setConnector(secureResources.getListener()).build();
+  if (policy.isHttpsEnabled()) {
+    InetSocketAddress secInfoSocAddr=NetUtils.createSocketAddr(conf.get(DFS_DATANODE_HTTPS_ADDRESS_KEY,infoHost + ":" + 0));
+    Configuration sslConf=new Configuration(false);
+    sslConf.addResource(conf.get(DFSConfigKeys.DFS_SERVER_HTTPS_KEYSTORE_RESOURCE_KEY,DFSConfigKeys.DFS_SERVER_HTTPS_KEYSTORE_RESOURCE_DEFAULT));
+    sslConf.setBoolean(DFS_CLIENT_HTTPS_NEED_AUTH_KEY,conf.getBoolean(DFS_CLIENT_HTTPS_NEED_AUTH_KEY,DFS_CLIENT_HTTPS_NEED_AUTH_DEFAULT));
+    DFSUtil.loadSslConfToHttpServerBuilder(builder,sslConf);
+    int port=secInfoSocAddr.getPort();
+    if (port == 0) {
+      builder.setFindPort(true);
+    }
+    builder.addEndpoint(URI.create("https://" + infoHost + ":"+ port));
+  }
+  this.infoServer=builder.build();
   this.infoServer.addInternalServlet(null,"/streamFile/*",StreamFile.class);
   this.infoServer.addInternalServlet(null,"/getFileChecksum/*",FileChecksumServlets.GetServlet.class);
   this.infoServer.setAttribute("datanode",this);
@@ -26,5 +37,11 @@
     infoServer.addJerseyResourcePackage(DatanodeWebHdfsMethods.class.getPackage().getName() + ";" + Param.class.getPackage().getName(),WebHdfsFileSystem.PATH_PREFIX + "/*");
   }
   this.infoServer.start();
-  this.infoPort=infoServer.getConnectorAddress(0).getPort();
+  int connIdx=0;
+  if (policy.isHttpEnabled()) {
+    infoPort=infoServer.getConnectorAddress(connIdx++).getPort();
+  }
+  if (policy.isHttpsEnabled()) {
+    infoSecurePort=infoServer.getConnectorAddress(connIdx).getPort();
+  }
 }
