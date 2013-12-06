@@ -1,0 +1,104 @@
+{
+  if (allocFile == null) {
+    return;
+  }
+  LOG.info("Loading allocation file " + allocFile);
+  Map<String,Resource> minQueueResources=new HashMap<String,Resource>();
+  Map<String,Resource> maxQueueResources=new HashMap<String,Resource>();
+  Map<String,Integer> queueMaxApps=new HashMap<String,Integer>();
+  Map<String,Integer> userMaxApps=new HashMap<String,Integer>();
+  Map<String,ResourceWeights> queueWeights=new HashMap<String,ResourceWeights>();
+  Map<String,SchedulingPolicy> queuePolicies=new HashMap<String,SchedulingPolicy>();
+  Map<String,Long> minSharePreemptionTimeouts=new HashMap<String,Long>();
+  Map<String,Map<QueueACL,AccessControlList>> queueAcls=new HashMap<String,Map<QueueACL,AccessControlList>>();
+  int userMaxAppsDefault=Integer.MAX_VALUE;
+  int queueMaxAppsDefault=Integer.MAX_VALUE;
+  long fairSharePreemptionTimeout=Long.MAX_VALUE;
+  long defaultMinSharePreemptionTimeout=Long.MAX_VALUE;
+  SchedulingPolicy defaultSchedPolicy=SchedulingPolicy.DEFAULT_POLICY;
+  QueuePlacementPolicy newPlacementPolicy=null;
+  Set<String> queueNamesInAllocFile=new HashSet<String>();
+  DocumentBuilderFactory docBuilderFactory=DocumentBuilderFactory.newInstance();
+  docBuilderFactory.setIgnoringComments(true);
+  DocumentBuilder builder=docBuilderFactory.newDocumentBuilder();
+  Document doc=builder.parse(allocFile);
+  Element root=doc.getDocumentElement();
+  if (!"allocations".equals(root.getTagName()))   throw new AllocationConfigurationException("Bad fair scheduler config " + "file: top-level element not <allocations>");
+  NodeList elements=root.getChildNodes();
+  List<Element> queueElements=new ArrayList<Element>();
+  Element placementPolicyElement=null;
+  for (int i=0; i < elements.getLength(); i++) {
+    Node node=elements.item(i);
+    if (node instanceof Element) {
+      Element element=(Element)node;
+      if ("queue".equals(element.getTagName()) || "pool".equals(element.getTagName())) {
+        queueElements.add(element);
+      }
+ else       if ("user".equals(element.getTagName())) {
+        String userName=element.getAttribute("name");
+        NodeList fields=element.getChildNodes();
+        for (int j=0; j < fields.getLength(); j++) {
+          Node fieldNode=fields.item(j);
+          if (!(fieldNode instanceof Element))           continue;
+          Element field=(Element)fieldNode;
+          if ("maxRunningApps".equals(field.getTagName())) {
+            String text=((Text)field.getFirstChild()).getData().trim();
+            int val=Integer.parseInt(text);
+            userMaxApps.put(userName,val);
+          }
+        }
+      }
+ else       if ("userMaxAppsDefault".equals(element.getTagName())) {
+        String text=((Text)element.getFirstChild()).getData().trim();
+        int val=Integer.parseInt(text);
+        userMaxAppsDefault=val;
+      }
+ else       if ("fairSharePreemptionTimeout".equals(element.getTagName())) {
+        String text=((Text)element.getFirstChild()).getData().trim();
+        long val=Long.parseLong(text) * 1000L;
+        fairSharePreemptionTimeout=val;
+      }
+ else       if ("defaultMinSharePreemptionTimeout".equals(element.getTagName())) {
+        String text=((Text)element.getFirstChild()).getData().trim();
+        long val=Long.parseLong(text) * 1000L;
+        defaultMinSharePreemptionTimeout=val;
+      }
+ else       if ("queueMaxAppsDefault".equals(element.getTagName())) {
+        String text=((Text)element.getFirstChild()).getData().trim();
+        int val=Integer.parseInt(text);
+        queueMaxAppsDefault=val;
+      }
+ else       if ("defaultQueueSchedulingPolicy".equals(element.getTagName()) || "defaultQueueSchedulingMode".equals(element.getTagName())) {
+        String text=((Text)element.getFirstChild()).getData().trim();
+        defaultSchedPolicy=SchedulingPolicy.parse(text);
+      }
+ else       if ("queuePlacementPolicy".equals(element.getTagName())) {
+        placementPolicyElement=element;
+      }
+ else {
+        LOG.warn("Bad element in allocations file: " + element.getTagName());
+      }
+    }
+  }
+  for (  Element element : queueElements) {
+    String parent="root";
+    if (element.getAttribute("name").equalsIgnoreCase("root")) {
+      if (queueElements.size() > 1) {
+        throw new AllocationConfigurationException("If configuring root queue," + " no other queues can be placed alongside it.");
+      }
+      parent=null;
+    }
+    loadQueue(parent,element,minQueueResources,maxQueueResources,queueMaxApps,userMaxApps,queueWeights,queuePolicies,minSharePreemptionTimeouts,queueAcls,queueNamesInAllocFile);
+  }
+  Configuration conf=getConfig();
+  if (placementPolicyElement != null) {
+    newPlacementPolicy=QueuePlacementPolicy.fromXml(placementPolicyElement,queueNamesInAllocFile,conf);
+  }
+ else {
+    newPlacementPolicy=QueuePlacementPolicy.fromConfiguration(conf,queueNamesInAllocFile);
+  }
+  AllocationConfiguration info=new AllocationConfiguration(minQueueResources,maxQueueResources,queueMaxApps,userMaxApps,queueWeights,userMaxAppsDefault,queueMaxAppsDefault,queuePolicies,defaultSchedPolicy,minSharePreemptionTimeouts,queueAcls,fairSharePreemptionTimeout,defaultMinSharePreemptionTimeout,newPlacementPolicy,queueNamesInAllocFile);
+  lastSuccessfulReload=clock.getTime();
+  lastReloadAttemptFailed=false;
+  reloadListener.onReload(info);
+}

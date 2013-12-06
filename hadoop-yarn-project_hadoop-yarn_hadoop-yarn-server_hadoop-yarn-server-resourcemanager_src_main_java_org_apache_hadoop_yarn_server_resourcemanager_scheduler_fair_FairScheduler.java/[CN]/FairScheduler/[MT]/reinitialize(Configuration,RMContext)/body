@@ -1,30 +1,31 @@
 {
-  this.conf=new FairSchedulerConfiguration(conf);
-  validateConf(this.conf);
-  minimumAllocation=this.conf.getMinimumAllocation();
-  maximumAllocation=this.conf.getMaximumAllocation();
-  incrAllocation=this.conf.getIncrementAllocation();
-  continuousSchedulingEnabled=this.conf.isContinuousSchedulingEnabled();
-  continuousSchedulingSleepMs=this.conf.getContinuousSchedulingSleepMs();
-  nodeLocalityThreshold=this.conf.getLocalityThresholdNode();
-  rackLocalityThreshold=this.conf.getLocalityThresholdRack();
-  nodeLocalityDelayMs=this.conf.getLocalityDelayNodeMs();
-  rackLocalityDelayMs=this.conf.getLocalityDelayRackMs();
-  preemptionEnabled=this.conf.getPreemptionEnabled();
-  assignMultiple=this.conf.getAssignMultiple();
-  maxAssign=this.conf.getMaxAssign();
-  sizeBasedWeight=this.conf.getSizeBasedWeight();
-  preemptionInterval=this.conf.getPreemptionInterval();
-  waitTimeBeforeKill=this.conf.getWaitTimeBeforeKill();
-  usePortForNodeName=this.conf.getUsePortForNodeName();
   if (!initialized) {
+    this.conf=new FairSchedulerConfiguration(conf);
+    validateConf(this.conf);
+    minimumAllocation=this.conf.getMinimumAllocation();
+    maximumAllocation=this.conf.getMaximumAllocation();
+    incrAllocation=this.conf.getIncrementAllocation();
+    continuousSchedulingEnabled=this.conf.isContinuousSchedulingEnabled();
+    continuousSchedulingSleepMs=this.conf.getContinuousSchedulingSleepMs();
+    nodeLocalityThreshold=this.conf.getLocalityThresholdNode();
+    rackLocalityThreshold=this.conf.getLocalityThresholdRack();
+    nodeLocalityDelayMs=this.conf.getLocalityDelayNodeMs();
+    rackLocalityDelayMs=this.conf.getLocalityDelayRackMs();
+    preemptionEnabled=this.conf.getPreemptionEnabled();
+    assignMultiple=this.conf.getAssignMultiple();
+    maxAssign=this.conf.getMaxAssign();
+    sizeBasedWeight=this.conf.getSizeBasedWeight();
+    preemptionInterval=this.conf.getPreemptionInterval();
+    waitTimeBeforeKill=this.conf.getWaitTimeBeforeKill();
+    usePortForNodeName=this.conf.getUsePortForNodeName();
     rootMetrics=FSQueueMetrics.forQueue("root",null,true,conf);
     this.rmContext=rmContext;
     this.eventLog=new FairSchedulerEventLog();
     eventLog.init(this.conf);
     initialized=true;
+    allocConf=new AllocationConfiguration(conf);
     try {
-      queueMgr.initialize();
+      queueMgr.initialize(conf);
     }
  catch (    Exception e) {
       throw new IOException("Failed to start FairScheduler",e);
@@ -44,13 +45,22 @@
       schedulingThread.setDaemon(true);
       schedulingThread.start();
     }
-  }
- else {
+    allocsLoader.init(conf);
+    allocsLoader.setReloadListener(new AllocationReloadListener());
     try {
-      queueMgr.reloadAllocs();
+      allocsLoader.reloadAllocations();
     }
  catch (    Exception e) {
       throw new IOException("Failed to initialize FairScheduler",e);
+    }
+    allocsLoader.start();
+  }
+ else {
+    try {
+      allocsLoader.reloadAllocations();
+    }
+ catch (    Exception e) {
+      LOG.error("Failed to reload allocations file",e);
     }
   }
 }
