@@ -1,0 +1,34 @@
+{
+  URL testFileUrl=getClass().getClassLoader().getResource(testFileName);
+  assertNotNull("Cannot find " + testFileName,testFileUrl);
+  File testFile=new File(testFileUrl.getFile());
+  long testFileSize=testFile.length();
+  Path testFilePath=new Path(testFile.getAbsolutePath());
+  Configuration conf=new Configuration();
+  conf.setInt(org.apache.hadoop.mapreduce.lib.input.LineRecordReader.MAX_LINE_LENGTH,Integer.MAX_VALUE);
+  assertTrue("unexpected test data at " + testFile,testFileSize > firstSplitLength);
+  FileSplit split=new FileSplit(testFilePath,0,testFileSize,(String[])null);
+  LineRecordReader reader=new LineRecordReader(conf,split);
+  LongWritable key=new LongWritable();
+  Text value=new Text();
+  int numRecordsNoSplits=0;
+  while (reader.next(key,value)) {
+    ++numRecordsNoSplits;
+  }
+  reader.close();
+  split=new FileSplit(testFilePath,0,firstSplitLength,(String[])null);
+  reader=new LineRecordReader(conf,split);
+  int numRecordsFirstSplit=0;
+  while (reader.next(key,value)) {
+    ++numRecordsFirstSplit;
+  }
+  reader.close();
+  split=new FileSplit(testFilePath,firstSplitLength,testFileSize - firstSplitLength,(String[])null);
+  reader=new LineRecordReader(conf,split);
+  int numRecordsRemainingSplits=0;
+  while (reader.next(key,value)) {
+    ++numRecordsRemainingSplits;
+  }
+  reader.close();
+  assertEquals("Unexpected number of records in bzip2 compressed split",numRecordsNoSplits,numRecordsFirstSplit + numRecordsRemainingSplits);
+}
