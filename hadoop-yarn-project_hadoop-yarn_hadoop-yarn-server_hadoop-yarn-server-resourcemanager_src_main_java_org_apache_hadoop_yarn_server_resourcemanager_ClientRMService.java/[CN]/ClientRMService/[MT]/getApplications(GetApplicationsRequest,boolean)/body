@@ -14,12 +14,40 @@
   long limit=request.getLimit();
   LongRange start=request.getStartRange();
   LongRange finish=request.getFinishRange();
-  List<ApplicationReport> reports=new ArrayList<ApplicationReport>();
-  long count=0;
-  for (  RMApp application : this.rmContext.getRMApps().values()) {
-    if (++count > limit) {
-      break;
+  final Map<ApplicationId,RMApp> apps=rmContext.getRMApps();
+  Iterator<RMApp> appsIter;
+  if (queues != null && !queues.isEmpty()) {
+    final List<List<ApplicationAttemptId>> queueAppLists=new ArrayList<List<ApplicationAttemptId>>();
+    for (    String queue : queues) {
+      List<ApplicationAttemptId> appsInQueue=scheduler.getAppsInQueue(queue);
+      if (appsInQueue != null && !appsInQueue.isEmpty()) {
+        queueAppLists.add(appsInQueue);
+      }
     }
+    appsIter=new Iterator<RMApp>(){
+      Iterator<List<ApplicationAttemptId>> appListIter=queueAppLists.iterator();
+      Iterator<ApplicationAttemptId> schedAppsIter;
+      @Override public boolean hasNext(){
+        return (schedAppsIter != null && schedAppsIter.hasNext()) || appListIter.hasNext();
+      }
+      @Override public RMApp next(){
+        if (schedAppsIter == null || !schedAppsIter.hasNext()) {
+          schedAppsIter=appListIter.next().iterator();
+        }
+        return apps.get(schedAppsIter.next().getApplicationId());
+      }
+      @Override public void remove(){
+        throw new UnsupportedOperationException("Remove not supported");
+      }
+    }
+;
+  }
+ else {
+    appsIter=apps.values().iterator();
+  }
+  List<ApplicationReport> reports=new ArrayList<ApplicationReport>();
+  while (appsIter.hasNext() && reports.size() < limit) {
+    RMApp application=appsIter.next();
     if (applicationTypes != null && !applicationTypes.isEmpty()) {
       String appTypeToMatch=caseSensitive ? application.getApplicationType() : application.getApplicationType().toLowerCase();
       if (!applicationTypes.contains(appTypeToMatch)) {
@@ -32,9 +60,6 @@
       }
     }
     if (users != null && !users.isEmpty() && !users.contains(application.getUser())) {
-      continue;
-    }
-    if (queues != null && !queues.isEmpty() && !queues.contains(application.getQueue())) {
       continue;
     }
     if (start != null && !start.containsLong(application.getStartTime())) {
