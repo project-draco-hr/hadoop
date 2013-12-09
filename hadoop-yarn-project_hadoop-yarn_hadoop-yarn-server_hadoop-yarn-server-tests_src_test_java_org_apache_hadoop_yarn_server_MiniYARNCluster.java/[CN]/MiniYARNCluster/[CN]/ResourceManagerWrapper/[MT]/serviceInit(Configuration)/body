@@ -1,20 +1,15 @@
 {
   conf.setBoolean(YarnConfiguration.IS_MINI_YARN_CLUSTER,true);
   if (!conf.getBoolean(YarnConfiguration.YARN_MINICLUSTER_FIXED_PORTS,YarnConfiguration.DEFAULT_YARN_MINICLUSTER_FIXED_PORTS)) {
-    String hostname=MiniYARNCluster.getHostname();
-    conf.set(YarnConfiguration.RM_ADDRESS,hostname + ":0");
-    conf.set(YarnConfiguration.RM_ADMIN_ADDRESS,hostname + ":0");
-    conf.set(YarnConfiguration.RM_SCHEDULER_ADDRESS,hostname + ":0");
-    conf.set(YarnConfiguration.RM_RESOURCE_TRACKER_ADDRESS,hostname + ":0");
-    WebAppUtils.setRMWebAppHostnameAndPort(conf,hostname,0);
-  }
-  resourceManager=new ResourceManager(){
-    @Override protected void doSecureLogin() throws IOException {
+    if (HAUtil.isHAEnabled(conf)) {
+      setHARMConfiguration(conf);
+    }
+ else {
+      setNonHARMConfiguration(conf);
     }
   }
-;
-  resourceManager.init(conf);
-  resourceManager.getRMContext().getDispatcher().register(RMAppAttemptEventType.class,new EventHandler<RMAppAttemptEvent>(){
+  resourceManagers[index].init(conf);
+  resourceManagers[index].getRMContext().getDispatcher().register(RMAppAttemptEventType.class,new EventHandler<RMAppAttemptEvent>(){
     public void handle(    RMAppAttemptEvent event){
       if (event instanceof RMAppAttemptRegistrationEvent) {
         appMasters.put(event.getApplicationAttemptId(),event.getTimestamp());
