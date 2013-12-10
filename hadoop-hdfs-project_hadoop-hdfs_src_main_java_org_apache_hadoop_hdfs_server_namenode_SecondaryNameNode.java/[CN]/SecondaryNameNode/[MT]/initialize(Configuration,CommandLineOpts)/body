@@ -1,12 +1,12 @@
 {
   final InetSocketAddress infoSocAddr=getHttpAddress(conf);
-  infoBindAddress=infoSocAddr.getHostName();
+  final String infoBindAddress=infoSocAddr.getHostName();
   UserGroupInformation.setConfiguration(conf);
   if (UserGroupInformation.isSecurityEnabled()) {
-    SecurityUtil.login(conf,DFS_SECONDARY_NAMENODE_KEYTAB_FILE_KEY,DFS_SECONDARY_NAMENODE_USER_NAME_KEY,infoBindAddress);
+    SecurityUtil.login(conf,DFSConfigKeys.DFS_SECONDARY_NAMENODE_KEYTAB_FILE_KEY,DFSConfigKeys.DFS_SECONDARY_NAMENODE_USER_NAME_KEY,infoBindAddress);
   }
   DefaultMetricsSystem.initialize("SecondaryNameNode");
-  JvmMetrics.create("SecondaryNameNode",conf.get(DFS_METRICS_SESSION_ID_KEY),DefaultMetricsSystem.instance());
+  JvmMetrics.create("SecondaryNameNode",conf.get(DFSConfigKeys.DFS_METRICS_SESSION_ID_KEY),DefaultMetricsSystem.instance());
   shouldRun=true;
   nameNodeAddr=NameNode.getServiceAddress(conf,true);
   this.conf=conf;
@@ -19,18 +19,28 @@
   checkpointImage.deleteTempEdits();
   namesystem=new FSNamesystem(conf,checkpointImage,true);
   checkpointConf=new CheckpointConf(conf);
-  int tmpInfoPort=infoSocAddr.getPort();
-  URI httpEndpoint=URI.create("http://" + NetUtils.getHostPortString(infoSocAddr));
-  infoServer=new HttpServer.Builder().setName("secondary").addEndpoint(httpEndpoint).setFindPort(tmpInfoPort == 0).setConf(conf).setACL(new AccessControlList(conf.get(DFS_ADMIN," "))).setSecurityEnabled(UserGroupInformation.isSecurityEnabled()).setUsernameConfKey(DFSConfigKeys.DFS_SECONDARY_NAMENODE_INTERNAL_SPNEGO_USER_NAME_KEY).setKeytabConfKey(DFSUtil.getSpnegoKeytabKey(conf,DFSConfigKeys.DFS_SECONDARY_NAMENODE_KEYTAB_FILE_KEY)).build();
+  final InetSocketAddress httpAddr=infoSocAddr;
+  final String httpsAddrString=conf.get(DFSConfigKeys.DFS_NAMENODE_SECONDARY_HTTPS_ADDRESS_KEY,DFSConfigKeys.DFS_NAMENODE_SECONDARY_HTTPS_ADDRESS_DEFAULT);
+  InetSocketAddress httpsAddr=NetUtils.createSocketAddr(httpsAddrString);
+  HttpServer.Builder builder=DFSUtil.httpServerTemplateForNNAndJN(conf,httpAddr,httpsAddr,"secondary",DFSConfigKeys.DFS_SECONDARY_NAMENODE_INTERNAL_SPNEGO_USER_NAME_KEY,DFSConfigKeys.DFS_SECONDARY_NAMENODE_KEYTAB_FILE_KEY);
+  infoServer=builder.build();
   infoServer.setAttribute("secondary.name.node",this);
   infoServer.setAttribute("name.system.image",checkpointImage);
   infoServer.setAttribute(JspHelper.CURRENT_CONF,conf);
   infoServer.addInternalServlet("getimage","/getimage",GetImageServlet.class,true);
   infoServer.start();
   LOG.info("Web server init done");
-  infoPort=infoServer.getConnectorAddress(0).getPort();
-  conf.set(DFS_NAMENODE_SECONDARY_HTTP_ADDRESS_KEY,infoBindAddress + ":" + infoPort);
-  LOG.info("Secondary Web-server up at: " + infoBindAddress + ":"+ infoPort);
+  imageListenURL=new URL(DFSUtil.getHttpClientScheme(conf) + "://" + NetUtils.getHostPortString(infoServer.getConnectorAddress(0)));
+  HttpConfig.Policy policy=DFSUtil.getHttpPolicy(conf);
+  int connIdx=0;
+  if (policy.isHttpEnabled()) {
+    InetSocketAddress httpAddress=infoServer.getConnectorAddress(connIdx++);
+    conf.set(DFSConfigKeys.DFS_NAMENODE_SECONDARY_HTTP_ADDRESS_KEY,NetUtils.getHostPortString(httpAddress));
+  }
+  if (policy.isHttpsEnabled()) {
+    InetSocketAddress httpsAddress=infoServer.getConnectorAddress(connIdx);
+    conf.set(DFSConfigKeys.DFS_NAMENODE_SECONDARY_HTTPS_ADDRESS_KEY,NetUtils.getHostPortString(httpsAddress));
+  }
   LOG.info("Checkpoint Period   :" + checkpointConf.getPeriod() + " secs "+ "("+ checkpointConf.getPeriod() / 60 + " min)");
   LOG.info("Log Size Trigger    :" + checkpointConf.getTxnCount() + " txns");
 }

@@ -1,19 +1,11 @@
 {
-  final InetSocketAddress bindAddr=getAddress(conf);
-  LOG.info("Starting web server as: " + SecurityUtil.getServerPrincipal(conf.get(DFS_JOURNALNODE_INTERNAL_SPNEGO_USER_NAME_KEY),bindAddr.getHostName()));
-  int tmpInfoPort=bindAddr.getPort();
-  URI httpEndpoint;
-  try {
-    httpEndpoint=new URI("http://" + NetUtils.getHostPortString(bindAddr));
-  }
- catch (  URISyntaxException e) {
-    throw new IOException(e);
-  }
-  httpServer=new HttpServer.Builder().setName("journal").addEndpoint(httpEndpoint).setFindPort(tmpInfoPort == 0).setConf(conf).setACL(new AccessControlList(conf.get(DFS_ADMIN," "))).setSecurityEnabled(UserGroupInformation.isSecurityEnabled()).setUsernameConfKey(DFS_JOURNALNODE_INTERNAL_SPNEGO_USER_NAME_KEY).setKeytabConfKey(DFSUtil.getSpnegoKeytabKey(conf,DFS_JOURNALNODE_KEYTAB_FILE_KEY)).build();
+  final InetSocketAddress httpAddr=getAddress(conf);
+  final String httpsAddrString=conf.get(DFSConfigKeys.DFS_JOURNALNODE_HTTPS_ADDRESS_KEY,DFSConfigKeys.DFS_JOURNALNODE_HTTPS_ADDRESS_DEFAULT);
+  InetSocketAddress httpsAddr=NetUtils.createSocketAddr(httpsAddrString);
+  HttpServer.Builder builder=DFSUtil.httpServerTemplateForNNAndJN(conf,httpAddr,httpsAddr,"journal",DFSConfigKeys.DFS_JOURNALNODE_INTERNAL_SPNEGO_USER_NAME_KEY,DFSConfigKeys.DFS_JOURNALNODE_KEYTAB_FILE_KEY);
+  httpServer=builder.build();
   httpServer.setAttribute(JN_ATTRIBUTE_KEY,localJournalNode);
   httpServer.setAttribute(JspHelper.CURRENT_CONF,conf);
   httpServer.addInternalServlet("getJournal","/getJournal",GetJournalEditServlet.class,true);
   httpServer.start();
-  infoPort=httpServer.getConnectorAddress(0).getPort();
-  LOG.info("Journal Web-server up at: " + bindAddr + ":"+ infoPort);
 }
