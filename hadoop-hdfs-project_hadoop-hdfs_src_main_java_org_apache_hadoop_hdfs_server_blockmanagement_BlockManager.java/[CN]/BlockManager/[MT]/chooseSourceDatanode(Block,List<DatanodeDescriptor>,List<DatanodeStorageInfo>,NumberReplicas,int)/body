@@ -1,0 +1,41 @@
+{
+  containingNodes.clear();
+  nodesContainingLiveReplicas.clear();
+  DatanodeDescriptor srcNode=null;
+  int live=0;
+  int decommissioned=0;
+  int corrupt=0;
+  int excess=0;
+  Collection<DatanodeDescriptor> nodesCorrupt=corruptReplicas.getNodes(block);
+  for (  DatanodeStorageInfo storage : blocksMap.getStorages(block)) {
+    final DatanodeDescriptor node=storage.getDatanodeDescriptor();
+    LightWeightLinkedSet<Block> excessBlocks=excessReplicateMap.get(node.getDatanodeUuid());
+    if ((nodesCorrupt != null) && (nodesCorrupt.contains(node)))     corrupt++;
+ else     if (node.isDecommissionInProgress() || node.isDecommissioned())     decommissioned++;
+ else     if (excessBlocks != null && excessBlocks.contains(block)) {
+      excess++;
+    }
+ else {
+      nodesContainingLiveReplicas.add(storage);
+      live++;
+    }
+    containingNodes.add(node);
+    if ((nodesCorrupt != null) && nodesCorrupt.contains(node))     continue;
+    if (priority != UnderReplicatedBlocks.QUEUE_HIGHEST_PRIORITY && node.getNumberOfBlocksToBeReplicated() >= maxReplicationStreams) {
+      continue;
+    }
+    if (node.getNumberOfBlocksToBeReplicated() >= replicationStreamsHardLimit) {
+      continue;
+    }
+    if (excessBlocks != null && excessBlocks.contains(block))     continue;
+    if (node.isDecommissioned())     continue;
+    if (node.isDecommissionInProgress() || srcNode == null) {
+      srcNode=node;
+      continue;
+    }
+    if (srcNode.isDecommissionInProgress())     continue;
+    if (DFSUtil.getRandom().nextBoolean())     srcNode=node;
+  }
+  if (numReplicas != null)   numReplicas.initialize(live,decommissioned,corrupt,excess,0);
+  return srcNode;
+}
