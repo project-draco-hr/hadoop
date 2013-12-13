@@ -39,23 +39,27 @@
  else {
       storedBlock.setGenerationStamp(newgenerationstamp);
       storedBlock.setNumBytes(newlength);
-      List<DatanodeDescriptor> targetList=new ArrayList<DatanodeDescriptor>(newtargets.length);
+      ArrayList<DatanodeDescriptor> trimmedTargets=new ArrayList<DatanodeDescriptor>(newtargets.length);
+      ArrayList<String> trimmedStorages=new ArrayList<String>(newtargets.length);
       if (newtargets.length > 0) {
-        for (        DatanodeID newtarget : newtargets) {
-          DatanodeDescriptor targetNode=blockManager.getDatanodeManager().getDatanode(newtarget);
-          if (targetNode != null)           targetList.add(targetNode);
+        for (int i=0; i < newtargets.length; ++i) {
+          DatanodeDescriptor targetNode=blockManager.getDatanodeManager().getDatanode(newtargets[i]);
+          if (targetNode != null) {
+            trimmedTargets.add(targetNode);
+            trimmedStorages.add(newtargetstorages[i]);
+          }
  else           if (LOG.isDebugEnabled()) {
-            LOG.debug("DatanodeDescriptor (=" + newtarget + ") not found");
+            LOG.debug("DatanodeDescriptor (=" + newtargets[i] + ") not found");
           }
         }
       }
-      if ((closeFile) && !targetList.isEmpty()) {
-        for (        DatanodeDescriptor targetNode : targetList) {
-          targetNode.addBlock(storedBlock);
+      if ((closeFile) && !trimmedTargets.isEmpty()) {
+        for (int i=0; i < trimmedTargets.size(); i++) {
+          trimmedTargets.get(i).addBlock(trimmedStorages.get(i),storedBlock);
         }
       }
-      DatanodeDescriptor[] targetArray=new DatanodeDescriptor[targetList.size()];
-      iFile.setLastBlock(storedBlock,targetList.toArray(targetArray));
+      DatanodeStorageInfo[] trimmedStorageInfos=blockManager.getDatanodeManager().getDatanodeStorageInfos(trimmedTargets.toArray(new DatanodeID[trimmedTargets.size()]),trimmedStorages.toArray(new String[trimmedStorages.size()]));
+      iFile.setLastBlock(storedBlock,trimmedStorageInfos);
     }
     if (closeFile) {
       src=closeFileCommitBlocks(iFile,storedBlock);

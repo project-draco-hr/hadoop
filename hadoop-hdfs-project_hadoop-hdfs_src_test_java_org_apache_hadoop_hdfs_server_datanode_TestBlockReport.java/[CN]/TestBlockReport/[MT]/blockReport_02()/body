@@ -15,7 +15,6 @@
   for (  Integer aRemovedIndex : removedIndex) {
     blocks2Remove.add(lBlocks.get(aRemovedIndex).getBlock());
   }
-  ArrayList<Block> blocks=locatedToBlocks(lBlocks,removedIndex);
   if (LOG.isDebugEnabled()) {
     LOG.debug("Number of blocks allocated " + lBlocks.size());
   }
@@ -26,14 +25,19 @@
     }
     for (    File f : findAllFiles(dataDir,new MyFileFilter(b.getBlockName(),true))) {
       DataNodeTestUtils.getFSDataset(dn0).unfinalizeBlock(b);
-      if (!f.delete())       LOG.warn("Couldn't delete " + b.getBlockName());
+      if (!f.delete()) {
+        LOG.warn("Couldn't delete " + b.getBlockName());
+      }
+ else {
+        LOG.debug("Deleted file " + f.toString());
+      }
     }
   }
   waitTil(DN_RESCAN_EXTRA_WAIT);
   String poolId=cluster.getNamesystem().getBlockPoolId();
   DatanodeRegistration dnR=dn0.getDNRegistrationForBP(poolId);
-  StorageBlockReport[] report={new StorageBlockReport(new DatanodeStorage(dnR.getStorageID()),new BlockListAsLongs(blocks,null).getBlockListAsLongs())};
-  cluster.getNameNodeRpc().blockReport(dnR,poolId,report);
+  StorageBlockReport[] reports=getBlockReports(dn0,poolId,false,false);
+  cluster.getNameNodeRpc().blockReport(dnR,poolId,reports);
   BlockManagerTestUtil.getComputedDatanodeWork(cluster.getNamesystem().getBlockManager());
   printStats();
   assertEquals("Wrong number of MissingBlocks is found",blocks2Remove.size(),cluster.getNamesystem().getMissingBlocksCount());
