@@ -1,0 +1,29 @@
+{
+  LocatedBlocks blocks=createFileGetBlocks(GenericTestUtils.getMethodName());
+  DataNode dn=cluster.getDataNodes().get(0);
+  String poolId=cluster.getNamesystem().getBlockPoolId();
+  DatanodeRegistration dnR=dn.getDNRegistrationForBP(poolId);
+  StorageReceivedDeletedBlocks reports[]=new StorageReceivedDeletedBlocks[dn.getFSDataset().getVolumes().size()];
+  for (int i=0; i < reports.length; ++i) {
+    FsVolumeSpi volume=dn.getFSDataset().getVolumes().get(i);
+    boolean foundBlockOnStorage=false;
+    ReceivedDeletedBlockInfo rdbi[]=new ReceivedDeletedBlockInfo[1];
+    for (    LocatedBlock block : blocks.getLocatedBlocks()) {
+      if (block.getStorageIDs()[0].equals(volume.getStorageID())) {
+        rdbi[0]=new ReceivedDeletedBlockInfo(block.getBlock().getLocalBlock(),ReceivedDeletedBlockInfo.BlockStatus.DELETED_BLOCK,null);
+        foundBlockOnStorage=true;
+        break;
+      }
+    }
+    assertTrue(foundBlockOnStorage);
+    reports[i]=new StorageReceivedDeletedBlocks(volume.getStorageID(),rdbi);
+    if (splitReports) {
+      StorageReceivedDeletedBlocks singletonReport[]={reports[i]};
+      cluster.getNameNodeRpc().blockReceivedAndDeleted(dnR,poolId,singletonReport);
+    }
+  }
+  if (!splitReports) {
+    cluster.getNameNodeRpc().blockReceivedAndDeleted(dnR,poolId,reports);
+  }
+  assertThat(cluster.getNamesystem().getMissingBlocksCount(),is((long)reports.length));
+}
