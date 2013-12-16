@@ -1,0 +1,46 @@
+{
+  Snapshot earlier=fromSnapshot;
+  Snapshot later=toSnapshot;
+  if (Snapshot.ID_COMPARATOR.compare(fromSnapshot,toSnapshot) > 0) {
+    earlier=toSnapshot;
+    later=fromSnapshot;
+  }
+  boolean modified=diffs.changedBetweenSnapshots(earlier,later);
+  if (!modified) {
+    return false;
+  }
+  final List<DirectoryDiff> difflist=diffs.asList();
+  final int size=difflist.size();
+  int earlierDiffIndex=Collections.binarySearch(difflist,earlier.getId());
+  int laterDiffIndex=later == null ? size : Collections.binarySearch(difflist,later.getId());
+  earlierDiffIndex=earlierDiffIndex < 0 ? (-earlierDiffIndex - 1) : earlierDiffIndex;
+  laterDiffIndex=laterDiffIndex < 0 ? (-laterDiffIndex - 1) : laterDiffIndex;
+  boolean dirMetadataChanged=false;
+  INodeDirectoryAttributes dirCopy=null;
+  for (int i=earlierDiffIndex; i < laterDiffIndex; i++) {
+    DirectoryDiff sdiff=difflist.get(i);
+    diff.combinePosterior(sdiff.diff,null);
+    if (dirMetadataChanged == false && sdiff.snapshotINode != null) {
+      if (dirCopy == null) {
+        dirCopy=sdiff.snapshotINode;
+      }
+ else       if (!dirCopy.metadataEquals(sdiff.snapshotINode)) {
+        dirMetadataChanged=true;
+      }
+    }
+  }
+  if (!diff.isEmpty() || dirMetadataChanged) {
+    return true;
+  }
+ else   if (dirCopy != null) {
+    for (int i=laterDiffIndex; i < size; i++) {
+      if (!dirCopy.metadataEquals(difflist.get(i).snapshotINode)) {
+        return true;
+      }
+    }
+    return !dirCopy.metadataEquals(currentINode);
+  }
+ else {
+    return false;
+  }
+}
