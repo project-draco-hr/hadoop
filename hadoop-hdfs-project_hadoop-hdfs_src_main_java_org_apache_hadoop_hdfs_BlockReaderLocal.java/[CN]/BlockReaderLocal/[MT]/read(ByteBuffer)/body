@@ -1,49 +1,27 @@
 {
-  int nRead=0;
-  if (verifyChecksum) {
-    if (slowReadBuff.hasRemaining()) {
-      int fromSlowReadBuff=Math.min(buf.remaining(),slowReadBuff.remaining());
-      writeSlice(slowReadBuff,buf,fromSlowReadBuff);
-      nRead+=fromSlowReadBuff;
+  boolean canSkipChecksum=getCanSkipChecksum();
+  String traceString=null;
+  if (LOG.isTraceEnabled()) {
+    traceString=new StringBuilder().append("read(").append("buf.remaining=").append(buf.remaining()).append(", block=").append(block).append(", filename=").append(filename).append(", canSkipChecksum=").append(canSkipChecksum).append(")").toString();
+    LOG.info(traceString + ": starting");
+  }
+  int nRead;
+  try {
+    if (canSkipChecksum && zeroReadaheadRequested) {
+      nRead=readWithoutBounceBuffer(buf);
     }
-    if (buf.remaining() >= bytesPerChecksum && offsetFromChunkBoundary == 0) {
-      int len=buf.remaining() - (buf.remaining() % bytesPerChecksum);
-      len=Math.min(len,slowReadBuff.capacity());
-      int oldlimit=buf.limit();
-      buf.limit(buf.position() + len);
-      int readResult=0;
-      try {
-        readResult=doByteBufferRead(buf);
-      }
-  finally {
-        buf.limit(oldlimit);
-      }
-      if (readResult == -1) {
-        return nRead;
-      }
  else {
-        nRead+=readResult;
-        buf.position(buf.position() + readResult);
-      }
-    }
-    if ((buf.remaining() > 0 && buf.remaining() < bytesPerChecksum) || offsetFromChunkBoundary > 0) {
-      int toRead=Math.min(buf.remaining(),bytesPerChecksum - offsetFromChunkBoundary);
-      int readResult=fillSlowReadBuffer(toRead);
-      if (readResult == -1) {
-        return nRead;
-      }
- else {
-        int fromSlowReadBuff=Math.min(readResult,buf.remaining());
-        writeSlice(slowReadBuff,buf,fromSlowReadBuff);
-        nRead+=fromSlowReadBuff;
-      }
+      nRead=readWithBounceBuffer(buf,canSkipChecksum);
     }
   }
- else {
-    nRead=doByteBufferRead(buf);
-    if (nRead > 0) {
-      buf.position(buf.position() + nRead);
+ catch (  IOException e) {
+    if (LOG.isTraceEnabled()) {
+      LOG.info(traceString + ": I/O error",e);
     }
+    throw e;
+  }
+  if (LOG.isTraceEnabled()) {
+    LOG.info(traceString + ": returning " + nRead);
   }
   return nRead;
 }
