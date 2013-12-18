@@ -1,0 +1,62 @@
+{
+  long nrInvalid=0, nrOverReplicated=0;
+  long nrUnderReplicated=0, nrPostponed=0, nrUnderConstruction=0;
+  long startTimeMisReplicatedScan=Time.now();
+  Iterator<BlockInfo> blocksItr=blocksMap.getBlocks().iterator();
+  long totalBlocks=blocksMap.size();
+  replicationQueuesInitProgress=0;
+  long totalProcessed=0;
+  while (namesystem.isRunning() && !Thread.currentThread().isInterrupted()) {
+    int processed=0;
+    namesystem.writeLockInterruptibly();
+    try {
+      while (processed < numBlocksPerIteration && blocksItr.hasNext()) {
+        BlockInfo block=blocksItr.next();
+        MisReplicationResult res=processMisReplicatedBlock(block);
+        if (LOG.isTraceEnabled()) {
+          LOG.trace("block " + block + ": "+ res);
+        }
+switch (res) {
+case UNDER_REPLICATED:
+          nrUnderReplicated++;
+        break;
+case OVER_REPLICATED:
+      nrOverReplicated++;
+    break;
+case INVALID:
+  nrInvalid++;
+break;
+case POSTPONE:
+nrPostponed++;
+postponeBlock(block);
+break;
+case UNDER_CONSTRUCTION:
+nrUnderConstruction++;
+break;
+case OK:
+break;
+default :
+throw new AssertionError("Invalid enum value: " + res);
+}
+processed++;
+}
+totalProcessed+=processed;
+replicationQueuesInitProgress=Math.min((double)totalProcessed / totalBlocks,1.0);
+if (!blocksItr.hasNext()) {
+LOG.info("Total number of blocks            = " + blocksMap.size());
+LOG.info("Number of invalid blocks          = " + nrInvalid);
+LOG.info("Number of under-replicated blocks = " + nrUnderReplicated);
+LOG.info("Number of  over-replicated blocks = " + nrOverReplicated + ((nrPostponed > 0) ? (" (" + nrPostponed + " postponed)") : ""));
+LOG.info("Number of blocks being written    = " + nrUnderConstruction);
+NameNode.stateChangeLog.info("STATE* Replication Queue initialization " + "scan for invalid, over- and under-replicated blocks " + "completed in " + (Time.now() - startTimeMisReplicatedScan) + " msec");
+break;
+}
+}
+  finally {
+namesystem.writeUnlock();
+}
+}
+if (Thread.currentThread().isInterrupted()) {
+LOG.info("Interrupted while processing replication queues.");
+}
+}
