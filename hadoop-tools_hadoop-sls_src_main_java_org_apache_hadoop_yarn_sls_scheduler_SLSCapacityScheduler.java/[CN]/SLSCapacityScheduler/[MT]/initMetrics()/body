@@ -1,0 +1,22 @@
+{
+  metrics=new MetricRegistry();
+  metricsOutputDir=conf.get(SLSConfiguration.METRICS_OUTPUT_DIR);
+  int metricsWebAddressPort=conf.getInt(SLSConfiguration.METRICS_WEB_ADDRESS_PORT,SLSConfiguration.METRICS_WEB_ADDRESS_PORT_DEFAULT);
+  String schedulerMetricsType=conf.get(CapacityScheduler.class.getName());
+  Class schedulerMetricsClass=schedulerMetricsType == null ? defaultSchedulerMetricsMap.get(CapacityScheduler.class) : Class.forName(schedulerMetricsType);
+  schedulerMetrics=(SchedulerMetrics)ReflectionUtils.newInstance(schedulerMetricsClass,new Configuration());
+  schedulerMetrics.init(this,metrics);
+  registerJvmMetrics();
+  registerClusterResourceMetrics();
+  registerContainerAppNumMetrics();
+  registerSchedulerMetrics();
+  initMetricsCSVOutput();
+  web=new SLSWebApp(this,metricsWebAddressPort);
+  web.start();
+  pool=new ScheduledThreadPoolExecutor(2);
+  pool.scheduleAtFixedRate(new HistogramsRunnable(),0,1000,TimeUnit.MILLISECONDS);
+  pool.scheduleAtFixedRate(new MetricsLogRunnable(),0,1000,TimeUnit.MILLISECONDS);
+  jobRuntimeLogBW=new BufferedWriter(new FileWriter(metricsOutputDir + "/jobruntime.csv"));
+  jobRuntimeLogBW.write("JobID,real_start_time,real_end_time," + "simulate_start_time,simulate_end_time" + EOL);
+  jobRuntimeLogBW.flush();
+}
