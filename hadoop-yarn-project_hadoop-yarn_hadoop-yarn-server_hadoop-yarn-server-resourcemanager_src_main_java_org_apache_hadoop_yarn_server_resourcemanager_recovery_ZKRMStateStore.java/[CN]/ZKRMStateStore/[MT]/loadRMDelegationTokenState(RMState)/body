@@ -1,0 +1,24 @@
+{
+  List<String> childNodes=zkClient.getChildren(delegationTokensRootPath,true);
+  for (  String childNodeName : childNodes) {
+    String childNodePath=getNodePath(delegationTokensRootPath,childNodeName);
+    byte[] childData=getDataWithRetries(childNodePath,true);
+    if (childData == null) {
+      LOG.warn("Content of " + childNodePath + " is broken.");
+      continue;
+    }
+    ByteArrayInputStream is=new ByteArrayInputStream(childData);
+    DataInputStream fsIn=new DataInputStream(is);
+    try {
+      if (childNodeName.startsWith(DELEGATION_TOKEN_PREFIX)) {
+        RMDelegationTokenIdentifier identifier=new RMDelegationTokenIdentifier();
+        identifier.readFields(fsIn);
+        long renewDate=fsIn.readLong();
+        rmState.rmSecretManagerState.delegationTokenState.put(identifier,renewDate);
+      }
+    }
+  finally {
+      is.close();
+    }
+  }
+}

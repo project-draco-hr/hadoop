@@ -1,27 +1,26 @@
 {
   ArrayList<Op> opList=new ArrayList<Op>();
-  String nodeCreatePath=getNodePath(rmDTSecretManagerRoot,DELEGATION_TOKEN_PREFIX + rmDTIdentifier.getSequenceNumber());
-  ByteArrayOutputStream os=new ByteArrayOutputStream();
-  DataOutputStream fsOut=new DataOutputStream(os);
+  String nodeCreatePath=getNodePath(delegationTokensRootPath,DELEGATION_TOKEN_PREFIX + rmDTIdentifier.getSequenceNumber());
+  ByteArrayOutputStream tokenOs=new ByteArrayOutputStream();
+  DataOutputStream tokenOut=new DataOutputStream(tokenOs);
+  ByteArrayOutputStream seqOs=new ByteArrayOutputStream();
+  DataOutputStream seqOut=new DataOutputStream(seqOs);
   try {
-    rmDTIdentifier.write(fsOut);
-    fsOut.writeLong(renewDate);
+    rmDTIdentifier.write(tokenOut);
+    tokenOut.writeLong(renewDate);
     if (LOG.isDebugEnabled()) {
       LOG.debug("Storing RMDelegationToken_" + rmDTIdentifier.getSequenceNumber());
     }
-    opList.add(Op.create(nodeCreatePath,os.toByteArray(),zkAcl,CreateMode.PERSISTENT));
+    opList.add(Op.create(nodeCreatePath,tokenOs.toByteArray(),zkAcl,CreateMode.PERSISTENT));
+    seqOut.writeInt(latestSequenceNumber);
+    if (LOG.isDebugEnabled()) {
+      LOG.debug("Storing " + dtSequenceNumberPath + ". SequenceNumber: "+ latestSequenceNumber);
+    }
+    opList.add(Op.setData(dtSequenceNumberPath,seqOs.toByteArray(),-1));
   }
   finally {
-    os.close();
+    tokenOs.close();
+    seqOs.close();
   }
-  String latestSequenceNumberPath=getNodePath(rmDTSecretManagerRoot,DELEGATION_TOKEN_SEQUENCE_NUMBER_PREFIX + latestSequenceNumber);
-  if (LOG.isDebugEnabled()) {
-    LOG.debug("Storing " + DELEGATION_TOKEN_SEQUENCE_NUMBER_PREFIX + latestSequenceNumber);
-  }
-  if (dtSequenceNumberPath != null) {
-    opList.add(Op.delete(dtSequenceNumberPath,-1));
-  }
-  opList.add(Op.create(latestSequenceNumberPath,null,zkAcl,CreateMode.PERSISTENT));
-  dtSequenceNumberPath=latestSequenceNumberPath;
   doMultiWithRetries(opList);
 }

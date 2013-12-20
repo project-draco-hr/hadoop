@@ -4,6 +4,7 @@
     final FSImage nnImage=NameNodeHttpServer.getFsImageFromContext(context);
     final GetImageParams parsedParams=new GetImageParams(request,response);
     final Configuration conf=(Configuration)context.getAttribute(JspHelper.CURRENT_CONF);
+    final NameNodeMetrics metrics=NameNode.getNameNodeMetrics();
     if (UserGroupInformation.isSecurityEnabled() && !isValidRequestor(context,request.getUserPrincipal().getName(),conf)) {
       response.sendError(HttpServletResponse.SC_FORBIDDEN,"Only Namenode, Secondary Namenode, and administrators may access " + "this servlet");
       LOG.warn("Received non-NN/SNN/administrator request for image or edits from " + request.getUserPrincipal().getName() + " at "+ request.getRemoteHost());
@@ -33,13 +34,23 @@
             throw new IOException(errorMessage);
           }
           CheckpointFaultInjector.getInstance().beforeGetImageSetsHeaders();
+          long start=now();
           serveFile(imageFile);
+          if (metrics != null) {
+            long elapsed=now() - start;
+            metrics.addGetImage(elapsed);
+          }
         }
  else         if (parsedParams.isGetEdit()) {
           long startTxId=parsedParams.getStartTxId();
           long endTxId=parsedParams.getEndTxId();
           File editFile=nnImage.getStorage().findFinalizedEditsFile(startTxId,endTxId);
+          long start=now();
           serveFile(editFile);
+          if (metrics != null) {
+            long elapsed=now() - start;
+            metrics.addGetEdit(elapsed);
+          }
         }
  else         if (parsedParams.isPutImage()) {
           final long txid=parsedParams.getTxId();
@@ -55,8 +66,13 @@
             if (UserGroupInformation.isSecurityEnabled()) {
               UserGroupInformation.getCurrentUser().checkTGTAndReloginFromKeytab();
             }
+            long start=now();
             MD5Hash downloadImageDigest=TransferFsImage.downloadImageToStorage(parsedParams.getInfoServer(conf),txid,nnImage.getStorage(),true);
             nnImage.saveDigestAndRenameCheckpointImage(txid,downloadImageDigest);
+            if (metrics != null) {
+              long elapsed=now() - start;
+              metrics.addPutImage(elapsed);
+            }
             nnImage.purgeOldStorage();
           }
   finally {

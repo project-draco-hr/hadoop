@@ -10,24 +10,26 @@
     JobId jobId=job.getID();
     app.waitForState(job,JobState.FAILED);
     app.waitForState(Service.STATE.STOPPED);
-    String jobhistoryDir=JobHistoryUtils.getHistoryIntermediateDoneDirForUser(conf);
     JobHistory jobHistory=new JobHistory();
     jobHistory.init(conf);
-    JobIndexInfo jobIndexInfo=jobHistory.getJobFileInfo(jobId).getJobIndexInfo();
-    String jobhistoryFileName=FileNameIndexUtils.getDoneFileName(jobIndexInfo);
-    Path historyFilePath=new Path(jobhistoryDir,jobhistoryFileName);
-    FSDataInputStream in=null;
-    FileContext fc=null;
-    try {
-      fc=FileContext.getFileContext(conf);
-      in=fc.open(fc.makeQualified(historyFilePath));
+    HistoryFileInfo fileInfo=jobHistory.getJobFileInfo(jobId);
+    JobHistoryParser parser;
+    JobInfo jobInfo;
+synchronized (fileInfo) {
+      Path historyFilePath=fileInfo.getHistoryFile();
+      FSDataInputStream in=null;
+      FileContext fc=null;
+      try {
+        fc=FileContext.getFileContext(conf);
+        in=fc.open(fc.makeQualified(historyFilePath));
+      }
+ catch (      IOException ioe) {
+        LOG.info("Can not open history file: " + historyFilePath,ioe);
+        throw (new Exception("Can not open History File"));
+      }
+      parser=new JobHistoryParser(in);
+      jobInfo=parser.parse();
     }
- catch (    IOException ioe) {
-      LOG.info("Can not open history file: " + historyFilePath,ioe);
-      throw (new Exception("Can not open History File"));
-    }
-    JobHistoryParser parser=new JobHistoryParser(in);
-    JobInfo jobInfo=parser.parse();
     Exception parseException=parser.getParseException();
     Assert.assertNull("Caught an expected exception " + parseException,parseException);
     for (    Map.Entry<TaskID,TaskInfo> entry : jobInfo.getAllTasks().entrySet()) {
