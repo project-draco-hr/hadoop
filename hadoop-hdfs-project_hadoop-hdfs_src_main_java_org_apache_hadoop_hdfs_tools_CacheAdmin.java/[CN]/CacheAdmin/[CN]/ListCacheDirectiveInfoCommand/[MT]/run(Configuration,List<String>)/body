@@ -18,38 +18,44 @@
     tableBuilder.addField("BYTES_NEEDED",Justification.RIGHT).addField("BYTES_CACHED",Justification.RIGHT).addField("FILES_NEEDED",Justification.RIGHT).addField("FILES_CACHED",Justification.RIGHT);
   }
   TableListing tableListing=tableBuilder.build();
-  DistributedFileSystem dfs=getDFS(conf);
-  RemoteIterator<CacheDirectiveEntry> iter=dfs.listCacheDirectives(builder.build());
-  int numEntries=0;
-  while (iter.hasNext()) {
-    CacheDirectiveEntry entry=iter.next();
-    CacheDirectiveInfo directive=entry.getInfo();
-    CacheDirectiveStats stats=entry.getStats();
-    List<String> row=new LinkedList<String>();
-    row.add("" + directive.getId());
-    row.add(directive.getPool());
-    row.add("" + directive.getReplication());
-    String expiry;
-    if (directive.getExpiration().getMillis() == CacheDirectiveInfo.Expiration.EXPIRY_NEVER) {
-      expiry="never";
-    }
+  try {
+    DistributedFileSystem dfs=getDFS(conf);
+    RemoteIterator<CacheDirectiveEntry> iter=dfs.listCacheDirectives(builder.build());
+    int numEntries=0;
+    while (iter.hasNext()) {
+      CacheDirectiveEntry entry=iter.next();
+      CacheDirectiveInfo directive=entry.getInfo();
+      CacheDirectiveStats stats=entry.getStats();
+      List<String> row=new LinkedList<String>();
+      row.add("" + directive.getId());
+      row.add(directive.getPool());
+      row.add("" + directive.getReplication());
+      String expiry;
+      if (directive.getExpiration().getMillis() > Expiration.MAX_RELATIVE_EXPIRY_MS / 2) {
+        expiry="never";
+      }
  else {
-      expiry=directive.getExpiration().toString();
+        expiry=directive.getExpiration().toString();
+      }
+      row.add(expiry);
+      row.add(directive.getPath().toUri().getPath());
+      if (printStats) {
+        row.add("" + stats.getBytesNeeded());
+        row.add("" + stats.getBytesCached());
+        row.add("" + stats.getFilesNeeded());
+        row.add("" + stats.getFilesCached());
+      }
+      tableListing.addRow(row.toArray(new String[0]));
+      numEntries++;
     }
-    row.add(expiry);
-    row.add(directive.getPath().toUri().getPath());
-    if (printStats) {
-      row.add("" + stats.getBytesNeeded());
-      row.add("" + stats.getBytesCached());
-      row.add("" + stats.getFilesNeeded());
-      row.add("" + stats.getFilesCached());
+    System.out.print(String.format("Found %d entr%s\n",numEntries,numEntries == 1 ? "y" : "ies"));
+    if (numEntries > 0) {
+      System.out.print(tableListing);
     }
-    tableListing.addRow(row.toArray(new String[0]));
-    numEntries++;
   }
-  System.out.print(String.format("Found %d entr%s\n",numEntries,numEntries == 1 ? "y" : "ies"));
-  if (numEntries > 0) {
-    System.out.print(tableListing);
+ catch (  IOException e) {
+    System.err.println(prettifyException(e));
+    return 2;
   }
   return 0;
 }

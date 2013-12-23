@@ -1,14 +1,30 @@
 {
-  long expiryTime;
-  CacheDirectiveInfo.Expiration expiration=directive.getExpiration();
-  if (expiration != null) {
-    if (expiration.getMillis() < 0) {
-      throw new InvalidRequestException("Cannot set a negative expiration: " + expiration.getMillis());
-    }
-    expiryTime=expiration.getAbsoluteMillis();
+  if (LOG.isTraceEnabled()) {
+    LOG.trace("Validating directive " + info + " pool maxRelativeExpiryTime "+ maxRelativeExpiryTime);
+  }
+  final long now=new Date().getTime();
+  final long maxAbsoluteExpiryTime=now + maxRelativeExpiryTime;
+  if (info == null || info.getExpiration() == null) {
+    return maxAbsoluteExpiryTime;
+  }
+  Expiration expiry=info.getExpiration();
+  if (expiry.getMillis() < 0l) {
+    throw new InvalidRequestException("Cannot set a negative expiration: " + expiry.getMillis());
+  }
+  long relExpiryTime, absExpiryTime;
+  if (expiry.isRelative()) {
+    relExpiryTime=expiry.getMillis();
+    absExpiryTime=now + relExpiryTime;
   }
  else {
-    expiryTime=defaultValue;
+    absExpiryTime=expiry.getMillis();
+    relExpiryTime=absExpiryTime - now;
   }
-  return expiryTime;
+  if (relExpiryTime > Expiration.MAX_RELATIVE_EXPIRY_MS) {
+    throw new InvalidRequestException("Expiration " + expiry.toString() + " is too far in the future!");
+  }
+  if (relExpiryTime > maxRelativeExpiryTime) {
+    throw new InvalidRequestException("Expiration " + expiry.toString() + " exceeds the max relative expiration time of "+ maxRelativeExpiryTime+ " ms.");
+  }
+  return absExpiryTime;
 }
