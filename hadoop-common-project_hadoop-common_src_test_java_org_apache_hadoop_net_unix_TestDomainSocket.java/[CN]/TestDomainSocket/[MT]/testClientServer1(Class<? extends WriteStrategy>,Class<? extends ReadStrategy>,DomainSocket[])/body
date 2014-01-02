@@ -4,12 +4,12 @@
   final byte serverMsg1[]=new byte[]{0x9,0x8,0x7,0x6,0x5};
   final byte clientMsg2=0x45;
   final ArrayBlockingQueue<Throwable> threadResults=new ArrayBlockingQueue<Throwable>(2);
-  final DomainSocket serv=DomainSocket.bindAndListen(TEST_PATH);
+  final DomainSocket serv=(preConnectedSockets != null) ? null : DomainSocket.bindAndListen(TEST_PATH);
   Thread serverThread=new Thread(){
     public void run(){
       DomainSocket conn=null;
       try {
-        conn=serv.accept();
+        conn=preConnectedSockets != null ? preConnectedSockets[0] : serv.accept();
         byte in1[]=new byte[clientMsg1.length];
         ReadStrategy reader=readStrategyClass.newInstance();
         reader.init(conn);
@@ -35,7 +35,7 @@
   Thread clientThread=new Thread(){
     public void run(){
       try {
-        DomainSocket client=DomainSocket.connect(TEST_PATH);
+        DomainSocket client=preConnectedSockets != null ? preConnectedSockets[1] : DomainSocket.connect(TEST_PATH);
         WriteStrategy writer=writeStrategyClass.newInstance();
         writer.init(client);
         writer.write(clientMsg1);
@@ -64,5 +64,7 @@
   }
   serverThread.join(120000);
   clientThread.join(120000);
-  serv.close();
+  if (serv != null) {
+    serv.close();
+  }
 }
