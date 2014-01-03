@@ -1,6 +1,17 @@
 {
-  LOG.info("Status update from " + taskAttemptID.toString());
   org.apache.hadoop.mapreduce.v2.api.records.TaskAttemptId yarnAttemptID=TypeConverter.toYarn(taskAttemptID);
+  AMFeedback feedback=new AMFeedback();
+  feedback.setTaskFound(true);
+  if (getConfig().getBoolean(MRJobConfig.TASK_PREEMPTION,false) && preemptionPolicy.isPreempted(yarnAttemptID)) {
+    feedback.setPreemption(true);
+    LOG.info("Setting preemption bit for task: " + yarnAttemptID + " of type "+ yarnAttemptID.getTaskId().getTaskType());
+  }
+  if (taskStatus == null) {
+    LOG.info("Ping from " + taskAttemptID.toString());
+    taskHeartbeatHandler.progressing(yarnAttemptID);
+    return feedback;
+  }
+  LOG.info("Status update from " + taskAttemptID.toString());
   taskHeartbeatHandler.progressing(yarnAttemptID);
   TaskAttemptStatus taskAttemptStatus=new TaskAttemptStatus();
   taskAttemptStatus.id=yarnAttemptID;
@@ -25,5 +36,5 @@
     }
   }
   context.getEventHandler().handle(new TaskAttemptStatusUpdateEvent(taskAttemptStatus.id,taskAttemptStatus));
-  return true;
+  return feedback;
 }

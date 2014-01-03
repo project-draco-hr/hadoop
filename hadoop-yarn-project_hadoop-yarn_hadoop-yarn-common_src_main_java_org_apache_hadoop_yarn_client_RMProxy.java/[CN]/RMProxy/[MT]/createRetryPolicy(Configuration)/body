@@ -1,14 +1,8 @@
 {
   long rmConnectWaitMS=conf.getInt(YarnConfiguration.RESOURCEMANAGER_CONNECT_MAX_WAIT_MS,YarnConfiguration.DEFAULT_RESOURCEMANAGER_CONNECT_MAX_WAIT_MS);
   long rmConnectionRetryIntervalMS=conf.getLong(YarnConfiguration.RESOURCEMANAGER_CONNECT_RETRY_INTERVAL_MS,YarnConfiguration.DEFAULT_RESOURCEMANAGER_CONNECT_RETRY_INTERVAL_MS);
-  if (rmConnectionRetryIntervalMS < 0) {
-    throw new YarnRuntimeException("Invalid Configuration. " + YarnConfiguration.RESOURCEMANAGER_CONNECT_RETRY_INTERVAL_MS + " should not be negative.");
-  }
   boolean waitForEver=(rmConnectWaitMS == -1);
-  if (waitForEver) {
-    return RetryPolicies.RETRY_FOREVER;
-  }
- else {
+  if (!waitForEver) {
     if (rmConnectWaitMS < 0) {
       throw new YarnRuntimeException("Invalid Configuration. " + YarnConfiguration.RESOURCEMANAGER_CONNECT_MAX_WAIT_MS + " can be -1, but can not be other negative numbers");
     }
@@ -16,6 +10,26 @@
       LOG.warn(YarnConfiguration.RESOURCEMANAGER_CONNECT_MAX_WAIT_MS + " is smaller than " + YarnConfiguration.RESOURCEMANAGER_CONNECT_RETRY_INTERVAL_MS+ ". Only try connect once.");
       rmConnectWaitMS=0;
     }
+  }
+  if (HAUtil.isHAEnabled(conf)) {
+    final long failoverSleepBaseMs=conf.getLong(YarnConfiguration.CLIENT_FAILOVER_SLEEPTIME_BASE_MS,rmConnectionRetryIntervalMS);
+    final long failoverSleepMaxMs=conf.getLong(YarnConfiguration.CLIENT_FAILOVER_SLEEPTIME_MAX_MS,rmConnectionRetryIntervalMS);
+    int maxFailoverAttempts=conf.getInt(YarnConfiguration.CLIENT_FAILOVER_MAX_ATTEMPTS,-1);
+    if (maxFailoverAttempts == -1) {
+      if (waitForEver) {
+        maxFailoverAttempts=Integer.MAX_VALUE;
+      }
+ else {
+        maxFailoverAttempts=(int)(rmConnectWaitMS / failoverSleepBaseMs);
+      }
+    }
+    return RetryPolicies.failoverOnNetworkException(RetryPolicies.TRY_ONCE_THEN_FAIL,maxFailoverAttempts,failoverSleepBaseMs,failoverSleepMaxMs);
+  }
+  if (waitForEver) {
+    return RetryPolicies.RETRY_FOREVER;
+  }
+  if (rmConnectionRetryIntervalMS < 0) {
+    throw new YarnRuntimeException("Invalid Configuration. " + YarnConfiguration.RESOURCEMANAGER_CONNECT_RETRY_INTERVAL_MS + " should not be negative.");
   }
   RetryPolicy retryPolicy=RetryPolicies.retryUpToMaximumTimeWithFixedSleep(rmConnectWaitMS,rmConnectionRetryIntervalMS,TimeUnit.MILLISECONDS);
   Map<Class<? extends Exception>,RetryPolicy> exceptionToPolicyMap=new HashMap<Class<? extends Exception>,RetryPolicy>();

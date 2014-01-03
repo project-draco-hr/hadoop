@@ -12,7 +12,7 @@
     type=app.getTask().getType();
   }
   TR<THEAD<TABLE<Hamlet>>> headRow=html.table("#attempts").thead().tr();
-  headRow.th(".id","Attempt").th(".state","State").th(".node","Node").th(".logs","Logs").th(".tsh","Start Time");
+  headRow.th(".id","Attempt").th(".state","State").th(".status","Status").th(".node","Node").th(".logs","Logs").th(".tsh","Start Time");
   if (type == TaskType.REDUCE) {
     headRow.th("Shuffle Finish Time");
     headRow.th("Merge Finish Time");
@@ -26,13 +26,14 @@
   headRow.th("Elapsed Time").th(".note","Note");
   TBODY<TABLE<Hamlet>> tbody=headRow._()._().tbody();
   StringBuilder attemptsTableData=new StringBuilder("[\n");
-  for (  TaskAttempt ta : getTaskAttempts()) {
-    String taid=MRApps.toString(ta.getID());
-    String nodeHttpAddr=ta.getNodeHttpAddress();
-    String containerIdString=ta.getAssignedContainerID().toString();
-    String nodeIdString=ta.getAssignedContainerMgrAddress();
-    String nodeRackName=ta.getNodeRackName();
-    long attemptStartTime=ta.getLaunchTime();
+  for (  TaskAttempt attempt : getTaskAttempts()) {
+    final TaskAttemptInfo ta=new TaskAttemptInfo(attempt,false);
+    String taid=ta.getId();
+    String nodeHttpAddr=ta.getNode();
+    String containerIdString=ta.getAssignedContainerIdStr();
+    String nodeIdString=attempt.getAssignedContainerMgrAddress();
+    String nodeRackName=ta.getRack();
+    long attemptStartTime=ta.getStartTime();
     long shuffleFinishTime=-1;
     long sortFinishTime=-1;
     long attemptFinishTime=ta.getFinishTime();
@@ -40,15 +41,15 @@
     long elapsedSortTime=-1;
     long elapsedReduceTime=-1;
     if (type == TaskType.REDUCE) {
-      shuffleFinishTime=ta.getShuffleFinishTime();
-      sortFinishTime=ta.getSortFinishTime();
+      shuffleFinishTime=attempt.getShuffleFinishTime();
+      sortFinishTime=attempt.getSortFinishTime();
       elapsedShuffleTime=Times.elapsed(attemptStartTime,shuffleFinishTime,false);
       elapsedSortTime=Times.elapsed(shuffleFinishTime,sortFinishTime,false);
       elapsedReduceTime=Times.elapsed(sortFinishTime,attemptFinishTime,false);
     }
     long attemptElapsed=Times.elapsed(attemptStartTime,attemptFinishTime,false);
-    int sortId=ta.getID().getId() + (ta.getID().getTaskId().getId() * 10000);
-    attemptsTableData.append("[\"").append(sortId + " ").append(taid).append("\",\"").append(ta.getState().toString()).append("\",\"").append("<a class='nodelink' href='" + MRWebAppUtil.getYARNWebappScheme() + nodeHttpAddr+ "'>").append(nodeRackName + "/" + nodeHttpAddr+ "</a>\",\"").append("<a class='logslink' href='").append(url("logs",nodeIdString,containerIdString,taid,app.getJob().getUserName())).append("'>logs</a>\",\"").append(attemptStartTime).append("\",\"");
+    int sortId=attempt.getID().getId() + (attempt.getID().getTaskId().getId() * 10000);
+    attemptsTableData.append("[\"").append(sortId + " ").append(taid).append("\",\"").append(ta.getState()).append("\",\"").append(ta.getStatus()).append("\",\"").append("<a class='nodelink' href='" + MRWebAppUtil.getYARNWebappScheme() + nodeHttpAddr+ "'>").append(nodeRackName + "/" + nodeHttpAddr+ "</a>\",\"").append("<a class='logslink' href='").append(url("logs",nodeIdString,containerIdString,taid,app.getJob().getUserName())).append("'>logs</a>\",\"").append(attemptStartTime).append("\",\"");
     if (type == TaskType.REDUCE) {
       attemptsTableData.append(shuffleFinishTime).append("\",\"").append(sortFinishTime).append("\",\"");
     }
@@ -56,7 +57,7 @@
     if (type == TaskType.REDUCE) {
       attemptsTableData.append(elapsedShuffleTime).append("\",\"").append(elapsedSortTime).append("\",\"").append(elapsedReduceTime).append("\",\"");
     }
-    attemptsTableData.append(attemptElapsed).append("\",\"").append(StringEscapeUtils.escapeJavaScript(StringEscapeUtils.escapeHtml(Joiner.on('\n').join(ta.getDiagnostics())))).append("\"],\n");
+    attemptsTableData.append(attemptElapsed).append("\",\"").append(StringEscapeUtils.escapeJavaScript(StringEscapeUtils.escapeHtml(ta.getNote()))).append("\"],\n");
   }
   if (attemptsTableData.charAt(attemptsTableData.length() - 2) == ',') {
     attemptsTableData.delete(attemptsTableData.length() - 2,attemptsTableData.length() - 1);
@@ -64,7 +65,7 @@
   attemptsTableData.append("]");
   html.script().$type("text/javascript")._("var attemptsTableData=" + attemptsTableData)._();
   TR<TFOOT<TABLE<Hamlet>>> footRow=tbody._().tfoot().tr();
-  footRow.th().input("search_init").$type(InputType.text).$name("attempt_name").$value("Attempt")._()._().th().input("search_init").$type(InputType.text).$name("attempt_state").$value("State")._()._().th().input("search_init").$type(InputType.text).$name("attempt_node").$value("Node")._()._().th().input("search_init").$type(InputType.text).$name("attempt_node").$value("Logs")._()._().th().input("search_init").$type(InputType.text).$name("attempt_start_time").$value("Start Time")._()._();
+  footRow.th().input("search_init").$type(InputType.text).$name("attempt_name").$value("Attempt")._()._().th().input("search_init").$type(InputType.text).$name("attempt_state").$value("State")._()._().th().input("search_init").$type(InputType.text).$name("attempt_status").$value("Status")._()._().th().input("search_init").$type(InputType.text).$name("attempt_node").$value("Node")._()._().th().input("search_init").$type(InputType.text).$name("attempt_node").$value("Logs")._()._().th().input("search_init").$type(InputType.text).$name("attempt_start_time").$value("Start Time")._()._();
   if (type == TaskType.REDUCE) {
     footRow.th().input("search_init").$type(InputType.text).$name("shuffle_time").$value("Shuffle Time")._()._();
     footRow.th().input("search_init").$type(InputType.text).$name("merge_time").$value("Merge Time")._()._();

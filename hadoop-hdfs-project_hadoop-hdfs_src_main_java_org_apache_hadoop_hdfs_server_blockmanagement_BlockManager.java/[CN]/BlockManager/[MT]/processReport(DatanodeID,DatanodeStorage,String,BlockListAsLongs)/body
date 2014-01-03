@@ -1,0 +1,37 @@
+{
+  namesystem.writeLock();
+  final long startTime=Time.now();
+  final long endTime;
+  try {
+    final DatanodeDescriptor node=datanodeManager.getDatanode(nodeID);
+    if (node == null || !node.isAlive) {
+      throw new IOException("ProcessReport from dead or unregistered node: " + nodeID);
+    }
+    final DatanodeStorageInfo storageInfo=node.updateStorage(storage);
+    if (namesystem.isInStartupSafeMode() && storageInfo.getBlockReportCount() > 0) {
+      blockLog.info("BLOCK* processReport: " + "discarded non-initial block report from " + nodeID + " because namenode still in startup phase");
+      return;
+    }
+    if (storageInfo.numBlocks() == 0) {
+      processFirstBlockReport(node,storage.getStorageID(),newReport);
+    }
+ else {
+      processReport(node,storage,newReport);
+    }
+    boolean staleBefore=storageInfo.areBlockContentsStale();
+    storageInfo.receivedBlockReport();
+    if (staleBefore && !storageInfo.areBlockContentsStale()) {
+      LOG.info("BLOCK* processReport: Received first block report from " + node + " after starting up or becoming active. Its block "+ "contents are no longer considered stale");
+      rescanPostponedMisreplicatedBlocks();
+    }
+  }
+  finally {
+    endTime=Time.now();
+    namesystem.writeUnlock();
+  }
+  final NameNodeMetrics metrics=NameNode.getNameNodeMetrics();
+  if (metrics != null) {
+    metrics.addBlockReport((int)(endTime - startTime));
+  }
+  blockLog.info("BLOCK* processReport: from " + nodeID + ", blocks: "+ newReport.getNumberOfBlocks()+ ", processing time: "+ (endTime - startTime)+ " msecs");
+}

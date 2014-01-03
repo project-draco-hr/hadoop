@@ -1,6 +1,21 @@
 {
-  LOG.info("Killing application " + applicationId);
   KillApplicationRequest request=Records.newRecord(KillApplicationRequest.class);
   request.setApplicationId(applicationId);
-  rmClient.forceKillApplication(request);
+  try {
+    int pollCount=0;
+    while (true) {
+      KillApplicationResponse response=rmClient.forceKillApplication(request);
+      if (response.getIsKillCompleted()) {
+        break;
+      }
+      if (++pollCount % 10 == 0) {
+        LOG.info("Watiting for application " + applicationId + " to be killed.");
+      }
+      Thread.sleep(asyncApiPollIntervalMillis);
+    }
+  }
+ catch (  InterruptedException e) {
+    LOG.error("Interrupted while waiting for application " + applicationId + " to be killed.");
+  }
+  LOG.info("Killed application " + applicationId);
 }

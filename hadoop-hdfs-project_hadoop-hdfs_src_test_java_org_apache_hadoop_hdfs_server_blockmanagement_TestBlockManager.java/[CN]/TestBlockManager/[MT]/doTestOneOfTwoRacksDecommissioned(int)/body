@@ -1,13 +1,14 @@
 {
-  List<DatanodeDescriptor> origNodes=getNodes(0,1,3);
+  List<DatanodeStorageInfo> origStorages=getStorages(0,1,3);
+  List<DatanodeDescriptor> origNodes=getNodes(origStorages);
   BlockInfo blockInfo=addBlockOnNodes(testIndex,origNodes);
   List<DatanodeDescriptor> decomNodes=startDecommission(0,1,2);
-  DatanodeDescriptor[] pipeline=scheduleSingleReplication(blockInfo);
-  assertTrue("Source of replication should be one of the nodes the block " + "was on. Was: " + pipeline[0],origNodes.contains(pipeline[0]));
+  DatanodeStorageInfo[] pipeline=scheduleSingleReplication(blockInfo);
+  assertTrue("Source of replication should be one of the nodes the block " + "was on. Was: " + pipeline[0],origStorages.contains(pipeline[0]));
   assertEquals("Should have three targets",3,pipeline.length);
   boolean foundOneOnRackB=false;
   for (int i=1; i < pipeline.length; i++) {
-    DatanodeDescriptor target=pipeline[i];
+    DatanodeDescriptor target=pipeline[i].getDatanodeDescriptor();
     if (rackB.contains(target)) {
       foundOneOnRackB=true;
     }
@@ -17,11 +18,12 @@
   assertTrue("Should have at least one target on rack B. Pipeline: " + Joiner.on(",").join(pipeline),foundOneOnRackB);
   fulfillPipeline(blockInfo,pipeline);
   DatanodeDescriptor rackCNode=DFSTestUtil.getDatanodeDescriptor("7.7.7.7","/rackC");
+  rackCNode.updateStorage(new DatanodeStorage(DatanodeStorage.generateUuid()));
   addNodes(ImmutableList.of(rackCNode));
   try {
-    DatanodeDescriptor[] pipeline2=scheduleSingleReplication(blockInfo);
+    DatanodeStorageInfo[] pipeline2=scheduleSingleReplication(blockInfo);
     assertEquals(2,pipeline2.length);
-    assertEquals(rackCNode,pipeline2[1]);
+    assertEquals(rackCNode,pipeline2[1].getDatanodeDescriptor());
   }
   finally {
     removeNode(rackCNode);

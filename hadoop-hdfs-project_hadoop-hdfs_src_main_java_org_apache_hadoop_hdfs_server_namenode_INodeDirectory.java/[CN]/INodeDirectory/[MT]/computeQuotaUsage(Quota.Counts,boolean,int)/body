@@ -1,15 +1,20 @@
 {
-  final DirectoryWithQuotaFeature q=getDirectoryWithQuotaFeature();
-  if (q != null) {
-    if (useCache && isQuotaSet()) {
-      q.addNamespaceDiskspace(counts);
+  final DirectoryWithSnapshotFeature sf=getDirectoryWithSnapshotFeature();
+  if (sf != null && lastSnapshotId != Snapshot.INVALID_ID && !(useCache && isQuotaSet())) {
+    Snapshot lastSnapshot=sf.getDiffs().getSnapshotById(lastSnapshotId);
+    ReadOnlyList<INode> childrenList=getChildrenList(lastSnapshot);
+    for (    INode child : childrenList) {
+      child.computeQuotaUsage(counts,useCache,lastSnapshotId);
     }
- else {
-      computeDirectoryQuotaUsage(counts,false,lastSnapshotId);
-    }
+    counts.add(Quota.NAMESPACE,1);
     return counts;
   }
+  final DirectoryWithQuotaFeature q=getDirectoryWithQuotaFeature();
+  if (useCache && q != null && q.isQuotaSet()) {
+    return q.addNamespaceDiskspace(counts);
+  }
  else {
+    useCache=q != null && !q.isQuotaSet() ? false : useCache;
     return computeDirectoryQuotaUsage(counts,useCache,lastSnapshotId);
   }
 }

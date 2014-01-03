@@ -1,0 +1,26 @@
+{
+  dtpReplaceDatanodeOnFailure.checkEnabled();
+  final DatanodeDescriptor clientnode;
+  final long preferredblocksize;
+  final List<DatanodeStorageInfo> chosen;
+  checkOperation(OperationCategory.READ);
+  byte[][] pathComponents=FSDirectory.getPathComponentsForReservedPath(src);
+  readLock();
+  try {
+    checkOperation(OperationCategory.READ);
+    checkNameNodeSafeMode("Cannot add datanode; src=" + src + ", blk="+ blk);
+    src=FSDirectory.resolvePath(src,pathComponents,dir);
+    final INodeFile file=checkLease(src,clientName);
+    clientnode=file.getFileUnderConstructionFeature().getClientNode();
+    preferredblocksize=file.getPreferredBlockSize();
+    final DatanodeManager dm=blockManager.getDatanodeManager();
+    chosen=Arrays.asList(dm.getDatanodeStorageInfos(existings,storageIDs));
+  }
+  finally {
+    readUnlock();
+  }
+  final DatanodeStorageInfo[] targets=blockManager.getBlockPlacementPolicy().chooseTarget(src,numAdditionalNodes,clientnode,chosen,true,excludes,preferredblocksize,StorageType.DEFAULT);
+  final LocatedBlock lb=new LocatedBlock(blk,targets);
+  blockManager.setBlockToken(lb,AccessMode.COPY);
+  return lb;
+}

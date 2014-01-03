@@ -1,12 +1,15 @@
 {
   BlockInfo[] blockInfos=file.getBlocks();
   directive.addFilesNeeded(1);
-  long neededTotal=0;
-  for (  BlockInfo blockInfo : blockInfos) {
-    long neededByBlock=directive.getReplication() * blockInfo.getNumBytes();
-    neededTotal+=neededByBlock;
-  }
+  long neededTotal=file.computeFileSizeNotIncludingLastUcBlock() * directive.getReplication();
   directive.addBytesNeeded(neededTotal);
+  CachePool pool=directive.getPool();
+  if (pool.getBytesNeeded() > pool.getLimit()) {
+    if (LOG.isDebugEnabled()) {
+      LOG.debug(String.format("Skipping directive id %d file %s because " + "limit of pool %s would be exceeded (%d > %d)",directive.getId(),file.getFullPathName(),pool.getPoolName(),pool.getBytesNeeded(),pool.getLimit()));
+    }
+    return;
+  }
   long cachedTotal=0;
   for (  BlockInfo blockInfo : blockInfos) {
     if (!blockInfo.getBlockUCState().equals(BlockUCState.COMPLETE)) {
@@ -22,11 +25,8 @@
       List<DatanodeDescriptor> cachedOn=ocblock.getDatanodes(Type.CACHED);
       long cachedByBlock=Math.min(cachedOn.size(),directive.getReplication()) * blockInfo.getNumBytes();
       cachedTotal+=cachedByBlock;
-      if (mark != ocblock.getMark()) {
+      if ((mark != ocblock.getMark()) || (ocblock.getReplication() < directive.getReplication())) {
         ocblock.setReplicationAndMark(directive.getReplication(),mark);
-      }
- else {
-        ocblock.setReplicationAndMark((short)Math.max(directive.getReplication(),ocblock.getReplication()),mark);
       }
     }
   }

@@ -1,14 +1,35 @@
 {
+  useFixedPorts=conf.getBoolean(YarnConfiguration.YARN_MINICLUSTER_FIXED_PORTS,YarnConfiguration.DEFAULT_YARN_MINICLUSTER_FIXED_PORTS);
+  useRpc=conf.getBoolean(YarnConfiguration.YARN_MINICLUSTER_USE_RPC,YarnConfiguration.DEFAULT_YARN_MINICLUSTER_USE_RPC);
+  if (useRpc && !useFixedPorts) {
+    throw new YarnRuntimeException("Invalid configuration!" + " Minicluster can use rpc only when configured to use fixed ports");
+  }
   if (resourceManagers.length > 1) {
     conf.setBoolean(YarnConfiguration.RM_HA_ENABLED,true);
-    StringBuilder rmIds=new StringBuilder();
-    for (int i=0; i < resourceManagers.length; i++) {
-      if (i != 0) {
-        rmIds.append(",");
+    if (conf.get(YarnConfiguration.RM_HA_IDS) == null) {
+      StringBuilder rmIds=new StringBuilder();
+      for (int i=0; i < resourceManagers.length; i++) {
+        if (i != 0) {
+          rmIds.append(",");
+        }
+        rmIds.append("rm" + i);
       }
-      rmIds.append("rm" + i);
+      conf.set(YarnConfiguration.RM_HA_IDS,rmIds.toString());
     }
-    conf.set(YarnConfiguration.RM_HA_IDS,rmIds.toString());
+    Collection<String> rmIdsCollection=HAUtil.getRMHAIds(conf);
+    rmIds=rmIdsCollection.toArray(new String[rmIdsCollection.size()]);
+  }
+  for (int i=0; i < resourceManagers.length; i++) {
+    resourceManagers[i]=new ResourceManager(){
+      @Override protected void doSecureLogin() throws IOException {
+      }
+    }
+;
+    addService(new ResourceManagerWrapper(i));
+  }
+  for (int index=0; index < nodeManagers.length; index++) {
+    nodeManagers[index]=useRpc ? new CustomNodeManager() : new ShortCircuitedNodeManager();
+    addService(new NodeManagerWrapper(index));
   }
   super.serviceInit(conf instanceof YarnConfiguration ? conf : new YarnConfiguration(conf));
 }

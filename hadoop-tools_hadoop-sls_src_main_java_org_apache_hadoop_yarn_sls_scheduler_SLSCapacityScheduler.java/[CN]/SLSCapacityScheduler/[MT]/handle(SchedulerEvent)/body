@@ -1,0 +1,47 @@
+{
+  if (!metricsON) {
+    super.handle(schedulerEvent);
+    return;
+  }
+  if (!running)   running=true;
+  Timer.Context handlerTimer=null;
+  Timer.Context operationTimer=null;
+  NodeUpdateSchedulerEventWrapper eventWrapper;
+  try {
+    if (schedulerEvent.getType() == SchedulerEventType.NODE_UPDATE && schedulerEvent instanceof NodeUpdateSchedulerEvent) {
+      eventWrapper=new NodeUpdateSchedulerEventWrapper((NodeUpdateSchedulerEvent)schedulerEvent);
+      schedulerEvent=eventWrapper;
+      updateQueueWithNodeUpdate(eventWrapper);
+    }
+ else     if (schedulerEvent.getType() == SchedulerEventType.APP_ATTEMPT_REMOVED && schedulerEvent instanceof AppAttemptRemovedSchedulerEvent) {
+      AppAttemptRemovedSchedulerEvent appRemoveEvent=(AppAttemptRemovedSchedulerEvent)schedulerEvent;
+      ApplicationAttemptId appAttemptId=appRemoveEvent.getApplicationAttemptID();
+      String queue=appQueueMap.get(appAttemptId);
+      SchedulerAppReport app=super.getSchedulerAppInfo(appAttemptId);
+      if (!app.getLiveContainers().isEmpty()) {
+        RMContainer rmc=app.getLiveContainers().iterator().next();
+        updateQueueMetrics(queue,rmc.getContainer().getResource().getMemory(),rmc.getContainer().getResource().getVirtualCores());
+      }
+    }
+    handlerTimer=schedulerHandleTimer.time();
+    operationTimer=schedulerHandleTimerMap.get(schedulerEvent.getType()).time();
+    super.handle(schedulerEvent);
+  }
+  finally {
+    if (handlerTimer != null)     handlerTimer.stop();
+    if (operationTimer != null)     operationTimer.stop();
+    schedulerHandleCounter.inc();
+    schedulerHandleCounterMap.get(schedulerEvent.getType()).inc();
+    if (schedulerEvent.getType() == SchedulerEventType.APP_ATTEMPT_REMOVED && schedulerEvent instanceof AppAttemptRemovedSchedulerEvent) {
+      SLSRunner.decreaseRemainingApps();
+      AppAttemptRemovedSchedulerEvent appRemoveEvent=(AppAttemptRemovedSchedulerEvent)schedulerEvent;
+      ApplicationAttemptId appAttemptId=appRemoveEvent.getApplicationAttemptID();
+      appQueueMap.remove(appRemoveEvent.getApplicationAttemptID());
+    }
+ else     if (schedulerEvent.getType() == SchedulerEventType.APP_ATTEMPT_ADDED && schedulerEvent instanceof AppAttemptAddedSchedulerEvent) {
+      AppAttemptAddedSchedulerEvent appAddEvent=(AppAttemptAddedSchedulerEvent)schedulerEvent;
+      SchedulerApplication app=applications.get(appAddEvent.getApplicationAttemptId().getApplicationId());
+      appQueueMap.put(appAddEvent.getApplicationAttemptId(),app.getQueue().getQueueName());
+    }
+  }
+}

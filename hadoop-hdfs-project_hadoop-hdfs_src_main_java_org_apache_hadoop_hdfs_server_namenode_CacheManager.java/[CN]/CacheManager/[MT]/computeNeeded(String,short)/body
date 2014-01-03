@@ -1,0 +1,32 @@
+{
+  FSDirectory fsDir=namesystem.getFSDirectory();
+  INode node;
+  long requestedBytes=0;
+  long requestedFiles=0;
+  CacheDirectiveStats.Builder builder=new CacheDirectiveStats.Builder();
+  try {
+    node=fsDir.getINode(path);
+  }
+ catch (  UnresolvedLinkException e) {
+    return builder.build();
+  }
+  if (node == null) {
+    return builder.build();
+  }
+  if (node.isFile()) {
+    requestedFiles=1;
+    INodeFile file=node.asFile();
+    requestedBytes=file.computeFileSize();
+  }
+ else   if (node.isDirectory()) {
+    INodeDirectory dir=node.asDirectory();
+    ReadOnlyList<INode> children=dir.getChildrenList(null);
+    requestedFiles=children.size();
+    for (    INode child : children) {
+      if (child.isFile()) {
+        requestedBytes+=child.asFile().computeFileSize();
+      }
+    }
+  }
+  return new CacheDirectiveStats.Builder().setBytesNeeded(requestedBytes).setFilesCached(requestedFiles).build();
+}

@@ -1,0 +1,32 @@
+{
+  ensureInitialized();
+  try {
+    if (subject == null) {
+      subject=new Subject();
+    }
+    LoginContext login=newLoginContext(authenticationMethod.getLoginAppName(),subject,new HadoopConfiguration());
+    login.login();
+    UserGroupInformation realUser=new UserGroupInformation(subject);
+    realUser.setLogin(login);
+    realUser.setAuthenticationMethod(authenticationMethod);
+    realUser=new UserGroupInformation(login.getSubject());
+    String proxyUser=System.getenv(HADOOP_PROXY_USER);
+    if (proxyUser == null) {
+      proxyUser=System.getProperty(HADOOP_PROXY_USER);
+    }
+    loginUser=proxyUser == null ? realUser : createProxyUser(proxyUser,realUser);
+    String fileLocation=System.getenv(HADOOP_TOKEN_FILE_LOCATION);
+    if (fileLocation != null) {
+      Credentials cred=Credentials.readTokenStorageFile(new File(fileLocation),conf);
+      loginUser.addCredentials(cred);
+    }
+    loginUser.spawnAutoRenewalThreadForUserCreds();
+  }
+ catch (  LoginException le) {
+    LOG.debug("failure to login",le);
+    throw new IOException("failure to login",le);
+  }
+  if (LOG.isDebugEnabled()) {
+    LOG.debug("UGI loginUser:" + loginUser);
+  }
+}

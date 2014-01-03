@@ -1,29 +1,31 @@
 {
-  ReceivedDeletedBlockInfo[] receivedAndDeletedBlockArray=null;
-synchronized (pendingIncrementalBR) {
-    int numBlocks=pendingIncrementalBR.size();
-    if (numBlocks > 0) {
-      receivedAndDeletedBlockArray=pendingIncrementalBR.values().toArray(new ReceivedDeletedBlockInfo[numBlocks]);
+  ArrayList<StorageReceivedDeletedBlocks> reports=new ArrayList<StorageReceivedDeletedBlocks>(pendingIncrementalBRperStorage.size());
+synchronized (pendingIncrementalBRperStorage) {
+    for (    Map.Entry<String,PerStoragePendingIncrementalBR> entry : pendingIncrementalBRperStorage.entrySet()) {
+      final String storageUuid=entry.getKey();
+      final PerStoragePendingIncrementalBR perStorageMap=entry.getValue();
+      if (perStorageMap.getBlockInfoCount() > 0) {
+        ReceivedDeletedBlockInfo[] rdbi=perStorageMap.dequeueBlockInfos();
+        pendingReceivedRequests=(pendingReceivedRequests > rdbi.length ? (pendingReceivedRequests - rdbi.length) : 0);
+        reports.add(new StorageReceivedDeletedBlocks(storageUuid,rdbi));
+      }
     }
-    pendingIncrementalBR.clear();
   }
-  if (receivedAndDeletedBlockArray != null) {
-    StorageReceivedDeletedBlocks[] report={new StorageReceivedDeletedBlocks(bpRegistration.getStorageID(),receivedAndDeletedBlockArray)};
-    boolean success=false;
-    try {
-      bpNamenode.blockReceivedAndDeleted(bpRegistration,bpos.getBlockPoolId(),report);
-      success=true;
-    }
+  if (reports.size() == 0) {
+    return;
+  }
+  boolean success=false;
+  try {
+    bpNamenode.blockReceivedAndDeleted(bpRegistration,bpos.getBlockPoolId(),reports.toArray(new StorageReceivedDeletedBlocks[reports.size()]));
+    success=true;
+  }
   finally {
-synchronized (pendingIncrementalBR) {
-        if (!success) {
-          for (          ReceivedDeletedBlockInfo rdbi : receivedAndDeletedBlockArray) {
-            if (!pendingIncrementalBR.containsKey(rdbi.getBlock().getBlockId())) {
-              pendingIncrementalBR.put(rdbi.getBlock().getBlockId(),rdbi);
-            }
-          }
+    if (!success) {
+synchronized (pendingIncrementalBRperStorage) {
+        for (        StorageReceivedDeletedBlocks report : reports) {
+          PerStoragePendingIncrementalBR perStorageMap=pendingIncrementalBRperStorage.get(report.getStorageID());
+          pendingReceivedRequests+=perStorageMap.putMissingBlockInfos(report.getBlocks());
         }
-        pendingReceivedRequests=pendingIncrementalBR.size();
       }
     }
   }

@@ -12,6 +12,7 @@
     builder.setPath(new Path(path));
     modified=true;
   }
+  boolean force=StringUtils.popOption("-force",args);
   String replicationString=StringUtils.popOptionWithArgument("-replication",args);
   if (replicationString != null) {
     builder.setReplication(Short.parseShort(replicationString));
@@ -23,17 +24,16 @@
     modified=true;
   }
   String ttlString=StringUtils.popOptionWithArgument("-ttl",args);
-  if (ttlString != null) {
-    long ttl;
-    try {
-      ttl=DFSUtil.parseRelativeTime(ttlString);
+  try {
+    Expiration ex=parseExpirationString(ttlString);
+    if (ex != null) {
+      builder.setExpiration(ex);
+      modified=true;
     }
- catch (    IOException e) {
-      System.err.println("Error while parsing ttl value: " + e.getMessage());
-      return 1;
-    }
-    builder.setExpiration(CacheDirectiveInfo.Expiration.newRelative(ttl));
-    modified=true;
+  }
+ catch (  IOException e) {
+    System.err.println("Error while parsing ttl value: " + e.getMessage());
+    return 1;
   }
   if (!args.isEmpty()) {
     System.err.println("Can't understand argument: " + args.get(0));
@@ -45,8 +45,12 @@
     return 1;
   }
   DistributedFileSystem dfs=getDFS(conf);
+  EnumSet<CacheFlag> flags=EnumSet.noneOf(CacheFlag.class);
+  if (force) {
+    flags.add(CacheFlag.FORCE);
+  }
   try {
-    dfs.modifyCacheDirective(builder.build());
+    dfs.modifyCacheDirective(builder.build(),flags);
     System.out.println("Modified cache directive " + idString);
   }
  catch (  IOException e) {

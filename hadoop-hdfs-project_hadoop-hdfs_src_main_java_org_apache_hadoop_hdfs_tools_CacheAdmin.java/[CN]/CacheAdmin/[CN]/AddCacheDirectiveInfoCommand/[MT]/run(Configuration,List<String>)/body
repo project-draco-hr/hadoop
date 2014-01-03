@@ -12,21 +12,22 @@
     return 1;
   }
   builder.setPool(poolName);
+  boolean force=StringUtils.popOption("-force",args);
   String replicationString=StringUtils.popOptionWithArgument("-replication",args);
   if (replicationString != null) {
     Short replication=Short.parseShort(replicationString);
     builder.setReplication(replication);
   }
   String ttlString=StringUtils.popOptionWithArgument("-ttl",args);
-  if (ttlString != null) {
-    try {
-      long ttl=DFSUtil.parseRelativeTime(ttlString);
-      builder.setExpiration(CacheDirectiveInfo.Expiration.newRelative(ttl));
+  try {
+    Expiration ex=parseExpirationString(ttlString);
+    if (ex != null) {
+      builder.setExpiration(ex);
     }
- catch (    IOException e) {
-      System.err.println("Error while parsing ttl value: " + e.getMessage());
-      return 1;
-    }
+  }
+ catch (  IOException e) {
+    System.err.println("Error while parsing ttl value: " + e.getMessage());
+    return 1;
   }
   if (!args.isEmpty()) {
     System.err.println("Can't understand argument: " + args.get(0));
@@ -34,8 +35,12 @@
   }
   DistributedFileSystem dfs=getDFS(conf);
   CacheDirectiveInfo directive=builder.build();
+  EnumSet<CacheFlag> flags=EnumSet.noneOf(CacheFlag.class);
+  if (force) {
+    flags.add(CacheFlag.FORCE);
+  }
   try {
-    long id=dfs.addCacheDirective(directive);
+    long id=dfs.addCacheDirective(directive,flags);
     System.out.println("Added cache directive " + id);
   }
  catch (  IOException e) {

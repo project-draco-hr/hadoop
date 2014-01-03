@@ -2,6 +2,7 @@
   this.datanode=datanode;
   final int volFailuresTolerated=conf.getInt(DFSConfigKeys.DFS_DATANODE_FAILED_VOLUMES_TOLERATED_KEY,DFSConfigKeys.DFS_DATANODE_FAILED_VOLUMES_TOLERATED_DEFAULT);
   String[] dataDirs=conf.getTrimmedStrings(DFSConfigKeys.DFS_DATANODE_DATA_DIR_KEY);
+  Collection<StorageLocation> dataLocations=DataNode.getStorageLocations(conf);
   int volsConfigured=(dataDirs == null) ? 0 : dataDirs.length;
   int volsFailed=volsConfigured - storage.getNumStorageDirs();
   this.validVolsRequired=volsConfigured - volFailuresTolerated;
@@ -13,19 +14,21 @@
   }
   final List<FsVolumeImpl> volArray=new ArrayList<FsVolumeImpl>(storage.getNumStorageDirs());
   for (int idx=0; idx < storage.getNumStorageDirs(); idx++) {
-    final File dir=storage.getStorageDir(idx).getCurrentDir();
-    volArray.add(new FsVolumeImpl(this,storage.getStorageID(),dir,conf));
-    LOG.info("Added volume - " + dir);
+    Storage.StorageDirectory sd=storage.getStorageDir(idx);
+    final File dir=sd.getCurrentDir();
+    final StorageType storageType=getStorageTypeFromLocations(dataLocations,dir);
+    volArray.add(new FsVolumeImpl(this,sd.getStorageUuid(),dir,conf,storageType));
+    LOG.info("Added volume - " + dir + ", StorageType: "+ storageType);
   }
   volumeMap=new ReplicaMap(this);
   @SuppressWarnings("unchecked") final VolumeChoosingPolicy<FsVolumeImpl> blockChooserImpl=ReflectionUtils.newInstance(conf.getClass(DFSConfigKeys.DFS_DATANODE_FSDATASET_VOLUME_CHOOSING_POLICY_KEY,RoundRobinVolumeChoosingPolicy.class,VolumeChoosingPolicy.class),conf);
   volumes=new FsVolumeList(volArray,volsFailed,blockChooserImpl);
-  volumes.getVolumeMap(volumeMap);
+  volumes.initializeReplicaMaps(volumeMap);
   File[] roots=new File[storage.getNumStorageDirs()];
   for (int idx=0; idx < storage.getNumStorageDirs(); idx++) {
     roots[idx]=storage.getStorageDir(idx).getCurrentDir();
   }
   asyncDiskService=new FsDatasetAsyncDiskService(datanode,roots);
   cacheManager=new FsDatasetCache(this);
-  registerMBean(storage.getStorageID());
+  registerMBean(datanode.getDatanodeUuid());
 }

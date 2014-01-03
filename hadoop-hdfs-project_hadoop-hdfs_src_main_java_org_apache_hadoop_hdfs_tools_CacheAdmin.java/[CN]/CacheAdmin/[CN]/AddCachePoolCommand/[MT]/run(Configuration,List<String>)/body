@@ -1,31 +1,37 @@
 {
-  String owner=StringUtils.popOptionWithArgument("-owner",args);
-  if (owner == null) {
-    owner=UserGroupInformation.getCurrentUser().getShortUserName();
-  }
-  String group=StringUtils.popOptionWithArgument("-group",args);
-  if (group == null) {
-    group=UserGroupInformation.getCurrentUser().getGroupNames()[0];
-  }
-  String modeString=StringUtils.popOptionWithArgument("-mode",args);
-  int mode;
-  if (modeString == null) {
-    mode=FsPermission.getCachePoolDefault().toShort();
-  }
- else {
-    mode=Integer.parseInt(modeString,8);
-  }
-  String weightString=StringUtils.popOptionWithArgument("-weight",args);
-  int weight;
-  if (weightString == null) {
-    weight=CachePool.DEFAULT_WEIGHT;
-  }
- else {
-    weight=Integer.parseInt(weightString);
-  }
   String name=StringUtils.popFirstNonOption(args);
   if (name == null) {
     System.err.println("You must specify a name when creating a " + "cache pool.");
+    return 1;
+  }
+  CachePoolInfo info=new CachePoolInfo(name);
+  String owner=StringUtils.popOptionWithArgument("-owner",args);
+  if (owner != null) {
+    info.setOwnerName(owner);
+  }
+  String group=StringUtils.popOptionWithArgument("-group",args);
+  if (group != null) {
+    info.setGroupName(group);
+  }
+  String modeString=StringUtils.popOptionWithArgument("-mode",args);
+  if (modeString != null) {
+    short mode=Short.parseShort(modeString,8);
+    info.setMode(new FsPermission(mode));
+  }
+  String limitString=StringUtils.popOptionWithArgument("-limit",args);
+  if (limitString != null) {
+    long limit=Long.parseLong(limitString);
+    info.setLimit(limit);
+  }
+  String maxTtlString=StringUtils.popOptionWithArgument("-maxTtl",args);
+  try {
+    Long maxTtl=parseTtlString(maxTtlString);
+    if (maxTtl != null) {
+      info.setMaxRelativeExpiryMs(maxTtl);
+    }
+  }
+ catch (  IOException e) {
+    System.err.println("Error while parsing maxTtl value: " + e.getMessage());
     return 1;
   }
   if (!args.isEmpty()) {
@@ -34,12 +40,12 @@
     return 1;
   }
   DistributedFileSystem dfs=getDFS(conf);
-  CachePoolInfo info=new CachePoolInfo(name).setOwnerName(owner).setGroupName(group).setMode(new FsPermission((short)mode)).setWeight(weight);
   try {
     dfs.addCachePool(info);
   }
  catch (  IOException e) {
-    throw new RemoteException(e.getClass().getName(),e.getMessage());
+    System.err.println(prettifyException(e));
+    return 2;
   }
   System.out.println("Successfully added cache pool " + name + ".");
   return 0;

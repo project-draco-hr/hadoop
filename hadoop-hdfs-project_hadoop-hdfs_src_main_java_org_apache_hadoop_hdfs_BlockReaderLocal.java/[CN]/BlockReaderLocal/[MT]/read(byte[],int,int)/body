@@ -1,14 +1,27 @@
 {
+  boolean canSkipChecksum=getCanSkipChecksum();
+  String traceString=null;
   if (LOG.isTraceEnabled()) {
-    LOG.trace("read off " + off + " len "+ len);
+    traceString=new StringBuilder().append("read(arr.length=").append(arr.length).append(", off=").append(off).append(", len=").append(len).append(", filename=").append(filename).append(", block=").append(block).append(", canSkipChecksum=").append(canSkipChecksum).append(")").toString();
+    LOG.trace(traceString + ": starting");
   }
-  if (!verifyChecksum) {
-    return dataIn.read(buf,off,len);
+  int nRead;
+  try {
+    if (canSkipChecksum && zeroReadaheadRequested) {
+      nRead=readWithoutBounceBuffer(arr,off,len);
+    }
+ else {
+      nRead=readWithBounceBuffer(arr,off,len,canSkipChecksum);
+    }
   }
-  int nRead=fillSlowReadBuffer(slowReadBuff.capacity());
-  if (nRead > 0) {
-    nRead=Math.min(len,nRead);
-    slowReadBuff.get(buf,off,nRead);
+ catch (  IOException e) {
+    if (LOG.isTraceEnabled()) {
+      LOG.trace(traceString + ": I/O error",e);
+    }
+    throw e;
+  }
+  if (LOG.isTraceEnabled()) {
+    LOG.trace(traceString + ": returning " + nRead);
   }
   return nRead;
 }

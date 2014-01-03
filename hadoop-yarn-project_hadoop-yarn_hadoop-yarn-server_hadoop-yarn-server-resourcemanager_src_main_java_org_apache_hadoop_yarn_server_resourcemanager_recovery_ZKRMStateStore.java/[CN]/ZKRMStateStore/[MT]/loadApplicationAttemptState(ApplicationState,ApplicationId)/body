@@ -1,0 +1,22 @@
+{
+  String appPath=getNodePath(rmAppRoot,appId.toString());
+  List<String> attempts=getChildrenWithRetries(appPath,false);
+  for (  String attemptIDStr : attempts) {
+    if (attemptIDStr.startsWith(ApplicationAttemptId.appAttemptIdStrPrefix)) {
+      String attemptPath=getNodePath(appPath,attemptIDStr);
+      byte[] attemptData=getDataWithRetries(attemptPath,true);
+      ApplicationAttemptId attemptId=ConverterUtils.toApplicationAttemptId(attemptIDStr);
+      ApplicationAttemptStateDataPBImpl attemptStateData=new ApplicationAttemptStateDataPBImpl(ApplicationAttemptStateDataProto.parseFrom(attemptData));
+      Credentials credentials=null;
+      if (attemptStateData.getAppAttemptTokens() != null) {
+        credentials=new Credentials();
+        DataInputByteBuffer dibb=new DataInputByteBuffer();
+        dibb.reset(attemptStateData.getAppAttemptTokens());
+        credentials.readTokenStorageStream(dibb);
+      }
+      ApplicationAttemptState attemptState=new ApplicationAttemptState(attemptId,attemptStateData.getMasterContainer(),credentials,attemptStateData.getStartTime(),attemptStateData.getState(),attemptStateData.getFinalTrackingUrl(),attemptStateData.getDiagnostics(),attemptStateData.getFinalApplicationStatus());
+      appState.attempts.put(attemptState.getAttemptId(),attemptState);
+    }
+  }
+  LOG.info("Done Loading applications from ZK state store");
+}
