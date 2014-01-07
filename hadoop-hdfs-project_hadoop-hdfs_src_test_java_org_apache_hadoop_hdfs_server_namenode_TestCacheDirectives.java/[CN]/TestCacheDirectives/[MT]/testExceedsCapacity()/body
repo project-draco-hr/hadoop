@@ -1,0 +1,19 @@
+{
+  final Path fileName=new Path("/exceeds");
+  final long fileLen=CACHE_CAPACITY * (NUM_DATANODES * 2);
+  int numCachedReplicas=(int)((CACHE_CAPACITY * NUM_DATANODES) / BLOCK_SIZE);
+  DFSTestUtil.createFile(dfs,fileName,fileLen,(short)NUM_DATANODES,0xFADED);
+  final LogVerificationAppender appender=new LogVerificationAppender();
+  final Logger logger=Logger.getRootLogger();
+  logger.addAppender(appender);
+  dfs.addCachePool(new CachePoolInfo("pool"));
+  dfs.addCacheDirective(new CacheDirectiveInfo.Builder().setPool("pool").setPath(fileName).setReplication((short)1).build());
+  waitForCachedBlocks(namenode,-1,numCachedReplicas,"testExceeds:1");
+  int lines=appender.countLinesWithMessage("more bytes in the cache: " + DFSConfigKeys.DFS_DATANODE_MAX_LOCKED_MEMORY_KEY);
+  assertEquals("Namenode should not send extra CACHE commands",0,lines);
+  dfs.delete(fileName,false);
+  DFSTestUtil.createFile(dfs,fileName,4096,fileLen,CACHE_CAPACITY * 2,(short)1,0xFADED);
+  Thread.sleep(4000);
+  lines=appender.countLinesWithMessage("more bytes in the cache: " + DFSConfigKeys.DFS_DATANODE_MAX_LOCKED_MEMORY_KEY);
+  assertEquals("Namenode should not send extra CACHE commands",0,lines);
+}

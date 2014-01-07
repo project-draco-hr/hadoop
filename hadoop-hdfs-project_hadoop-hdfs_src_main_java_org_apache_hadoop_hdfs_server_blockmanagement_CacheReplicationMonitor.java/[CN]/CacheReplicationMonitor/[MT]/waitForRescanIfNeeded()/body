@@ -1,12 +1,20 @@
 {
-  lock.lock();
-  try {
-    if (!needsRescan) {
-      return;
+  Preconditions.checkArgument(!namesystem.hasWriteLock(),"Must not hold the FSN write lock when waiting for a rescan.");
+  Preconditions.checkArgument(lock.isHeldByCurrentThread(),"Must hold the CRM lock when waiting for a rescan.");
+  if (!needsRescan) {
+    return;
+  }
+  if (!isScanning) {
+    doRescan.signal();
+  }
+  final long startCount=scanCount;
+  while ((!shutdown) && (startCount >= scanCount)) {
+    try {
+      scanFinished.await();
+    }
+ catch (    InterruptedException e) {
+      LOG.warn("Interrupted while waiting for CacheReplicationMonitor" + " rescan",e);
+      break;
     }
   }
-  finally {
-    lock.unlock();
-  }
-  waitForRescan();
 }

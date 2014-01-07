@@ -8,6 +8,7 @@ synchronized (lock) {
     }
     try {
       boolean taskFound=true;
+      AMFeedback amFeedback=null;
 synchronized (lock) {
         if (taskDone.get()) {
           break;
@@ -20,16 +21,23 @@ synchronized (lock) {
       if (sendProgress) {
         updateCounters();
         taskStatus.statusUpdate(taskProgress.get(),taskProgress.toString(),counters);
-        taskFound=umbilical.statusUpdate(taskId,taskStatus);
+        amFeedback=umbilical.statusUpdate(taskId,taskStatus);
+        taskFound=amFeedback.getTaskFound();
         taskStatus.clearStatus();
       }
  else {
-        taskFound=umbilical.ping(taskId);
+        amFeedback=umbilical.statusUpdate(taskId,null);
+        taskFound=amFeedback.getTaskFound();
       }
       if (!taskFound) {
         LOG.warn("Parent died.  Exiting " + taskId);
         resetDoneFlag();
         System.exit(66);
+      }
+      boolean lastPreempt=mustPreempt.get();
+      mustPreempt.set(mustPreempt.get() || amFeedback.getPreemption());
+      if (lastPreempt ^ mustPreempt.get()) {
+        LOG.info("PREEMPTION TASK: setting mustPreempt to " + mustPreempt.get() + " given "+ amFeedback.getPreemption()+ " for "+ taskId+ " task status: "+ taskStatus.getPhase());
       }
       sendProgress=resetProgressFlag();
       remainingRetries=MAX_RETRIES;

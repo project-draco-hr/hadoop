@@ -1,0 +1,74 @@
+{
+  if (preemptionRequests != null) {
+    StrictPreemptionContract cStrict=preemptionRequests.getStrictContract();
+    if (cStrict != null && cStrict.getContainers() != null && cStrict.getContainers().size() > 0) {
+      LOG.info("strict preemption :" + preemptionRequests.getStrictContract().getContainers().size() + " containers to kill");
+      for (      PreemptionContainer c : preemptionRequests.getStrictContract().getContainers()) {
+        ContainerId reqCont=c.getId();
+        TaskAttemptId reqTask=ctxt.getTaskAttempt(reqCont);
+        if (reqTask != null) {
+          if (org.apache.hadoop.mapreduce.v2.api.records.TaskType.REDUCE.equals(reqTask.getTaskId().getTaskType())) {
+            toBePreempted.add(reqTask);
+            LOG.info("preempting " + reqCont + " running task:"+ reqTask);
+          }
+ else {
+            LOG.info("NOT preempting " + reqCont + " running task:"+ reqTask);
+          }
+        }
+      }
+    }
+    PreemptionContract cNegot=preemptionRequests.getContract();
+    if (cNegot != null && cNegot.getResourceRequest() != null && cNegot.getResourceRequest().size() > 0 && cNegot.getContainers() != null && cNegot.getContainers().size() > 0) {
+      LOG.info("negotiable preemption :" + preemptionRequests.getContract().getResourceRequest().size() + " resourceReq, "+ preemptionRequests.getContract().getContainers().size()+ " containers");
+      List<PreemptionResourceRequest> reqResources=preemptionRequests.getContract().getResourceRequest();
+      int pendingPreemptionRam=0;
+      int pendingPreemptionCores=0;
+      for (      Resource r : pendingFlexiblePreemptions.values()) {
+        pendingPreemptionRam+=r.getMemory();
+        pendingPreemptionCores+=r.getVirtualCores();
+      }
+      for (      PreemptionResourceRequest rr : reqResources) {
+        ResourceRequest reqRsrc=rr.getResourceRequest();
+        if (!ResourceRequest.ANY.equals(reqRsrc.getResourceName())) {
+          continue;
+        }
+        LOG.info("ResourceRequest:" + reqRsrc);
+        int reqCont=reqRsrc.getNumContainers();
+        int reqMem=reqRsrc.getCapability().getMemory();
+        int totalMemoryToRelease=reqCont * reqMem;
+        int reqCores=reqRsrc.getCapability().getVirtualCores();
+        int totalCoresToRelease=reqCont * reqCores;
+        if (pendingPreemptionRam > 0) {
+          totalMemoryToRelease-=pendingPreemptionRam;
+          pendingPreemptionRam-=totalMemoryToRelease;
+        }
+        if (pendingPreemptionCores > 0) {
+          totalCoresToRelease-=pendingPreemptionCores;
+          pendingPreemptionCores-=totalCoresToRelease;
+        }
+        List<Container> listOfCont=ctxt.getContainers(TaskType.REDUCE);
+        Collections.sort(listOfCont,new Comparator<Container>(){
+          @Override public int compare(          final Container o1,          final Container o2){
+            return o2.getId().getId() - o1.getId().getId();
+          }
+        }
+);
+        for (        Container cont : listOfCont) {
+          if (totalMemoryToRelease <= 0 && totalCoresToRelease <= 0) {
+            break;
+          }
+          TaskAttemptId reduceId=ctxt.getTaskAttempt(cont.getId());
+          int cMem=cont.getResource().getMemory();
+          int cCores=cont.getResource().getVirtualCores();
+          if (!toBePreempted.contains(reduceId)) {
+            totalMemoryToRelease-=cMem;
+            totalCoresToRelease-=cCores;
+            toBePreempted.add(reduceId);
+            pendingFlexiblePreemptions.put(reduceId,cont.getResource());
+          }
+          LOG.info("ResourceRequest:" + reqRsrc + " satisfied preempting "+ reduceId);
+        }
+      }
+    }
+  }
+}
