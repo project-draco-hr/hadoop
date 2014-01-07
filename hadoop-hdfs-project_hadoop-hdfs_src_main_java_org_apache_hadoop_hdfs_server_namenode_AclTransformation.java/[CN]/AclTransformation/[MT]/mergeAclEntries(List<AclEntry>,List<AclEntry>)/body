@@ -1,0 +1,45 @@
+{
+  ValidatedAclSpec aclSpec=new ValidatedAclSpec(inAclSpec);
+  ArrayList<AclEntry> aclBuilder=Lists.newArrayListWithCapacity(MAX_ENTRIES);
+  List<AclEntry> foundAclSpecEntries=Lists.newArrayListWithCapacity(MAX_ENTRIES);
+  EnumMap<AclEntryScope,AclEntry> providedMask=Maps.newEnumMap(AclEntryScope.class);
+  EnumSet<AclEntryScope> maskDirty=EnumSet.noneOf(AclEntryScope.class);
+  EnumSet<AclEntryScope> scopeDirty=EnumSet.noneOf(AclEntryScope.class);
+  for (  AclEntry existingEntry : existingAcl) {
+    AclEntry aclSpecEntry=aclSpec.findByKey(existingEntry);
+    if (aclSpecEntry != null) {
+      foundAclSpecEntries.add(aclSpecEntry);
+      scopeDirty.add(aclSpecEntry.getScope());
+      if (aclSpecEntry.getType() == MASK) {
+        providedMask.put(aclSpecEntry.getScope(),aclSpecEntry);
+        maskDirty.add(aclSpecEntry.getScope());
+      }
+ else {
+        aclBuilder.add(aclSpecEntry);
+      }
+    }
+ else {
+      if (existingEntry.getType() == MASK) {
+        providedMask.put(existingEntry.getScope(),existingEntry);
+      }
+ else {
+        aclBuilder.add(existingEntry);
+      }
+    }
+  }
+  for (  AclEntry newEntry : aclSpec) {
+    if (Collections.binarySearch(foundAclSpecEntries,newEntry,ACL_ENTRY_COMPARATOR) < 0) {
+      scopeDirty.add(newEntry.getScope());
+      if (newEntry.getType() == MASK) {
+        providedMask.put(newEntry.getScope(),newEntry);
+        maskDirty.add(newEntry.getScope());
+      }
+ else {
+        aclBuilder.add(newEntry);
+      }
+    }
+  }
+  copyDefaultsIfNeeded(aclBuilder);
+  calculateMasks(aclBuilder,providedMask,maskDirty,scopeDirty);
+  return buildAndValidateAcl(aclBuilder);
+}
