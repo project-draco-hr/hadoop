@@ -1,0 +1,31 @@
+{
+  conf=conf instanceof YarnConfiguration ? conf : new YarnConfiguration(conf);
+  String zkQuorum=conf.get(YarnConfiguration.RM_ZK_ADDRESS);
+  if (zkQuorum == null) {
+    throw new YarnRuntimeException("Embedded automatic failover " + "is enabled, but " + YarnConfiguration.RM_ZK_ADDRESS + " is not set");
+  }
+  String rmId=HAUtil.getRMHAId(conf);
+  String clusterId=conf.get(YarnConfiguration.RM_CLUSTER_ID);
+  if (clusterId == null) {
+    throw new YarnRuntimeException(YarnConfiguration.RM_CLUSTER_ID + " is not specified!");
+  }
+  localActiveNodeInfo=createActiveNodeInfo(clusterId,rmId);
+  String zkBasePath=conf.get(YarnConfiguration.AUTO_FAILOVER_ZK_BASE_PATH,YarnConfiguration.DEFAULT_AUTO_FAILOVER_ZK_BASE_PATH);
+  String electionZNode=zkBasePath + "/" + clusterId;
+  long zkSessionTimeout=conf.getLong(YarnConfiguration.RM_ZK_TIMEOUT_MS,YarnConfiguration.DEFAULT_RM_ZK_TIMEOUT_MS);
+  String zkAclConf=conf.get(YarnConfiguration.RM_ZK_ACL,YarnConfiguration.DEFAULT_RM_ZK_ACL);
+  List<ACL> zkAcls;
+  try {
+    zkAcls=ZKUtil.parseACLs(ZKUtil.resolveConfIndirection(zkAclConf));
+  }
+ catch (  ZKUtil.BadAclFormatException bafe) {
+    throw new YarnRuntimeException(YarnConfiguration.RM_ZK_ACL + "has ill-formatted ACLs");
+  }
+  List<ZKUtil.ZKAuthInfo> zkAuths=Collections.emptyList();
+  elector=new ActiveStandbyElector(zkQuorum,(int)zkSessionTimeout,electionZNode,zkAcls,zkAuths,this);
+  elector.ensureParentZNode();
+  if (!isParentZnodeSafe(clusterId)) {
+    notifyFatalError(electionZNode + " znode has invalid data! " + "Might need formatting!");
+  }
+  super.serviceInit(conf);
+}
