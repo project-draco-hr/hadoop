@@ -1,9 +1,11 @@
 {
   useFixedPorts=conf.getBoolean(YarnConfiguration.YARN_MINICLUSTER_FIXED_PORTS,YarnConfiguration.DEFAULT_YARN_MINICLUSTER_FIXED_PORTS);
   useRpc=conf.getBoolean(YarnConfiguration.YARN_MINICLUSTER_USE_RPC,YarnConfiguration.DEFAULT_YARN_MINICLUSTER_USE_RPC);
+  failoverTimeout=conf.getInt(YarnConfiguration.RM_ZK_TIMEOUT_MS,YarnConfiguration.DEFAULT_RM_ZK_TIMEOUT_MS);
   if (useRpc && !useFixedPorts) {
     throw new YarnRuntimeException("Invalid configuration!" + " Minicluster can use rpc only when configured to use fixed ports");
   }
+  conf.setBoolean(YarnConfiguration.IS_MINI_YARN_CLUSTER,true);
   if (resourceManagers.length > 1) {
     conf.setBoolean(YarnConfiguration.RM_HA_ENABLED,true);
     if (conf.get(YarnConfiguration.RM_HA_IDS) == null) {
@@ -25,6 +27,14 @@
       }
     }
 ;
+    if (!useFixedPorts) {
+      if (HAUtil.isHAEnabled(conf)) {
+        setHARMConfiguration(i,conf);
+      }
+ else {
+        setNonHARMConfiguration(conf);
+      }
+    }
     addService(new ResourceManagerWrapper(i));
   }
   for (int index=0; index < nodeManagers.length; index++) {

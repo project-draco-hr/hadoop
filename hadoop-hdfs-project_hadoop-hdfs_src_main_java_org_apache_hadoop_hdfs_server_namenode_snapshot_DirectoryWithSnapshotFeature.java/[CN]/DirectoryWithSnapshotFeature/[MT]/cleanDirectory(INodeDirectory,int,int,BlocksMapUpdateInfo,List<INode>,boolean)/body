@@ -1,0 +1,47 @@
+{
+  Quota.Counts counts=Quota.Counts.newInstance();
+  Map<INode,INode> priorCreated=null;
+  Map<INode,INode> priorDeleted=null;
+  if (snapshot == Snapshot.CURRENT_STATE_ID) {
+    currentINode.recordModification(prior);
+    DirectoryDiff lastDiff=diffs.getLast();
+    if (lastDiff != null) {
+      counts.add(lastDiff.diff.destroyCreatedList(currentINode,collectedBlocks,removedINodes));
+    }
+  }
+ else {
+    prior=getDiffs().updatePrior(snapshot,prior);
+    if (prior != Snapshot.NO_SNAPSHOT_ID) {
+      DirectoryDiff priorDiff=this.getDiffs().getDiffById(prior);
+      if (priorDiff != null && priorDiff.getSnapshotId() == prior) {
+        List<INode> cList=priorDiff.diff.getList(ListType.CREATED);
+        List<INode> dList=priorDiff.diff.getList(ListType.DELETED);
+        priorCreated=cloneDiffList(cList);
+        priorDeleted=cloneDiffList(dList);
+      }
+    }
+    counts.add(getDiffs().deleteSnapshotDiff(snapshot,prior,currentINode,collectedBlocks,removedINodes,countDiffChange));
+    if (prior != Snapshot.NO_SNAPSHOT_ID) {
+      DirectoryDiff priorDiff=this.getDiffs().getDiffById(prior);
+      if (priorDiff != null && priorDiff.getSnapshotId() == prior) {
+        if (priorCreated != null) {
+          for (          INode cNode : priorDiff.getChildrenDiff().getList(ListType.CREATED)) {
+            if (priorCreated.containsKey(cNode)) {
+              counts.add(cNode.cleanSubtree(snapshot,Snapshot.NO_SNAPSHOT_ID,collectedBlocks,removedINodes,countDiffChange));
+            }
+          }
+        }
+        for (        INode dNode : priorDiff.getChildrenDiff().getList(ListType.DELETED)) {
+          if (priorDeleted == null || !priorDeleted.containsKey(dNode)) {
+            counts.add(cleanDeletedINode(dNode,snapshot,prior,collectedBlocks,removedINodes,countDiffChange));
+          }
+        }
+      }
+    }
+  }
+  counts.add(currentINode.cleanSubtreeRecursively(snapshot,prior,collectedBlocks,removedINodes,priorDeleted,countDiffChange));
+  if (currentINode.isQuotaSet()) {
+    currentINode.getDirectoryWithQuotaFeature().addSpaceConsumed2Cache(-counts.get(Quota.NAMESPACE),-counts.get(Quota.DISKSPACE));
+  }
+  return counts;
+}
