@@ -4,7 +4,6 @@
   }
   aclBuilder.trimToSize();
   Collections.sort(aclBuilder,ACL_ENTRY_COMPARATOR);
-  AclEntry userEntry=null, groupEntry=null, otherEntry=null;
   AclEntry prevEntry=null;
   for (  AclEntry entry : aclBuilder) {
     if (prevEntry != null && ACL_ENTRY_COMPARATOR.compare(prevEntry,entry) == 0) {
@@ -13,21 +12,20 @@
     if (entry.getName() != null && (entry.getType() == MASK || entry.getType() == OTHER)) {
       throw new AclException("Invalid ACL: this entry type must not have a name: " + entry + ".");
     }
-    if (entry.getScope() == ACCESS) {
-      if (entry.getType() == USER && entry.getName() == null) {
-        userEntry=entry;
-      }
-      if (entry.getType() == GROUP && entry.getName() == null) {
-        groupEntry=entry;
-      }
-      if (entry.getType() == OTHER && entry.getName() == null) {
-        otherEntry=entry;
-      }
-    }
     prevEntry=entry;
   }
-  if (userEntry == null || groupEntry == null || otherEntry == null) {
-    throw new AclException("Invalid ACL: the user, group and other entries are required.");
+  int pivot=calculatePivotOnDefaultEntries(aclBuilder);
+  for (  AclEntryType type : EnumSet.of(USER,GROUP,OTHER)) {
+    AclEntry accessEntryKey=new AclEntry.Builder().setScope(ACCESS).setType(type).build();
+    if (Collections.binarySearch(aclBuilder,accessEntryKey,ACL_ENTRY_COMPARATOR) < 0) {
+      throw new AclException("Invalid ACL: the user, group and other entries are required.");
+    }
+    if (pivot != PIVOT_NOT_FOUND) {
+      AclEntry defaultEntryKey=new AclEntry.Builder().setScope(DEFAULT).setType(type).build();
+      if (Collections.binarySearch(aclBuilder,defaultEntryKey,ACL_ENTRY_COMPARATOR) < 0) {
+        throw new AclException("Invalid default ACL: the user, group and other entries are required.");
+      }
+    }
   }
   return Collections.unmodifiableList(aclBuilder);
 }
