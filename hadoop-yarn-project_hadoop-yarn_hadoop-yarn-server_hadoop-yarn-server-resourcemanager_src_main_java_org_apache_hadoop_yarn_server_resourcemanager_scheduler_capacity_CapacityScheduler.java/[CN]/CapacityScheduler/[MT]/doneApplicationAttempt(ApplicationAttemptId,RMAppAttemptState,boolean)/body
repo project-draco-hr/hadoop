@@ -1,0 +1,28 @@
+{
+  LOG.info("Application Attempt " + applicationAttemptId + " is done."+ " finalState="+ rmAppAttemptFinalState);
+  FiCaSchedulerApp attempt=getApplicationAttempt(applicationAttemptId);
+  SchedulerApplication application=applications.get(applicationAttemptId.getApplicationId());
+  if (application == null || attempt == null) {
+    LOG.info("Unknown application " + applicationAttemptId + " has completed!");
+    return;
+  }
+  for (  RMContainer rmContainer : attempt.getLiveContainers()) {
+    if (keepContainers && rmContainer.getState().equals(RMContainerState.RUNNING)) {
+      LOG.info("Skip killing " + rmContainer.getContainerId());
+      continue;
+    }
+    completedContainer(rmContainer,SchedulerUtils.createAbnormalContainerStatus(rmContainer.getContainerId(),SchedulerUtils.COMPLETED_APPLICATION),RMContainerEventType.KILL);
+  }
+  for (  RMContainer rmContainer : attempt.getReservedContainers()) {
+    completedContainer(rmContainer,SchedulerUtils.createAbnormalContainerStatus(rmContainer.getContainerId(),"Application Complete"),RMContainerEventType.KILL);
+  }
+  attempt.stop(rmAppAttemptFinalState);
+  String queueName=attempt.getQueue().getQueueName();
+  CSQueue queue=queues.get(queueName);
+  if (!(queue instanceof LeafQueue)) {
+    LOG.error("Cannot finish application " + "from non-leaf queue: " + queueName);
+  }
+ else {
+    queue.finishApplicationAttempt(attempt,queue.getQueueName());
+  }
+}

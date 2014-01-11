@@ -11,12 +11,13 @@
     SecurityUtil.login(conf,DFS_NAMENODE_KEYTAB_FILE_KEY,DFS_NAMENODE_USER_NAME_KEY,socAddr.getHostName());
   }
   NNStorage existingStorage=null;
+  FSImage sharedEditsImage=null;
   try {
     FSNamesystem fsns=FSNamesystem.loadFromDisk(getConfigurationWithoutSharedEdits(conf));
     existingStorage=fsns.getFSImage().getStorage();
     NamespaceInfo nsInfo=existingStorage.getNamespaceInfo();
     List<URI> sharedEditsDirs=FSNamesystem.getSharedEditsDirs(conf);
-    FSImage sharedEditsImage=new FSImage(conf,Lists.<URI>newArrayList(),sharedEditsDirs);
+    sharedEditsImage=new FSImage(conf,Lists.<URI>newArrayList(),sharedEditsDirs);
     sharedEditsImage.getEditLog().initJournalsForWrite();
     if (!sharedEditsImage.confirmFormat(force,interactive)) {
       return true;
@@ -34,6 +35,14 @@
     return true;
   }
  finally {
+    if (sharedEditsImage != null) {
+      try {
+        sharedEditsImage.close();
+      }
+ catch (      IOException ioe) {
+        LOG.warn("Could not close sharedEditsImage",ioe);
+      }
+    }
     if (existingStorage != null) {
       try {
         existingStorage.unlockAll();
