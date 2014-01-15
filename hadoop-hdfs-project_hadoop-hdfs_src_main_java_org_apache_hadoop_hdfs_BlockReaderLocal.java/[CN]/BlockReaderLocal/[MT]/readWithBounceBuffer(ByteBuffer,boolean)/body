@@ -1,14 +1,13 @@
 {
   int total=0;
-  boolean eof=false;
-  while (true) {
-    int bb=drainDataBuf(buf);
+  int bb=drainDataBuf(buf);
+  if (bb >= 0) {
     total+=bb;
-    int needed=buf.remaining();
-    if (eof || (needed == 0)) {
-      break;
-    }
- else     if (buf.isDirect() && (needed >= maxReadaheadLength) && ((dataPos % bytesPerChecksum) == 0)) {
+    if (buf.remaining() == 0)     return total;
+  }
+  boolean eof=false;
+  do {
+    if (buf.isDirect() && (buf.remaining() >= maxReadaheadLength) && ((dataPos % bytesPerChecksum) == 0)) {
       int oldLimit=buf.limit();
       int nRead;
       try {
@@ -27,7 +26,12 @@
       if (fillDataBuf(canSkipChecksum)) {
         eof=true;
       }
+      bb=drainDataBuf(buf);
+      if (bb >= 0) {
+        total+=bb;
+      }
     }
   }
-  return total == 0 ? -1 : total;
+ while ((!eof) && (buf.remaining() > 0));
+  return (eof && total == 0) ? -1 : total;
 }
