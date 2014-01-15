@@ -1,0 +1,28 @@
+{
+  LOG.info("Application " + applicationAttemptId + " is done."+ " finalState="+ rmAppAttemptFinalState);
+  SchedulerApplication application=applications.get(applicationAttemptId.getApplicationId());
+  FSSchedulerApp attempt=getSchedulerApp(applicationAttemptId);
+  if (attempt == null || application == null) {
+    LOG.info("Unknown application " + applicationAttemptId + " has completed!");
+    return;
+  }
+  for (  RMContainer rmContainer : attempt.getLiveContainers()) {
+    if (keepContainers && rmContainer.getState().equals(RMContainerState.RUNNING)) {
+      LOG.info("Skip killing " + rmContainer.getContainerId());
+      continue;
+    }
+    completedContainer(rmContainer,SchedulerUtils.createAbnormalContainerStatus(rmContainer.getContainerId(),SchedulerUtils.COMPLETED_APPLICATION),RMContainerEventType.KILL);
+  }
+  for (  RMContainer rmContainer : attempt.getReservedContainers()) {
+    completedContainer(rmContainer,SchedulerUtils.createAbnormalContainerStatus(rmContainer.getContainerId(),"Application Complete"),RMContainerEventType.KILL);
+  }
+  attempt.stop(rmAppAttemptFinalState);
+  FSLeafQueue queue=queueMgr.getLeafQueue(attempt.getQueue().getQueueName(),false);
+  boolean wasRunnable=queue.removeApp(attempt);
+  if (wasRunnable) {
+    maxRunningEnforcer.updateRunnabilityOnAppRemoval(attempt);
+  }
+ else {
+    maxRunningEnforcer.untrackNonRunnableApp(attempt);
+  }
+}

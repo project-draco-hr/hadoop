@@ -3,6 +3,7 @@
   appAttempt.masterService.unregisterAttempt(appAttemptId);
   ApplicationId applicationId=appAttemptId.getApplicationId();
   RMAppEvent appEvent=null;
+  boolean keepContainersAcrossAppAttempts=false;
 switch (finalAttemptState) {
 case FINISHED:
 {
@@ -13,14 +14,17 @@ case KILLED:
 {
   appAttempt.setTrackingUrlToRMAppPage();
   appAttempt.invalidateAMHostAndPort();
-  appEvent=new RMAppFailedAttemptEvent(applicationId,RMAppEventType.ATTEMPT_KILLED,"Application killed by user.");
+  appEvent=new RMAppFailedAttemptEvent(applicationId,RMAppEventType.ATTEMPT_KILLED,"Application killed by user.",false);
 }
 break;
 case FAILED:
 {
 appAttempt.setTrackingUrlToRMAppPage();
 appAttempt.invalidateAMHostAndPort();
-appEvent=new RMAppFailedAttemptEvent(applicationId,RMAppEventType.ATTEMPT_FAILED,appAttempt.getDiagnostics());
+if (appAttempt.submissionContext.getKeepContainersAcrossApplicationAttempts() && !appAttempt.isLastAttempt && !appAttempt.submissionContext.getUnmanagedAM()) {
+keepContainersAcrossAppAttempts=true;
+}
+appEvent=new RMAppFailedAttemptEvent(applicationId,RMAppEventType.ATTEMPT_FAILED,appAttempt.getDiagnostics(),keepContainersAcrossAppAttempts);
 }
 break;
 default :
@@ -30,6 +34,6 @@ LOG.error("Cannot get this state!! Error!!");
 break;
 }
 appAttempt.eventHandler.handle(appEvent);
-appAttempt.eventHandler.handle(new AppAttemptRemovedSchedulerEvent(appAttemptId,finalAttemptState));
+appAttempt.eventHandler.handle(new AppAttemptRemovedSchedulerEvent(appAttemptId,finalAttemptState,keepContainersAcrossAppAttempts));
 appAttempt.removeCredentials(appAttempt);
 }

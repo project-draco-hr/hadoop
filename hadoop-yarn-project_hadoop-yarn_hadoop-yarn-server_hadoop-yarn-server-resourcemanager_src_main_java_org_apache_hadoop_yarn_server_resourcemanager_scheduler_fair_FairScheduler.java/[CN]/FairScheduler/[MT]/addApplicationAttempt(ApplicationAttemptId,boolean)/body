@@ -1,0 +1,21 @@
+{
+  SchedulerApplication application=applications.get(applicationAttemptId.getApplicationId());
+  String user=application.getUser();
+  FSLeafQueue queue=(FSLeafQueue)application.getQueue();
+  FSSchedulerApp attempt=new FSSchedulerApp(applicationAttemptId,user,queue,new ActiveUsersManager(getRootQueueMetrics()),rmContext);
+  if (transferStateFromPreviousAttempt) {
+    attempt.transferStateFromPreviousAttempt(application.getCurrentAppAttempt());
+  }
+  application.setCurrentAppAttempt(attempt);
+  boolean runnable=maxRunningEnforcer.canAppBeRunnable(queue,user);
+  queue.addApp(attempt,runnable);
+  if (runnable) {
+    maxRunningEnforcer.trackRunnableApp(attempt);
+  }
+ else {
+    maxRunningEnforcer.trackNonRunnableApp(attempt);
+  }
+  queue.getMetrics().submitAppAttempt(user);
+  LOG.info("Added Application Attempt " + applicationAttemptId + " to scheduler from user: "+ user);
+  rmContext.getDispatcher().getEventHandler().handle(new RMAppAttemptEvent(applicationAttemptId,RMAppAttemptEventType.ATTEMPT_ADDED));
+}
