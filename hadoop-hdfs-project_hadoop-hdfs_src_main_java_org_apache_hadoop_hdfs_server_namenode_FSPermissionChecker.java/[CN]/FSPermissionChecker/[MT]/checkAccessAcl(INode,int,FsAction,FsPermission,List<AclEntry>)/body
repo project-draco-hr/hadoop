@@ -1,0 +1,41 @@
+{
+  boolean foundMatch=false;
+  if (user.equals(inode.getUserName(snapshotId))) {
+    if (mode.getUserAction().implies(access)) {
+      return;
+    }
+    foundMatch=true;
+  }
+  if (!foundMatch) {
+    for (    AclEntry entry : featureEntries) {
+      if (entry.getScope() == AclEntryScope.DEFAULT) {
+        break;
+      }
+      AclEntryType type=entry.getType();
+      String name=entry.getName();
+      if (type == AclEntryType.USER) {
+        if (user.equals(name)) {
+          FsAction masked=entry.getPermission().and(mode.getGroupAction());
+          if (masked.implies(access)) {
+            return;
+          }
+          foundMatch=true;
+        }
+      }
+ else       if (type == AclEntryType.GROUP) {
+        String group=name == null ? inode.getGroupName(snapshotId) : name;
+        if (groups.contains(group)) {
+          FsAction masked=entry.getPermission().and(mode.getGroupAction());
+          if (masked.implies(access)) {
+            return;
+          }
+          foundMatch=true;
+        }
+      }
+    }
+  }
+  if (!foundMatch && mode.getOtherAction().implies(access)) {
+    return;
+  }
+  throw new AccessControlException(toAccessControlString(inode,snapshotId,access,mode,featureEntries));
+}
