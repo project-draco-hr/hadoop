@@ -1,0 +1,24 @@
+{
+  BlockInfo[] oldBlocks=file.getBlocks();
+  Block pBlock=op.getPenultimateBlock();
+  Block newBlock=op.getLastBlock();
+  if (pBlock != null) {
+    Preconditions.checkState(oldBlocks != null && oldBlocks.length > 0);
+    Block oldLastBlock=oldBlocks[oldBlocks.length - 1];
+    if (oldLastBlock.getBlockId() != pBlock.getBlockId() || oldLastBlock.getGenerationStamp() != pBlock.getGenerationStamp()) {
+      throw new IOException("Mismatched block IDs or generation stamps for the old last block of file " + op.getPath() + ", the old last block is "+ oldLastBlock+ ", and the block read from editlog is "+ pBlock);
+    }
+    oldLastBlock.setNumBytes(pBlock.getNumBytes());
+    if (oldLastBlock instanceof BlockInfoUnderConstruction) {
+      fsNamesys.getBlockManager().forceCompleteBlock(file,(BlockInfoUnderConstruction)oldLastBlock);
+      fsNamesys.getBlockManager().processQueuedMessagesForBlock(pBlock);
+    }
+  }
+ else {
+    Preconditions.checkState(oldBlocks == null || oldBlocks.length == 0);
+  }
+  BlockInfo newBI=new BlockInfoUnderConstruction(newBlock,file.getBlockReplication());
+  fsNamesys.getBlockManager().addBlockCollection(newBI,file);
+  file.addBlock(newBI);
+  fsNamesys.getBlockManager().processQueuedMessagesForBlock(newBlock);
+}
