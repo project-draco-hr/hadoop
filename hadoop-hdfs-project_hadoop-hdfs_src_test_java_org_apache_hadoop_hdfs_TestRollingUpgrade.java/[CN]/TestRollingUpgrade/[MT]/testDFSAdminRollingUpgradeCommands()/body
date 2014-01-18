@@ -1,0 +1,55 @@
+{
+  final Configuration conf=new HdfsConfiguration();
+  MiniDFSCluster cluster=null;
+  try {
+    cluster=new MiniDFSCluster.Builder(conf).numDataNodes(0).build();
+    cluster.waitActive();
+    final Path foo=new Path("/foo");
+    final Path bar=new Path("/bar");
+    final Path baz=new Path("/baz");
+{
+      final DistributedFileSystem dfs=cluster.getFileSystem();
+      final DFSAdmin dfsadmin=new DFSAdmin(conf);
+      dfs.mkdirs(foo);
+{
+        final String[] args={"-rollingUpgrade","abc"};
+        Assert.assertTrue(dfsadmin.run(args) != 0);
+      }
+{
+        final String[] args={"-rollingUpgrade"};
+        Assert.assertEquals(0,dfsadmin.run(args));
+      }
+{
+        final String[] args={"-rollingUpgrade","start"};
+        Assert.assertEquals(0,dfsadmin.run(args));
+      }
+{
+        final String[] args={"-rollingUpgrade","query"};
+        Assert.assertEquals(0,dfsadmin.run(args));
+      }
+      dfs.mkdirs(bar);
+{
+        final String[] args={"-rollingUpgrade","finalize"};
+        Assert.assertEquals(0,dfsadmin.run(args));
+      }
+      dfs.mkdirs(baz);
+{
+        final String[] args={"-rollingUpgrade"};
+        Assert.assertEquals(0,dfsadmin.run(args));
+      }
+      Assert.assertTrue(dfs.exists(foo));
+      Assert.assertTrue(dfs.exists(bar));
+      Assert.assertTrue(dfs.exists(baz));
+    }
+    cluster.restartNameNode();
+{
+      final DistributedFileSystem dfs=cluster.getFileSystem();
+      Assert.assertTrue(dfs.exists(foo));
+      Assert.assertTrue(dfs.exists(bar));
+      Assert.assertTrue(dfs.exists(baz));
+    }
+  }
+  finally {
+    if (cluster != null)     cluster.shutdown();
+  }
+}

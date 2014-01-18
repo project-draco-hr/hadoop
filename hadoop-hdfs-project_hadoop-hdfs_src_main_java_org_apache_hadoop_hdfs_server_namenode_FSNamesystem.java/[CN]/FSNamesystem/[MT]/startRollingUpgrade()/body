@@ -1,0 +1,25 @@
+{
+  checkSuperuserPrivilege();
+  checkOperation(OperationCategory.WRITE);
+  writeLock();
+  try {
+    checkOperation(OperationCategory.WRITE);
+    final String err="Failed to start rolling upgrade";
+    checkNameNodeSafeMode(err);
+    if (rollingUpgradeInfo != null) {
+      throw new RollingUpgradeException(err + " since a rolling upgrade is already in progress." + "\nExisting rolling upgrade info: "+ rollingUpgradeInfo);
+    }
+    final CheckpointSignature cs=getFSImage().rollEditLog();
+    LOG.info("Successfully rolled edit log for preparing rolling upgrade." + " Checkpoint signature: " + cs);
+    rollingUpgradeInfo=new RollingUpgradeInfo(now());
+    getEditLog().logUpgradeMarker(rollingUpgradeInfo.getStartTime());
+  }
+  finally {
+    writeUnlock();
+  }
+  getEditLog().logSync();
+  if (auditLog.isInfoEnabled() && isExternalInvocation()) {
+    logAuditEvent(true,"startRollingUpgrade",null,null,null);
+  }
+  return rollingUpgradeInfo;
+}
