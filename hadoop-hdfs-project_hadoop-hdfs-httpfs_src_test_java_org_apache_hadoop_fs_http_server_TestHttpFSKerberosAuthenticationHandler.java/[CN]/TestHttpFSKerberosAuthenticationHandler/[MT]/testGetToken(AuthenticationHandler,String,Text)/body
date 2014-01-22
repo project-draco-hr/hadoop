@@ -1,0 +1,37 @@
+{
+  DelegationTokenOperation op=DelegationTokenOperation.GETDELEGATIONTOKEN;
+  HttpServletRequest request=Mockito.mock(HttpServletRequest.class);
+  HttpServletResponse response=Mockito.mock(HttpServletResponse.class);
+  Mockito.when(request.getParameter(HttpFSFileSystem.OP_PARAM)).thenReturn(op.toString());
+  Mockito.when(request.getMethod()).thenReturn(op.getHttpMethod());
+  AuthenticationToken token=Mockito.mock(AuthenticationToken.class);
+  Mockito.when(token.getUserName()).thenReturn("user");
+  Assert.assertFalse(handler.managementOperation(null,request,response));
+  Mockito.when(request.getParameter(HttpFSKerberosAuthenticator.RENEWER_PARAM)).thenReturn(renewer);
+  Mockito.reset(response);
+  StringWriter writer=new StringWriter();
+  PrintWriter pwriter=new PrintWriter(writer);
+  Mockito.when(response.getWriter()).thenReturn(pwriter);
+  Assert.assertFalse(handler.managementOperation(token,request,response));
+  if (renewer == null) {
+    Mockito.verify(token).getUserName();
+  }
+ else {
+    Mockito.verify(token,Mockito.never()).getUserName();
+  }
+  Mockito.verify(response).setStatus(HttpServletResponse.SC_OK);
+  Mockito.verify(response).setContentType(MediaType.APPLICATION_JSON);
+  pwriter.close();
+  String responseOutput=writer.toString();
+  String tokenLabel=HttpFSKerberosAuthenticator.DELEGATION_TOKEN_JSON;
+  Assert.assertTrue(responseOutput.contains(tokenLabel));
+  Assert.assertTrue(responseOutput.contains(HttpFSKerberosAuthenticator.DELEGATION_TOKEN_URL_STRING_JSON));
+  JSONObject json=(JSONObject)new JSONParser().parse(responseOutput);
+  json=(JSONObject)json.get(tokenLabel);
+  String tokenStr;
+  tokenStr=(String)json.get(HttpFSKerberosAuthenticator.DELEGATION_TOKEN_URL_STRING_JSON);
+  Token<DelegationTokenIdentifier> dt=new Token<DelegationTokenIdentifier>();
+  dt.decodeFromUrlString(tokenStr);
+  HttpFSServerWebApp.get().get(DelegationTokenManager.class).verifyToken(dt);
+  Assert.assertEquals(expectedTokenKind,dt.getKind());
+}
