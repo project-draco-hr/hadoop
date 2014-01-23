@@ -1,13 +1,19 @@
 {
+  configureAuditLogs();
   conf=new HdfsConfiguration();
   final long precision=1L;
   conf.setLong(DFSConfigKeys.DFS_NAMENODE_ACCESSTIME_PRECISION_KEY,precision);
   conf.setLong(DFSConfigKeys.DFS_BLOCKREPORT_INTERVAL_MSEC_KEY,10000L);
   conf.setBoolean(DFSConfigKeys.DFS_WEBHDFS_ENABLED_KEY,true);
+  conf.setBoolean(DFSConfigKeys.DFS_NAMENODE_AUDIT_LOG_ASYNC_KEY,useAsyncLog);
   util=new DFSTestUtil.Builder().setName("TestAuditAllowed").setNumFiles(20).build();
   cluster=new MiniDFSCluster.Builder(conf).numDataNodes(4).build();
   fs=cluster.getFileSystem();
   util.createFiles(fs,fileName);
+  Logger logger=((Log4JLogger)FSNamesystem.auditLog).getLogger();
+  @SuppressWarnings("unchecked") List<Appender> appenders=Collections.list(logger.getAllAppenders());
+  assertEquals(1,appenders.size());
+  assertEquals(useAsyncLog,appenders.get(0) instanceof AsyncAppender);
   fnames=util.getFileNames(fileName);
   util.waitReplication(fs,fileName,(short)3);
   userGroupInfo=UserGroupInformation.createUserForTesting(username,groups);
