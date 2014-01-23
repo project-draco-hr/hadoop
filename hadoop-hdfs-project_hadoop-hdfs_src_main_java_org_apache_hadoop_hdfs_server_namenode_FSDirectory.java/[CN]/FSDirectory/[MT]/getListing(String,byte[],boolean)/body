@@ -17,12 +17,22 @@
     int startChild=INodeDirectory.nextChild(contents,startAfter);
     int totalNumChildren=contents.size();
     int numOfListing=Math.min(totalNumChildren - startChild,this.lsLimit);
+    int locationBudget=this.lsLimit;
+    int listingCnt=0;
     HdfsFileStatus listing[]=new HdfsFileStatus[numOfListing];
-    for (int i=0; i < numOfListing; i++) {
+    for (int i=0; i < numOfListing && locationBudget > 0; i++) {
       INode cur=contents.get(startChild + i);
       listing[i]=createFileStatus(cur.getLocalNameBytes(),cur,needLocation,snapshot);
+      listingCnt++;
+      if (needLocation) {
+        LocatedBlocks blks=((HdfsLocatedFileStatus)listing[i]).getBlockLocations();
+        locationBudget-=(blks == null) ? 0 : blks.locatedBlockCount() * listing[i].getReplication();
+      }
     }
-    return new DirectoryListing(listing,totalNumChildren - startChild - numOfListing);
+    if (listingCnt < numOfListing) {
+      listing=Arrays.copyOf(listing,listingCnt);
+    }
+    return new DirectoryListing(listing,totalNumChildren - startChild - listingCnt);
   }
   finally {
     readUnlock();
