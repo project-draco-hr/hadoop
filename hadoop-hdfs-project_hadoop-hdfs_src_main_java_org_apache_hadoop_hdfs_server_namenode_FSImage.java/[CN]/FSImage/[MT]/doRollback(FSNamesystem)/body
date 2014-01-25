@@ -1,0 +1,31 @@
+{
+  boolean canRollback=false;
+  FSImage prevState=new FSImage(conf);
+  try {
+    prevState.getStorage().layoutVersion=HdfsConstants.LAYOUT_VERSION;
+    for (Iterator<StorageDirectory> it=storage.dirIterator(false); it.hasNext(); ) {
+      StorageDirectory sd=it.next();
+      if (!NNUpgradeUtil.canRollBack(sd,storage,prevState.getStorage(),HdfsConstants.LAYOUT_VERSION)) {
+        continue;
+      }
+      canRollback=true;
+    }
+    if (fsns.isHaEnabled()) {
+      editLog.initJournalsForWrite();
+      canRollback|=editLog.canRollBackSharedLog(prevState.getStorage(),HdfsConstants.LAYOUT_VERSION);
+    }
+    if (!canRollback)     throw new IOException("Cannot rollback. None of the storage " + "directories contain previous fs state.");
+    for (Iterator<StorageDirectory> it=storage.dirIterator(false); it.hasNext(); ) {
+      StorageDirectory sd=it.next();
+      LOG.info("Rolling back storage directory " + sd.getRoot() + ".\n   new LV = "+ prevState.getStorage().getLayoutVersion()+ "; new CTime = "+ prevState.getStorage().getCTime());
+      NNUpgradeUtil.doRollBack(sd);
+    }
+    if (fsns.isHaEnabled()) {
+      editLog.doRollback();
+    }
+    isUpgradeFinalized=true;
+  }
+  finally {
+    prevState.close();
+  }
+}
