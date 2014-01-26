@@ -1,0 +1,35 @@
+{
+  String containerid=$(CONTAINER_ID);
+  if (containerid.isEmpty()) {
+    puts("Bad request: requires container ID");
+    return;
+  }
+  ContainerId containerId=null;
+  try {
+    containerId=ConverterUtils.toContainerId(containerid);
+  }
+ catch (  IllegalArgumentException e) {
+    puts("Invalid container ID: " + containerid);
+    return;
+  }
+  ContainerReport containerReport;
+  try {
+    containerReport=appContext.getContainer(containerId);
+  }
+ catch (  IOException e) {
+    String message="Failed to read the container " + containerid + ".";
+    LOG.error(message,e);
+    html.p()._(message)._();
+    return;
+  }
+  if (containerReport == null) {
+    puts("Container not found: " + containerid);
+    return;
+  }
+  ContainerInfo container=new ContainerInfo(containerReport);
+  String logURL=containerReport.getLogUrl();
+  logURL=getPartUrl(logURL,"log");
+  setTitle(join("Container ",containerid));
+  info("Container Overview")._("State:",container.getContainerState())._("Exit Status:",container.getContainerExitStatus())._("Node:",container.getAssignedNodeId())._("Priority:",container.getPriority())._("Started:",Times.format(container.getStartedTime()))._("Elapsed:",StringUtils.formatTime(Times.elapsed(container.getStartedTime(),container.getFinishedTime())))._("Resource:",container.getAllocatedMB() + " Memory, " + container.getAllocatedVCores()+ " VCores")._("Logs:",logURL == null ? "#" : url(logURL),"Logs")._("Diagnostics:",container.getDiagnosticsInfo());
+  html._(InfoBlock.class);
+}

@@ -1,0 +1,32 @@
+{
+  Map<ApplicationAttemptId,ApplicationAttemptHistoryData> historyDataMap=new HashMap<ApplicationAttemptId,ApplicationAttemptHistoryData>();
+  Map<ApplicationAttemptId,StartFinishDataPair<ApplicationAttemptStartData,ApplicationAttemptFinishData>> startFinshDataMap=new HashMap<ApplicationAttemptId,StartFinishDataPair<ApplicationAttemptStartData,ApplicationAttemptFinishData>>();
+  HistoryFileReader hfReader=getHistoryFileReader(appId);
+  try {
+    while (hfReader.hasNext()) {
+      HistoryFileReader.Entry entry=hfReader.next();
+      if (entry.key.id.startsWith(ConverterUtils.APPLICATION_ATTEMPT_PREFIX)) {
+        if (entry.key.suffix.equals(START_DATA_SUFFIX)) {
+          retrieveStartFinishData(appId,entry,startFinshDataMap,true);
+        }
+ else         if (entry.key.suffix.equals(FINISH_DATA_SUFFIX)) {
+          retrieveStartFinishData(appId,entry,startFinshDataMap,false);
+        }
+      }
+    }
+    LOG.info("Completed reading history information of all application" + " attempts of application " + appId);
+  }
+ catch (  IOException e) {
+    LOG.info("Error when reading history information of some application" + " attempts of application " + appId);
+  }
+ finally {
+    hfReader.close();
+  }
+  for (  Map.Entry<ApplicationAttemptId,StartFinishDataPair<ApplicationAttemptStartData,ApplicationAttemptFinishData>> entry : startFinshDataMap.entrySet()) {
+    ApplicationAttemptHistoryData historyData=ApplicationAttemptHistoryData.newInstance(entry.getKey(),null,-1,null,null,null,FinalApplicationStatus.UNDEFINED,null);
+    mergeApplicationAttemptHistoryData(historyData,entry.getValue().startData);
+    mergeApplicationAttemptHistoryData(historyData,entry.getValue().finishData);
+    historyDataMap.put(entry.getKey(),historyData);
+  }
+  return historyDataMap;
+}

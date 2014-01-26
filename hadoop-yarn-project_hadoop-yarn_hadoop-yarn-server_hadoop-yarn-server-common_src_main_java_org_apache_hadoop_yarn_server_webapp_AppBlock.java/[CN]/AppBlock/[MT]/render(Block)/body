@@ -1,0 +1,77 @@
+{
+  String aid=$(APPLICATION_ID);
+  if (aid.isEmpty()) {
+    puts("Bad request: requires Application ID");
+    return;
+  }
+  ApplicationId appID=null;
+  try {
+    appID=Apps.toAppID(aid);
+  }
+ catch (  Exception e) {
+    puts("Invalid Application ID: " + aid);
+    return;
+  }
+  ApplicationReport appReport;
+  try {
+    appReport=appContext.getApplication(appID);
+  }
+ catch (  IOException e) {
+    String message="Failed to read the application " + appID + ".";
+    LOG.error(message,e);
+    html.p()._(message)._();
+    return;
+  }
+  if (appReport == null) {
+    puts("Application not found: " + aid);
+    return;
+  }
+  AppInfo app=new AppInfo(appReport);
+  setTitle(join("Application ",aid));
+  info("Application Overview")._("User:",app.getUser())._("Name:",app.getName())._("Application Type:",app.getType())._("State:",app.getAppState())._("FinalStatus:",app.getFinalAppStatus())._("Started:",Times.format(app.getStartedTime()))._("Elapsed:",StringUtils.formatTime(Times.elapsed(app.getStartedTime(),app.getFinishedTime())))._("Tracking URL:",app.getTrackingUrl() == null ? "#" : root_url(app.getTrackingUrl()),"History")._("Diagnostics:",app.getDiagnosticsInfo());
+  html._(InfoBlock.class);
+  Collection<ApplicationAttemptReport> attempts;
+  try {
+    attempts=appContext.getApplicationAttempts(appID).values();
+  }
+ catch (  IOException e) {
+    String message="Failed to read the attempts of the application " + appID + ".";
+    LOG.error(message,e);
+    html.p()._(message)._();
+    return;
+  }
+  TBODY<TABLE<Hamlet>> tbody=html.table("#attempts").thead().tr().th(".id","Attempt ID").th(".started","Started").th(".node","Node").th(".logs","Logs")._()._().tbody();
+  StringBuilder attemptsTableData=new StringBuilder("[\n");
+  for (  ApplicationAttemptReport appAttemptReport : attempts) {
+    AppAttemptInfo appAttempt=new AppAttemptInfo(appAttemptReport);
+    ContainerReport containerReport;
+    try {
+      containerReport=appContext.getAMContainer(appAttemptReport.getApplicationAttemptId());
+    }
+ catch (    IOException e) {
+      String message="Failed to read the AM container of the application attempt " + appAttemptReport.getApplicationAttemptId() + ".";
+      LOG.error(message,e);
+      html.p()._(message)._();
+      return;
+    }
+    long startTime=Long.MAX_VALUE;
+    String logsLink=null;
+    if (containerReport != null) {
+      ContainerInfo container=new ContainerInfo(containerReport);
+      startTime=container.getStartedTime();
+      logsLink=containerReport.getLogUrl();
+      logsLink=getPartUrl(logsLink,"log");
+    }
+    String nodeLink=null;
+    if (appAttempt.getHost() != null && appAttempt.getRpcPort() >= 0 && appAttempt.getRpcPort() < 65536) {
+      nodeLink=appAttempt.getHost() + ":" + appAttempt.getRpcPort();
+    }
+    attemptsTableData.append("[\"<a href='").append(url("appattempt",appAttempt.getAppAttemptId())).append("'>").append(appAttempt.getAppAttemptId()).append("</a>\",\"").append(startTime).append("\",\"<a href='").append(nodeLink == null ? "#" : url(HttpConfig.getSchemePrefix(),nodeLink)).append("'>").append(nodeLink == null ? "N/A" : StringEscapeUtils.escapeJavaScript(StringEscapeUtils.escapeHtml(nodeLink))).append("</a>\",\"<a href='").append(logsLink == null ? "#" : url(logsLink)).append("'>").append(nodeLink == null ? "N/A" : "Logs").append("</a>\"],\n");
+  }
+  if (attemptsTableData.charAt(attemptsTableData.length() - 2) == ',') {
+    attemptsTableData.delete(attemptsTableData.length() - 2,attemptsTableData.length() - 1);
+  }
+  attemptsTableData.append("]");
+  html.script().$type("text/javascript")._("var attemptsTableData=" + attemptsTableData)._();
+  tbody._()._();
+}
