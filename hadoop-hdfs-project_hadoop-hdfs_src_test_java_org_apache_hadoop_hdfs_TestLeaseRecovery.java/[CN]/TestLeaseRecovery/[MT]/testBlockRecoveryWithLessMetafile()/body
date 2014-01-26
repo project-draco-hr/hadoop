@@ -1,0 +1,32 @@
+{
+  Configuration conf=new Configuration();
+  conf.set(DFSConfigKeys.DFS_BLOCK_LOCAL_PATH_ACCESS_USER_KEY,UserGroupInformation.getCurrentUser().getShortUserName());
+  MiniDFSCluster cluster=new MiniDFSCluster.Builder(conf).numDataNodes(1).build();
+  Path file=new Path("/testRecoveryFile");
+  DistributedFileSystem dfs=cluster.getFileSystem();
+  FSDataOutputStream out=dfs.create(file);
+  int count=0;
+  while (count < 2 * 1024 * 1024) {
+    out.writeBytes("Data");
+    count+=4;
+  }
+  out.hsync();
+  ((DFSOutputStream)out.getWrappedStream()).abort();
+  LocatedBlocks locations=cluster.getNameNodeRpc().getBlockLocations(file.toString(),0,count);
+  ExtendedBlock block=locations.get(0).getBlock();
+  DataNode dn=cluster.getDataNodes().get(0);
+  BlockLocalPathInfo localPathInfo=dn.getBlockLocalPathInfo(block,null);
+  File metafile=new File(localPathInfo.getMetaPath());
+  assertTrue(metafile.exists());
+  RandomAccessFile raf=new RandomAccessFile(metafile,"rw");
+  raf.setLength(metafile.length() - 20);
+  raf.close();
+  DataNodeProperties dnProp=cluster.stopDataNode(0);
+  cluster.restartDataNode(dnProp,true);
+  DistributedFileSystem newdfs=(DistributedFileSystem)FileSystem.newInstance(cluster.getConfiguration(0));
+  count=0;
+  while (++count < 10 && !newdfs.recoverLease(file)) {
+    Thread.sleep(1000);
+  }
+  assertTrue("File should be closed",newdfs.recoverLease(file));
+}
