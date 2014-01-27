@@ -1,0 +1,46 @@
+{
+  ApplicationId appId=ApplicationId.newInstance(0,1);
+  ApplicationAttemptId appAttemptId=ApplicationAttemptId.newInstance(appId,1);
+  ContainerId containerId=ContainerId.newInstance(appAttemptId,1);
+  try {
+    writeContainerFinishData(containerId);
+    Assert.fail();
+  }
+ catch (  IOException e) {
+    Assert.assertTrue(e.getMessage().contains("is stored before the start information"));
+  }
+  writeApplicationAttemptStartData(appAttemptId);
+  int numContainers=5;
+  for (int i=1; i <= numContainers; ++i) {
+    containerId=ContainerId.newInstance(appAttemptId,i);
+    writeContainerStartData(containerId);
+    writeContainerFinishData(containerId);
+  }
+  Assert.assertEquals(numContainers,store.getContainers(appAttemptId).size());
+  for (int i=1; i <= numContainers; ++i) {
+    containerId=ContainerId.newInstance(appAttemptId,i);
+    ContainerHistoryData data=store.getContainer(containerId);
+    Assert.assertNotNull(data);
+    Assert.assertEquals(Priority.newInstance(containerId.getId()),data.getPriority());
+    Assert.assertEquals(containerId.toString(),data.getDiagnosticsInfo());
+  }
+  ContainerHistoryData masterContainer=store.getAMContainer(appAttemptId);
+  Assert.assertNotNull(masterContainer);
+  Assert.assertEquals(ContainerId.newInstance(appAttemptId,1),masterContainer.getContainerId());
+  writeApplicationAttemptFinishData(appAttemptId);
+  containerId=ContainerId.newInstance(appAttemptId,1);
+  try {
+    writeContainerStartData(containerId);
+    Assert.fail();
+  }
+ catch (  IOException e) {
+    Assert.assertTrue(e.getMessage().contains("is already stored"));
+  }
+  try {
+    writeContainerFinishData(containerId);
+    Assert.fail();
+  }
+ catch (  IOException e) {
+    Assert.assertTrue(e.getMessage().contains("is already stored"));
+  }
+}

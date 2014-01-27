@@ -1,0 +1,59 @@
+{
+  String attemptid=$(APPLICATION_ATTEMPT_ID);
+  if (attemptid.isEmpty()) {
+    puts("Bad request: requires application attempt ID");
+    return;
+  }
+  ApplicationAttemptId appAttemptId=null;
+  try {
+    appAttemptId=ConverterUtils.toApplicationAttemptId(attemptid);
+  }
+ catch (  IllegalArgumentException e) {
+    puts("Invalid application attempt ID: " + attemptid);
+    return;
+  }
+  ApplicationAttemptReport appAttemptReport;
+  try {
+    appAttemptReport=appContext.getApplicationAttempt(appAttemptId);
+  }
+ catch (  IOException e) {
+    String message="Failed to read the application attempt " + appAttemptId + ".";
+    LOG.error(message,e);
+    html.p()._(message)._();
+    return;
+  }
+  if (appAttemptReport == null) {
+    puts("Application Attempt not found: " + attemptid);
+    return;
+  }
+  AppAttemptInfo appAttempt=new AppAttemptInfo(appAttemptReport);
+  setTitle(join("Application Attempt ",attemptid));
+  String node="N/A";
+  if (appAttempt.getHost() != null && appAttempt.getRpcPort() >= 0 && appAttempt.getRpcPort() < 65536) {
+    node=appAttempt.getHost() + ":" + appAttempt.getRpcPort();
+  }
+  info("Application Attempt Overview")._("State",appAttempt.getAppAttemptState())._("Master Container",appAttempt.getAmContainerId() == null ? "#" : root_url("container",appAttempt.getAmContainerId()),String.valueOf(appAttempt.getAmContainerId()))._("Node:",node)._("Tracking URL:",appAttempt.getTrackingUrl() == null ? "#" : root_url(appAttempt.getTrackingUrl()),"History")._("Diagnostics Info:",appAttempt.getDiagnosticsInfo());
+  html._(InfoBlock.class);
+  Collection<ContainerReport> containers;
+  try {
+    containers=appContext.getContainers(appAttemptId).values();
+  }
+ catch (  IOException e) {
+    html.p()._("Sorry, Failed to get containers for application attempt" + attemptid + ".")._();
+    return;
+  }
+  TBODY<TABLE<Hamlet>> tbody=html.table("#containers").thead().tr().th(".id","Container ID").th(".node","Node").th(".exitstatus","Container Exit Status").th(".logs","Logs")._()._().tbody();
+  StringBuilder containersTableData=new StringBuilder("[\n");
+  for (  ContainerReport containerReport : containers) {
+    String logURL=containerReport.getLogUrl();
+    logURL=getPartUrl(logURL,"log");
+    ContainerInfo container=new ContainerInfo(containerReport);
+    containersTableData.append("[\"<a href='").append(url("container",container.getContainerId())).append("'>").append(container.getContainerId()).append("</a>\",\"<a href='").append(container.getAssignedNodeId()).append("'>").append(StringEscapeUtils.escapeJavaScript(StringEscapeUtils.escapeHtml(container.getAssignedNodeId()))).append("</a>\",\"").append(container.getContainerExitStatus()).append("\",\"<a href='").append(logURL == null ? "#" : url(logURL)).append("'>").append(logURL == null ? "N/A" : "Logs").append("</a>\"],\n");
+  }
+  if (containersTableData.charAt(containersTableData.length() - 2) == ',') {
+    containersTableData.delete(containersTableData.length() - 2,containersTableData.length() - 1);
+  }
+  containersTableData.append("]");
+  html.script().$type("text/javascript")._("var containersTableData=" + containersTableData)._();
+  tbody._()._();
+}

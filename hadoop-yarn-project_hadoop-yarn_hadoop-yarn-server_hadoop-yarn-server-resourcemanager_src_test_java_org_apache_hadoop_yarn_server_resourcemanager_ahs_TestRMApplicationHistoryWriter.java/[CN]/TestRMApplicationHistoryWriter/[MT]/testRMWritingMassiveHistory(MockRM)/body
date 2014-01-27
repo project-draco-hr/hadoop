@@ -1,0 +1,39 @@
+{
+  rm.start();
+  MockNM nm=rm.registerNode("127.0.0.1:1234",1024 * 10100);
+  RMApp app=rm.submitApp(1024);
+  nm.nodeHeartbeat(true);
+  RMAppAttempt attempt=app.getCurrentAppAttempt();
+  MockAM am=rm.sendAMLaunched(attempt.getAppAttemptId());
+  am.registerAppAttempt();
+  int request=10000;
+  am.allocate("127.0.0.1",1024,request,new ArrayList<ContainerId>());
+  nm.nodeHeartbeat(true);
+  List<Container> allocated=am.allocate(new ArrayList<ResourceRequest>(),new ArrayList<ContainerId>()).getAllocatedContainers();
+  int waitCount=0;
+  int allocatedSize=allocated.size();
+  while (allocatedSize < request && waitCount++ < 200) {
+    Thread.sleep(100);
+    allocated=am.allocate(new ArrayList<ResourceRequest>(),new ArrayList<ContainerId>()).getAllocatedContainers();
+    allocatedSize+=allocated.size();
+    nm.nodeHeartbeat(true);
+  }
+  Assert.assertEquals(request,allocatedSize);
+  am.unregisterAppAttempt();
+  am.waitForState(RMAppAttemptState.FINISHING);
+  nm.nodeHeartbeat(am.getApplicationAttemptId(),1,ContainerState.COMPLETE);
+  am.waitForState(RMAppAttemptState.FINISHED);
+  NodeHeartbeatResponse resp=nm.nodeHeartbeat(true);
+  List<ContainerId> cleaned=resp.getContainersToCleanup();
+  int cleanedSize=cleaned.size();
+  waitCount=0;
+  while (cleanedSize < allocatedSize && waitCount++ < 200) {
+    Thread.sleep(100);
+    resp=nm.nodeHeartbeat(true);
+    cleaned=resp.getContainersToCleanup();
+    cleanedSize+=cleaned.size();
+  }
+  Assert.assertEquals(allocatedSize,cleanedSize);
+  rm.waitForState(app.getApplicationId(),RMAppState.FINISHED);
+  rm.stop();
+}

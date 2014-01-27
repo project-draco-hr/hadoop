@@ -1,0 +1,110 @@
+{
+  long num=0;
+  boolean checkCount=false;
+  boolean checkStart=false;
+  boolean checkEnd=false;
+  boolean checkAppTypes=false;
+  boolean checkAppStates=false;
+  long countNum=0;
+  long sBegin=0;
+  long sEnd=Long.MAX_VALUE;
+  long fBegin=0;
+  long fEnd=Long.MAX_VALUE;
+  if (count != null && !count.isEmpty()) {
+    checkCount=true;
+    countNum=Long.parseLong(count);
+    if (countNum <= 0) {
+      throw new BadRequestException("limit value must be greater then 0");
+    }
+  }
+  if (startedBegin != null && !startedBegin.isEmpty()) {
+    checkStart=true;
+    sBegin=Long.parseLong(startedBegin);
+    if (sBegin < 0) {
+      throw new BadRequestException("startedTimeBegin must be greater than 0");
+    }
+  }
+  if (startedEnd != null && !startedEnd.isEmpty()) {
+    checkStart=true;
+    sEnd=Long.parseLong(startedEnd);
+    if (sEnd < 0) {
+      throw new BadRequestException("startedTimeEnd must be greater than 0");
+    }
+  }
+  if (sBegin > sEnd) {
+    throw new BadRequestException("startedTimeEnd must be greater than startTimeBegin");
+  }
+  if (finishBegin != null && !finishBegin.isEmpty()) {
+    checkEnd=true;
+    fBegin=Long.parseLong(finishBegin);
+    if (fBegin < 0) {
+      throw new BadRequestException("finishTimeBegin must be greater than 0");
+    }
+  }
+  if (finishEnd != null && !finishEnd.isEmpty()) {
+    checkEnd=true;
+    fEnd=Long.parseLong(finishEnd);
+    if (fEnd < 0) {
+      throw new BadRequestException("finishTimeEnd must be greater than 0");
+    }
+  }
+  if (fBegin > fEnd) {
+    throw new BadRequestException("finishTimeEnd must be greater than finishTimeBegin");
+  }
+  Set<String> appTypes=parseQueries(applicationTypes,false);
+  if (!appTypes.isEmpty()) {
+    checkAppTypes=true;
+  }
+  if (stateQuery != null && !stateQuery.isEmpty()) {
+    statesQuery.add(stateQuery);
+  }
+  Set<String> appStates=parseQueries(statesQuery,true);
+  if (!appStates.isEmpty()) {
+    checkAppStates=true;
+  }
+  AppsInfo allApps=new AppsInfo();
+  Collection<ApplicationReport> appReports=null;
+  try {
+    appReports=appContext.getAllApplications().values();
+  }
+ catch (  IOException e) {
+    throw new WebApplicationException(e);
+  }
+  for (  ApplicationReport appReport : appReports) {
+    if (checkCount && num == countNum) {
+      break;
+    }
+    if (checkAppStates && !appStates.contains(appReport.getYarnApplicationState().toString().toLowerCase())) {
+      continue;
+    }
+    if (finalStatusQuery != null && !finalStatusQuery.isEmpty()) {
+      FinalApplicationStatus.valueOf(finalStatusQuery);
+      if (!appReport.getFinalApplicationStatus().toString().equalsIgnoreCase(finalStatusQuery)) {
+        continue;
+      }
+    }
+    if (userQuery != null && !userQuery.isEmpty()) {
+      if (!appReport.getUser().equals(userQuery)) {
+        continue;
+      }
+    }
+    if (queueQuery != null && !queueQuery.isEmpty()) {
+      if (!appReport.getQueue().equals(queueQuery)) {
+        continue;
+      }
+    }
+    if (checkAppTypes && !appTypes.contains(appReport.getApplicationType().trim().toLowerCase())) {
+      continue;
+    }
+    if (checkStart && (appReport.getStartTime() < sBegin || appReport.getStartTime() > sEnd)) {
+      continue;
+    }
+    if (checkEnd && (appReport.getFinishTime() < fBegin || appReport.getFinishTime() > fEnd)) {
+      continue;
+    }
+    AppInfo app=new AppInfo(appReport);
+    allApps.add(app);
+    num++;
+  }
+  return allApps;
+}
