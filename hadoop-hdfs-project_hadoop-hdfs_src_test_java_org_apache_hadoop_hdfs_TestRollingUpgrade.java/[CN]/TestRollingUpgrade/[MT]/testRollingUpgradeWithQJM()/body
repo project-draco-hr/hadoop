@@ -1,0 +1,40 @@
+{
+  String nnDirPrefix=MiniDFSCluster.getBaseDirectory() + "/nn/";
+  final File nn1Dir=new File(nnDirPrefix + "image1");
+  final File nn2Dir=new File(nnDirPrefix + "image2");
+  final Configuration conf=new HdfsConfiguration();
+  final MiniJournalCluster mjc=new MiniJournalCluster.Builder(conf).build();
+  setConf(conf,nn1Dir,mjc);
+{
+    final MiniDFSCluster cluster=new MiniDFSCluster.Builder(conf).numDataNodes(0).manageNameDfsDirs(false).checkExitOnShutdown(false).build();
+    cluster.shutdown();
+  }
+  MiniDFSCluster cluster2=null;
+  try {
+    FileUtil.fullyDelete(nn2Dir);
+    FileUtil.copy(nn1Dir,FileSystem.getLocal(conf).getRaw(),new Path(nn2Dir.getAbsolutePath()),false,conf);
+    final MiniDFSCluster cluster=new MiniDFSCluster.Builder(conf).numDataNodes(0).format(false).manageNameDfsDirs(false).checkExitOnShutdown(false).build();
+    final Path foo=new Path("/foo");
+    final Path bar=new Path("/bar");
+    final RollingUpgradeInfo info1;
+{
+      final DistributedFileSystem dfs=cluster.getFileSystem();
+      dfs.mkdirs(foo);
+      info1=dfs.rollingUpgrade(RollingUpgradeAction.START);
+      LOG.info("start " + info1);
+      Assert.assertEquals(info1,dfs.rollingUpgrade(RollingUpgradeAction.QUERY));
+      dfs.mkdirs(bar);
+    }
+    final Configuration conf2=setConf(new Configuration(),nn2Dir,mjc);
+    StartupOption.ROLLINGUPGRADE.setRollingUpgradeStartupOption("started");
+    cluster2=new MiniDFSCluster.Builder(conf2).numDataNodes(0).format(false).manageNameDfsDirs(false).startupOption(StartupOption.ROLLINGUPGRADE).build();
+    final DistributedFileSystem dfs2=cluster2.getFileSystem();
+    Assert.assertTrue(dfs2.exists(foo));
+    Assert.assertTrue(dfs2.exists(bar));
+    Assert.assertEquals(info1,dfs2.rollingUpgrade(RollingUpgradeAction.QUERY));
+    LOG.info("finalize: " + dfs2.rollingUpgrade(RollingUpgradeAction.FINALIZE));
+  }
+  finally {
+    if (cluster2 != null)     cluster2.shutdown();
+  }
+}
