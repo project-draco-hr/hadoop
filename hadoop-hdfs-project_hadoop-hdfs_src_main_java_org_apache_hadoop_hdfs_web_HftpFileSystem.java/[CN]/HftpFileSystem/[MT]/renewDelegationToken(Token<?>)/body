@@ -1,10 +1,18 @@
 {
-  UserGroupInformation.getLoginUser().checkTGTAndReloginFromKeytab();
-  InetSocketAddress serviceAddr=SecurityUtil.getTokenServiceAddr(token);
-  try {
-    return DelegationTokenFetcher.renewDelegationToken(connectionFactory,DFSUtil.createUri(getUnderlyingProtocol(),serviceAddr),(Token<DelegationTokenIdentifier>)token);
+  UserGroupInformation connectUgi=ugi.getRealUser();
+  if (connectUgi == null) {
+    connectUgi=ugi;
   }
- catch (  AuthenticationException e) {
+  try {
+    return connectUgi.doAs(new PrivilegedExceptionAction<Long>(){
+      @Override public Long run() throws Exception {
+        InetSocketAddress serviceAddr=SecurityUtil.getTokenServiceAddr(token);
+        return DelegationTokenFetcher.renewDelegationToken(connectionFactory,DFSUtil.createUri(getUnderlyingProtocol(),serviceAddr),(Token<DelegationTokenIdentifier>)token);
+      }
+    }
+);
+  }
+ catch (  InterruptedException e) {
     throw new IOException(e);
   }
 }
