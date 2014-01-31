@@ -1,0 +1,52 @@
+{
+  try {
+    deleteState();
+    if (preserveChecksum) {
+      createSourceDataWithDifferentChecksumType();
+    }
+ else {
+      createSourceData();
+    }
+    FileSystem fs=cluster.getFileSystem();
+    CopyMapper copyMapper=new CopyMapper();
+    StubContext stubContext=new StubContext(getConfiguration(),null,0);
+    Mapper<Text,FileStatus,Text,Text>.Context context=stubContext.getContext();
+    Configuration configuration=context.getConfiguration();
+    EnumSet<DistCpOptions.FileAttribute> fileAttributes=EnumSet.of(DistCpOptions.FileAttribute.REPLICATION);
+    if (preserveChecksum) {
+      fileAttributes.add(DistCpOptions.FileAttribute.CHECKSUMTYPE);
+    }
+    configuration.set(DistCpOptionSwitch.PRESERVE_STATUS.getConfigLabel(),DistCpUtils.packAttributes(fileAttributes));
+    copyMapper.setup(context);
+    for (    Path path : pathList) {
+      copyMapper.map(new Text(DistCpUtils.getRelativePath(new Path(SOURCE_PATH),path)),fs.getFileStatus(path),context);
+    }
+    for (    Path path : pathList) {
+      final Path targetPath=new Path(path.toString().replaceAll(SOURCE_PATH,TARGET_PATH));
+      Assert.assertTrue(fs.exists(targetPath));
+      Assert.assertTrue(fs.isFile(targetPath) == fs.isFile(path));
+      FileStatus sourceStatus=fs.getFileStatus(path);
+      FileStatus targetStatus=fs.getFileStatus(targetPath);
+      Assert.assertEquals(sourceStatus.getReplication(),targetStatus.getReplication());
+      if (preserveChecksum) {
+        Assert.assertEquals(sourceStatus.getBlockSize(),targetStatus.getBlockSize());
+      }
+      Assert.assertTrue(!fs.isFile(targetPath) || fs.getFileChecksum(targetPath).equals(fs.getFileChecksum(path)));
+    }
+    Assert.assertEquals(pathList.size(),stubContext.getReporter().getCounter(CopyMapper.Counter.COPY).getValue());
+    if (!preserveChecksum) {
+      Assert.assertEquals(nFiles * DEFAULT_FILE_SIZE,stubContext.getReporter().getCounter(CopyMapper.Counter.BYTESCOPIED).getValue());
+    }
+ else {
+      Assert.assertEquals(nFiles * NON_DEFAULT_BLOCK_SIZE * 2,stubContext.getReporter().getCounter(CopyMapper.Counter.BYTESCOPIED).getValue());
+    }
+    testCopyingExistingFiles(fs,copyMapper,context);
+    for (    Text value : stubContext.getWriter().values()) {
+      Assert.assertTrue(value.toString() + " is not skipped",value.toString().startsWith("SKIP:"));
+    }
+  }
+ catch (  Exception e) {
+    LOG.error("Unexpected exception: ",e);
+    Assert.assertTrue(false);
+  }
+}

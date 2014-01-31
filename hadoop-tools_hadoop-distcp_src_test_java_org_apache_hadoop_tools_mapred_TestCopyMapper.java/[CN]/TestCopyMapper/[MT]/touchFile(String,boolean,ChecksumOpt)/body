@@ -1,0 +1,29 @@
+{
+  FileSystem fs;
+  DataOutputStream outputStream=null;
+  try {
+    fs=cluster.getFileSystem();
+    final Path qualifiedPath=new Path(path).makeQualified(fs.getUri(),fs.getWorkingDirectory());
+    final long blockSize=createMultipleBlocks ? NON_DEFAULT_BLOCK_SIZE : fs.getDefaultBlockSize(qualifiedPath) * 2;
+    FsPermission permission=FsPermission.getFileDefault().applyUMask(FsPermission.getUMask(fs.getConf()));
+    outputStream=fs.create(qualifiedPath,permission,EnumSet.of(CreateFlag.CREATE,CreateFlag.OVERWRITE),0,(short)(fs.getDefaultReplication(qualifiedPath) * 2),blockSize,null,checksumOpt);
+    byte[] bytes=new byte[DEFAULT_FILE_SIZE];
+    outputStream.write(bytes);
+    long fileSize=DEFAULT_FILE_SIZE;
+    if (createMultipleBlocks) {
+      while (fileSize < 2 * blockSize) {
+        outputStream.write(bytes);
+        outputStream.flush();
+        fileSize+=DEFAULT_FILE_SIZE;
+      }
+    }
+    pathList.add(qualifiedPath);
+    ++nFiles;
+    FileStatus fileStatus=fs.getFileStatus(qualifiedPath);
+    System.out.println(fileStatus.getBlockSize());
+    System.out.println(fileStatus.getReplication());
+  }
+  finally {
+    IOUtils.cleanup(null,outputStream);
+  }
+}

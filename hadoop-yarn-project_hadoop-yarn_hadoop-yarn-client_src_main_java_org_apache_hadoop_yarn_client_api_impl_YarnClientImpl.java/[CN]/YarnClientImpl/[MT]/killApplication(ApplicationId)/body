@@ -3,13 +3,19 @@
   request.setApplicationId(applicationId);
   try {
     int pollCount=0;
+    long startTime=System.currentTimeMillis();
     while (true) {
       KillApplicationResponse response=rmClient.forceKillApplication(request);
       if (response.getIsKillCompleted()) {
+        LOG.info("Killed application " + applicationId);
         break;
       }
+      long elapsedMillis=System.currentTimeMillis() - startTime;
+      if (enforceAsyncAPITimeout() && elapsedMillis >= this.asyncApiPollTimeoutMillis) {
+        throw new YarnException("Timed out while waiting for application " + applicationId + " to be killed.");
+      }
       if (++pollCount % 10 == 0) {
-        LOG.info("Watiting for application " + applicationId + " to be killed.");
+        LOG.info("Waiting for application " + applicationId + " to be killed.");
       }
       Thread.sleep(asyncApiPollIntervalMillis);
     }
@@ -17,5 +23,4 @@
  catch (  InterruptedException e) {
     LOG.error("Interrupted while waiting for application " + applicationId + " to be killed.");
   }
-  LOG.info("Killed application " + applicationId);
 }
