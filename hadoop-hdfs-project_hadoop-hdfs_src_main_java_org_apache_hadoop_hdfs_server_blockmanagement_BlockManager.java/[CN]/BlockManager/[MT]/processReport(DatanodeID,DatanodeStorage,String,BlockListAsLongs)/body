@@ -2,15 +2,20 @@
   namesystem.writeLock();
   final long startTime=Time.now();
   final long endTime;
+  DatanodeDescriptor node;
   try {
-    final DatanodeDescriptor node=datanodeManager.getDatanode(nodeID);
+    node=datanodeManager.getDatanode(nodeID);
     if (node == null || !node.isAlive) {
       throw new IOException("ProcessReport from dead or unregistered node: " + nodeID);
     }
-    final DatanodeStorageInfo storageInfo=node.updateStorage(storage);
+    DatanodeStorageInfo storageInfo=node.getStorageInfo(storage.getStorageID());
+    if (storageInfo == null) {
+      storageInfo=node.updateStorage(storage);
+      LOG.warn("Unknown storageId " + storage.getStorageID() + ", updating storageMap. This indicates a buggy "+ "DataNode that isn't heartbeating correctly.");
+    }
     if (namesystem.isInStartupSafeMode() && storageInfo.getBlockReportCount() > 0) {
       blockLog.info("BLOCK* processReport: " + "discarded non-initial block report from " + nodeID + " because namenode still in startup phase");
-      return;
+      return !node.hasStaleStorages();
     }
     if (storageInfo.numBlocks() == 0) {
       processFirstBlockReport(node,storage.getStorageID(),newReport);
@@ -21,7 +26,7 @@
     boolean staleBefore=storageInfo.areBlockContentsStale();
     storageInfo.receivedBlockReport();
     if (staleBefore && !storageInfo.areBlockContentsStale()) {
-      LOG.info("BLOCK* processReport: Received first block report from " + node + " after starting up or becoming active. Its block "+ "contents are no longer considered stale");
+      LOG.info("BLOCK* processReport: Received first block report from " + storage + " after starting up or becoming active. Its block "+ "contents are no longer considered stale");
       rescanPostponedMisreplicatedBlocks();
     }
   }
@@ -33,5 +38,6 @@
   if (metrics != null) {
     metrics.addBlockReport((int)(endTime - startTime));
   }
-  blockLog.info("BLOCK* processReport: from " + nodeID + ", blocks: "+ newReport.getNumberOfBlocks()+ ", processing time: "+ (endTime - startTime)+ " msecs");
+  blockLog.info("BLOCK* processReport: from storage " + storage.getStorageID() + " node "+ nodeID+ ", blocks: "+ newReport.getNumberOfBlocks()+ ", processing time: "+ (endTime - startTime)+ " msecs");
+  return !node.hasStaleStorages();
 }
