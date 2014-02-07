@@ -11,9 +11,11 @@
   EnumSet<YarnApplicationState> applicationStates=request.getApplicationStates();
   Set<String> users=request.getUsers();
   Set<String> queues=request.getQueues();
+  Set<String> tags=request.getApplicationTags();
   long limit=request.getLimit();
   LongRange start=request.getStartRange();
   LongRange finish=request.getFinishRange();
+  ApplicationsRequestScope scope=request.getScope();
   final Map<ApplicationId,RMApp> apps=rmContext.getRMApps();
   Iterator<RMApp> appsIter;
   if (queues != null && !queues.isEmpty()) {
@@ -48,6 +50,13 @@
   List<ApplicationReport> reports=new ArrayList<ApplicationReport>();
   while (appsIter.hasNext() && reports.size() < limit) {
     RMApp application=appsIter.next();
+    boolean allowAccess=checkAccess(callerUGI,application.getUser(),ApplicationAccessType.VIEW_APP,application);
+    if (scope == ApplicationsRequestScope.OWN && !callerUGI.getUserName().equals(application.getUser())) {
+      continue;
+    }
+ else     if (scope == ApplicationsRequestScope.VIEWABLE && !allowAccess) {
+      continue;
+    }
     if (applicationTypes != null && !applicationTypes.isEmpty()) {
       String appTypeToMatch=caseSensitive ? application.getApplicationType() : application.getApplicationType().toLowerCase();
       if (!applicationTypes.contains(appTypeToMatch)) {
@@ -68,7 +77,22 @@
     if (finish != null && !finish.containsLong(application.getFinishTime())) {
       continue;
     }
-    boolean allowAccess=checkAccess(callerUGI,application.getUser(),ApplicationAccessType.VIEW_APP,application);
+    if (tags != null && !tags.isEmpty()) {
+      Set<String> appTags=application.getApplicationTags();
+      if (appTags == null || appTags.isEmpty()) {
+        continue;
+      }
+      boolean match=false;
+      for (      String tag : tags) {
+        if (appTags.contains(tag)) {
+          match=true;
+          break;
+        }
+      }
+      if (!match) {
+        continue;
+      }
+    }
     reports.add(application.createAndGetApplicationReport(callerUGI.getUserName(),allowAccess));
   }
   GetApplicationsResponse response=recordFactory.newRecordInstance(GetApplicationsResponse.class);

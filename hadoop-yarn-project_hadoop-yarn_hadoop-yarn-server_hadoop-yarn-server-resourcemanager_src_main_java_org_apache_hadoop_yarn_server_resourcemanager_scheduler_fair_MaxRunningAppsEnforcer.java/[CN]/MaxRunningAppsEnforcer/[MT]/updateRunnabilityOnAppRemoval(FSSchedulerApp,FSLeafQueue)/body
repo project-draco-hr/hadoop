@@ -1,0 +1,53 @@
+{
+  AllocationConfiguration allocConf=scheduler.getAllocationConfiguration();
+  FSQueue highestQueueWithAppsNowRunnable=(queue.getNumRunnableApps() == allocConf.getQueueMaxApps(queue.getName()) - 1) ? queue : null;
+  FSParentQueue parent=queue.getParent();
+  while (parent != null) {
+    if (parent.getNumRunnableApps() == allocConf.getQueueMaxApps(parent.getName()) - 1) {
+      highestQueueWithAppsNowRunnable=parent;
+    }
+    parent=parent.getParent();
+  }
+  List<List<AppSchedulable>> appsNowMaybeRunnable=new ArrayList<List<AppSchedulable>>();
+  if (highestQueueWithAppsNowRunnable != null) {
+    gatherPossiblyRunnableAppLists(highestQueueWithAppsNowRunnable,appsNowMaybeRunnable);
+  }
+  String user=app.getUser();
+  Integer userNumRunning=usersNumRunnableApps.get(user);
+  if (userNumRunning == null) {
+    userNumRunning=0;
+  }
+  if (userNumRunning == allocConf.getUserMaxApps(user) - 1) {
+    List<AppSchedulable> userWaitingApps=usersNonRunnableApps.get(user);
+    if (userWaitingApps != null) {
+      appsNowMaybeRunnable.add(userWaitingApps);
+    }
+  }
+  Iterator<FSSchedulerApp> iter=new MultiListStartTimeIterator(appsNowMaybeRunnable);
+  FSSchedulerApp prev=null;
+  List<AppSchedulable> noLongerPendingApps=new ArrayList<AppSchedulable>();
+  while (iter.hasNext()) {
+    FSSchedulerApp next=iter.next();
+    if (next == prev) {
+      continue;
+    }
+    if (canAppBeRunnable(next.getQueue(),next.getUser())) {
+      trackRunnableApp(next);
+      AppSchedulable appSched=next.getAppSchedulable();
+      next.getQueue().getRunnableAppSchedulables().add(appSched);
+      noLongerPendingApps.add(appSched);
+      if (noLongerPendingApps.size() >= appsNowMaybeRunnable.size()) {
+        break;
+      }
+    }
+    prev=next;
+  }
+  for (  AppSchedulable appSched : noLongerPendingApps) {
+    if (!appSched.getApp().getQueue().getNonRunnableAppSchedulables().remove(appSched)) {
+      LOG.error("Can't make app runnable that does not already exist in queue" + " as non-runnable: " + appSched + ". This should never happen.");
+    }
+    if (!usersNonRunnableApps.remove(appSched.getApp().getUser(),appSched)) {
+      LOG.error("Waiting app " + appSched + " expected to be in "+ "usersNonRunnableApps, but was not. This should never happen.");
+    }
+  }
+}

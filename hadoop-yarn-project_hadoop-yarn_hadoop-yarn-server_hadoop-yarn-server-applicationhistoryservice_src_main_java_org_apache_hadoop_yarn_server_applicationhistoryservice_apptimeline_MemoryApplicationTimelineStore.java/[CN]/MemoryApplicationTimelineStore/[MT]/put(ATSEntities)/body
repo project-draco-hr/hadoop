@@ -1,0 +1,69 @@
+{
+  ATSPutErrors errors=new ATSPutErrors();
+  for (  ATSEntity entity : data.getEntities()) {
+    EntityId entityId=new EntityId(entity.getEntityId(),entity.getEntityType());
+    ATSEntity existingEntity=entities.get(entityId);
+    if (existingEntity == null) {
+      existingEntity=new ATSEntity();
+      existingEntity.setEntityId(entity.getEntityId());
+      existingEntity.setEntityType(entity.getEntityType());
+      existingEntity.setStartTime(entity.getStartTime());
+      entities.put(entityId,existingEntity);
+    }
+    if (entity.getEvents() != null) {
+      if (existingEntity.getEvents() == null) {
+        existingEntity.setEvents(entity.getEvents());
+      }
+ else {
+        existingEntity.addEvents(entity.getEvents());
+      }
+      Collections.sort(existingEntity.getEvents());
+    }
+    if (existingEntity.getStartTime() == null) {
+      if (existingEntity.getEvents() == null || existingEntity.getEvents().isEmpty()) {
+        ATSPutError error=new ATSPutError();
+        error.setEntityId(entityId.getId());
+        error.setEntityType(entityId.getType());
+        error.setErrorCode(1);
+        errors.addError(error);
+        entities.remove(entityId);
+        continue;
+      }
+ else {
+        existingEntity.setStartTime(entity.getEvents().get(0).getTimestamp());
+      }
+    }
+    if (entity.getPrimaryFilters() != null) {
+      if (existingEntity.getPrimaryFilters() == null) {
+        existingEntity.setPrimaryFilters(entity.getPrimaryFilters());
+      }
+ else {
+        existingEntity.addPrimaryFilters(entity.getPrimaryFilters());
+      }
+    }
+    if (entity.getOtherInfo() != null) {
+      if (existingEntity.getOtherInfo() == null) {
+        existingEntity.setOtherInfo(entity.getOtherInfo());
+      }
+ else {
+        existingEntity.addOtherInfo(entity.getOtherInfo());
+      }
+    }
+    if (entity.getRelatedEntities() == null) {
+      continue;
+    }
+    for (    Map.Entry<String,List<String>> partRelatedEntities : entity.getRelatedEntities().entrySet()) {
+      if (partRelatedEntities == null) {
+        continue;
+      }
+      for (      String idStr : partRelatedEntities.getValue()) {
+        EntityId relatedEntityId=new EntityId(idStr,partRelatedEntities.getKey());
+        ATSEntity relatedEntity=entities.get(relatedEntityId);
+        if (relatedEntity != null) {
+          relatedEntity.addRelatedEntity(existingEntity.getEntityType(),existingEntity.getEntityId());
+        }
+      }
+    }
+  }
+  return errors;
+}

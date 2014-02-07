@@ -17,10 +17,11 @@
   String[] queues={QUEUE_1,QUEUE_2};
   String[] appNames={MockApps.newAppName(),MockApps.newAppName(),MockApps.newAppName()};
   ApplicationId[] appIds={getApplicationId(101),getApplicationId(102),getApplicationId(103)};
+  List<String> tags=Arrays.asList("Tag1","Tag2","Tag3");
   for (int i=0; i < appIds.length; i++) {
     ApplicationId appId=appIds[i];
     when(mockAclsManager.checkAccess(UserGroupInformation.getCurrentUser(),ApplicationAccessType.VIEW_APP,null,appId)).thenReturn(true);
-    SubmitApplicationRequest submitRequest=mockSubmitAppRequest(appId,appNames[i],queues[i % queues.length]);
+    SubmitApplicationRequest submitRequest=mockSubmitAppRequest(appId,appNames[i],queues[i % queues.length],new HashSet<String>(tags.subList(0,i + 1)));
     rmService.submitApplication(submitRequest);
   }
   GetApplicationsRequest request=GetApplicationsRequest.newInstance();
@@ -42,4 +43,21 @@
   assertEquals("Incorrect number of applications for user",0,rmService.getApplications(request).getApplicationList().size());
   userSet.add(UserGroupInformation.getCurrentUser().getShortUserName());
   assertEquals("Incorrect number of applications for user",3,rmService.getApplications(request).getApplicationList().size());
+  request=GetApplicationsRequest.newInstance(ApplicationsRequestScope.ALL,null,null,null,null,null,null,null,null);
+  Set<String> tagSet=new HashSet<String>();
+  request.setApplicationTags(tagSet);
+  assertEquals("Incorrect number of matching tags",6,rmService.getApplications(request).getApplicationList().size());
+  tagSet=Sets.newHashSet(tags.get(0));
+  request.setApplicationTags(tagSet);
+  assertEquals("Incorrect number of matching tags",3,rmService.getApplications(request).getApplicationList().size());
+  tagSet=Sets.newHashSet(tags.get(1));
+  request.setApplicationTags(tagSet);
+  assertEquals("Incorrect number of matching tags",2,rmService.getApplications(request).getApplicationList().size());
+  tagSet=Sets.newHashSet(tags.get(2));
+  request.setApplicationTags(tagSet);
+  assertEquals("Incorrect number of matching tags",1,rmService.getApplications(request).getApplicationList().size());
+  request=GetApplicationsRequest.newInstance(ApplicationsRequestScope.VIEWABLE);
+  assertEquals("Incorrect number of applications for the scope",6,rmService.getApplications(request).getApplicationList().size());
+  request=GetApplicationsRequest.newInstance(ApplicationsRequestScope.OWN);
+  assertEquals("Incorrect number of applications for the scope",3,rmService.getApplications(request).getApplicationList().size());
 }
