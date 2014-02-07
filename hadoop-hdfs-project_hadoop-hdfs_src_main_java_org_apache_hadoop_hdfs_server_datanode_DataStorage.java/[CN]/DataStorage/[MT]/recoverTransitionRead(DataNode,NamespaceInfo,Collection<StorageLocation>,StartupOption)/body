@@ -1,2 +1,45 @@
 {
+  if (initialized) {
+    return;
+  }
+  LOG.info("Data-node version: " + HdfsConstants.DATANODE_LAYOUT_VERSION + " and name-node layout version: "+ nsInfo.getLayoutVersion());
+  this.storageDirs=new ArrayList<StorageDirectory>(dataDirs.size());
+  ArrayList<StorageState> dataDirStates=new ArrayList<StorageState>(dataDirs.size());
+  for (Iterator<StorageLocation> it=dataDirs.iterator(); it.hasNext(); ) {
+    File dataDir=it.next().getFile();
+    StorageDirectory sd=new StorageDirectory(dataDir);
+    StorageState curState;
+    try {
+      curState=sd.analyzeStorage(startOpt,this);
+switch (curState) {
+case NORMAL:
+        break;
+case NON_EXISTENT:
+      LOG.info("Storage directory " + dataDir + " does not exist");
+    it.remove();
+  continue;
+case NOT_FORMATTED:
+LOG.info("Storage directory " + dataDir + " is not formatted");
+LOG.info("Formatting ...");
+format(sd,nsInfo,datanode.getDatanodeUuid());
+break;
+default :
+sd.doRecover(curState);
+}
+}
+ catch (IOException ioe) {
+sd.unlock();
+LOG.warn("Ignoring storage directory " + dataDir + " due to an exception",ioe);
+continue;
+}
+addStorageDir(sd);
+dataDirStates.add(curState);
+}
+if (dataDirs.size() == 0 || dataDirStates.size() == 0) throw new IOException("All specified directories are not accessible or do not exist.");
+for (int idx=0; idx < getNumStorageDirs(); idx++) {
+doTransition(datanode,getStorageDir(idx),nsInfo,startOpt);
+createStorageID(getStorageDir(idx));
+}
+this.writeAll();
+this.initialized=true;
 }
