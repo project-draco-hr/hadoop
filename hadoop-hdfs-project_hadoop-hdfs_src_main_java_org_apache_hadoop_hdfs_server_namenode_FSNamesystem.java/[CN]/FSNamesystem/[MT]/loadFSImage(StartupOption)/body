@@ -1,4 +1,5 @@
 {
+  final FSImage fsImage=getFSImage();
   if (startOpt == StartupOption.FORMAT) {
     fsImage.format(this,fsImage.getStorage().determineClusterId());
     startOpt=StartupOption.REGULAR;
@@ -7,7 +8,9 @@
   writeLock();
   try {
     MetaRecoveryContext recovery=startOpt.createRecoveryContext();
-    boolean needToSave=fsImage.recoverTransitionRead(startOpt,this,recovery) && !haEnabled;
+    final boolean staleImage=fsImage.recoverTransitionRead(startOpt,this,recovery);
+    final boolean needToSave=staleImage && !haEnabled && !isRollingUpgrade();
+    LOG.info("Need to save fs image? " + needToSave + " (staleImage="+ staleImage+ ", haEnabled="+ haEnabled+ ", isRollingUpgrade="+ isRollingUpgrade()+ ")");
     if (needToSave) {
       fsImage.saveNamespace(this);
     }
