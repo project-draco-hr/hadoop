@@ -1,0 +1,59 @@
+{
+  ATSEvents atsEvents=new ATSEvents();
+  if (entityIds == null || entityIds.isEmpty())   return atsEvents;
+  Map<byte[],List<EntityIdentifier>> startTimeMap=new TreeMap<byte[],List<EntityIdentifier>>(new Comparator<byte[]>(){
+    @Override public int compare(    byte[] o1,    byte[] o2){
+      return WritableComparator.compareBytes(o1,0,o1.length,o2,0,o2.length);
+    }
+  }
+);
+  DBIterator iterator=null;
+  try {
+    for (    String entity : entityIds) {
+      byte[] startTime=getStartTime(entity,entityType,null,null,null);
+      if (startTime != null) {
+        List<EntityIdentifier> entities=startTimeMap.get(startTime);
+        if (entities == null) {
+          entities=new ArrayList<EntityIdentifier>();
+          startTimeMap.put(startTime,entities);
+        }
+        entities.add(new EntityIdentifier(entity,entityType));
+      }
+    }
+    for (    Entry<byte[],List<EntityIdentifier>> entry : startTimeMap.entrySet()) {
+      byte[] revStartTime=entry.getKey();
+      for (      EntityIdentifier entity : entry.getValue()) {
+        ATSEventsOfOneEntity atsEntity=new ATSEventsOfOneEntity();
+        atsEntity.setEntityId(entity.getId());
+        atsEntity.setEntityType(entityType);
+        atsEvents.addEvent(atsEntity);
+        KeyBuilder kb=KeyBuilder.newInstance().add(ENTITY_ENTRY_PREFIX).add(entityType).add(revStartTime).add(entity.getId()).add(TIME_COLUMN);
+        byte[] prefix=kb.getBytesForLookup();
+        if (windowEnd == null) {
+          windowEnd=Long.MAX_VALUE;
+        }
+        byte[] revts=writeReverseOrderedLong(windowEnd);
+        kb.add(revts);
+        byte[] first=kb.getBytesForLookup();
+        byte[] last=null;
+        if (windowStart != null) {
+          last=KeyBuilder.newInstance().add(prefix).add(writeReverseOrderedLong(windowStart)).getBytesForLookup();
+        }
+        if (limit == null) {
+          limit=DEFAULT_LIMIT;
+        }
+        iterator=db.iterator();
+        for (iterator.seek(first); atsEntity.getEvents().size() < limit && iterator.hasNext(); iterator.next()) {
+          byte[] key=iterator.peekNext().getKey();
+          if (!prefixMatches(prefix,prefix.length,key) || (last != null && WritableComparator.compareBytes(key,0,key.length,last,0,last.length) > 0))           break;
+          ATSEvent event=getEntityEvent(eventType,key,prefix.length,iterator.peekNext().getValue());
+          if (event != null)           atsEntity.addEvent(event);
+        }
+      }
+    }
+  }
+  finally {
+    IOUtils.cleanup(LOG,iterator);
+  }
+  return atsEvents;
+}

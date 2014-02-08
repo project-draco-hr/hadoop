@@ -1,17 +1,17 @@
 {
-  Configuration conf=new Configuration();
-  if (!conf.getBoolean(CommonConfigurationKeysPublic.HADOOP_SECURITY_AUTHORIZATION,false)) {
+  if (!getConfig().getBoolean(CommonConfigurationKeysPublic.HADOOP_SECURITY_AUTHORIZATION,false)) {
     throw RPCUtil.getRemoteException(new IOException("Service Authorization (" + CommonConfigurationKeysPublic.HADOOP_SECURITY_AUTHORIZATION + ") not enabled."));
   }
+  String argName="refreshServiceAcls";
+  if (!isRMActive()) {
+    RMAuditLogger.logFailure(UserGroupInformation.getCurrentUser().getShortUserName(),argName,adminAcl.toString(),"AdminService","ResourceManager is not active. Can not refresh Service ACLs.");
+    throwStandbyException();
+  }
   PolicyProvider policyProvider=new RMPolicyProvider();
+  Configuration conf=getConfiguration(YarnConfiguration.HADOOP_POLICY_CONFIGURATION_FILE);
   refreshServiceAcls(conf,policyProvider);
-  if (isRMActive()) {
-    rmContext.getClientRMService().refreshServiceAcls(conf,policyProvider);
-    rmContext.getApplicationMasterService().refreshServiceAcls(conf,policyProvider);
-    rmContext.getResourceTrackerService().refreshServiceAcls(conf,policyProvider);
-  }
- else {
-    LOG.warn("ResourceManager is not active. Not refreshing ACLs for " + "Clients, ApplicationMasters and NodeManagers");
-  }
+  rmContext.getClientRMService().refreshServiceAcls(conf,policyProvider);
+  rmContext.getApplicationMasterService().refreshServiceAcls(conf,policyProvider);
+  rmContext.getResourceTrackerService().refreshServiceAcls(conf,policyProvider);
   return recordFactory.newRecordInstance(RefreshServiceAclsResponse.class);
 }

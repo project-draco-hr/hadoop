@@ -1,0 +1,32 @@
+{
+  if (LOG.isTraceEnabled()) {
+    LOG.trace(this + ": " + caller+ " starting sendCallback for fd "+ fd);
+  }
+  Entry entry=entries.get(fd);
+  Preconditions.checkNotNull(entry,this + ": fdSet contained " + fd+ ", which we were "+ "not tracking.");
+  DomainSocket sock=entry.getDomainSocket();
+  if (entry.getHandler().handle(sock)) {
+    if (LOG.isTraceEnabled()) {
+      LOG.trace(this + ": " + caller+ ": closing fd "+ fd+ " at the request of the handler.");
+    }
+    if (toRemove.remove(fd) != null) {
+      if (LOG.isTraceEnabled()) {
+        LOG.trace(this + ": " + caller+ " : sendCallback processed fd "+ fd+ " in toRemove.");
+      }
+    }
+    try {
+      sock.refCount.unreferenceCheckClosed();
+    }
+ catch (    IOException e) {
+      Preconditions.checkArgument(false,this + ": file descriptor " + sock.fd+ " was closed while "+ "still in the poll(2) loop.");
+    }
+    IOUtils.cleanup(LOG,sock);
+    entries.remove(fd);
+    fdSet.remove(fd);
+  }
+ else {
+    if (LOG.isTraceEnabled()) {
+      LOG.trace(this + ": " + caller+ ": sendCallback not "+ "closing fd "+ fd);
+    }
+  }
+}
