@@ -1,0 +1,48 @@
+{
+  if (!FSImageUtil.checkFileFormat(file)) {
+    throw new IOException("Unrecognized FSImage");
+  }
+  FileSummary summary=FSImageUtil.loadSummary(file);
+  FileInputStream fin=null;
+  try {
+    fin=new FileInputStream(file.getFD());
+    ArrayList<FileSummary.Section> sections=Lists.newArrayList(summary.getSectionsList());
+    Collections.sort(sections,new Comparator<FileSummary.Section>(){
+      @Override public int compare(      FileSummary.Section s1,      FileSummary.Section s2){
+        SectionName n1=SectionName.fromString(s1.getName());
+        SectionName n2=SectionName.fromString(s2.getName());
+        if (n1 == null) {
+          return n2 == null ? 0 : -1;
+        }
+ else         if (n2 == null) {
+          return -1;
+        }
+ else {
+          return n1.ordinal() - n2.ordinal();
+        }
+      }
+    }
+);
+    for (    FileSummary.Section s : sections) {
+      fin.getChannel().position(s.getOffset());
+      InputStream is=FSImageUtil.wrapInputStreamForCompression(conf,summary.getCodec(),new BufferedInputStream(new LimitInputStream(fin,s.getLength())));
+switch (SectionName.fromString(s.getName())) {
+case STRING_TABLE:
+        loadStringTable(is);
+      break;
+case INODE:
+    loadINodeSection(is);
+  break;
+case INODE_DIR:
+loadINodeDirectorySection(is);
+break;
+default :
+break;
+}
+}
+list("",INodeId.ROOT_INODE_ID);
+}
+  finally {
+IOUtils.cleanup(null,fin);
+}
+}

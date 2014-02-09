@@ -1,0 +1,25 @@
+{
+  SnapshotManager sm=fsn.getSnapshotManager();
+  SnapshotSection.Builder b=SnapshotSection.newBuilder().setSnapshotCounter(sm.getSnapshotCounter()).setNumSnapshots(sm.getNumSnapshots());
+  INodeDirectorySnapshottable[] snapshottables=sm.getSnapshottableDirs();
+  for (  INodeDirectorySnapshottable sdir : snapshottables) {
+    b.addSnapshottableDir(sdir.getId());
+  }
+  b.build().writeDelimitedTo(out);
+  int i=0;
+  for (  INodeDirectorySnapshottable sdir : snapshottables) {
+    for (    Snapshot s : sdir.getSnapshotsByNames()) {
+      Root sroot=s.getRoot();
+      SnapshotSection.Snapshot.Builder sb=SnapshotSection.Snapshot.newBuilder().setSnapshotId(s.getId());
+      INodeSection.INodeDirectory.Builder db=buildINodeDirectory(sroot,parent.getStringMap());
+      INodeSection.INode r=INodeSection.INode.newBuilder().setId(sroot.getId()).setType(INodeSection.INode.Type.DIRECTORY).setName(ByteString.copyFrom(sroot.getLocalNameBytes())).setDirectory(db).build();
+      sb.setRoot(r).build().writeDelimitedTo(out);
+      i++;
+      if (i % FSImageFormatProtobuf.Saver.CHECK_CANCEL_INTERVAL == 0) {
+        context.checkCancelled();
+      }
+    }
+  }
+  Preconditions.checkState(i == sm.getNumSnapshots());
+  parent.commitSection(headers,FSImageFormatProtobuf.SectionName.SNAPSHOT);
+}

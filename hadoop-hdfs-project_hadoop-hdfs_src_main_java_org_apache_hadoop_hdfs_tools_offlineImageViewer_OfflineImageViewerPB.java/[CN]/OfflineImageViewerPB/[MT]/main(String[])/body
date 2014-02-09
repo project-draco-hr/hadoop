@@ -1,0 +1,48 @@
+{
+  Options options=buildOptions();
+  if (args.length == 0) {
+    printUsage();
+    return;
+  }
+  CommandLineParser parser=new PosixParser();
+  CommandLine cmd;
+  try {
+    cmd=parser.parse(options,args);
+  }
+ catch (  ParseException e) {
+    System.out.println("Error parsing command-line options: ");
+    printUsage();
+    return;
+  }
+  if (cmd.hasOption("h")) {
+    printUsage();
+    return;
+  }
+  String inputFile=cmd.getOptionValue("i");
+  String processor=cmd.getOptionValue("p","Ls");
+  String outputFile=cmd.getOptionValue("o");
+  PrintWriter out=(outputFile == null || outputFile.equals("-")) ? new PrintWriter(System.out) : new PrintWriter(new File(outputFile));
+  Configuration conf=new Configuration();
+  try {
+    if (processor.equals("FileDistribution")) {
+      long maxSize=Long.parseLong(cmd.getOptionValue("maxSize","0"));
+      int step=Integer.parseInt(cmd.getOptionValue("step","0"));
+      new FileDistributionCalculator(conf,maxSize,step,out).visit(new RandomAccessFile(inputFile,"r"));
+    }
+ else     if (processor.equals("XML")) {
+      new PBImageXmlWriter(conf,out).visit(new RandomAccessFile(inputFile,"r"));
+    }
+ else {
+      new LsrPBImage(conf,out).visit(new RandomAccessFile(inputFile,"r"));
+    }
+  }
+ catch (  EOFException e) {
+    System.err.println("Input file ended unexpectedly. Exiting");
+  }
+catch (  IOException e) {
+    System.err.println("Encountered exception.  Exiting: " + e.getMessage());
+  }
+ finally {
+    out.close();
+  }
+}
