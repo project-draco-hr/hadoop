@@ -1,0 +1,25 @@
+{
+  Configuration conf=new HdfsConfiguration();
+  final String[] racks={"/rack1","/rack1","/rack1","/rack2","/rack2","/rack2"};
+  storages=DFSTestUtil.createDatanodeStorageInfos(racks);
+  dataNodes=DFSTestUtil.toDatanodeDescriptor(storages);
+  FileSystem.setDefaultUri(conf,"hdfs://localhost:0");
+  conf.set(DFSConfigKeys.DFS_NAMENODE_HTTP_ADDRESS_KEY,"0.0.0.0:0");
+  File baseDir=PathUtils.getTestDir(TestReplicationPolicy.class);
+  conf.set(DFSConfigKeys.DFS_NAMENODE_NAME_DIR_KEY,new File(baseDir,"name").getPath());
+  conf.setBoolean(DFSConfigKeys.DFS_NAMENODE_AVOID_STALE_DATANODE_FOR_READ_KEY,true);
+  conf.setBoolean(DFSConfigKeys.DFS_NAMENODE_AVOID_STALE_DATANODE_FOR_WRITE_KEY,true);
+  conf.setBoolean(DFSConfigKeys.DFS_NAMENODE_REPLICATION_CONSIDERLOAD_KEY,true);
+  DFSTestUtil.formatNameNode(conf);
+  namenode=new NameNode(conf);
+  int blockSize=1024;
+  dnrList=new ArrayList<DatanodeRegistration>();
+  dnManager=namenode.getNamesystem().getBlockManager().getDatanodeManager();
+  for (int i=0; i < 6; i++) {
+    DatanodeRegistration dnr=new DatanodeRegistration(dataNodes[i],new StorageInfo(),new ExportedBlockKeys(),VersionInfo.getVersion());
+    dnrList.add(dnr);
+    dnManager.registerDatanode(dnr);
+    dataNodes[i].getStorageInfos()[0].setUtilizationForTesting(2 * HdfsConstants.MIN_BLOCKS_FOR_WRITE * blockSize,0L,2 * HdfsConstants.MIN_BLOCKS_FOR_WRITE * blockSize,0L);
+    dataNodes[i].updateHeartbeat(BlockManagerTestUtil.getStorageReportsForDatanode(dataNodes[i]),0L,0L,0,0);
+  }
+}
