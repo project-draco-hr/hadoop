@@ -1,0 +1,35 @@
+{
+  Iterator<INodeWithAdditionalFields> iter=fsn.getFSDirectory().getINodeMap().getMapIterator();
+  int i=0;
+  while (iter.hasNext()) {
+    INodeWithAdditionalFields n=iter.next();
+    if (!n.isDirectory()) {
+      continue;
+    }
+    ReadOnlyList<INode> children=n.asDirectory().getChildrenList(Snapshot.CURRENT_STATE_ID);
+    if (children.size() > 0) {
+      INodeDirectorySection.DirEntry.Builder b=INodeDirectorySection.DirEntry.newBuilder().setParent(n.getId());
+      List<INodeReference> refs=new ArrayList<INodeReference>();
+      for (      INode inode : children) {
+        if (!inode.isReference()) {
+          b.addChildren(inode.getId());
+        }
+ else {
+          refs.add(inode.asReference());
+        }
+      }
+      b.setNumOfRef(refs.size());
+      INodeDirectorySection.DirEntry e=b.build();
+      e.writeDelimitedTo(out);
+      for (      INodeReference ref : refs) {
+        INodeSection.INodeReference.Builder rb=buildINodeReference(ref);
+        rb.build().writeDelimitedTo(out);
+      }
+    }
+    ++i;
+    if (i % FSImageFormatProtobuf.Saver.CHECK_CANCEL_INTERVAL == 0) {
+      context.checkCancelled();
+    }
+  }
+  parent.commitSection(summary,FSImageFormatProtobuf.SectionName.INODE_DIR);
+}
