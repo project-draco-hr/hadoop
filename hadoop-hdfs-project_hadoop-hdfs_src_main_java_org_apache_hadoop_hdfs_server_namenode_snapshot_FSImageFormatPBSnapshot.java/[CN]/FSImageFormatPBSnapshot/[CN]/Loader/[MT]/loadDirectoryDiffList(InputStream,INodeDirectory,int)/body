@@ -3,6 +3,7 @@
     dir.addSnapshotFeature(null);
   }
   DirectoryDiffList diffs=dir.getDiffs();
+  final LoaderContext state=parent.getLoaderContext();
   for (int i=0; i < size; i++) {
     SnapshotDiffSection.DirectoryDiff diffInPb=SnapshotDiffSection.DirectoryDiff.parseDelimitedFrom(in);
     final int snapshotId=diffInPb.getSnapshotId();
@@ -16,10 +17,14 @@
  else     if (diffInPb.hasSnapshotCopy()) {
       INodeSection.INodeDirectory dirCopyInPb=diffInPb.getSnapshotCopy();
       final byte[] name=diffInPb.getName().toByteArray();
-      PermissionStatus permission=loadPermission(dirCopyInPb.getPermission(),parent.getLoaderContext().getStringTable());
+      PermissionStatus permission=loadPermission(dirCopyInPb.getPermission(),state.getStringTable());
+      AclFeature acl=null;
+      if (dirCopyInPb.hasAclId()) {
+        acl=new AclFeature(FSImageFormatPBINode.Loader.loadAclEntries(dirCopyInPb.getAclId(),state.getExtendedAclTable()));
+      }
       long modTime=dirCopyInPb.getModificationTime();
       boolean noQuota=dirCopyInPb.getNsQuota() == -1 && dirCopyInPb.getDsQuota() == -1;
-      copy=noQuota ? new INodeDirectoryAttributes.SnapshotCopy(name,permission,null,modTime) : new INodeDirectoryAttributes.CopyWithQuota(name,permission,null,modTime,dirCopyInPb.getNsQuota(),dirCopyInPb.getDsQuota());
+      copy=noQuota ? new INodeDirectoryAttributes.SnapshotCopy(name,permission,acl,modTime) : new INodeDirectoryAttributes.CopyWithQuota(name,permission,acl,modTime,dirCopyInPb.getNsQuota(),dirCopyInPb.getDsQuota());
     }
     List<INode> clist=loadCreatedList(in,dir,diffInPb.getCreatedListSize());
     List<INode> dlist=loadDeletedList(in,dir,diffInPb.getNumOfDeletedRef(),diffInPb.getDeletedINodeList());

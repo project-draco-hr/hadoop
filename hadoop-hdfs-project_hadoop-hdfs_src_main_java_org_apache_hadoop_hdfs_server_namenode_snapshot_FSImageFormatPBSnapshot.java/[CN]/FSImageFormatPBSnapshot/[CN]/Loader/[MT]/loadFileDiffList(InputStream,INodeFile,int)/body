@@ -1,12 +1,17 @@
 {
   final FileDiffList diffs=new FileDiffList();
+  final LoaderContext state=parent.getLoaderContext();
   for (int i=0; i < size; i++) {
     SnapshotDiffSection.FileDiff pbf=SnapshotDiffSection.FileDiff.parseDelimitedFrom(in);
     INodeFileAttributes copy=null;
     if (pbf.hasSnapshotCopy()) {
       INodeSection.INodeFile fileInPb=pbf.getSnapshotCopy();
-      PermissionStatus permission=loadPermission(fileInPb.getPermission(),parent.getLoaderContext().getStringTable());
-      copy=new INodeFileAttributes.SnapshotCopy(pbf.getName().toByteArray(),permission,null,fileInPb.getModificationTime(),fileInPb.getAccessTime(),(short)fileInPb.getReplication(),fileInPb.getPreferredBlockSize());
+      PermissionStatus permission=loadPermission(fileInPb.getPermission(),state.getStringTable());
+      AclFeature acl=null;
+      if (fileInPb.hasAclId()) {
+        acl=new AclFeature(FSImageFormatPBINode.Loader.loadAclEntries(fileInPb.getAclId(),state.getExtendedAclTable()));
+      }
+      copy=new INodeFileAttributes.SnapshotCopy(pbf.getName().toByteArray(),permission,acl,fileInPb.getModificationTime(),fileInPb.getAccessTime(),(short)fileInPb.getReplication(),fileInPb.getPreferredBlockSize());
     }
     FileDiff diff=new FileDiff(pbf.getSnapshotId(),copy,null,pbf.getFileSize());
     diffs.addFirst(diff);
