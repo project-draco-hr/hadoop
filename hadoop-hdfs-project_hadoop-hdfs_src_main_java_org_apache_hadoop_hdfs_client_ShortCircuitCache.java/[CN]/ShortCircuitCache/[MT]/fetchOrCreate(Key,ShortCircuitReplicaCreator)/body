@@ -1,0 +1,35 @@
+{
+  Waitable<ShortCircuitReplicaInfo> newWaitable=null;
+  lock.lock();
+  try {
+    ShortCircuitReplicaInfo info=null;
+    do {
+      if (closed) {
+        if (LOG.isTraceEnabled()) {
+          LOG.trace(this + ": can't fetchOrCreate " + key+ " because the cache is closed.");
+        }
+        return null;
+      }
+      Waitable<ShortCircuitReplicaInfo> waitable=replicaInfoMap.get(key);
+      if (waitable != null) {
+        try {
+          info=fetch(key,waitable);
+        }
+ catch (        RetriableException e) {
+          if (LOG.isDebugEnabled()) {
+            LOG.debug(this + ": retrying " + e.getMessage());
+          }
+          continue;
+        }
+      }
+    }
+ while (false);
+    if (info != null)     return info;
+    newWaitable=new Waitable<ShortCircuitReplicaInfo>(lock.newCondition());
+    replicaInfoMap.put(key,newWaitable);
+  }
+  finally {
+    lock.unlock();
+  }
+  return create(key,creator,newWaitable);
+}

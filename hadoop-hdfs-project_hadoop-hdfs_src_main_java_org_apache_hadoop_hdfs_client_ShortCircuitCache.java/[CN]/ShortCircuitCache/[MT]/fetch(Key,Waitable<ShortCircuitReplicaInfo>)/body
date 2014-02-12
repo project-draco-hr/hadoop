@@ -1,0 +1,33 @@
+{
+  ShortCircuitReplicaInfo info;
+  try {
+    if (LOG.isTraceEnabled()) {
+      LOG.trace(this + ": found waitable for " + key);
+    }
+    info=waitable.await();
+  }
+ catch (  InterruptedException e) {
+    LOG.info(this + ": interrupted while waiting for " + key);
+    Thread.currentThread().interrupt();
+    throw new RetriableException("interrupted");
+  }
+  if (info.getInvalidTokenException() != null) {
+    LOG.warn(this + ": could not get " + key+ " due to InvalidToken "+ "exception.",info.getInvalidTokenException());
+    return info;
+  }
+  ShortCircuitReplica replica=info.getReplica();
+  if (replica == null) {
+    LOG.warn(this + ": failed to get " + key);
+    return info;
+  }
+  if (replica.purged) {
+    throw new RetriableException("Ignoring purged replica " + replica + ".  Retrying.");
+  }
+  if (replica.isStale()) {
+    LOG.info(this + ": got stale replica " + replica+ ".  Removing "+ "this replica from the replicaInfoMap and retrying.");
+    purge(replica);
+    throw new RetriableException("ignoring stale replica " + replica);
+  }
+  ref(replica);
+  return info;
+}

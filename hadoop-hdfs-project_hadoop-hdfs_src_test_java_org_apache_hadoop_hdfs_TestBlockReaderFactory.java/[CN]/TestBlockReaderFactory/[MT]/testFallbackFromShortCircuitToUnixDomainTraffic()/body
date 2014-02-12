@@ -1,0 +1,20 @@
+{
+  DFSInputStream.tcpReadsDisabledForTesting=true;
+  TemporarySocketDirectory sockDir=new TemporarySocketDirectory();
+  Configuration clientConf=createShortCircuitConf("testFallbackFromShortCircuitToUnixDomainTraffic",sockDir);
+  clientConf.setBoolean(DFS_CLIENT_DOMAIN_SOCKET_DATA_TRAFFIC,true);
+  Configuration serverConf=new Configuration(clientConf);
+  serverConf.setBoolean(DFS_CLIENT_READ_SHORTCIRCUIT_KEY,false);
+  MiniDFSCluster cluster=new MiniDFSCluster.Builder(serverConf).numDataNodes(1).build();
+  cluster.waitActive();
+  FileSystem dfs=FileSystem.get(cluster.getURI(0),clientConf);
+  String TEST_FILE="/test_file";
+  final int TEST_FILE_LEN=8193;
+  final int SEED=0xFADED;
+  DFSTestUtil.createFile(dfs,new Path(TEST_FILE),TEST_FILE_LEN,(short)1,SEED);
+  byte contents[]=DFSTestUtil.readFileBuffer(dfs,new Path(TEST_FILE));
+  byte expected[]=DFSTestUtil.calculateFileContentsFromSeed(SEED,TEST_FILE_LEN);
+  Assert.assertTrue(Arrays.equals(contents,expected));
+  cluster.shutdown();
+  sockDir.close();
+}

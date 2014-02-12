@@ -1,0 +1,37 @@
+{
+  ShortCircuitReplicaInfo info=null;
+  try {
+    if (LOG.isTraceEnabled()) {
+      LOG.trace(this + ": loading " + key);
+    }
+    info=creator.createShortCircuitReplicaInfo();
+  }
+ catch (  RuntimeException e) {
+    LOG.warn(this + ": failed to load " + key,e);
+  }
+  if (info == null)   info=new ShortCircuitReplicaInfo();
+  lock.lock();
+  try {
+    if (info.getReplica() != null) {
+      if (LOG.isTraceEnabled()) {
+        LOG.trace(this + ": successfully loaded " + info.getReplica());
+      }
+      startCacheCleanerThreadIfNeeded();
+    }
+ else {
+      Waitable<ShortCircuitReplicaInfo> waitableInMap=replicaInfoMap.get(key);
+      if (waitableInMap == newWaitable)       replicaInfoMap.remove(key);
+      if (info.getInvalidTokenException() != null) {
+        LOG.warn(this + ": could not load " + key+ " due to InvalidToken "+ "exception.",info.getInvalidTokenException());
+      }
+ else {
+        LOG.warn(this + ": failed to load " + key);
+      }
+    }
+    newWaitable.provide(info);
+  }
+  finally {
+    lock.unlock();
+  }
+  return info;
+}

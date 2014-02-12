@@ -3,9 +3,11 @@
   int refetchEncryptionKey=1;
   while (true) {
     CachingStrategy curCachingStrategy;
+    boolean allowShortCircuitLocalReads;
 synchronized (this) {
       block=getBlockAt(block.getStartOffset(),false);
       curCachingStrategy=cachingStrategy;
+      allowShortCircuitLocalReads=!shortCircuitForbidden();
     }
     DNAddrPair retval=chooseDataNode(block);
     DatanodeInfo chosenNode=retval.info;
@@ -14,7 +16,7 @@ synchronized (this) {
     try {
       Token<BlockTokenIdentifier> blockToken=block.getBlockToken();
       int len=(int)(end - start + 1);
-      reader=getBlockReader(targetAddr,chosenNode,src,block.getBlock(),blockToken,start,len,buffersize,verifyChecksum,dfsClient.clientName,curCachingStrategy);
+      reader=new BlockReaderFactory(dfsClient.getConf()).setInetSocketAddress(targetAddr).setRemotePeerFactory(dfsClient).setDatanodeInfo(chosenNode).setFileName(src).setBlock(block.getBlock()).setBlockToken(blockToken).setStartOffset(start).setVerifyChecksum(verifyChecksum).setClientName(dfsClient.clientName).setLength(len).setCachingStrategy(curCachingStrategy).setAllowShortCircuitLocalReads(allowShortCircuitLocalReads).setClientCacheContext(dfsClient.getClientContext()).setUserGroupInformation(dfsClient.ugi).setConfiguration(dfsClient.getConfiguration()).build();
       int nread=reader.readAll(buf,offset,len);
       if (nread != len) {
         throw new IOException("truncated return from reader.read(): " + "excpected " + len + ", got "+ nread);
@@ -24,11 +26,6 @@ synchronized (this) {
  catch (    ChecksumException e) {
       DFSClient.LOG.warn("fetchBlockByteRange(). Got a checksum exception for " + src + " at "+ block.getBlock()+ ":"+ e.getPos()+ " from "+ chosenNode);
       addIntoCorruptedBlockMap(block.getBlock(),chosenNode,corruptedBlockMap);
-    }
-catch (    AccessControlException ex) {
-      DFSClient.LOG.warn("Short circuit access failed " + ex);
-      dfsClient.disableLegacyBlockReaderLocal();
-      continue;
     }
 catch (    IOException e) {
       if (e instanceof InvalidEncryptionKeyException && refetchEncryptionKey > 0) {

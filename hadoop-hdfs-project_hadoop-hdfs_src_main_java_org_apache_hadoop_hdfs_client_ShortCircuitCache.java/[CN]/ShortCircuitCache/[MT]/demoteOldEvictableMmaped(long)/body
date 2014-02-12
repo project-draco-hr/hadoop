@@ -1,0 +1,27 @@
+{
+  int numDemoted=0;
+  boolean needMoreSpace=false;
+  Long evictionTimeNs=Long.valueOf(0);
+  while (true) {
+    Entry<Long,ShortCircuitReplica> entry=evictableMmapped.ceilingEntry(evictionTimeNs);
+    if (entry == null)     break;
+    evictionTimeNs=entry.getKey();
+    long evictionTimeMs=TimeUnit.MILLISECONDS.convert(evictionTimeNs,TimeUnit.NANOSECONDS);
+    if (evictionTimeMs + maxEvictableMmapedLifespanMs >= now) {
+      if (evictableMmapped.size() < maxEvictableMmapedSize) {
+        break;
+      }
+      needMoreSpace=true;
+    }
+    ShortCircuitReplica replica=entry.getValue();
+    if (LOG.isTraceEnabled()) {
+      String rationale=needMoreSpace ? "because we need more space" : "because it's too old";
+      LOG.trace("demoteOldEvictable: demoting " + replica + ": "+ rationale+ ": "+ StringUtils.getStackTrace(Thread.currentThread()));
+    }
+    removeEvictable(replica,evictableMmapped);
+    munmap(replica);
+    insertEvictable(evictionTimeNs,replica,evictable);
+    numDemoted++;
+  }
+  return numDemoted;
+}
