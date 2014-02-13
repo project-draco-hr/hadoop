@@ -1,16 +1,23 @@
 {
   Map<ApplicationAttemptId,ApplicationAttemptHistoryData> historyDataMap=new HashMap<ApplicationAttemptId,ApplicationAttemptHistoryData>();
-  Map<ApplicationAttemptId,StartFinishDataPair<ApplicationAttemptStartData,ApplicationAttemptFinishData>> startFinshDataMap=new HashMap<ApplicationAttemptId,StartFinishDataPair<ApplicationAttemptStartData,ApplicationAttemptFinishData>>();
   HistoryFileReader hfReader=getHistoryFileReader(appId);
   try {
     while (hfReader.hasNext()) {
       HistoryFileReader.Entry entry=hfReader.next();
       if (entry.key.id.startsWith(ConverterUtils.APPLICATION_ATTEMPT_PREFIX)) {
-        if (entry.key.suffix.equals(START_DATA_SUFFIX)) {
-          retrieveStartFinishData(appId,entry,startFinshDataMap,true);
-        }
- else         if (entry.key.suffix.equals(FINISH_DATA_SUFFIX)) {
-          retrieveStartFinishData(appId,entry,startFinshDataMap,false);
+        ApplicationAttemptId appAttemptId=ConverterUtils.toApplicationAttemptId(entry.key.id);
+        if (appAttemptId.getApplicationId().equals(appId)) {
+          ApplicationAttemptHistoryData historyData=historyDataMap.get(appAttemptId);
+          if (historyData == null) {
+            historyData=ApplicationAttemptHistoryData.newInstance(appAttemptId,null,-1,null,null,null,FinalApplicationStatus.UNDEFINED,null);
+            historyDataMap.put(appAttemptId,historyData);
+          }
+          if (entry.key.suffix.equals(START_DATA_SUFFIX)) {
+            mergeApplicationAttemptHistoryData(historyData,parseApplicationAttemptStartData(entry.value));
+          }
+ else           if (entry.key.suffix.equals(FINISH_DATA_SUFFIX)) {
+            mergeApplicationAttemptHistoryData(historyData,parseApplicationAttemptFinishData(entry.value));
+          }
         }
       }
     }
@@ -21,12 +28,6 @@
   }
  finally {
     hfReader.close();
-  }
-  for (  Map.Entry<ApplicationAttemptId,StartFinishDataPair<ApplicationAttemptStartData,ApplicationAttemptFinishData>> entry : startFinshDataMap.entrySet()) {
-    ApplicationAttemptHistoryData historyData=ApplicationAttemptHistoryData.newInstance(entry.getKey(),null,-1,null,null,null,FinalApplicationStatus.UNDEFINED,null);
-    mergeApplicationAttemptHistoryData(historyData,entry.getValue().startData);
-    mergeApplicationAttemptHistoryData(historyData,entry.getValue().finishData);
-    historyDataMap.put(entry.getKey(),historyData);
   }
   return historyDataMap;
 }
