@@ -1,0 +1,35 @@
+{
+  if (createShortCircuitReplicaInfoCallback != null) {
+    ShortCircuitReplicaInfo info=createShortCircuitReplicaInfoCallback.createShortCircuitReplicaInfo();
+    if (info != null)     return info;
+  }
+  if (LOG.isTraceEnabled()) {
+    LOG.trace(this + ": trying to create ShortCircuitReplicaInfo.");
+  }
+  BlockReaderPeer curPeer;
+  while (true) {
+    curPeer=nextDomainPeer();
+    if (curPeer == null)     break;
+    DomainPeer peer=(DomainPeer)curPeer.peer;
+    try {
+      ShortCircuitReplicaInfo info=requestFileDescriptors(peer);
+      clientContext.getPeerCache().put(datanode,peer);
+      return info;
+    }
+ catch (    IOException e) {
+      if (curPeer.fromCache) {
+        if (LOG.isDebugEnabled()) {
+          LOG.debug(this + ": closing stale domain peer " + peer,e);
+        }
+        IOUtils.cleanup(LOG,peer);
+      }
+ else {
+        LOG.warn(this + ": I/O error requesting file descriptors.  " + "Disabling domain socket "+ peer.getDomainSocket(),e);
+        IOUtils.cleanup(LOG,peer);
+        clientContext.getDomainSocketFactory().disableDomainSocketPath(pathInfo.getPath());
+        return null;
+      }
+    }
+  }
+  return null;
+}

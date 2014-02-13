@@ -1,0 +1,31 @@
+{
+  if (LOG.isTraceEnabled()) {
+    LOG.trace(this + ": trying to construct a BlockReaderLocal " + "for short-circuit reads.");
+  }
+  if (pathInfo == null) {
+    pathInfo=clientContext.getDomainSocketFactory().getPathInfo(inetSocketAddress,conf);
+  }
+  if (!pathInfo.getPathState().getUsableForShortCircuit()) {
+    if (LOG.isTraceEnabled()) {
+      LOG.trace(this + ": " + pathInfo+ " is not "+ "usable for short circuit; giving up on BlockReaderLocal.");
+    }
+    return null;
+  }
+  ShortCircuitCache cache=clientContext.getShortCircuitCache();
+  ExtendedBlockId key=new ExtendedBlockId(block.getBlockId(),block.getBlockPoolId());
+  ShortCircuitReplicaInfo info=cache.fetchOrCreate(key,this);
+  InvalidToken exc=info.getInvalidTokenException();
+  if (exc != null) {
+    if (LOG.isTraceEnabled()) {
+      LOG.trace(this + ": got InvalidToken exception while trying to " + "construct BlockReaderLocal via "+ pathInfo.getPath());
+    }
+    throw exc;
+  }
+  if (info.getReplica() == null) {
+    if (LOG.isTraceEnabled()) {
+      LOG.trace(this + ": failed to get ShortCircuitReplica.  " + "Cannot construct BlockReaderLocal via "+ pathInfo.getPath());
+    }
+    return null;
+  }
+  return new BlockReaderLocal.Builder(conf).setFilename(fileName).setBlock(block).setStartOffset(startOffset).setShortCircuitReplica(info.getReplica()).setDatanodeID(datanode).setVerifyChecksum(verifyChecksum).setCachingStrategy(cachingStrategy).build();
+}

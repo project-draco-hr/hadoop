@@ -2,10 +2,10 @@
   boolean success=false;
   FileInputStream blockIn=null, metaIn=null;
   MappableBlock mappableBlock=null;
-  ExtendedBlock extBlk=new ExtendedBlock(key.bpid,key.id,length,genstamp);
+  ExtendedBlock extBlk=new ExtendedBlock(key.getBlockPoolId(),key.getBlockId(),length,genstamp);
   long newUsedBytes=usedBytesCount.reserve(length);
   if (newUsedBytes < 0) {
-    LOG.warn("Failed to cache block id " + key.id + ", pool "+ key.bpid+ ": could not reserve "+ length+ " more bytes in the "+ "cache: "+ DFSConfigKeys.DFS_DATANODE_MAX_LOCKED_MEMORY_KEY+ " of "+ maxBytes+ " exceeded.");
+    LOG.warn("Failed to cache " + key + ": could not reserve "+ length+ " more bytes in the cache: "+ DFSConfigKeys.DFS_DATANODE_MAX_LOCKED_MEMORY_KEY+ " of "+ maxBytes+ " exceeded.");
     numBlocksFailedToCache.incrementAndGet();
     return;
   }
@@ -15,26 +15,26 @@
       metaIn=(FileInputStream)dataset.getMetaDataInputStream(extBlk).getWrappedStream();
     }
  catch (    ClassCastException e) {
-      LOG.warn("Failed to cache block with id " + key.id + ", pool "+ key.bpid+ ": Underlying blocks are not backed by files.",e);
+      LOG.warn("Failed to cache " + key + ": Underlying blocks are not backed by files.",e);
       return;
     }
 catch (    FileNotFoundException e) {
-      LOG.info("Failed to cache block with id " + key.id + ", pool "+ key.bpid+ ": failed to find backing files.");
+      LOG.info("Failed to cache " + key + ": failed to find backing "+ "files.");
       return;
     }
 catch (    IOException e) {
-      LOG.warn("Failed to cache block with id " + key.id + ", pool "+ key.bpid+ ": failed to open file",e);
+      LOG.warn("Failed to cache " + key + ": failed to open file",e);
       return;
     }
     try {
       mappableBlock=MappableBlock.load(length,blockIn,metaIn,blockFileName);
     }
  catch (    ChecksumException e) {
-      LOG.warn("Failed to cache block " + key.id + " in "+ key.bpid+ ": "+ "checksum verification failed.");
+      LOG.warn("Failed to cache " + key + ": checksum verification failed.");
       return;
     }
 catch (    IOException e) {
-      LOG.warn("Failed to cache block " + key.id + " in "+ key.bpid,e);
+      LOG.warn("Failed to cache " + key,e);
       return;
     }
 synchronized (FsDatasetCache.this) {
@@ -43,13 +43,13 @@ synchronized (FsDatasetCache.this) {
       Preconditions.checkState(value.state == State.CACHING || value.state == State.CACHING_CANCELLED);
       if (value.state == State.CACHING_CANCELLED) {
         mappableBlockMap.remove(key);
-        LOG.warn("Caching of block " + key.id + " in "+ key.bpid+ " was cancelled.");
+        LOG.warn("Caching of " + key + " was cancelled.");
         return;
       }
       mappableBlockMap.put(key,new Value(mappableBlock,State.CACHED));
     }
     if (LOG.isDebugEnabled()) {
-      LOG.debug("Successfully cached block " + key.id + " in "+ key.bpid+ ".  We are now caching "+ newUsedBytes+ " bytes in total.");
+      LOG.debug("Successfully cached " + key + ".  We are now caching "+ newUsedBytes+ " bytes in total.");
     }
     numBlocksCached.addAndGet(1);
     success=true;
@@ -58,7 +58,7 @@ synchronized (FsDatasetCache.this) {
     if (!success) {
       newUsedBytes=usedBytesCount.release(length);
       if (LOG.isDebugEnabled()) {
-        LOG.debug("Caching of block " + key.id + " in "+ key.bpid+ " was aborted.  We are now caching only "+ newUsedBytes+ " + bytes in total.");
+        LOG.debug("Caching of " + key + " was aborted.  We are now "+ "caching only "+ newUsedBytes+ " + bytes in total.");
       }
       IOUtils.closeQuietly(blockIn);
       IOUtils.closeQuietly(metaIn);

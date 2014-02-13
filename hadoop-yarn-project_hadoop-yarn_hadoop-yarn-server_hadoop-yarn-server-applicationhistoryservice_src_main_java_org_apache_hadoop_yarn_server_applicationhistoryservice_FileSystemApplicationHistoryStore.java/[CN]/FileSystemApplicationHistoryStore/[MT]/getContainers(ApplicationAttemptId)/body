@@ -1,16 +1,23 @@
 {
   Map<ContainerId,ContainerHistoryData> historyDataMap=new HashMap<ContainerId,ContainerHistoryData>();
-  Map<ContainerId,StartFinishDataPair<ContainerStartData,ContainerFinishData>> startFinshDataMap=new HashMap<ContainerId,StartFinishDataPair<ContainerStartData,ContainerFinishData>>();
   HistoryFileReader hfReader=getHistoryFileReader(appAttemptId.getApplicationId());
   try {
     while (hfReader.hasNext()) {
       HistoryFileReader.Entry entry=hfReader.next();
       if (entry.key.id.startsWith(ConverterUtils.CONTAINER_PREFIX)) {
-        if (entry.key.suffix.equals(START_DATA_SUFFIX)) {
-          retrieveStartFinishData(appAttemptId,entry,startFinshDataMap,true);
-        }
- else         if (entry.key.suffix.equals(FINISH_DATA_SUFFIX)) {
-          retrieveStartFinishData(appAttemptId,entry,startFinshDataMap,false);
+        ContainerId containerId=ConverterUtils.toContainerId(entry.key.id);
+        if (containerId.getApplicationAttemptId().equals(appAttemptId)) {
+          ContainerHistoryData historyData=historyDataMap.get(containerId);
+          if (historyData == null) {
+            historyData=ContainerHistoryData.newInstance(containerId,null,null,null,Long.MIN_VALUE,Long.MAX_VALUE,null,null,Integer.MAX_VALUE,null);
+            historyDataMap.put(containerId,historyData);
+          }
+          if (entry.key.suffix.equals(START_DATA_SUFFIX)) {
+            mergeContainerHistoryData(historyData,parseContainerStartData(entry.value));
+          }
+ else           if (entry.key.suffix.equals(FINISH_DATA_SUFFIX)) {
+            mergeContainerHistoryData(historyData,parseContainerFinishData(entry.value));
+          }
         }
       }
     }
@@ -21,12 +28,6 @@
   }
  finally {
     hfReader.close();
-  }
-  for (  Map.Entry<ContainerId,StartFinishDataPair<ContainerStartData,ContainerFinishData>> entry : startFinshDataMap.entrySet()) {
-    ContainerHistoryData historyData=ContainerHistoryData.newInstance(entry.getKey(),null,null,null,Long.MIN_VALUE,Long.MAX_VALUE,null,null,Integer.MAX_VALUE,null);
-    mergeContainerHistoryData(historyData,entry.getValue().startData);
-    mergeContainerHistoryData(historyData,entry.getValue().finishData);
-    historyDataMap.put(entry.getKey(),historyData);
   }
   return historyDataMap;
 }

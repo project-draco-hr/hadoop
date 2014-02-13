@@ -1,0 +1,32 @@
+{
+  ShortCircuitCache.this.lock.lock();
+  try {
+    if (ShortCircuitCache.this.closed)     return;
+    long curMs=Time.monotonicNow();
+    if (LOG.isDebugEnabled()) {
+      LOG.debug(this + ": cache cleaner running at " + curMs);
+    }
+    int numDemoted=demoteOldEvictableMmaped(curMs);
+    int numPurged=0;
+    Long evictionTimeNs=Long.valueOf(0);
+    while (true) {
+      Entry<Long,ShortCircuitReplica> entry=evictableMmapped.ceilingEntry(evictionTimeNs);
+      if (entry == null)       break;
+      evictionTimeNs=entry.getKey();
+      long evictionTimeMs=TimeUnit.MILLISECONDS.convert(evictionTimeNs,TimeUnit.NANOSECONDS);
+      if (evictionTimeMs + maxNonMmappedEvictableLifespanMs >= curMs)       break;
+      ShortCircuitReplica replica=entry.getValue();
+      if (LOG.isTraceEnabled()) {
+        LOG.trace("CacheCleaner: purging " + replica + ": "+ StringUtils.getStackTrace(Thread.currentThread()));
+      }
+      purge(replica);
+      numPurged++;
+    }
+    if (LOG.isDebugEnabled()) {
+      LOG.debug(this + ": finishing cache cleaner run started at " + curMs+ ".  Demoted "+ numDemoted+ " mmapped replicas; "+ "purged "+ numPurged+ " replicas.");
+    }
+  }
+  finally {
+    ShortCircuitCache.this.lock.unlock();
+  }
+}

@@ -4,89 +4,67 @@
   final Path TEST_PATH=new Path("/a");
   final int TEST_FILE_LENGTH=16385;
   final int RANDOM_SEED=23453;
+  final String CONTEXT="testZeroCopyMmapCacheContext";
   FSDataInputStream fsIn=null;
-  ByteBuffer results[]={null,null,null,null,null};
+  ByteBuffer results[]={null,null,null,null};
   DistributedFileSystem fs=null;
+  conf.set(DFSConfigKeys.DFS_CLIENT_CONTEXT,CONTEXT);
+  cluster=new MiniDFSCluster.Builder(conf).numDataNodes(1).build();
+  cluster.waitActive();
+  fs=cluster.getFileSystem();
+  DFSTestUtil.createFile(fs,TEST_PATH,TEST_FILE_LENGTH,(short)1,RANDOM_SEED);
   try {
-    cluster=new MiniDFSCluster.Builder(conf).numDataNodes(1).build();
-    cluster.waitActive();
-    fs=cluster.getFileSystem();
-    DFSTestUtil.createFile(fs,TEST_PATH,TEST_FILE_LENGTH,(short)1,RANDOM_SEED);
-    try {
-      DFSTestUtil.waitReplication(fs,TEST_PATH,(short)1);
+    DFSTestUtil.waitReplication(fs,TEST_PATH,(short)1);
+  }
+ catch (  InterruptedException e) {
+    Assert.fail("unexpected InterruptedException during " + "waitReplication: " + e);
+  }
+catch (  TimeoutException e) {
+    Assert.fail("unexpected TimeoutException during " + "waitReplication: " + e);
+  }
+  fsIn=fs.open(TEST_PATH);
+  byte original[]=new byte[TEST_FILE_LENGTH];
+  IOUtils.readFully(fsIn,original,0,TEST_FILE_LENGTH);
+  fsIn.close();
+  fsIn=fs.open(TEST_PATH);
+  final ShortCircuitCache cache=ClientContext.get(CONTEXT,new DFSClient.Conf(conf)).getShortCircuitCache();
+  cache.accept(new CountingVisitor(0,5,5,0));
+  results[0]=fsIn.read(null,4096,EnumSet.of(ReadOption.SKIP_CHECKSUMS));
+  fsIn.seek(0);
+  results[1]=fsIn.read(null,4096,EnumSet.of(ReadOption.SKIP_CHECKSUMS));
+  final ExtendedBlock firstBlock=DFSTestUtil.getFirstBlock(fs,TEST_PATH);
+  cache.accept(new CacheVisitor(){
+    @Override public void visit(    int numOutstandingMmaps,    Map<ExtendedBlockId,ShortCircuitReplica> replicas,    Map<ExtendedBlockId,InvalidToken> failedLoads,    Map<Long,ShortCircuitReplica> evictable,    Map<Long,ShortCircuitReplica> evictableMmapped){
+      ShortCircuitReplica replica=replicas.get(new ExtendedBlockId(firstBlock.getBlockId(),firstBlock.getBlockPoolId()));
+      Assert.assertNotNull(replica);
+      Assert.assertTrue(replica.hasMmap());
+      Assert.assertNull(replica.getEvictableTimeNs());
     }
- catch (    InterruptedException e) {
-      Assert.fail("unexpected InterruptedException during " + "waitReplication: " + e);
-    }
-catch (    TimeoutException e) {
-      Assert.fail("unexpected TimeoutException during " + "waitReplication: " + e);
-    }
-    fsIn=fs.open(TEST_PATH);
-    byte original[]=new byte[TEST_FILE_LENGTH];
-    IOUtils.readFully(fsIn,original,0,TEST_FILE_LENGTH);
-    fsIn.close();
-    fsIn=fs.open(TEST_PATH);
-    final ClientMmapManager mmapManager=fs.getClient().getMmapManager();
-    final CountingVisitor countingVisitor=new CountingVisitor();
-    mmapManager.visitMmaps(countingVisitor);
-    Assert.assertEquals(0,countingVisitor.count);
-    mmapManager.visitEvictable(countingVisitor);
-    Assert.assertEquals(0,countingVisitor.count);
-    results[0]=fsIn.read(null,4096,EnumSet.of(ReadOption.SKIP_CHECKSUMS));
-    fsIn.seek(0);
-    results[1]=fsIn.read(null,4096,EnumSet.of(ReadOption.SKIP_CHECKSUMS));
-    mmapManager.visitMmaps(countingVisitor);
-    Assert.assertEquals(1,countingVisitor.count);
-    countingVisitor.reset();
-    mmapManager.visitEvictable(countingVisitor);
-    Assert.assertEquals(0,countingVisitor.count);
-    countingVisitor.reset();
-    final ExtendedBlock firstBlock=DFSTestUtil.getFirstBlock(fs,TEST_PATH);
-    mmapManager.visitMmaps(new ClientMmapManager.ClientMmapVisitor(){
-      @Override public void accept(      ClientMmap mmap){
-        Assert.assertEquals(firstBlock,mmap.getBlock());
-      }
-    }
+  }
 );
-    results[2]=fsIn.read(null,4096,EnumSet.of(ReadOption.SKIP_CHECKSUMS));
-    results[3]=fsIn.read(null,4096,EnumSet.of(ReadOption.SKIP_CHECKSUMS));
-    try {
-      results[4]=fsIn.read(null,4096,EnumSet.of(ReadOption.SKIP_CHECKSUMS));
-      Assert.fail("expected UnsupportedOperationException");
+  results[2]=fsIn.read(null,4096,EnumSet.of(ReadOption.SKIP_CHECKSUMS));
+  results[3]=fsIn.read(null,4096,EnumSet.of(ReadOption.SKIP_CHECKSUMS));
+  cache.accept(new CountingVisitor(3,5,2,0));
+  for (  ByteBuffer buffer : results) {
+    if (buffer != null) {
+      fsIn.releaseBuffer(buffer);
     }
- catch (    UnsupportedOperationException e) {
-    }
-    mmapManager.visitMmaps(countingVisitor);
-    Assert.assertEquals(3,countingVisitor.count);
-    countingVisitor.reset();
-    mmapManager.visitEvictable(countingVisitor);
-    Assert.assertEquals(0,countingVisitor.count);
-    for (    ByteBuffer buffer : results) {
-      if (buffer != null) {
-        fsIn.releaseBuffer(buffer);
-      }
-    }
-    GenericTestUtils.waitFor(new Supplier<Boolean>(){
-      public Boolean get(){
-        countingVisitor.reset();
-        try {
-          mmapManager.visitEvictable(countingVisitor);
-        }
- catch (        InterruptedException e) {
-          e.printStackTrace();
-          return false;
-        }
-        return (0 == countingVisitor.count);
-      }
-    }
-,10,10000);
-    countingVisitor.reset();
-    mmapManager.visitMmaps(countingVisitor);
-    Assert.assertEquals(0,countingVisitor.count);
   }
-  finally {
-    if (fsIn != null)     fsIn.close();
-    if (fs != null)     fs.close();
-    if (cluster != null)     cluster.shutdown();
+  fsIn.close();
+  GenericTestUtils.waitFor(new Supplier<Boolean>(){
+    public Boolean get(){
+      final MutableBoolean finished=new MutableBoolean(false);
+      cache.accept(new CacheVisitor(){
+        @Override public void visit(        int numOutstandingMmaps,        Map<ExtendedBlockId,ShortCircuitReplica> replicas,        Map<ExtendedBlockId,InvalidToken> failedLoads,        Map<Long,ShortCircuitReplica> evictable,        Map<Long,ShortCircuitReplica> evictableMmapped){
+          finished.setValue(evictableMmapped.isEmpty());
+        }
+      }
+);
+      return finished.booleanValue();
+    }
   }
+,10,60000);
+  cache.accept(new CountingVisitor(0,-1,-1,-1));
+  fs.close();
+  cluster.shutdown();
 }

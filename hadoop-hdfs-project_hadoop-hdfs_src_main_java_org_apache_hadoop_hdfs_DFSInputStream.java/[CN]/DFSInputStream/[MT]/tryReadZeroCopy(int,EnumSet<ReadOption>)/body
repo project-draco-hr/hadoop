@@ -12,22 +12,31 @@
   long blockStartInFile=currentLocatedBlock.getStartOffset();
   long blockPos=curPos - blockStartInFile;
   long limit=blockPos + length;
-  ClientMmap clientMmap=blockReader.getClientMmap(opts,dfsClient.getMmapManager());
+  ClientMmap clientMmap=blockReader.getClientMmap(opts);
   if (clientMmap == null) {
     if (DFSClient.LOG.isDebugEnabled()) {
       DFSClient.LOG.debug("unable to perform a zero-copy read from offset " + curPos + " of "+ src+ "; BlockReader#getClientMmap returned "+ "null.");
     }
     return null;
   }
-  seek(pos + length);
-  ByteBuffer buffer=clientMmap.getMappedByteBuffer().asReadOnlyBuffer();
-  buffer.position((int)blockPos);
-  buffer.limit((int)limit);
-  clientMmap.ref();
-  extendedReadBuffers.put(buffer,clientMmap);
-  readStatistics.addZeroCopyBytes(length);
-  if (DFSClient.LOG.isDebugEnabled()) {
-    DFSClient.LOG.debug("readZeroCopy read " + maxLength + " bytes from "+ "offset "+ curPos+ " via the zero-copy read path.  "+ "blockEnd = "+ blockEnd);
+  boolean success=false;
+  ByteBuffer buffer;
+  try {
+    seek(pos + length);
+    buffer=clientMmap.getMappedByteBuffer().asReadOnlyBuffer();
+    buffer.position((int)blockPos);
+    buffer.limit((int)limit);
+    extendedReadBuffers.put(buffer,clientMmap);
+    readStatistics.addZeroCopyBytes(length);
+    if (DFSClient.LOG.isDebugEnabled()) {
+      DFSClient.LOG.debug("readZeroCopy read " + maxLength + " bytes from "+ "offset "+ curPos+ " via the zero-copy read path.  "+ "blockEnd = "+ blockEnd);
+    }
+    success=true;
+  }
+  finally {
+    if (!success) {
+      clientMmap.unref();
+    }
   }
   return buffer;
 }

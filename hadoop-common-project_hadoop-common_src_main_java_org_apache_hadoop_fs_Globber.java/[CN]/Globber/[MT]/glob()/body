@@ -9,13 +9,15 @@
     Path absPattern=fixRelativePart(new Path(flatPattern.isEmpty() ? Path.CUR_DIR : flatPattern));
     List<String> components=getPathComponents(absPattern.toUri().getPath());
     ArrayList<FileStatus> candidates=new ArrayList<FileStatus>(1);
+    FileStatus rootPlaceholder;
     if (Path.WINDOWS && !components.isEmpty() && Path.isWindowsAbsolutePath(absPattern.toUri().getPath(),true)) {
       String driveLetter=components.remove(0);
-      candidates.add(new FileStatus(0,true,0,0,0,new Path(scheme,authority,Path.SEPARATOR + driveLetter + Path.SEPARATOR)));
+      rootPlaceholder=new FileStatus(0,true,0,0,0,new Path(scheme,authority,Path.SEPARATOR + driveLetter + Path.SEPARATOR));
     }
  else {
-      candidates.add(new FileStatus(0,true,0,0,0,new Path(scheme,authority,Path.SEPARATOR)));
+      rootPlaceholder=new FileStatus(0,true,0,0,0,new Path(scheme,authority,Path.SEPARATOR));
     }
+    candidates.add(rootPlaceholder);
     for (int componentIdx=0; componentIdx < components.size(); componentIdx++) {
       ArrayList<FileStatus> newCandidates=new ArrayList<FileStatus>(candidates.size());
       GlobFilter globFilter=new GlobFilter(components.get(componentIdx));
@@ -57,6 +59,10 @@
       candidates=newCandidates;
     }
     for (    FileStatus status : candidates) {
+      if (status == rootPlaceholder) {
+        status=getFileStatus(rootPlaceholder.getPath());
+        if (status == null)         continue;
+      }
       if (filter.accept(status.getPath())) {
         results.add(status);
       }

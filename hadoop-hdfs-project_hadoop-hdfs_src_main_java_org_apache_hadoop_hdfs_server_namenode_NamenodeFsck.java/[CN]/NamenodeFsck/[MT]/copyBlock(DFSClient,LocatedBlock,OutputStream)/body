@@ -2,10 +2,9 @@
   int failures=0;
   InetSocketAddress targetAddr=null;
   TreeSet<DatanodeInfo> deadNodes=new TreeSet<DatanodeInfo>();
-  Socket s=null;
   BlockReader blockReader=null;
   ExtendedBlock block=lblock.getBlock();
-  while (s == null) {
+  while (blockReader == null) {
     DatanodeInfo chosenNode;
     try {
       chosenNode=bestNode(dfs,lblock.getLocations(),deadNodes);
@@ -26,27 +25,30 @@
       continue;
     }
     try {
-      s=NetUtils.getDefaultSocketFactory(conf).createSocket();
-      s.connect(targetAddr,HdfsServerConstants.READ_TIMEOUT);
-      s.setSoTimeout(HdfsServerConstants.READ_TIMEOUT);
       String file=BlockReaderFactory.getFileName(targetAddr,block.getBlockPoolId(),block.getBlockId());
-      blockReader=BlockReaderFactory.newBlockReader(dfs.getConf(),file,block,lblock.getBlockToken(),0,-1,true,"fsck",TcpPeerServer.peerFromSocketAndKey(s,namenode.getRpcServer().getDataEncryptionKey()),chosenNode,null,null,null,false,CachingStrategy.newDropBehind());
+      blockReader=new BlockReaderFactory(dfs.getConf()).setFileName(file).setBlock(block).setBlockToken(lblock.getBlockToken()).setStartOffset(0).setLength(-1).setVerifyChecksum(true).setClientName("fsck").setDatanodeInfo(chosenNode).setInetSocketAddress(targetAddr).setCachingStrategy(CachingStrategy.newDropBehind()).setClientCacheContext(dfs.getClientContext()).setConfiguration(namenode.conf).setRemotePeerFactory(new RemotePeerFactory(){
+        @Override public Peer newConnectedPeer(        InetSocketAddress addr) throws IOException {
+          Peer peer=null;
+          Socket s=NetUtils.getDefaultSocketFactory(conf).createSocket();
+          try {
+            s.connect(addr,HdfsServerConstants.READ_TIMEOUT);
+            s.setSoTimeout(HdfsServerConstants.READ_TIMEOUT);
+            peer=TcpPeerServer.peerFromSocketAndKey(s,namenode.getRpcServer().getDataEncryptionKey());
+          }
+  finally {
+            if (peer == null) {
+              IOUtils.closeQuietly(s);
+            }
+          }
+          return peer;
+        }
+      }
+).build();
     }
  catch (    IOException ex) {
       LOG.info("Failed to connect to " + targetAddr + ":"+ ex);
       deadNodes.add(chosenNode);
-      if (s != null) {
-        try {
-          s.close();
-        }
- catch (        IOException iex) {
-        }
-      }
-      s=null;
     }
-  }
-  if (blockReader == null) {
-    throw new Exception("Could not open data stream for " + lblock.getBlock());
   }
   byte[] buf=new byte[1024];
   int cnt=0;
@@ -66,11 +68,9 @@
     success=false;
   }
  finally {
-    try {
-      s.close();
-    }
- catch (    Exception e1) {
-    }
+    blockReader.close();
   }
-  if (!success)   throw new Exception("Could not copy block data for " + lblock.getBlock());
+  if (!success) {
+    throw new Exception("Could not copy block data for " + lblock.getBlock());
+  }
 }
