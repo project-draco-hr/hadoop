@@ -1,0 +1,72 @@
+{
+  WriteBatch writeBatch=null;
+  try {
+    writeBatch=db.createWriteBatch();
+    List<ATSEvent> events=atsEntity.getEvents();
+    byte[] revStartTime=getStartTime(atsEntity.getEntityId(),atsEntity.getEntityType(),atsEntity.getStartTime(),events,writeBatch);
+    if (revStartTime == null) {
+      ATSPutError error=new ATSPutError();
+      error.setEntityId(atsEntity.getEntityId());
+      error.setEntityType(atsEntity.getEntityType());
+      error.setErrorCode(ATSPutError.NO_START_TIME);
+      response.addError(error);
+      return;
+    }
+    Long revStartTimeLong=readReverseOrderedLong(revStartTime,0);
+    Map<String,Object> primaryFilters=atsEntity.getPrimaryFilters();
+    if (events != null && !events.isEmpty()) {
+      for (      ATSEvent event : events) {
+        byte[] revts=writeReverseOrderedLong(event.getTimestamp());
+        byte[] key=createEntityEventKey(atsEntity.getEntityId(),atsEntity.getEntityType(),revStartTime,revts,event.getEventType());
+        byte[] value=GenericObjectMapper.write(event.getEventInfo());
+        writeBatch.put(key,value);
+        writePrimaryFilterEntries(writeBatch,primaryFilters,key,value);
+      }
+    }
+    Map<String,List<String>> relatedEntities=atsEntity.getRelatedEntities();
+    if (relatedEntities != null && !relatedEntities.isEmpty()) {
+      for (      Entry<String,List<String>> relatedEntityList : relatedEntities.entrySet()) {
+        String relatedEntityType=relatedEntityList.getKey();
+        for (        String relatedEntityId : relatedEntityList.getValue()) {
+          byte[] relatedEntityStartTime=getStartTime(relatedEntityId,relatedEntityType,null,null,writeBatch);
+          if (relatedEntityStartTime == null) {
+            relatedEntityStartTime=revStartTime;
+            writeBatch.put(createStartTimeLookupKey(relatedEntityId,relatedEntityType),relatedEntityStartTime);
+            startTimeCache.put(new EntityIdentifier(relatedEntityId,relatedEntityType),revStartTimeLong);
+          }
+          byte[] key=createReleatedEntityKey(relatedEntityId,relatedEntityType,relatedEntityStartTime,atsEntity.getEntityId(),atsEntity.getEntityType());
+          writeBatch.put(key,EMPTY_BYTES);
+        }
+      }
+    }
+    if (primaryFilters != null && !primaryFilters.isEmpty()) {
+      for (      Entry<String,Object> primaryFilter : primaryFilters.entrySet()) {
+        byte[] key=createPrimaryFilterKey(atsEntity.getEntityId(),atsEntity.getEntityType(),revStartTime,primaryFilter.getKey());
+        byte[] value=GenericObjectMapper.write(primaryFilter.getValue());
+        writeBatch.put(key,value);
+        writePrimaryFilterEntries(writeBatch,primaryFilters,key,value);
+      }
+    }
+    Map<String,Object> otherInfo=atsEntity.getOtherInfo();
+    if (otherInfo != null && !otherInfo.isEmpty()) {
+      for (      Entry<String,Object> i : otherInfo.entrySet()) {
+        byte[] key=createOtherInfoKey(atsEntity.getEntityId(),atsEntity.getEntityType(),revStartTime,i.getKey());
+        byte[] value=GenericObjectMapper.write(i.getValue());
+        writeBatch.put(key,value);
+        writePrimaryFilterEntries(writeBatch,primaryFilters,key,value);
+      }
+    }
+    db.write(writeBatch);
+  }
+ catch (  IOException e) {
+    LOG.error("Error putting entity " + atsEntity.getEntityId() + " of type "+ atsEntity.getEntityType(),e);
+    ATSPutError error=new ATSPutError();
+    error.setEntityId(atsEntity.getEntityId());
+    error.setEntityType(atsEntity.getEntityType());
+    error.setErrorCode(ATSPutError.IO_EXCEPTION);
+    response.addError(error);
+  }
+ finally {
+    IOUtils.cleanup(LOG,writeBatch);
+  }
+}
