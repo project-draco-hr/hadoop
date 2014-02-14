@@ -1,0 +1,27 @@
+{
+  try {
+    conf=new HdfsConfiguration();
+    cluster=new MiniDFSCluster.Builder(conf).numDataNodes(REPL_FACTOR).build();
+    cluster.waitActive();
+    fs=cluster.getFileSystem();
+    Path testFile1=new Path("/TestDataNodeRollingUpgrade1.dat");
+    Path testFile2=new Path("/TestDataNodeRollingUpgrade2.dat");
+    DFSTestUtil.createFile(fs,testFile1,FILE_SIZE,REPL_FACTOR,SEED);
+    DFSTestUtil.createFile(fs,testFile2,FILE_SIZE,REPL_FACTOR,SEED);
+    startRollingUpgrade();
+    cluster.triggerHeartbeats();
+    Thread.sleep(5000);
+    fs.delete(testFile2,false);
+    cluster.triggerBlockReports();
+    Thread.sleep(5000);
+    finalizeRollingUpgrade();
+    assert(!fs.exists(testFile2));
+    assert(fs.exists(testFile1));
+  }
+  finally {
+    if (cluster != null) {
+      cluster.shutdown();
+      cluster=null;
+    }
+  }
+}
