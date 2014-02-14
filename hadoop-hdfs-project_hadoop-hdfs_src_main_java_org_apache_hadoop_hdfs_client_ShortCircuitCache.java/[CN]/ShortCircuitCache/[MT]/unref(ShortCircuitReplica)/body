@@ -1,0 +1,34 @@
+{
+  lock.lock();
+  try {
+    String addedString="";
+    int newRefCount=--replica.refCount;
+    if (newRefCount == 0) {
+      Preconditions.checkArgument(replica.purged,"Replica " + replica + " reached a refCount of 0 without "+ "being purged");
+      replica.close();
+    }
+ else     if (newRefCount == 1) {
+      Preconditions.checkState(null == replica.getEvictableTimeNs(),"Replica " + replica + " had a refCount higher than 1, "+ "but was still evictable (evictableTimeNs = "+ replica.getEvictableTimeNs()+ ")");
+      if (!replica.purged) {
+        if (replica.hasMmap()) {
+          insertEvictable(System.nanoTime(),replica,evictableMmapped);
+          addedString="added to evictableMmapped, ";
+        }
+ else {
+          insertEvictable(System.nanoTime(),replica,evictable);
+          addedString="added to evictable, ";
+        }
+        trimEvictionMaps();
+      }
+    }
+ else {
+      Preconditions.checkArgument(replica.refCount >= 0,"replica's refCount went negative (refCount = " + replica.refCount + " for "+ replica+ ")");
+    }
+    if (LOG.isTraceEnabled()) {
+      LOG.trace(this + ": unref replica " + replica+ ": "+ addedString+ " refCount "+ (newRefCount + 1)+ " -> "+ newRefCount+ StringUtils.getStackTrace(Thread.currentThread()));
+    }
+  }
+  finally {
+    lock.unlock();
+  }
+}

@@ -1,0 +1,50 @@
+{
+  lock.lock();
+  try {
+    Map<ExtendedBlockId,ShortCircuitReplica> replicas=new HashMap<ExtendedBlockId,ShortCircuitReplica>();
+    Map<ExtendedBlockId,InvalidToken> failedLoads=new HashMap<ExtendedBlockId,InvalidToken>();
+    for (    Entry<ExtendedBlockId,Waitable<ShortCircuitReplicaInfo>> entry : replicaInfoMap.entrySet()) {
+      Waitable<ShortCircuitReplicaInfo> waitable=entry.getValue();
+      if (waitable.hasVal()) {
+        if (waitable.getVal().getReplica() != null) {
+          replicas.put(entry.getKey(),waitable.getVal().getReplica());
+        }
+ else {
+          failedLoads.put(entry.getKey(),waitable.getVal().getInvalidTokenException());
+        }
+      }
+    }
+    if (LOG.isDebugEnabled()) {
+      StringBuilder builder=new StringBuilder();
+      builder.append("visiting ").append(visitor.getClass().getName()).append("with outstandingMmapCount=").append(outstandingMmapCount).append(", replicas=");
+      String prefix="";
+      for (      Entry<ExtendedBlockId,ShortCircuitReplica> entry : replicas.entrySet()) {
+        builder.append(prefix).append(entry.getValue());
+        prefix=",";
+      }
+      prefix="";
+      builder.append(", failedLoads=");
+      for (      Entry<ExtendedBlockId,InvalidToken> entry : failedLoads.entrySet()) {
+        builder.append(prefix).append(entry.getValue());
+        prefix=",";
+      }
+      prefix="";
+      builder.append(", evictable=");
+      for (      Entry<Long,ShortCircuitReplica> entry : evictable.entrySet()) {
+        builder.append(prefix).append(entry.getKey()).append(":").append(entry.getValue());
+        prefix=",";
+      }
+      prefix="";
+      builder.append(", evictableMmapped=");
+      for (      Entry<Long,ShortCircuitReplica> entry : evictableMmapped.entrySet()) {
+        builder.append(prefix).append(entry.getKey()).append(":").append(entry.getValue());
+        prefix=",";
+      }
+      LOG.debug(builder.toString());
+    }
+    visitor.visit(outstandingMmapCount,replicas,failedLoads,evictable,evictableMmapped);
+  }
+  finally {
+    lock.unlock();
+  }
+}

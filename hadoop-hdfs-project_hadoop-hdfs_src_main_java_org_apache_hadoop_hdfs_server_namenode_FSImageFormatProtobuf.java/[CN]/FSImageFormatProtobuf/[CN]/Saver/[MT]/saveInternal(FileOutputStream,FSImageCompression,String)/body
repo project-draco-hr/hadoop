@@ -1,0 +1,37 @@
+{
+  StartupProgress prog=NameNode.getStartupProgress();
+  MessageDigest digester=MD5Hash.getDigester();
+  underlyingOutputStream=new DigestOutputStream(new BufferedOutputStream(fout),digester);
+  underlyingOutputStream.write(FSImageUtil.MAGIC_HEADER);
+  fileChannel=fout.getChannel();
+  FileSummary.Builder b=FileSummary.newBuilder().setOndiskVersion(FSImageUtil.FILE_VERSION).setLayoutVersion(LayoutVersion.getCurrentLayoutVersion());
+  codec=compression.getImageCodec();
+  if (codec != null) {
+    b.setCodec(codec.getClass().getCanonicalName());
+    sectionOutputStream=codec.createOutputStream(underlyingOutputStream);
+  }
+ else {
+    sectionOutputStream=underlyingOutputStream;
+  }
+  saveNameSystemSection(b);
+  context.checkCancelled();
+  Step step=new Step(StepType.INODES,filePath);
+  prog.beginStep(Phase.SAVING_CHECKPOINT,step);
+  saveInodes(b);
+  saveSnapshots(b);
+  prog.endStep(Phase.SAVING_CHECKPOINT,step);
+  step=new Step(StepType.DELEGATION_TOKENS,filePath);
+  prog.beginStep(Phase.SAVING_CHECKPOINT,step);
+  saveSecretManagerSection(b);
+  prog.endStep(Phase.SAVING_CHECKPOINT,step);
+  step=new Step(StepType.CACHE_POOLS,filePath);
+  prog.beginStep(Phase.SAVING_CHECKPOINT,step);
+  saveCacheManagerSection(b);
+  prog.endStep(Phase.SAVING_CHECKPOINT,step);
+  saveStringTableSection(b);
+  flushSectionOutputStream();
+  FileSummary summary=b.build();
+  saveFileSummary(underlyingOutputStream,summary);
+  underlyingOutputStream.close();
+  savedDigest=new MD5Hash(digester.digest());
+}

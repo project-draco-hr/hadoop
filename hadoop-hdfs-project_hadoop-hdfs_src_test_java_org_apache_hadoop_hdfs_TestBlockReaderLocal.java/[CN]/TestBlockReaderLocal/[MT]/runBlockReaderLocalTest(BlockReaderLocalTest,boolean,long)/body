@@ -35,13 +35,16 @@ catch (    TimeoutException e) {
     File dataFile=MiniDFSCluster.getBlockFile(0,block);
     File metaFile=MiniDFSCluster.getBlockMetadataFile(0,block);
     DatanodeID datanodeID=cluster.getDataNodes().get(0).getDatanodeId();
+    ShortCircuitCache shortCircuitCache=ClientContext.getFromConf(conf).getShortCircuitCache();
     cluster.shutdown();
     cluster=null;
     test.setup(dataFile,checksum);
     FileInputStream streams[]={new FileInputStream(dataFile),new FileInputStream(metaFile)};
     dataIn=streams[0];
     metaIn=streams[1];
-    blockReaderLocal=new BlockReaderLocal.Builder(new DFSClient.Conf(conf)).setFilename(TEST_PATH.getName()).setBlock(block).setStreams(streams).setDatanodeID(datanodeID).setCachingStrategy(new CachingStrategy(false,readahead)).setVerifyChecksum(checksum).setBlockMetadataHeader(BlockMetadataHeader.preadHeader(metaIn.getChannel())).build();
+    ExtendedBlockId key=new ExtendedBlockId(block.getBlockId(),block.getBlockPoolId());
+    ShortCircuitReplica replica=new ShortCircuitReplica(key,dataIn,metaIn,shortCircuitCache,Time.now());
+    blockReaderLocal=new BlockReaderLocal.Builder(new DFSClient.Conf(conf)).setFilename(TEST_PATH.getName()).setBlock(block).setShortCircuitReplica(replica).setDatanodeID(datanodeID).setCachingStrategy(new CachingStrategy(false,readahead)).setVerifyChecksum(checksum).build();
     dataIn=null;
     metaIn=null;
     test.doTest(blockReaderLocal,original);

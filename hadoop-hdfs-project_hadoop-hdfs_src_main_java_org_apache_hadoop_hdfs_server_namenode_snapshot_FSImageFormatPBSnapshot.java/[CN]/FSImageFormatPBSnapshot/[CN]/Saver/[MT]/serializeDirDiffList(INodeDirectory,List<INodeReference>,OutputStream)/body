@@ -1,0 +1,30 @@
+{
+  DirectoryWithSnapshotFeature sf=dir.getDirectoryWithSnapshotFeature();
+  if (sf != null) {
+    List<DirectoryDiff> diffList=sf.getDiffs().asList();
+    SnapshotDiffSection.DiffEntry entry=SnapshotDiffSection.DiffEntry.newBuilder().setInodeId(dir.getId()).setType(Type.DIRECTORYDIFF).setNumOfDiff(diffList.size()).build();
+    entry.writeDelimitedTo(out);
+    for (int i=diffList.size() - 1; i >= 0; i--) {
+      DirectoryDiff diff=diffList.get(i);
+      SnapshotDiffSection.DirectoryDiff.Builder db=SnapshotDiffSection.DirectoryDiff.newBuilder().setSnapshotId(diff.getSnapshotId()).setChildrenSize(diff.getChildrenSize()).setIsSnapshotRoot(diff.isSnapshotRoot());
+      INodeDirectoryAttributes copy=diff.snapshotINode;
+      if (!diff.isSnapshotRoot() && copy != null) {
+        db.setName(ByteString.copyFrom(copy.getLocalNameBytes())).setSnapshotCopy(buildINodeDirectory(copy,parent.getSaverContext().getStringMap()));
+      }
+      List<INode> created=diff.getChildrenDiff().getList(ListType.CREATED);
+      db.setCreatedListSize(created.size());
+      List<INode> deleted=diff.getChildrenDiff().getList(ListType.DELETED);
+      for (      INode d : deleted) {
+        if (d.isReference()) {
+          refList.add(d.asReference());
+          db.addDeletedINodeRef(refList.size() - 1);
+        }
+ else {
+          db.addDeletedINode(d.getId());
+        }
+      }
+      db.build().writeDelimitedTo(out);
+      saveCreatedList(created,out);
+    }
+  }
+}

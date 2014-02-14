@@ -1,0 +1,29 @@
+{
+  if (!dir.isWithSnapshot()) {
+    dir.addSnapshotFeature(null);
+  }
+  DirectoryDiffList diffs=dir.getDiffs();
+  for (int i=0; i < size; i++) {
+    SnapshotDiffSection.DirectoryDiff diffInPb=SnapshotDiffSection.DirectoryDiff.parseDelimitedFrom(in);
+    final int snapshotId=diffInPb.getSnapshotId();
+    final Snapshot snapshot=snapshotMap.get(snapshotId);
+    int childrenSize=diffInPb.getChildrenSize();
+    boolean useRoot=diffInPb.getIsSnapshotRoot();
+    INodeDirectoryAttributes copy=null;
+    if (useRoot) {
+      copy=snapshot.getRoot();
+    }
+ else     if (diffInPb.hasSnapshotCopy()) {
+      INodeSection.INodeDirectory dirCopyInPb=diffInPb.getSnapshotCopy();
+      final byte[] name=diffInPb.getName().toByteArray();
+      PermissionStatus permission=loadPermission(dirCopyInPb.getPermission(),parent.getLoaderContext().getStringTable());
+      long modTime=dirCopyInPb.getModificationTime();
+      boolean noQuota=dirCopyInPb.getNsQuota() == -1 && dirCopyInPb.getDsQuota() == -1;
+      copy=noQuota ? new INodeDirectoryAttributes.SnapshotCopy(name,permission,modTime) : new INodeDirectoryAttributes.CopyWithQuota(name,permission,modTime,dirCopyInPb.getNsQuota(),dirCopyInPb.getDsQuota());
+    }
+    List<INode> clist=loadCreatedList(in,dir,diffInPb.getCreatedListSize());
+    List<INode> dlist=loadDeletedList(refList,in,dir,diffInPb.getDeletedINodeList(),diffInPb.getDeletedINodeRefList());
+    DirectoryDiff diff=new DirectoryDiff(snapshotId,copy,null,childrenSize,clist,dlist,useRoot);
+    diffs.addFirst(diff);
+  }
+}

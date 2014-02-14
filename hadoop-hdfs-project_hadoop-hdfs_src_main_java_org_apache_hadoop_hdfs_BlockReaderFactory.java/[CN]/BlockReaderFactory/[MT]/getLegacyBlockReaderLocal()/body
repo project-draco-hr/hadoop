@@ -1,0 +1,33 @@
+{
+  if (LOG.isTraceEnabled()) {
+    LOG.trace(this + ": trying to construct BlockReaderLocalLegacy");
+  }
+  if (!DFSClient.isLocalAddress(inetSocketAddress)) {
+    if (LOG.isTraceEnabled()) {
+      LOG.trace(this + ": can't construct BlockReaderLocalLegacy because " + "the address "+ inetSocketAddress+ " is not local");
+    }
+    return null;
+  }
+  if (clientContext.getDisableLegacyBlockReaderLocal()) {
+    if (LOG.isTraceEnabled()) {
+      LOG.trace(this + ": can't construct BlockReaderLocalLegacy because " + "disableLegacyBlockReaderLocal is set.");
+    }
+    return null;
+  }
+  IOException ioe=null;
+  try {
+    return BlockReaderLocalLegacy.newBlockReader(conf,userGroupInformation,configuration,fileName,block,token,datanode,startOffset,length);
+  }
+ catch (  RemoteException remoteException) {
+    ioe=remoteException.unwrapRemoteException(InvalidToken.class,AccessControlException.class);
+  }
+catch (  IOException e) {
+    ioe=e;
+  }
+  if ((!(ioe instanceof AccessControlException)) && isSecurityException(ioe)) {
+    throw ioe;
+  }
+  LOG.warn(this + ": error creating legacy BlockReaderLocal.  " + "Disabling legacy local reads.",ioe);
+  clientContext.setDisableLegacyBlockReaderLocal();
+  return null;
+}
