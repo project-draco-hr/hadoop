@@ -1,11 +1,6 @@
 {
-  final NameNodeFile nnf;
-  if (startOpt == StartupOption.ROLLINGUPGRADE && startOpt.getRollingUpgradeStartupOption() == RollingUpgradeStartupOption.ROLLBACK) {
-    nnf=NameNodeFile.IMAGE_ROLLBACK;
-  }
- else {
-    nnf=NameNodeFile.IMAGE;
-  }
+  final boolean rollingRollback=startOpt == StartupOption.ROLLINGUPGRADE && startOpt.getRollingUpgradeStartupOption() == RollingUpgradeStartupOption.ROLLBACK;
+  final NameNodeFile nnf=rollingRollback ? NameNodeFile.IMAGE_ROLLBACK : NameNodeFile.IMAGE;
   final FSImageStorageInspector inspector=storage.readAndInspectDirs(nnf);
   isUpgradeFinalized=inspector.isUpgradeFinalized();
   List<FSImageFile> imageFiles=inspector.getLatestImages();
@@ -19,6 +14,9 @@
   initEditLog(startOpt);
   if (NameNodeLayoutVersion.supports(LayoutVersion.Feature.TXID_BASED_LAYOUT,getLayoutVersion())) {
     long toAtLeastTxId=editLog.isOpenForWrite() ? inspector.getMaxSeenTxId() : 0;
+    if (rollingRollback) {
+      toAtLeastTxId=imageFiles.get(0).getCheckpointTxId() + 2;
+    }
     editStreams=editLog.selectInputStreams(imageFiles.get(0).getCheckpointTxId() + 1,toAtLeastTxId,recovery,false);
   }
  else {
@@ -52,8 +50,15 @@
     throw new IOException("Failed to load an FSImage file!");
   }
   prog.endPhase(Phase.LOADING_FSIMAGE);
-  long txnsAdvanced=loadEdits(editStreams,target,startOpt,recovery);
-  needToSave|=needsResaveBasedOnStaleCheckpoint(imageFile.getFile(),txnsAdvanced);
+  long txnsAdvanced=0;
+  loadEdits(editStreams,target,startOpt,recovery);
+  if (rollingRollback) {
+    rollingRollback(lastAppliedTxId--,imageFiles.get(0).getCheckpointTxId());
+    needToSave=false;
+  }
+ else {
+    needToSave|=needsResaveBasedOnStaleCheckpoint(imageFile.getFile(),txnsAdvanced);
+  }
   editLog.setNextTxId(lastAppliedTxId + 1);
   return needToSave;
 }
