@@ -1,0 +1,26 @@
+{
+  EnumSet<AclEntryScope> scopeFound=EnumSet.noneOf(AclEntryScope.class);
+  EnumMap<AclEntryScope,FsAction> unionPerms=Maps.newEnumMap(AclEntryScope.class);
+  EnumSet<AclEntryScope> maskNeeded=EnumSet.noneOf(AclEntryScope.class);
+  for (  AclEntry entry : aclBuilder) {
+    scopeFound.add(entry.getScope());
+    if (entry.getType() == GROUP || entry.getName() != null) {
+      FsAction scopeUnionPerms=Objects.firstNonNull(unionPerms.get(entry.getScope()),FsAction.NONE);
+      unionPerms.put(entry.getScope(),scopeUnionPerms.or(entry.getPermission()));
+    }
+    if (entry.getName() != null) {
+      maskNeeded.add(entry.getScope());
+    }
+  }
+  for (  AclEntryScope scope : scopeFound) {
+    if (!providedMask.containsKey(scope) && maskNeeded.contains(scope) && maskDirty.contains(scope)) {
+      throw new AclException("Invalid ACL: mask is required, but it was deleted.");
+    }
+ else     if (providedMask.containsKey(scope) && (!scopeDirty.contains(scope) || maskDirty.contains(scope))) {
+      aclBuilder.add(providedMask.get(scope));
+    }
+ else     if (maskNeeded.contains(scope) || providedMask.containsKey(scope)) {
+      aclBuilder.add(new AclEntry.Builder().setScope(scope).setType(MASK).setPermission(unionPerms.get(scope)).build());
+    }
+  }
+}

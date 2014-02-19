@@ -1,0 +1,49 @@
+{
+  INodeDirectory parent=child.getParent();
+  AclFeature parentAclFeature=parent.getAclFeature();
+  if (parentAclFeature == null || !(child.isFile() || child.isDirectory())) {
+    return;
+  }
+  List<AclEntry> featureEntries=parent.getAclFeature().getEntries();
+  ScopedAclEntries scopedEntries=new ScopedAclEntries(featureEntries);
+  List<AclEntry> parentDefaultEntries=scopedEntries.getDefaultEntries();
+  if (parentDefaultEntries.isEmpty()) {
+    return;
+  }
+  List<AclEntry> accessEntries=Lists.newArrayListWithCapacity(parentDefaultEntries.size());
+  FsPermission childPerm=child.getFsPermission();
+  boolean parentDefaultIsMinimal=isMinimalAcl(parentDefaultEntries);
+  for (  AclEntry entry : parentDefaultEntries) {
+    AclEntryType type=entry.getType();
+    String name=entry.getName();
+    AclEntry.Builder builder=new AclEntry.Builder().setScope(AclEntryScope.ACCESS).setType(type).setName(name);
+    final FsAction permission;
+    if (type == AclEntryType.USER && name == null) {
+      permission=entry.getPermission().and(childPerm.getUserAction());
+    }
+ else     if (type == AclEntryType.GROUP && parentDefaultIsMinimal) {
+      permission=entry.getPermission().and(childPerm.getGroupAction());
+    }
+ else     if (type == AclEntryType.MASK) {
+      permission=entry.getPermission().and(childPerm.getGroupAction());
+    }
+ else     if (type == AclEntryType.OTHER) {
+      permission=entry.getPermission().and(childPerm.getOtherAction());
+    }
+ else {
+      permission=entry.getPermission();
+    }
+    builder.setPermission(permission);
+    accessEntries.add(builder.build());
+  }
+  List<AclEntry> defaultEntries=child.isDirectory() ? parentDefaultEntries : Collections.<AclEntry>emptyList();
+  final FsPermission newPerm;
+  if (!isMinimalAcl(accessEntries) || !defaultEntries.isEmpty()) {
+    child.addAclFeature(createAclFeature(accessEntries,defaultEntries));
+    newPerm=createFsPermissionForExtendedAcl(accessEntries,childPerm);
+  }
+ else {
+    newPerm=createFsPermissionForMinimalAcl(accessEntries,childPerm);
+  }
+  child.setPermission(newPerm);
+}
