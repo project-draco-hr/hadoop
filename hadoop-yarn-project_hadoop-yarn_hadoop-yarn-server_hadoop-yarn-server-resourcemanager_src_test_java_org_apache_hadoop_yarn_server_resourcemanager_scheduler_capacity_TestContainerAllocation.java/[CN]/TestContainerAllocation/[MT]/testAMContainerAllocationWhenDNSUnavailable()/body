@@ -1,0 +1,24 @@
+{
+  final YarnConfiguration conf=new YarnConfiguration();
+  MockRM rm1=new MockRM(conf){
+    @Override protected RMSecretManagerService createRMSecretManagerService(){
+      return new TestRMSecretManagerService(conf,rmContext);
+    }
+  }
+;
+  rm1.start();
+  MockNM nm1=rm1.registerNode("unknownhost:1234",8000);
+  SecurityUtilTestHelper.setTokenServiceUseIp(true);
+  RMApp app1=rm1.submitApp(200);
+  RMAppAttempt attempt=app1.getCurrentAppAttempt();
+  nm1.nodeHeartbeat(true);
+  while (numRetries <= 5) {
+    nm1.nodeHeartbeat(true);
+    Thread.sleep(1000);
+    Assert.assertEquals(RMAppAttemptState.SCHEDULED,attempt.getAppAttemptState());
+    System.out.println("Waiting for am container to be allocated.");
+  }
+  SecurityUtilTestHelper.setTokenServiceUseIp(false);
+  rm1.waitForState(attempt.getAppAttemptId(),RMAppAttemptState.ALLOCATED);
+  MockRM.launchAndRegisterAM(app1,rm1,nm1);
+}
