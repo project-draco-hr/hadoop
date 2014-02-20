@@ -1,0 +1,31 @@
+{
+  conf=new HdfsConfiguration();
+  SimulatedFSDataset.setFactory(conf);
+  Configuration[] overlays=new Configuration[NUM_DATANODES];
+  for (int i=0; i < overlays.length; i++) {
+    overlays[i]=new Configuration();
+    if (i == RO_NODE_INDEX) {
+      overlays[i].setEnum(SimulatedFSDataset.CONFIG_PROPERTY_STATE,i == RO_NODE_INDEX ? READ_ONLY_SHARED : NORMAL);
+    }
+  }
+  cluster=new MiniDFSCluster.Builder(conf).numDataNodes(NUM_DATANODES).dataNodeConfOverlays(overlays).build();
+  fs=cluster.getFileSystem();
+  blockManager=cluster.getNameNode().getNamesystem().getBlockManager();
+  datanodeManager=blockManager.getDatanodeManager();
+  client=new DFSClient(new InetSocketAddress("localhost",cluster.getNameNodePort()),cluster.getConfiguration(0));
+  for (int i=0; i < NUM_DATANODES; i++) {
+    DataNode dataNode=cluster.getDataNodes().get(i);
+    validateStorageState(BlockManagerTestUtil.getStorageReportsForDatanode(datanodeManager.getDatanode(dataNode.getDatanodeId())),i == RO_NODE_INDEX ? READ_ONLY_SHARED : NORMAL);
+  }
+  DFSTestUtil.createFile(fs,PATH,BLOCK_SIZE,BLOCK_SIZE,BLOCK_SIZE,(short)1,seed);
+  LocatedBlock locatedBlock=getLocatedBlock();
+  extendedBlock=locatedBlock.getBlock();
+  block=extendedBlock.getLocalBlock();
+  assertThat(locatedBlock.getLocations().length,is(1));
+  normalDataNode=locatedBlock.getLocations()[0];
+  readOnlyDataNode=datanodeManager.getDatanode(cluster.getDataNodes().get(RO_NODE_INDEX).getDatanodeId());
+  assertThat(normalDataNode,is(not(readOnlyDataNode)));
+  validateNumberReplicas(1);
+  cluster.injectBlocks(0,RO_NODE_INDEX,Collections.singleton(block));
+  waitForLocations(2);
+}

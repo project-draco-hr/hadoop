@@ -1,0 +1,23 @@
+{
+  List<Container> returnContainerList=new ArrayList<Container>(newlyAllocatedContainers.size());
+  List<NMToken> nmTokens=new ArrayList<NMToken>();
+  for (Iterator<RMContainer> i=newlyAllocatedContainers.iterator(); i.hasNext(); ) {
+    RMContainer rmContainer=i.next();
+    Container container=rmContainer.getContainer();
+    try {
+      container.setContainerToken(rmContext.getContainerTokenSecretManager().createContainerToken(container.getId(),container.getNodeId(),getUser(),container.getResource()));
+      NMToken nmToken=rmContext.getNMTokenSecretManager().createAndGetNMToken(getUser(),getApplicationAttemptId(),container);
+      if (nmToken != null) {
+        nmTokens.add(nmToken);
+      }
+    }
+ catch (    IllegalArgumentException e) {
+      LOG.error("Error trying to assign container token to allocated container " + container.getId(),e);
+      continue;
+    }
+    returnContainerList.add(container);
+    i.remove();
+    rmContainer.handle(new RMContainerEvent(rmContainer.getContainerId(),RMContainerEventType.ACQUIRED));
+  }
+  return new ContainersAndNMTokensAllocation(returnContainerList,nmTokens);
+}
