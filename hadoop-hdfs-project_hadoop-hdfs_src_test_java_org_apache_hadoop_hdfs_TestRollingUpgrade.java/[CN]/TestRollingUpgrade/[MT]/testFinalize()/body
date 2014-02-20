@@ -1,0 +1,28 @@
+{
+  final Configuration conf=new HdfsConfiguration();
+  MiniQJMHACluster cluster=null;
+  final Path foo=new Path("/foo");
+  final Path bar=new Path("/bar");
+  try {
+    cluster=new MiniQJMHACluster.Builder(conf).build();
+    MiniDFSCluster dfsCluster=cluster.getDfsCluster();
+    dfsCluster.waitActive();
+    dfsCluster.transitionToActive(0);
+    DistributedFileSystem dfs=dfsCluster.getFileSystem(0);
+    dfs.mkdirs(foo);
+    NNStorage storage=dfsCluster.getNamesystem(0).getFSImage().getStorage();
+    RollingUpgradeInfo info=dfs.rollingUpgrade(RollingUpgradeAction.START);
+    Assert.assertTrue(info.isStarted());
+    dfs.mkdirs(bar);
+    Assert.assertTrue(existRollbackFsImage(storage));
+    info=dfs.rollingUpgrade(RollingUpgradeAction.FINALIZE);
+    Assert.assertTrue(info.isFinalized());
+    Assert.assertTrue(dfs.exists(foo));
+    Assert.assertFalse(existRollbackFsImage(storage));
+  }
+  finally {
+    if (cluster != null) {
+      cluster.shutdown();
+    }
+  }
+}
