@@ -1,15 +1,14 @@
 {
   MiniDFSCluster cluster=null;
   try {
-    Configuration conf=new HdfsConfiguration();
+    Configuration conf=new Configuration();
     conf.setLong(DFSConfigKeys.DFS_NAMENODE_DELEGATION_TOKEN_MAX_LIFETIME_KEY,10000);
     conf.setLong(DFSConfigKeys.DFS_NAMENODE_DELEGATION_TOKEN_RENEW_INTERVAL_KEY,5000);
     conf.setBoolean(DFSConfigKeys.DFS_NAMENODE_DELEGATION_TOKEN_ALWAYS_USE_KEY,true);
     conf.set(CommonConfigurationKeysPublic.HADOOP_SECURITY_AUTH_TO_LOCAL,"RULE:[2:$1@$0](JobTracker@.*FOO.COM)s/@.*//" + "DEFAULT");
-    cluster=new MiniDFSCluster.Builder(conf).numDataNodes(4).build();
+    cluster=new MiniDFSCluster.Builder(conf).numDataNodes(1).build();
     cluster.waitActive();
-    FileSystem hdfs=cluster.getFileSystem();
-    int filesize=256;
+    DistributedFileSystem hdfs=cluster.getFileSystem();
     for (int i=0; i < NUM_DIRS; i++) {
       Path dir=new Path("/dir" + i);
       hdfs.mkdirs(dir);
@@ -17,7 +16,7 @@
       for (int j=0; j < FILES_PER_DIR; j++) {
         Path file=new Path(dir,"file" + j);
         FSDataOutputStream o=hdfs.create(file);
-        o.write(new byte[filesize++]);
+        o.write(23);
         o.close();
         writtenFiles.put(file.toString(),pathToFileEntry(hdfs,file.toString()));
       }
@@ -26,8 +25,13 @@
     for (    Token<?> t : delegationTokens) {
       LOG.debug("got token " + t);
     }
-    cluster.getNameNodeRpc().setSafeMode(SafeModeAction.SAFEMODE_ENTER,false);
-    cluster.getNameNodeRpc().saveNamespace();
+    final Path snapshot=new Path("/snapshot");
+    hdfs.mkdirs(snapshot);
+    hdfs.allowSnapshot(snapshot);
+    hdfs.mkdirs(new Path("/snapshot/1"));
+    hdfs.delete(snapshot,true);
+    hdfs.setSafeMode(SafeModeAction.SAFEMODE_ENTER,false);
+    hdfs.saveNamespace();
     originalFsimage=FSImageTestUtil.findLatestImageFile(FSImageTestUtil.getFSImage(cluster.getNameNode()).getStorage().getStorageDir(0));
     if (originalFsimage == null) {
       throw new RuntimeException("Didn't generate or can't find fsimage");
