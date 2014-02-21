@@ -1,0 +1,41 @@
+{
+  manager=new CallQueueManager<FakeCall>(LinkedBlockingQueue.class,5000,"",null);
+  ArrayList<Putter> producers=new ArrayList<Putter>();
+  ArrayList<Taker> consumers=new ArrayList<Taker>();
+  HashMap<Runnable,Thread> threads=new HashMap<Runnable,Thread>();
+  for (int i=0; i < 50; i++) {
+    Putter p=new Putter(manager,-1,-1);
+    Thread pt=new Thread(p);
+    producers.add(p);
+    threads.put(p,pt);
+    pt.start();
+  }
+  for (int i=0; i < 20; i++) {
+    Taker t=new Taker(manager,-1,-1);
+    Thread tt=new Thread(t);
+    consumers.add(t);
+    threads.put(t,tt);
+    tt.start();
+  }
+  Thread.sleep(10);
+  assertTrue(manager.size() > 0);
+  for (int i=0; i < 5; i++) {
+    manager.swapQueue(LinkedBlockingQueue.class,5000,"",null);
+  }
+  for (  Putter p : producers) {
+    p.stop();
+  }
+  Thread.sleep(2000);
+  assertEquals(0,manager.size());
+  long totalCallsCreated=0;
+  long totalCallsConsumed=0;
+  for (  Putter p : producers) {
+    totalCallsCreated+=p.callsAdded;
+    threads.get(p).interrupt();
+  }
+  for (  Taker t : consumers) {
+    totalCallsConsumed+=t.callsTaken;
+    threads.get(t).interrupt();
+  }
+  assertEquals(totalCallsConsumed,totalCallsCreated);
+}
