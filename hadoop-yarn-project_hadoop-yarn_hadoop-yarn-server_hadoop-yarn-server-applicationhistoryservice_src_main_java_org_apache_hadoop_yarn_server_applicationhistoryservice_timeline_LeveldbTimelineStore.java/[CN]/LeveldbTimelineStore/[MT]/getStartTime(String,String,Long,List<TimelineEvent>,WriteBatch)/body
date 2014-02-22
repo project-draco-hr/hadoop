@@ -1,0 +1,39 @@
+{
+  EntityIdentifier entity=new EntityIdentifier(entityId,entityType);
+  if (startTime == null) {
+    if (startTimeCache.containsKey(entity)) {
+      startTime=startTimeCache.get(entity);
+    }
+ else {
+      byte[] b=createStartTimeLookupKey(entity.getId(),entity.getType());
+      byte[] v=db.get(b);
+      if (v == null) {
+        if (events == null || writeBatch == null) {
+          return null;
+        }
+        Long min=Long.MAX_VALUE;
+        for (        TimelineEvent e : events)         if (min > e.getTimestamp())         min=e.getTimestamp();
+        startTime=min;
+        writeBatch.put(b,writeReverseOrderedLong(startTime));
+        startTimeCache.put(entity,startTime);
+      }
+ else {
+        startTime=readReverseOrderedLong(v,0);
+        if (writeBatch != null) {
+          startTimeCache.put(entity,startTime);
+        }
+      }
+    }
+  }
+ else {
+    if (startTimeCache.containsKey(entity)) {
+      if (!startTime.equals(startTimeCache.get(entity)))       startTime=startTimeCache.get(entity);
+    }
+ else     if (writeBatch != null) {
+      byte[] b=createStartTimeLookupKey(entity.getId(),entity.getType());
+      writeBatch.put(b,writeReverseOrderedLong(startTime));
+      startTimeCache.put(entity,startTime);
+    }
+  }
+  return writeReverseOrderedLong(startTime);
+}
