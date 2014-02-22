@@ -1,0 +1,21 @@
+{
+  if (!NativeCodeLoader.isNativeCodeLoaded()) {
+    LOG.info("Not testing netgroups, " + "this test only runs when native code is compiled");
+    return;
+  }
+  String groupMappingClassName=System.getProperty("TestProxyUsersGroupMapping");
+  if (groupMappingClassName == null) {
+    LOG.info("Not testing netgroups, no group mapping class specified, " + "use -DTestProxyUsersGroupMapping=$className to specify " + "group mapping class (must implement GroupMappingServiceProvider "+ "interface and support netgroups)");
+    return;
+  }
+  LOG.info("Testing netgroups using: " + groupMappingClassName);
+  Configuration conf=new Configuration();
+  conf.set(CommonConfigurationKeysPublic.HADOOP_SECURITY_GROUP_MAPPING,groupMappingClassName);
+  conf.set(ProxyUsers.getProxySuperuserGroupConfKey(REAL_USER_NAME),StringUtils.join(",",Arrays.asList(NETGROUP_NAMES)));
+  conf.set(ProxyUsers.getProxySuperuserIpConfKey(REAL_USER_NAME),PROXY_IP);
+  ProxyUsers.refreshSuperUserGroupsConfiguration(conf);
+  Groups groups=Groups.getUserToGroupsMappingService(conf);
+  UserGroupInformation realUserUgi=UserGroupInformation.createRemoteUser(REAL_USER_NAME);
+  UserGroupInformation proxyUserUgi=UserGroupInformation.createProxyUserForTesting(PROXY_USER_NAME,realUserUgi,groups.getGroups(PROXY_USER_NAME).toArray(new String[groups.getGroups(PROXY_USER_NAME).size()]));
+  assertAuthorized(proxyUserUgi,PROXY_IP);
+}
