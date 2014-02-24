@@ -1,56 +1,12 @@
 {
-  int refetchToken=1;
-  int refetchEncryptionKey=1;
+  block=getBlockAt(block.getStartOffset(),false);
   while (true) {
-    CachingStrategy curCachingStrategy;
-    boolean allowShortCircuitLocalReads;
-synchronized (this) {
-      block=getBlockAt(block.getStartOffset(),false);
-      curCachingStrategy=cachingStrategy;
-      allowShortCircuitLocalReads=!shortCircuitForbidden();
-    }
-    DNAddrPair retval=chooseDataNode(block);
-    DatanodeInfo chosenNode=retval.info;
-    InetSocketAddress targetAddr=retval.addr;
-    BlockReader reader=null;
+    DNAddrPair addressPair=chooseDataNode(block,null);
     try {
-      Token<BlockTokenIdentifier> blockToken=block.getBlockToken();
-      int len=(int)(end - start + 1);
-      reader=new BlockReaderFactory(dfsClient.getConf()).setInetSocketAddress(targetAddr).setRemotePeerFactory(dfsClient).setDatanodeInfo(chosenNode).setFileName(src).setBlock(block.getBlock()).setBlockToken(blockToken).setStartOffset(start).setVerifyChecksum(verifyChecksum).setClientName(dfsClient.clientName).setLength(len).setCachingStrategy(curCachingStrategy).setAllowShortCircuitLocalReads(allowShortCircuitLocalReads).setClientCacheContext(dfsClient.getClientContext()).setUserGroupInformation(dfsClient.ugi).setConfiguration(dfsClient.getConfiguration()).build();
-      int nread=reader.readAll(buf,offset,len);
-      if (nread != len) {
-        throw new IOException("truncated return from reader.read(): " + "excpected " + len + ", got "+ nread);
-      }
+      actualGetFromOneDataNode(addressPair,block,start,end,buf,offset,corruptedBlockMap);
       return;
     }
- catch (    ChecksumException e) {
-      DFSClient.LOG.warn("fetchBlockByteRange(). Got a checksum exception for " + src + " at "+ block.getBlock()+ ":"+ e.getPos()+ " from "+ chosenNode);
-      addIntoCorruptedBlockMap(block.getBlock(),chosenNode,corruptedBlockMap);
+ catch (    IOException e) {
     }
-catch (    IOException e) {
-      if (e instanceof InvalidEncryptionKeyException && refetchEncryptionKey > 0) {
-        DFSClient.LOG.info("Will fetch a new encryption key and retry, " + "encryption key was invalid when connecting to " + targetAddr + " : "+ e);
-        refetchEncryptionKey--;
-        dfsClient.clearDataEncryptionKey();
-        continue;
-      }
- else       if (refetchToken > 0 && tokenRefetchNeeded(e,targetAddr)) {
-        refetchToken--;
-        fetchBlockAt(block.getStartOffset());
-        continue;
-      }
- else {
-        DFSClient.LOG.warn("Failed to connect to " + targetAddr + " for file "+ src+ " for block "+ block.getBlock()+ ":"+ e);
-        if (DFSClient.LOG.isDebugEnabled()) {
-          DFSClient.LOG.debug("Connection failure ",e);
-        }
-      }
-    }
- finally {
-      if (reader != null) {
-        reader.close();
-      }
-    }
-    addToDeadNodes(chosenNode);
   }
 }

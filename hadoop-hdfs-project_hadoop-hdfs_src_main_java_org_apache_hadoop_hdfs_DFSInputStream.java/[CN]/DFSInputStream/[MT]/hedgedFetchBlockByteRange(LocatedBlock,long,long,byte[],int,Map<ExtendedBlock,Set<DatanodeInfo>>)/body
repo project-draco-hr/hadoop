@@ -1,0 +1,66 @@
+{
+  ArrayList<Future<ByteBuffer>> futures=null;
+  ArrayList<DatanodeInfo> ignored=new ArrayList<DatanodeInfo>();
+  ByteBuffer bb=null;
+  int len=(int)(end - start + 1);
+  block=getBlockAt(block.getStartOffset(),false);
+  CountDownLatch hasReceivedResult=new CountDownLatch(1);
+  while (true) {
+    DNAddrPair chosenNode=null;
+    Future<ByteBuffer> future=null;
+    if (futures == null) {
+      chosenNode=chooseDataNode(block,ignored);
+      bb=ByteBuffer.wrap(buf,offset,len);
+      future=getHedgedReadFuture(chosenNode,block,start,end,bb,corruptedBlockMap,hasReceivedResult);
+      try {
+        future.get(dfsClient.getHedgedReadTimeout(),TimeUnit.MILLISECONDS);
+        return;
+      }
+ catch (      TimeoutException e) {
+        if (DFSClient.LOG.isDebugEnabled()) {
+          DFSClient.LOG.debug("Waited " + dfsClient.getHedgedReadTimeout() + "ms to read from "+ chosenNode.info+ "; spawning hedged read");
+        }
+        ignored.add(chosenNode.info);
+        dfsClient.getHedgedReadMetrics().incHedgedReadOps();
+        futures=new ArrayList<Future<ByteBuffer>>();
+        futures.add(future);
+        continue;
+      }
+catch (      InterruptedException e) {
+      }
+catch (      ExecutionException e) {
+      }
+    }
+ else {
+      try {
+        chosenNode=getBestNodeDNAddrPair(block.getLocations(),ignored);
+        bb=ByteBuffer.allocate(len);
+        future=getHedgedReadFuture(chosenNode,block,start,end,bb,corruptedBlockMap,hasReceivedResult);
+        futures.add(future);
+      }
+ catch (      IOException ioe) {
+        if (DFSClient.LOG.isDebugEnabled()) {
+          DFSClient.LOG.debug("Failed getting node for hedged read: " + ioe.getMessage());
+        }
+      }
+      try {
+        ByteBuffer result=getFirstToComplete(futures,hasReceivedResult);
+        cancelAll(futures);
+        if (result.array() != buf) {
+          dfsClient.getHedgedReadMetrics().incHedgedReadWins();
+          System.arraycopy(result.array(),result.position(),buf,offset,len);
+        }
+ else {
+          dfsClient.getHedgedReadMetrics().incHedgedReadOps();
+        }
+        return;
+      }
+ catch (      InterruptedException ie) {
+      }
+catch (      ExecutionException e) {
+      }
+      ignored.add(chosenNode.info);
+    }
+    block=getBlockAt(block.getStartOffset(),false);
+  }
+}
