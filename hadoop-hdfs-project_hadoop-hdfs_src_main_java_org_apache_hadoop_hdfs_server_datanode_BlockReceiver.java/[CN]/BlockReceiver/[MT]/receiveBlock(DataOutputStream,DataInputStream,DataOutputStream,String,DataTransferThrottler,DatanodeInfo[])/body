@@ -28,15 +28,31 @@
     }
   }
  catch (  IOException ioe) {
-    LOG.info("Exception for " + block,ioe);
-    throw ioe;
+    if (datanode.isRestarting()) {
+      LOG.info("Shutting down for restart (" + block + ").");
+    }
+ else {
+      LOG.info("Exception for " + block,ioe);
+      throw ioe;
+    }
   }
  finally {
+    Thread.interrupted();
     if (!responderClosed) {
-      IOUtils.closeStream(this);
       if (responder != null) {
+        if (datanode.isRestarting()) {
+          try {
+            ((PacketResponder)responder.getRunnable()).sendOOBResponse(PipelineAck.getRestartOOBStatus());
+          }
+ catch (          InterruptedException ie) {
+          }
+catch (          IOException ioe) {
+            LOG.info("Error sending OOB Ack.",ioe);
+          }
+        }
         responder.interrupt();
       }
+      IOUtils.closeStream(this);
       cleanupBlock();
     }
     if (responder != null) {
@@ -50,7 +66,9 @@
       }
  catch (      InterruptedException e) {
         responder.interrupt();
-        throw new IOException("Interrupted receiveBlock");
+        if (!datanode.isRestarting()) {
+          throw new IOException("Interrupted receiveBlock");
+        }
       }
       responder=null;
     }

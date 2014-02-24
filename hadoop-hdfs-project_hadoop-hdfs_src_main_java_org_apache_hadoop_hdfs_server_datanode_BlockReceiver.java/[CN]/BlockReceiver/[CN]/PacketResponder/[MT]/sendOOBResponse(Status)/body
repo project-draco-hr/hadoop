@@ -1,0 +1,25 @@
+{
+  if (!running) {
+    LOG.info("Cannot send OOB response " + ackStatus + ". Responder not running.");
+    return;
+  }
+synchronized (this) {
+    if (sending) {
+      wait(PipelineAck.getOOBTimeout(ackStatus));
+      if (sending) {
+        throw new IOException("Could not send OOB reponse in time: " + ackStatus);
+      }
+    }
+    sending=true;
+  }
+  LOG.info("Sending an out of band ack of type " + ackStatus);
+  try {
+    sendAckUpstreamUnprotected(null,PipelineAck.UNKOWN_SEQNO,0L,0L,ackStatus);
+  }
+  finally {
+synchronized (this) {
+      sending=false;
+      notify();
+    }
+  }
+}

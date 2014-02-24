@@ -1,29 +1,23 @@
 {
-  Status[] replies=null;
-  if (mirrorError) {
-    replies=MIRROR_ERROR_STATUS;
-  }
- else {
-    short ackLen=type == PacketResponderType.LAST_IN_PIPELINE ? 0 : ack.getNumOfReplies();
-    replies=new Status[1 + ackLen];
-    replies[0]=myStatus;
-    for (int i=0; i < ackLen; i++) {
-      replies[i + 1]=ack.getReply(i);
+  try {
+synchronized (this) {
+      while (sending) {
+        wait();
+      }
+      sending=true;
     }
-    if (ackLen > 0 && replies[1] == Status.ERROR_CHECKSUM) {
-      throw new IOException("Shutting down writer and responder " + "since the down streams reported the data sent by this " + "thread is corrupt");
+    try {
+      if (!running)       return;
+      sendAckUpstreamUnprotected(ack,seqno,totalAckTimeNanos,offsetInBlock,myStatus);
+    }
+  finally {
+synchronized (this) {
+        sending=false;
+        notify();
+      }
     }
   }
-  PipelineAck replyAck=new PipelineAck(seqno,replies,totalAckTimeNanos);
-  if (replyAck.isSuccess() && offsetInBlock > replicaInfo.getBytesAcked()) {
-    replicaInfo.setBytesAcked(offsetInBlock);
-  }
-  replyAck.write(upstreamOut);
-  upstreamOut.flush();
-  if (LOG.isDebugEnabled()) {
-    LOG.debug(myString + ", replyAck=" + replyAck);
-  }
-  if (myStatus == Status.ERROR_CHECKSUM) {
-    throw new IOException("Shutting down writer and responder " + "due to a checksum error in received data. The error " + "response has been sent upstream.");
+ catch (  InterruptedException ie) {
+    running=false;
   }
 }

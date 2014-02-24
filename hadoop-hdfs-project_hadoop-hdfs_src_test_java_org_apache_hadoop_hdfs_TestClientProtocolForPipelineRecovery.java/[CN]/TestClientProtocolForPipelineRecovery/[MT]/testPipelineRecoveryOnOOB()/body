@@ -1,0 +1,29 @@
+{
+  Configuration conf=new HdfsConfiguration();
+  MiniDFSCluster cluster=null;
+  try {
+    int numDataNodes=3;
+    cluster=new MiniDFSCluster.Builder(conf).numDataNodes(numDataNodes).build();
+    cluster.waitActive();
+    FileSystem fileSys=cluster.getFileSystem();
+    Path file=new Path("dataprotocol2.dat");
+    DFSTestUtil.createFile(fileSys,file,10240L,(short)2,0L);
+    DFSOutputStream out=(DFSOutputStream)(fileSys.append(file).getWrappedStream());
+    out.write(1);
+    out.hflush();
+    DFSAdmin dfsadmin=new DFSAdmin(conf);
+    DataNode dn=cluster.getDataNodes().get(0);
+    final String dnAddr=dn.getDatanodeId().getIpcAddr(false);
+    final String[] args1={"-shutdownDatanode",dnAddr,"upgrade"};
+    Assert.assertEquals(0,dfsadmin.run(args1));
+    out.close();
+    Thread.sleep(3000);
+    final String[] args2={"-getDatanodeInfo",dnAddr};
+    Assert.assertEquals(-1,dfsadmin.run(args2));
+  }
+  finally {
+    if (cluster != null) {
+      cluster.shutdown();
+    }
+  }
+}
