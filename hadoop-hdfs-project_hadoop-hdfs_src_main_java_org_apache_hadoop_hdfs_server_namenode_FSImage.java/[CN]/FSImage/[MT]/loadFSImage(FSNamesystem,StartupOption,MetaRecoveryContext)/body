@@ -1,7 +1,13 @@
 {
   final boolean rollingRollback=StartupOption.isRollingUpgradeRollback(startOpt);
-  final NameNodeFile nnf=rollingRollback ? NameNodeFile.IMAGE_ROLLBACK : NameNodeFile.IMAGE;
-  final FSImageStorageInspector inspector=storage.readAndInspectDirs(nnf);
+  final EnumSet<NameNodeFile> nnfs;
+  if (rollingRollback) {
+    nnfs=EnumSet.of(NameNodeFile.IMAGE_ROLLBACK);
+  }
+ else {
+    nnfs=EnumSet.of(NameNodeFile.IMAGE,NameNodeFile.IMAGE_ROLLBACK);
+  }
+  final FSImageStorageInspector inspector=storage.readAndInspectDirs(nnfs);
   isUpgradeFinalized=inspector.isUpgradeFinalized();
   List<FSImageFile> imageFiles=inspector.getLatestImages();
   StartupProgress prog=NameNode.getStartupProgress();
@@ -53,6 +59,9 @@
   if (!rollingRollback) {
     long txnsAdvanced=loadEdits(editStreams,target,startOpt,recovery);
     needToSave|=needsResaveBasedOnStaleCheckpoint(imageFile.getFile(),txnsAdvanced);
+    if (StartupOption.isRollingUpgradeDowngrade(startOpt)) {
+      archivalManager.purgeCheckpoints(NameNodeFile.IMAGE_ROLLBACK);
+    }
   }
  else {
     rollingRollback(lastAppliedTxId + 1,imageFiles.get(0).getCheckpointTxId());
