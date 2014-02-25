@@ -9,7 +9,27 @@
       newReplica=new FinalizedReplica(blockId,blockFile.length(),genStamp,volume,blockFile.getParentFile());
     }
  else {
-      newReplica=new ReplicaWaitingToBeRecovered(blockId,validateIntegrityAndSetLength(blockFile,genStamp),genStamp,volume,blockFile.getParentFile());
+      boolean loadRwr=true;
+      File restartMeta=new File(blockFile.getParent() + File.pathSeparator + "."+ blockFile.getName()+ ".restart");
+      Scanner sc=null;
+      try {
+        sc=new Scanner(restartMeta);
+        if (sc.hasNextLong() && (sc.nextLong() > Time.now())) {
+          newReplica=new ReplicaBeingWritten(blockId,validateIntegrityAndSetLength(blockFile,genStamp),genStamp,volume,blockFile.getParentFile(),null);
+          loadRwr=false;
+        }
+        restartMeta.delete();
+      }
+ catch (      FileNotFoundException fnfe) {
+      }
+ finally {
+        if (sc != null) {
+          sc.close();
+        }
+      }
+      if (loadRwr) {
+        newReplica=new ReplicaWaitingToBeRecovered(blockId,validateIntegrityAndSetLength(blockFile,genStamp),genStamp,volume,blockFile.getParentFile());
+      }
     }
     ReplicaInfo oldReplica=volumeMap.add(bpid,newReplica);
     if (oldReplica != null) {
