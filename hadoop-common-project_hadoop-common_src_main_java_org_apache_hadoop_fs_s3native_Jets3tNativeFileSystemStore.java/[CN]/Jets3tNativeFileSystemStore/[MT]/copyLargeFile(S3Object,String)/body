@@ -1,0 +1,27 @@
+{
+  try {
+    long partCount=srcObject.getContentLength() / multipartCopyBlockSize + (srcObject.getContentLength() % multipartCopyBlockSize > 0 ? 1 : 0);
+    MultipartUpload multipartUpload=s3Service.multipartStartUpload(bucket.getName(),dstKey,srcObject.getMetadataMap());
+    List<MultipartPart> listedParts=new ArrayList<MultipartPart>();
+    for (int i=0; i < partCount; i++) {
+      long byteRangeStart=i * multipartCopyBlockSize;
+      long byteLength;
+      if (i < partCount - 1) {
+        byteLength=multipartCopyBlockSize;
+      }
+ else {
+        byteLength=srcObject.getContentLength() % multipartCopyBlockSize;
+        if (byteLength == 0) {
+          byteLength=multipartCopyBlockSize;
+        }
+      }
+      MultipartPart copiedPart=s3Service.multipartUploadPartCopy(multipartUpload,i + 1,bucket.getName(),srcObject.getKey(),null,null,null,null,byteRangeStart,byteRangeStart + byteLength - 1,null);
+      listedParts.add(copiedPart);
+    }
+    Collections.reverse(listedParts);
+    s3Service.multipartCompleteUpload(multipartUpload,listedParts);
+  }
+ catch (  ServiceException e) {
+    handleServiceException(e);
+  }
+}
