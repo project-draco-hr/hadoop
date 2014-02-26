@@ -1,14 +1,14 @@
 {
-  LOG.info("STARTING testCountersForFailedTask");
+  LOG.info("STARTING testDiagnosticsForKilledJob");
   try {
-    Configuration conf=new Configuration();
+    final Configuration conf=new Configuration();
     conf.setClass(NET_TOPOLOGY_NODE_SWITCH_MAPPING_IMPL_KEY,MyResolver.class,DNSToSwitchMapping.class);
     RackResolver.init(conf);
-    MRApp app=new MRAppWithHistoryWithFailedTask(2,1,true,this.getClass().getName(),true);
+    MRApp app=new MRAppWithHistoryWithJobKilled(2,1,true,this.getClass().getName(),true);
     app.submit(conf);
     Job job=app.getContext().getAllJobs().values().iterator().next();
     JobId jobId=job.getID();
-    app.waitForState(job,JobState.FAILED);
+    app.waitForState(job,JobState.KILLED);
     app.waitForState(Service.STATE.STOPPED);
     JobHistory jobHistory=new JobHistory();
     jobHistory.init(conf);
@@ -31,12 +31,7 @@ synchronized (fileInfo) {
       jobInfo=parser.parse();
     }
     Exception parseException=parser.getParseException();
-    Assert.assertNull("Caught an expected exception " + parseException,parseException);
-    for (    Map.Entry<TaskID,TaskInfo> entry : jobInfo.getAllTasks().entrySet()) {
-      TaskId yarnTaskID=TypeConverter.toYarn(entry.getKey());
-      CompletedTask ct=new CompletedTask(yarnTaskID,entry.getValue());
-      Assert.assertNotNull("completed task report has null counters",ct.getReport().getCounters());
-    }
+    assertNull("Caught an expected exception " + parseException,parseException);
     final List<String> originalDiagnostics=job.getDiagnostics();
     final String historyError=jobInfo.getErrorInfo();
     assertTrue("No original diagnostics for a failed job",originalDiagnostics != null && !originalDiagnostics.isEmpty());
@@ -44,8 +39,9 @@ synchronized (fileInfo) {
     for (    String diagString : originalDiagnostics) {
       assertTrue(historyError.contains(diagString));
     }
+    assertTrue("No killed message in diagnostics",historyError.contains(JobImpl.JOB_KILLED_DIAG));
   }
   finally {
-    LOG.info("FINISHED testCountersForFailedTask");
+    LOG.info("FINISHED testDiagnosticsForKilledJob");
   }
 }
