@@ -1,0 +1,24 @@
+{
+  final Configuration conf=new Configuration();
+  MiniQJMHACluster cluster=null;
+  try {
+    cluster=new MiniQJMHACluster.Builder(conf).build();
+    MiniDFSCluster dfsCluster=cluster.getDfsCluster();
+    dfsCluster.waitActive();
+    dfsCluster.transitionToActive(0);
+    DistributedFileSystem dfs=dfsCluster.getFileSystem(0);
+    dfsCluster.shutdownNameNode(1);
+    RollingUpgradeInfo info=dfs.rollingUpgrade(RollingUpgradeAction.PREPARE);
+    Assert.assertTrue(info.isStarted());
+    info=dfs.rollingUpgrade(RollingUpgradeAction.QUERY);
+    Assert.assertFalse(info.createdRollbackImages());
+    dfsCluster.restartNameNode(1);
+    queryForPreparation(dfs);
+    Assert.assertTrue(dfsCluster.getNamesystem(0).getFSImage().hasRollbackFSImage());
+  }
+  finally {
+    if (cluster != null) {
+      cluster.shutdown();
+    }
+  }
+}
