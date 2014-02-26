@@ -1,13 +1,36 @@
 {
   final Configuration conf=getTestConfiguration();
+  ((Log4JLogger)ProtobufRpcEngine.LOG).getLogger().setLevel(Level.TRACE);
+  ((Log4JLogger)BlockStorageLocationUtil.LOG).getLogger().setLevel(Level.TRACE);
+  ((Log4JLogger)DFSClient.LOG).getLogger().setLevel(Level.TRACE);
   conf.setBoolean(DFSConfigKeys.DFS_HDFS_BLOCKS_METADATA_ENABLED,true);
   final MiniDFSCluster cluster=new MiniDFSCluster.Builder(conf).numDataNodes(2).build();
   try {
-    DistributedFileSystem fs=cluster.getFileSystem();
-    Path tmpFile1=new Path("/tmpfile1.dat");
-    Path tmpFile2=new Path("/tmpfile2.dat");
+    final DistributedFileSystem fs=cluster.getFileSystem();
+    final Path tmpFile1=new Path("/tmpfile1.dat");
+    final Path tmpFile2=new Path("/tmpfile2.dat");
     DFSTestUtil.createFile(fs,tmpFile1,1024,(short)2,0xDEADDEADl);
     DFSTestUtil.createFile(fs,tmpFile2,1024,(short)2,0xDEADDEADl);
+    GenericTestUtils.waitFor(new Supplier<Boolean>(){
+      @Override public Boolean get(){
+        try {
+          List<BlockLocation> list=Lists.newArrayList();
+          list.addAll(Arrays.asList(fs.getFileBlockLocations(tmpFile1,0,1024)));
+          list.addAll(Arrays.asList(fs.getFileBlockLocations(tmpFile2,0,1024)));
+          int totalRepl=0;
+          for (          BlockLocation loc : list) {
+            totalRepl+=loc.getHosts().length;
+          }
+          if (totalRepl == 4) {
+            return true;
+          }
+        }
+ catch (        IOException e) {
+        }
+        return false;
+      }
+    }
+,500,30000);
     BlockLocation[] blockLocs1=fs.getFileBlockLocations(tmpFile1,0,1024);
     BlockLocation[] blockLocs2=fs.getFileBlockLocations(tmpFile2,0,1024);
     BlockLocation[] blockLocs=(BlockLocation[])ArrayUtils.addAll(blockLocs1,blockLocs2);
@@ -29,7 +52,7 @@
       for (int i=0; i < l.getVolumeIds().length; i++) {
         VolumeId id=l.getVolumeIds()[i];
         String name=l.getNames()[i];
-        assertTrue("Expected block to be valid on datanode " + name,id.isValid());
+        assertTrue("Expected block to be valid on datanode " + name,id != null);
       }
     }
   }

@@ -1,15 +1,28 @@
 {
+  if (datanodeBlocks.isEmpty()) {
+    return Lists.newArrayList();
+  }
   List<VolumeBlockLocationCallable> callables=new ArrayList<VolumeBlockLocationCallable>();
   for (  Map.Entry<DatanodeInfo,List<LocatedBlock>> entry : datanodeBlocks.entrySet()) {
     DatanodeInfo datanode=entry.getKey();
     List<LocatedBlock> locatedBlocks=entry.getValue();
-    List<ExtendedBlock> extendedBlocks=new ArrayList<ExtendedBlock>(locatedBlocks.size());
+    if (locatedBlocks.isEmpty()) {
+      continue;
+    }
+    String poolId=locatedBlocks.get(0).getBlock().getBlockPoolId();
+    for (    LocatedBlock lb : locatedBlocks) {
+      if (!poolId.equals(lb.getBlock().getBlockPoolId())) {
+        throw new IllegalArgumentException("All blocks to be queried must be in the same block pool: " + locatedBlocks.get(0).getBlock() + " and "+ lb+ " are from different pools.");
+      }
+    }
+    long[] blockIds=new long[locatedBlocks.size()];
+    int i=0;
     List<Token<BlockTokenIdentifier>> dnTokens=new ArrayList<Token<BlockTokenIdentifier>>(locatedBlocks.size());
     for (    LocatedBlock b : locatedBlocks) {
-      extendedBlocks.add(b.getBlock());
+      blockIds[i++]=b.getBlock().getBlockId();
       dnTokens.add(b.getBlockToken());
     }
-    VolumeBlockLocationCallable callable=new VolumeBlockLocationCallable(conf,datanode,extendedBlocks,dnTokens,timeout,connectToDnViaHostname);
+    VolumeBlockLocationCallable callable=new VolumeBlockLocationCallable(conf,datanode,poolId,blockIds,dnTokens,timeout,connectToDnViaHostname);
     callables.add(callable);
   }
   return callables;

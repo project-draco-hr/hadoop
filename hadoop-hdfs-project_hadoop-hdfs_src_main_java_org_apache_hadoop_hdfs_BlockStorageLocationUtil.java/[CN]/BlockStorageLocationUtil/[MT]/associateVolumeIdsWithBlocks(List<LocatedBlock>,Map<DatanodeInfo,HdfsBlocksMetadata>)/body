@@ -1,36 +1,37 @@
 {
-  Map<ExtendedBlock,LocatedBlock> extBlockToLocBlock=new HashMap<ExtendedBlock,LocatedBlock>();
+  Map<Long,LocatedBlock> blockIdToLocBlock=new HashMap<Long,LocatedBlock>();
   for (  LocatedBlock b : blocks) {
-    extBlockToLocBlock.put(b.getBlock(),b);
+    blockIdToLocBlock.put(b.getBlock().getBlockId(),b);
   }
   Map<LocatedBlock,List<VolumeId>> blockVolumeIds=new HashMap<LocatedBlock,List<VolumeId>>();
   for (  LocatedBlock b : blocks) {
     ArrayList<VolumeId> l=new ArrayList<VolumeId>(b.getLocations().length);
     for (int i=0; i < b.getLocations().length; i++) {
-      l.add(VolumeId.INVALID_VOLUME_ID);
+      l.add(null);
     }
     blockVolumeIds.put(b,l);
   }
-  Iterator<HdfsBlocksMetadata> metadatasIter=metadatas.iterator();
-  Iterator<DatanodeInfo> datanodeIter=datanodeBlocks.keySet().iterator();
-  while (metadatasIter.hasNext()) {
-    HdfsBlocksMetadata metadata=metadatasIter.next();
-    DatanodeInfo datanode=datanodeIter.next();
+  for (  Map.Entry<DatanodeInfo,HdfsBlocksMetadata> entry : metadatas.entrySet()) {
+    DatanodeInfo datanode=entry.getKey();
+    HdfsBlocksMetadata metadata=entry.getValue();
     if (metadata == null) {
       continue;
     }
-    ExtendedBlock[] metaBlocks=metadata.getBlocks();
+    long[] metaBlockIds=metadata.getBlockIds();
     List<byte[]> metaVolumeIds=metadata.getVolumeIds();
     List<Integer> metaVolumeIndexes=metadata.getVolumeIndexes();
-    for (int j=0; j < metaBlocks.length; j++) {
+    for (int j=0; j < metaBlockIds.length; j++) {
       int volumeIndex=metaVolumeIndexes.get(j);
-      ExtendedBlock extBlock=metaBlocks[j];
-      if (volumeIndex == Integer.MAX_VALUE || volumeIndex >= metaVolumeIds.size() || !extBlockToLocBlock.containsKey(extBlock)) {
+      long blockId=metaBlockIds[j];
+      if (volumeIndex == Integer.MAX_VALUE || volumeIndex >= metaVolumeIds.size() || !blockIdToLocBlock.containsKey(blockId)) {
+        if (LOG.isDebugEnabled()) {
+          LOG.debug("No data for block " + blockId);
+        }
         continue;
       }
       byte[] volumeId=metaVolumeIds.get(volumeIndex);
       HdfsVolumeId id=new HdfsVolumeId(volumeId);
-      LocatedBlock locBlock=extBlockToLocBlock.get(extBlock);
+      LocatedBlock locBlock=blockIdToLocBlock.get(blockId);
       DatanodeInfo[] dnInfos=locBlock.getLocations();
       int index=-1;
       for (int k=0; k < dnInfos.length; k++) {
