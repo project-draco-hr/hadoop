@@ -1,26 +1,23 @@
 {
-  List<VolumeBlockLocationCallable> callables=createVolumeBlockLocationCallables(conf,datanodeBlocks,timeout,connectToDnViaHostname);
+  List<VolumeBlockLocationCallable> callables=createVolumeBlockLocationCallables(conf,datanodeBlocks,timeoutMs,connectToDnViaHostname);
   List<Future<HdfsBlocksMetadata>> futures=new ArrayList<Future<HdfsBlocksMetadata>>();
   ExecutorService executor=new ScheduledThreadPoolExecutor(poolsize);
   try {
-    futures=executor.invokeAll(callables,timeout,TimeUnit.SECONDS);
+    futures=executor.invokeAll(callables,timeoutMs,TimeUnit.MILLISECONDS);
   }
  catch (  InterruptedException e) {
   }
   executor.shutdown();
-  List<HdfsBlocksMetadata> metadatas=new ArrayList<HdfsBlocksMetadata>();
+  Map<DatanodeInfo,HdfsBlocksMetadata> metadatas=Maps.newHashMapWithExpectedSize(datanodeBlocks.size());
   for (int i=0; i < futures.size(); i++) {
-    metadatas.add(null);
-  }
-  for (int i=0; i < futures.size(); i++) {
+    VolumeBlockLocationCallable callable=callables.get(i);
+    DatanodeInfo datanode=callable.getDatanodeInfo();
     Future<HdfsBlocksMetadata> future=futures.get(i);
     try {
       HdfsBlocksMetadata metadata=future.get();
-      metadatas.set(i,metadata);
+      metadatas.put(callable.getDatanodeInfo(),metadata);
     }
  catch (    ExecutionException e) {
-      VolumeBlockLocationCallable callable=callables.get(i);
-      DatanodeInfo datanode=callable.getDatanodeInfo();
       Throwable t=e.getCause();
       if (t instanceof InvalidBlockTokenException) {
         LOG.warn("Invalid access token when trying to retrieve " + "information from datanode " + datanode.getIpcAddr(false));
@@ -31,7 +28,7 @@
         throw (UnsupportedOperationException)t;
       }
  else {
-        LOG.info("Failed to connect to datanode " + datanode.getIpcAddr(false));
+        LOG.info("Failed to query block locations on datanode " + datanode.getIpcAddr(false) + ": "+ t);
       }
       if (LOG.isDebugEnabled()) {
         LOG.debug("Could not fetch information from datanode",t);

@@ -1,22 +1,65 @@
 {
   final Configuration conf=getTestConfiguration();
   conf.setBoolean(DFSConfigKeys.DFS_HDFS_BLOCKS_METADATA_ENABLED,true);
-  final MiniDFSCluster cluster=new MiniDFSCluster.Builder(conf).numDataNodes(2).build();
+  conf.setInt(CommonConfigurationKeysPublic.IPC_CLIENT_CONNECT_MAX_RETRIES_KEY,0);
+  MiniDFSCluster cluster=null;
   try {
+    cluster=new MiniDFSCluster.Builder(conf).numDataNodes(2).build();
     cluster.getDataNodes();
-    DistributedFileSystem fs=cluster.getFileSystem();
-    Path tmpFile=new Path("/tmpfile1.dat");
-    DFSTestUtil.createFile(fs,tmpFile,1024,(short)2,0xDEADDEADl);
-    BlockLocation[] blockLocs=fs.getFileBlockLocations(tmpFile,0,1024);
-    cluster.stopDataNode(0);
-    BlockStorageLocation[] locs=fs.getFileBlockStorageLocations(Arrays.asList(blockLocs));
-    assertEquals("Expected one HdfsBlockLocation for one 1-block file",1,locs.length);
-    for (    BlockStorageLocation l : locs) {
-      assertEquals("Expected two replicas for each block",2,l.getVolumeIds().length);
-      assertTrue("Expected one valid and one invalid replica",(l.getVolumeIds()[0].isValid()) ^ (l.getVolumeIds()[1].isValid()));
+    final DistributedFileSystem fs=cluster.getFileSystem();
+    final Path tmpFile1=new Path("/errorfile1.dat");
+    final Path tmpFile2=new Path("/errorfile2.dat");
+    DFSTestUtil.createFile(fs,tmpFile1,1024,(short)2,0xDEADDEADl);
+    DFSTestUtil.createFile(fs,tmpFile2,1024,(short)2,0xDEADDEADl);
+    GenericTestUtils.waitFor(new Supplier<Boolean>(){
+      @Override public Boolean get(){
+        try {
+          List<BlockLocation> list=Lists.newArrayList();
+          list.addAll(Arrays.asList(fs.getFileBlockLocations(tmpFile1,0,1024)));
+          list.addAll(Arrays.asList(fs.getFileBlockLocations(tmpFile2,0,1024)));
+          int totalRepl=0;
+          for (          BlockLocation loc : list) {
+            totalRepl+=loc.getHosts().length;
+          }
+          if (totalRepl == 4) {
+            return true;
+          }
+        }
+ catch (        IOException e) {
+        }
+        return false;
+      }
     }
+,500,30000);
+    BlockLocation[] blockLocs1=fs.getFileBlockLocations(tmpFile1,0,1024);
+    BlockLocation[] blockLocs2=fs.getFileBlockLocations(tmpFile2,0,1024);
+    List<BlockLocation> allLocs=Lists.newArrayList();
+    allLocs.addAll(Arrays.asList(blockLocs1));
+    allLocs.addAll(Arrays.asList(blockLocs2));
+    DataNodeProperties stoppedNode=cluster.stopDataNode(0);
+    BlockStorageLocation[] locs=fs.getFileBlockStorageLocations(allLocs);
+    assertEquals("Expected two HdfsBlockLocation for two 1-block files",2,locs.length);
+    for (    BlockStorageLocation l : locs) {
+      assertEquals("Expected two replicas for each block",2,l.getHosts().length);
+      assertEquals("Expected two VolumeIDs for each block",2,l.getVolumeIds().length);
+      assertTrue("Expected one valid and one invalid volume",(l.getVolumeIds()[0] == null) ^ (l.getVolumeIds()[1] == null));
+    }
+    cluster.restartDataNode(stoppedNode,true);
+    cluster.waitActive();
+    fs.delete(tmpFile2,true);
+    HATestUtil.waitForNNToIssueDeletions(cluster.getNameNode());
+    cluster.triggerHeartbeats();
+    HATestUtil.waitForDNDeletions(cluster);
+    locs=fs.getFileBlockStorageLocations(allLocs);
+    assertEquals("Expected two HdfsBlockLocations for two 1-block files",2,locs.length);
+    assertNotNull(locs[0].getVolumeIds()[0]);
+    assertNotNull(locs[0].getVolumeIds()[1]);
+    assertNull(locs[1].getVolumeIds()[0]);
+    assertNull(locs[1].getVolumeIds()[1]);
   }
   finally {
-    cluster.shutdown();
+    if (cluster != null) {
+      cluster.shutdown();
+    }
   }
 }
