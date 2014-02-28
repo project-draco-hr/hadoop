@@ -43,23 +43,13 @@
       LOG.info("Checking for glob: " + absSyslogGlob);
       final FileStatus[] syslogs=localFs.globStatus(absSyslogGlob);
       for (      FileStatus slog : syslogs) {
-        final FileStatus[] sysSiblings=localFs.globStatus(new Path(slog.getPath().getParent(),TaskLog.LogName.SYSLOG + "*"));
-        boolean foundAppMaster=false;
-        floop:         for (        FileStatus f : sysSiblings) {
-          final BufferedReader reader=new BufferedReader(new InputStreamReader(localFs.open(f.getPath())));
-          String line;
-          try {
-            while ((line=reader.readLine()) != null) {
-              if (line.contains(MRJobConfig.APPLICATION_MASTER_CLASS)) {
-                foundAppMaster=true;
-                break floop;
-              }
-            }
-          }
-  finally {
-            reader.close();
-          }
+        boolean foundAppMaster=job.isUber();
+        final Path containerPathComponent=slog.getPath().getParent();
+        if (!foundAppMaster) {
+          final ContainerId cid=ConverterUtils.toContainerId(containerPathComponent.getName());
+          foundAppMaster=(cid.getId() == 1);
         }
+        final FileStatus[] sysSiblings=localFs.globStatus(new Path(containerPathComponent,TaskLog.LogName.SYSLOG + "*"));
         if (foundAppMaster) {
           numAppMasters++;
         }

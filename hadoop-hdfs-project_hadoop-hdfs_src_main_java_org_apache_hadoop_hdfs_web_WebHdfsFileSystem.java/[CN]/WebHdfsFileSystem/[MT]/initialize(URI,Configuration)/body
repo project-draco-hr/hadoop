@@ -3,16 +3,13 @@
   setConf(conf);
   UserParam.setUserPattern(conf.get(DFSConfigKeys.DFS_WEBHDFS_USER_PATTERN_KEY,DFSConfigKeys.DFS_WEBHDFS_USER_PATTERN_DEFAULT));
   connectionFactory=URLConnectionFactory.newDefaultURLConnectionFactory(conf);
-  initializeTokenAspect();
   ugi=UserGroupInformation.getCurrentUser();
-  try {
-    this.uri=new URI(uri.getScheme(),uri.getAuthority(),null,null,null);
-    this.nnAddrs=DFSUtil.resolveWebHdfsUri(this.uri,conf);
-  }
- catch (  URISyntaxException e) {
-    throw new IllegalArgumentException(e);
-  }
-  if (!HAUtil.isLogicalUri(conf,this.uri)) {
+  this.uri=URI.create(uri.getScheme() + "://" + uri.getAuthority());
+  this.nnAddrs=DFSUtil.resolveWebHdfsUri(this.uri,conf);
+  boolean isHA=HAUtil.isLogicalUri(conf,this.uri);
+  this.tokenServiceName=isHA ? HAUtil.buildTokenServiceForLogicalUri(uri) : SecurityUtil.buildTokenService(getCanonicalUri());
+  initializeTokenAspect();
+  if (!isHA) {
     this.retryPolicy=RetryUtils.getDefaultRetryPolicy(conf,DFSConfigKeys.DFS_HTTP_CLIENT_RETRY_POLICY_ENABLED_KEY,DFSConfigKeys.DFS_HTTP_CLIENT_RETRY_POLICY_ENABLED_DEFAULT,DFSConfigKeys.DFS_HTTP_CLIENT_RETRY_POLICY_SPEC_KEY,DFSConfigKeys.DFS_HTTP_CLIENT_RETRY_POLICY_SPEC_DEFAULT,SafeModeException.class);
   }
  else {
