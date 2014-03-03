@@ -1,9 +1,21 @@
 {
-  if ((!opts.contains(ReadOption.SKIP_CHECKSUMS)) && verifyChecksum && (!mlocked.get())) {
-    if (LOG.isTraceEnabled()) {
-      LOG.trace("can't get an mmap for " + block + " of "+ filename+ " since SKIP_CHECKSUMS was not given, "+ "we aren't skipping checksums, and the block is not mlocked.");
+  boolean anchor=verifyChecksum && (opts.contains(ReadOption.SKIP_CHECKSUMS) == false);
+  if (anchor) {
+    if (!createNoChecksumContext()) {
+      if (LOG.isTraceEnabled()) {
+        LOG.trace("can't get an mmap for " + block + " of "+ filename+ " since SKIP_CHECKSUMS was not given, "+ "we aren't skipping checksums, and the block is not mlocked.");
+      }
+      return null;
     }
-    return null;
   }
-  return replica.getOrCreateClientMmap();
+  ClientMmap clientMmap=null;
+  try {
+    clientMmap=replica.getOrCreateClientMmap(anchor);
+  }
+  finally {
+    if ((clientMmap == null) && anchor) {
+      releaseNoChecksumContext();
+    }
+  }
+  return clientMmap;
 }

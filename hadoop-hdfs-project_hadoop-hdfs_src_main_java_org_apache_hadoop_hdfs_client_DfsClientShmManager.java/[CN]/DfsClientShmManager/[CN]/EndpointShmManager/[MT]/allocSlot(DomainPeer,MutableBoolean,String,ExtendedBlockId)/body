@@ -1,0 +1,44 @@
+{
+  while (true) {
+    if (disabled) {
+      if (LOG.isTraceEnabled()) {
+        LOG.trace(this + ": shared memory segment access is disabled.");
+      }
+      return null;
+    }
+    Slot slot=allocSlotFromExistingShm(blockId);
+    if (slot != null) {
+      return slot;
+    }
+    if (loading) {
+      if (LOG.isTraceEnabled()) {
+        LOG.trace(this + ": waiting for loading to finish...");
+      }
+      finishedLoading.awaitUninterruptibly();
+    }
+ else {
+      loading=true;
+      lock.unlock();
+      DfsClientShm shm;
+      try {
+        shm=requestNewShm(clientName,peer);
+        if (shm == null)         continue;
+        domainSocketWatcher.add(peer.getDomainSocket(),shm);
+        usedPeer.setValue(true);
+      }
+  finally {
+        lock.lock();
+        loading=false;
+        finishedLoading.signalAll();
+      }
+      if (shm.isStale()) {
+        if (LOG.isDebugEnabled()) {
+          LOG.debug(this + ": the UNIX domain socket associated with " + "this short-circuit memory closed before we could make "+ "use of the shm.");
+        }
+      }
+ else {
+        notFull.put(shm.getShmId(),shm);
+      }
+    }
+  }
+}

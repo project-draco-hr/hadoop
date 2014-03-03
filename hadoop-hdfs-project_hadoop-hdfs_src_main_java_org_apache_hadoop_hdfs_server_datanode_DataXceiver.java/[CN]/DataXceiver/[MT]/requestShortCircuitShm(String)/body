@@ -1,0 +1,39 @@
+{
+  NewShmInfo shmInfo=null;
+  boolean success=false;
+  DomainSocket sock=peer.getDomainSocket();
+  try {
+    if (sock == null) {
+      sendShmErrorResponse(ERROR_INVALID,"Bad request from " + peer + ": must request a shared "+ "memory segment over a UNIX domain socket.");
+      return;
+    }
+    try {
+      shmInfo=datanode.shortCircuitRegistry.createNewMemorySegment(clientName,sock);
+      releaseSocket();
+    }
+ catch (    UnsupportedOperationException e) {
+      sendShmErrorResponse(ERROR_UNSUPPORTED,"This datanode has not been configured to support " + "short-circuit shared memory segments.");
+      return;
+    }
+catch (    IOException e) {
+      sendShmErrorResponse(ERROR,"Failed to create shared file descriptor: " + e.getMessage());
+      return;
+    }
+    sendShmSuccessResponse(sock,shmInfo);
+    success=true;
+  }
+  finally {
+    if (ClientTraceLog.isInfoEnabled()) {
+      if (success) {
+        BlockSender.ClientTraceLog.info(String.format("cliID: %s, src: 127.0.0.1, dest: 127.0.0.1, " + "op: REQUEST_SHORT_CIRCUIT_SHM," + " shmId: %016x%016x, srvID: %s, success: true",clientName,shmInfo.shmId.getHi(),shmInfo.shmId.getLo(),datanode.getDatanodeUuid()));
+      }
+ else {
+        BlockSender.ClientTraceLog.info(String.format("cliID: %s, src: 127.0.0.1, dest: 127.0.0.1, " + "op: REQUEST_SHORT_CIRCUIT_SHM, " + "shmId: n/a, srvID: %s, success: false",clientName,datanode.getDatanodeUuid()));
+      }
+    }
+    if ((!success) && (peer == null)) {
+      IOUtils.cleanup(null,sock);
+    }
+    IOUtils.cleanup(null,shmInfo);
+  }
+}

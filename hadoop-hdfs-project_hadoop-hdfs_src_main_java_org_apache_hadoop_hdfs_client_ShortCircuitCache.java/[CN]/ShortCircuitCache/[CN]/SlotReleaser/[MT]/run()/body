@@ -1,0 +1,38 @@
+{
+  if (LOG.isTraceEnabled()) {
+    LOG.trace(ShortCircuitCache.this + ": about to release " + slot);
+  }
+  final DfsClientShm shm=(DfsClientShm)slot.getShm();
+  final DomainSocket shmSock=shm.getPeer().getDomainSocket();
+  DomainSocket sock=null;
+  DataOutputStream out=null;
+  final String path=shmSock.getPath();
+  boolean success=false;
+  try {
+    sock=DomainSocket.connect(path);
+    out=new DataOutputStream(new BufferedOutputStream(sock.getOutputStream()));
+    new Sender(out).releaseShortCircuitFds(slot.getSlotId());
+    DataInputStream in=new DataInputStream(sock.getInputStream());
+    ReleaseShortCircuitAccessResponseProto resp=ReleaseShortCircuitAccessResponseProto.parseFrom(PBHelper.vintPrefixed(in));
+    if (resp.getStatus() != Status.SUCCESS) {
+      String error=resp.hasError() ? resp.getError() : "(unknown)";
+      throw new IOException(resp.getStatus().toString() + ": " + error);
+    }
+    if (LOG.isTraceEnabled()) {
+      LOG.trace(ShortCircuitCache.this + ": released " + slot);
+    }
+    success=true;
+  }
+ catch (  IOException e) {
+    LOG.error(ShortCircuitCache.this + ": failed to release " + "short-circuit shared memory slot "+ slot+ " by sending "+ "ReleaseShortCircuitAccessRequestProto to "+ path+ ".  Closing shared memory segment.",e);
+  }
+ finally {
+    if (success) {
+      shmManager.freeSlot(slot);
+    }
+ else {
+      shm.getEndpointShmManager().shutdown(shm);
+    }
+    IOUtils.cleanup(LOG,sock,out);
+  }
+}

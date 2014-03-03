@@ -1,0 +1,23 @@
+{
+  GenericTestUtils.waitFor(new Supplier<Boolean>(){
+    @Override public Boolean get(){
+      final MutableBoolean result=new MutableBoolean(false);
+      cache.accept(new CacheVisitor(){
+        @Override public void visit(        int numOutstandingMmaps,        Map<ExtendedBlockId,ShortCircuitReplica> replicas,        Map<ExtendedBlockId,InvalidToken> failedLoads,        Map<Long,ShortCircuitReplica> evictable,        Map<Long,ShortCircuitReplica> evictableMmapped){
+          Assert.assertEquals(expectedOutstandingMmaps,numOutstandingMmaps);
+          ShortCircuitReplica replica=replicas.get(ExtendedBlockId.fromExtendedBlock(block));
+          Assert.assertNotNull(replica);
+          Slot slot=replica.getSlot();
+          if ((expectedIsAnchorable != slot.isAnchorable()) || (expectedIsAnchored != slot.isAnchored())) {
+            LOG.info("replica " + replica + " has isAnchorable = "+ slot.isAnchorable()+ ", isAnchored = "+ slot.isAnchored()+ ".  Waiting for isAnchorable = "+ expectedIsAnchorable+ ", isAnchored = "+ expectedIsAnchored);
+            return;
+          }
+          result.setValue(true);
+        }
+      }
+);
+      return result.toBoolean();
+    }
+  }
+,10,60000);
+}

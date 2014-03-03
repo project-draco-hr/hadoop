@@ -13,6 +13,8 @@
   FSDataInputStream fsIn=null;
   byte original[]=new byte[BlockReaderLocalTest.TEST_LENGTH];
   FileSystem fs=null;
+  ShortCircuitShm shm=null;
+  RandomAccessFile raf=null;
   try {
     cluster=new MiniDFSCluster.Builder(conf).numDataNodes(1).build();
     cluster.waitActive();
@@ -34,7 +36,6 @@ catch (    TimeoutException e) {
     ExtendedBlock block=DFSTestUtil.getFirstBlock(fs,TEST_PATH);
     File dataFile=MiniDFSCluster.getBlockFile(0,block);
     File metaFile=MiniDFSCluster.getBlockMetadataFile(0,block);
-    DatanodeID datanodeID=cluster.getDataNodes().get(0).getDatanodeId();
     ShortCircuitCache shortCircuitCache=ClientContext.getFromConf(conf).getShortCircuitCache();
     cluster.shutdown();
     cluster=null;
@@ -43,8 +44,12 @@ catch (    TimeoutException e) {
     dataIn=streams[0];
     metaIn=streams[1];
     ExtendedBlockId key=new ExtendedBlockId(block.getBlockId(),block.getBlockPoolId());
-    ShortCircuitReplica replica=new ShortCircuitReplica(key,dataIn,metaIn,shortCircuitCache,Time.now());
-    blockReaderLocal=new BlockReaderLocal.Builder(new DFSClient.Conf(conf)).setFilename(TEST_PATH.getName()).setBlock(block).setShortCircuitReplica(replica).setDatanodeID(datanodeID).setCachingStrategy(new CachingStrategy(false,readahead)).setVerifyChecksum(checksum).build();
+    raf=new RandomAccessFile(new File(sockDir.getDir().getAbsolutePath(),UUID.randomUUID().toString()),"rw");
+    raf.setLength(8192);
+    FileInputStream shmStream=new FileInputStream(raf.getFD());
+    shm=new ShortCircuitShm(ShmId.createRandom(),shmStream);
+    ShortCircuitReplica replica=new ShortCircuitReplica(key,dataIn,metaIn,shortCircuitCache,Time.now(),shm.allocAndRegisterSlot(ExtendedBlockId.fromExtendedBlock(block)));
+    blockReaderLocal=new BlockReaderLocal.Builder(new DFSClient.Conf(conf)).setFilename(TEST_PATH.getName()).setBlock(block).setShortCircuitReplica(replica).setCachingStrategy(new CachingStrategy(false,readahead)).setVerifyChecksum(checksum).build();
     dataIn=null;
     metaIn=null;
     test.doTest(blockReaderLocal,original);
@@ -58,5 +63,7 @@ catch (    TimeoutException e) {
     if (dataIn != null)     dataIn.close();
     if (metaIn != null)     metaIn.close();
     if (blockReaderLocal != null)     blockReaderLocal.close();
+    if (shm != null)     shm.free();
+    if (raf != null)     raf.close();
   }
 }

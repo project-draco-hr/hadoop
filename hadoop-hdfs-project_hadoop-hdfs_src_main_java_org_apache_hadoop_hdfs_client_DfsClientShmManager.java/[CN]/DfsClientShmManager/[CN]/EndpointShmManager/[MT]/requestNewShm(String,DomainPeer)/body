@@ -1,0 +1,35 @@
+{
+  final DataOutputStream out=new DataOutputStream(new BufferedOutputStream(peer.getOutputStream()));
+  new Sender(out).requestShortCircuitShm(clientName);
+  ShortCircuitShmResponseProto resp=ShortCircuitShmResponseProto.parseFrom(PBHelper.vintPrefixed(peer.getInputStream()));
+  String error=resp.hasError() ? resp.getError() : "(unknown)";
+switch (resp.getStatus()) {
+case SUCCESS:
+    DomainSocket sock=peer.getDomainSocket();
+  byte buf[]=new byte[1];
+FileInputStream fis[]=new FileInputStream[1];
+if (sock.recvFileInputStreams(fis,buf,0,buf.length) < 0) {
+throw new EOFException("got EOF while trying to transfer the " + "file descriptor for the shared memory segment.");
+}
+if (fis[0] == null) {
+throw new IOException("the datanode " + datanode + " failed to "+ "pass a file descriptor for the shared memory segment.");
+}
+try {
+DfsClientShm shm=new DfsClientShm(PBHelper.convert(resp.getId()),fis[0],this,peer);
+if (LOG.isTraceEnabled()) {
+LOG.trace(this + ": createNewShm: created " + shm);
+}
+return shm;
+}
+  finally {
+IOUtils.cleanup(LOG,fis[0]);
+}
+case ERROR_UNSUPPORTED:
+LOG.info(this + ": datanode does not support short-circuit " + "shared memory access: "+ error);
+disabled=true;
+return null;
+default :
+LOG.warn(this + ": error requesting short-circuit shared memory " + "access: "+ error);
+return null;
+}
+}

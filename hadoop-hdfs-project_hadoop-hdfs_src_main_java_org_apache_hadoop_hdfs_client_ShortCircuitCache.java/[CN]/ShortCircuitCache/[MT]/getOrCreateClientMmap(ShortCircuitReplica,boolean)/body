@@ -1,0 +1,57 @@
+{
+  Condition newCond;
+  lock.lock();
+  try {
+    while (replica.mmapData != null) {
+      if (replica.mmapData instanceof MappedByteBuffer) {
+        ref(replica);
+        MappedByteBuffer mmap=(MappedByteBuffer)replica.mmapData;
+        return new ClientMmap(replica,mmap,anchored);
+      }
+ else       if (replica.mmapData instanceof Long) {
+        long lastAttemptTimeMs=(Long)replica.mmapData;
+        long delta=Time.monotonicNow() - lastAttemptTimeMs;
+        if (delta < staleThresholdMs) {
+          if (LOG.isTraceEnabled()) {
+            LOG.trace(this + ": can't create client mmap for " + replica+ " because we failed to "+ "create one just "+ delta+ "ms ago.");
+          }
+          return null;
+        }
+        if (LOG.isTraceEnabled()) {
+          LOG.trace(this + ": retrying client mmap for " + replica+ ", "+ delta+ " ms after the previous failure.");
+        }
+      }
+ else       if (replica.mmapData instanceof Condition) {
+        Condition cond=(Condition)replica.mmapData;
+        cond.awaitUninterruptibly();
+      }
+ else {
+        Preconditions.checkState(false,"invalid mmapData type " + replica.mmapData.getClass().getName());
+      }
+    }
+    newCond=lock.newCondition();
+    replica.mmapData=newCond;
+  }
+  finally {
+    lock.unlock();
+  }
+  MappedByteBuffer map=replica.loadMmapInternal();
+  lock.lock();
+  try {
+    if (map == null) {
+      replica.mmapData=Long.valueOf(Time.monotonicNow());
+      newCond.signalAll();
+      return null;
+    }
+ else {
+      outstandingMmapCount++;
+      replica.mmapData=map;
+      ref(replica);
+      newCond.signalAll();
+      return new ClientMmap(replica,map,anchored);
+    }
+  }
+  finally {
+    lock.unlock();
+  }
+}
