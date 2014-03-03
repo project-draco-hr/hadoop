@@ -10,13 +10,29 @@
   while (true) {
     curPeer=nextDomainPeer();
     if (curPeer == null)     break;
+    if (curPeer.fromCache)     remainingCacheTries--;
     DomainPeer peer=(DomainPeer)curPeer.peer;
+    Slot slot=null;
+    ShortCircuitCache cache=clientContext.getShortCircuitCache();
     try {
-      ShortCircuitReplicaInfo info=requestFileDescriptors(peer);
+      MutableBoolean usedPeer=new MutableBoolean(false);
+      slot=cache.allocShmSlot(datanode,peer,usedPeer,new ExtendedBlockId(block.getBlockId(),block.getBlockPoolId()),clientName);
+      if (usedPeer.booleanValue()) {
+        if (LOG.isTraceEnabled()) {
+          LOG.trace(this + ": allocShmSlot used up our previous socket " + peer.getDomainSocket()+ ".  Allocating a new one...");
+        }
+        curPeer=nextDomainPeer();
+        if (curPeer == null)         break;
+        peer=(DomainPeer)curPeer.peer;
+      }
+      ShortCircuitReplicaInfo info=requestFileDescriptors(peer,slot);
       clientContext.getPeerCache().put(datanode,peer);
       return info;
     }
  catch (    IOException e) {
+      if (slot != null) {
+        cache.freeSlot(slot);
+      }
       if (curPeer.fromCache) {
         if (LOG.isDebugEnabled()) {
           LOG.debug(this + ": closing stale domain peer " + peer,e);

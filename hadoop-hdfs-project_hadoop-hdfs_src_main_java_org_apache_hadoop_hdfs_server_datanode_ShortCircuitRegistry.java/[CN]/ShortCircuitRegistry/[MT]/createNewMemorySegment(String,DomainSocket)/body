@@ -1,0 +1,34 @@
+{
+  NewShmInfo info=null;
+  RegisteredShm shm=null;
+  ShmId shmId=null;
+synchronized (this) {
+    if (!enabled) {
+      if (LOG.isTraceEnabled()) {
+        LOG.trace("createNewMemorySegment: ShortCircuitRegistry is " + "not enabled.");
+      }
+      throw new UnsupportedOperationException();
+    }
+    FileInputStream fis=null;
+    try {
+      do {
+        shmId=ShmId.createRandom();
+      }
+ while (segments.containsKey(shmId));
+      fis=shmFactory.createDescriptor(clientName,SHM_LENGTH);
+      shm=new RegisteredShm(shmId,fis,this);
+    }
+  finally {
+      if (shm == null) {
+        IOUtils.closeQuietly(fis);
+      }
+    }
+    info=new NewShmInfo(shmId,fis);
+    segments.put(shmId,shm);
+  }
+  watcher.add(sock,shm);
+  if (LOG.isTraceEnabled()) {
+    LOG.trace("createNewMemorySegment: created " + info.shmId);
+  }
+  return info;
+}

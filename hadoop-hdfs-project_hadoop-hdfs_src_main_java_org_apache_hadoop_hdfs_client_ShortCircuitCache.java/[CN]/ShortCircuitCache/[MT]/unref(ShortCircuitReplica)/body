@@ -1,7 +1,11 @@
 {
   lock.lock();
   try {
+    if ((!replica.purged) && replica.isStale()) {
+      purge(replica);
+    }
     String addedString="";
+    boolean shouldTrimEvictionMaps=false;
     int newRefCount=--replica.refCount;
     if (newRefCount == 0) {
       Preconditions.checkArgument(replica.purged,"Replica " + replica + " reached a refCount of 0 without "+ "being purged");
@@ -18,7 +22,7 @@
           insertEvictable(System.nanoTime(),replica,evictable);
           addedString="added to evictable, ";
         }
-        trimEvictionMaps();
+        shouldTrimEvictionMaps=true;
       }
     }
  else {
@@ -26,6 +30,9 @@
     }
     if (LOG.isTraceEnabled()) {
       LOG.trace(this + ": unref replica " + replica+ ": "+ addedString+ " refCount "+ (newRefCount + 1)+ " -> "+ newRefCount+ StringUtils.getStackTrace(Thread.currentThread()));
+    }
+    if (shouldTrimEvictionMaps) {
+      trimEvictionMaps();
     }
   }
   finally {
