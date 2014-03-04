@@ -1,9 +1,11 @@
 {
+  LockMap.CountingReentrantLock<EntityIdentifier> lock=writeLocks.getLock(new EntityIdentifier(entity.getEntityId(),entity.getEntityType()));
+  lock.lock();
   WriteBatch writeBatch=null;
   try {
     writeBatch=db.createWriteBatch();
     List<TimelineEvent> events=entity.getEvents();
-    byte[] revStartTime=getStartTime(entity.getEntityId(),entity.getEntityType(),entity.getStartTime(),events,writeBatch);
+    byte[] revStartTime=getAndSetStartTime(entity.getEntityId(),entity.getEntityType(),entity.getStartTime(),events,writeBatch);
     if (revStartTime == null) {
       TimelinePutError error=new TimelinePutError();
       error.setEntityId(entity.getEntityId());
@@ -28,11 +30,11 @@
       for (      Entry<String,Set<String>> relatedEntityList : relatedEntities.entrySet()) {
         String relatedEntityType=relatedEntityList.getKey();
         for (        String relatedEntityId : relatedEntityList.getValue()) {
-          byte[] relatedEntityStartTime=getStartTime(relatedEntityId,relatedEntityType,null,null,writeBatch);
+          byte[] relatedEntityStartTime=getAndSetStartTime(relatedEntityId,relatedEntityType,null,null,writeBatch);
           if (relatedEntityStartTime == null) {
             relatedEntityStartTime=revStartTime;
             writeBatch.put(createStartTimeLookupKey(relatedEntityId,relatedEntityType),relatedEntityStartTime);
-            startTimeCache.put(new EntityIdentifier(relatedEntityId,relatedEntityType),revStartTimeLong);
+            startTimeWriteCache.put(new EntityIdentifier(relatedEntityId,relatedEntityType),revStartTimeLong);
           }
           byte[] key=createReleatedEntityKey(relatedEntityId,relatedEntityType,relatedEntityStartTime,entity.getEntityId(),entity.getEntityType());
           writeBatch.put(key,EMPTY_BYTES);
@@ -68,6 +70,8 @@
     response.addError(error);
   }
  finally {
+    lock.unlock();
+    writeLocks.returnLock(lock);
     IOUtils.cleanup(LOG,writeBatch);
   }
 }
