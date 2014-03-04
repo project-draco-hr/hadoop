@@ -7,14 +7,18 @@
     cluster=new MiniQJMHACluster.Builder(conf).build();
     MiniDFSCluster dfsCluster=cluster.getDfsCluster();
     dfsCluster.waitActive();
+    dfsCluster.getConfiguration(1).setInt(DFSConfigKeys.DFS_HA_TAILEDITS_PERIOD_KEY,1);
+    dfsCluster.restartNameNode(1);
     dfsCluster.transitionToActive(0);
     DistributedFileSystem dfs=dfsCluster.getFileSystem(0);
     dfs.mkdirs(foo);
     RollingUpgradeInfo info=dfs.rollingUpgrade(RollingUpgradeAction.PREPARE);
     Assert.assertTrue(info.isStarted());
     dfs.mkdirs(bar);
+    TestRollingUpgrade.queryForPreparation(dfs);
     dfs.close();
     dfsCluster.restartNameNode(0,true,"-rollingUpgrade","downgrade");
+    Assert.assertFalse(dfsCluster.getNamesystem(0).getFSImage().hasRollbackFSImage());
     dfsCluster.shutdownNameNode(1);
     dfsCluster.transitionToActive(0);
     dfs=dfsCluster.getFileSystem(0);
