@@ -1,0 +1,28 @@
+{
+  checkSuperuserPrivilege();
+  checkOperation(OperationCategory.WRITE);
+  writeLock();
+  try {
+    checkOperation(OperationCategory.WRITE);
+    long startTime=now();
+    if (!haEnabled) {
+      startRollingUpgradeInternalForNonHA(startTime);
+    }
+ else {
+      checkNameNodeSafeMode("Failed to start rolling upgrade");
+      startRollingUpgradeInternal(startTime);
+    }
+    getEditLog().logStartRollingUpgrade(rollingUpgradeInfo.getStartTime());
+    if (haEnabled) {
+      getFSImage().rollEditLog();
+    }
+  }
+  finally {
+    writeUnlock();
+  }
+  getEditLog().logSync();
+  if (auditLog.isInfoEnabled() && isExternalInvocation()) {
+    logAuditEvent(true,"startRollingUpgrade",null,null,null);
+  }
+  return rollingUpgradeInfo;
+}

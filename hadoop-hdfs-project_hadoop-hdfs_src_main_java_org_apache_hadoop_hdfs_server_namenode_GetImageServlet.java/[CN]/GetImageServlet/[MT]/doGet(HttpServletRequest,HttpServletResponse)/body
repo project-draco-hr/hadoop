@@ -1,6 +1,6 @@
 {
   try {
-    ServletContext context=getServletContext();
+    final ServletContext context=getServletContext();
     final FSImage nnImage=NameNodeHttpServer.getFsImageFromContext(context);
     final GetImageParams parsedParams=new GetImageParams(request,response);
     final Configuration conf=(Configuration)context.getAttribute(JspHelper.CURRENT_CONF);
@@ -28,7 +28,7 @@
           }
  else {
             errorMessage+=" with txid " + txid;
-            imageFile=nnImage.getStorage().getFsImageName(txid);
+            imageFile=nnImage.getStorage().getFsImage(txid,EnumSet.of(NameNodeFile.IMAGE,NameNodeFile.IMAGE_ROLLBACK));
           }
           if (imageFile == null) {
             throw new IOException(errorMessage);
@@ -54,12 +54,13 @@
         }
  else         if (parsedParams.isPutImage()) {
           final long txid=parsedParams.getTxId();
+          final NameNodeFile nnf=parsedParams.getNameNodeFile();
           if (!currentlyDownloadingCheckpoints.add(txid)) {
             response.sendError(HttpServletResponse.SC_CONFLICT,"Another checkpointer is already in the process of uploading a" + " checkpoint made at transaction ID " + txid);
             return null;
           }
           try {
-            if (nnImage.getStorage().findImageFile(txid) != null) {
+            if (nnImage.getStorage().findImageFile(nnf,txid) != null) {
               response.sendError(HttpServletResponse.SC_CONFLICT,"Another checkpointer already uploaded an checkpoint " + "for txid " + txid);
               return null;
             }
@@ -68,12 +69,15 @@
             }
             long start=now();
             MD5Hash downloadImageDigest=TransferFsImage.downloadImageToStorage(parsedParams.getInfoServer(conf),txid,nnImage.getStorage(),true);
-            nnImage.saveDigestAndRenameCheckpointImage(txid,downloadImageDigest);
+            nnImage.saveDigestAndRenameCheckpointImage(nnf,txid,downloadImageDigest);
+            if (nnf == NameNodeFile.IMAGE_ROLLBACK) {
+              NameNodeHttpServer.getNameNodeFromContext(context).getNamesystem().setCreatedRollbackImages(true);
+            }
             if (metrics != null) {
               long elapsed=now() - start;
               metrics.addPutImage(elapsed);
             }
-            nnImage.purgeOldStorage();
+            nnImage.purgeOldStorage(nnf);
           }
   finally {
             currentlyDownloadingCheckpoints.remove(txid);

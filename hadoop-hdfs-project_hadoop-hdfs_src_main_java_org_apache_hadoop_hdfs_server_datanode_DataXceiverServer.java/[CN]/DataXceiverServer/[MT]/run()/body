@@ -1,6 +1,6 @@
 {
   Peer peer=null;
-  while (datanode.shouldRun) {
+  while (datanode.shouldRun && !datanode.shutdownForUpgrade) {
     try {
       peer=peerServer.accept();
       int curXceiverCount=datanode.getXceiverCount();
@@ -12,7 +12,7 @@
  catch (    SocketTimeoutException ignored) {
     }
 catch (    AsynchronousCloseException ace) {
-      if (datanode.shouldRun) {
+      if (datanode.shouldRun && !datanode.shutdownForUpgrade) {
         LOG.warn(datanode.getDisplayName() + ":DataXceiverServer: ",ace);
       }
     }
@@ -34,15 +34,23 @@ catch (    Throwable te) {
       datanode.shouldRun=false;
     }
   }
-synchronized (this) {
-    for (    Peer p : peers) {
-      IOUtils.cleanup(LOG,p);
-    }
-  }
   try {
     peerServer.close();
+    closed=true;
   }
  catch (  IOException ie) {
     LOG.warn(datanode.getDisplayName() + " :DataXceiverServer: close exception",ie);
   }
+  if (datanode.shutdownForUpgrade) {
+    restartNotifyPeers();
+    LOG.info("Shutting down DataXceiverServer before restart");
+    for (int i=0; getNumPeers() > 0 && i < 10; i++) {
+      try {
+        Thread.sleep(200);
+      }
+ catch (      InterruptedException e) {
+      }
+    }
+  }
+  closeAllPeers();
 }

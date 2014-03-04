@@ -11,7 +11,18 @@
     }
   }
   BPOfferService[] bposArray=this.blockPoolManager == null ? null : this.blockPoolManager.getAllNamenodeThreads();
-  this.shouldRun=false;
+  if (!shutdownForUpgrade) {
+    shouldRun=false;
+  }
+  if (dataXceiverServer != null) {
+    ((DataXceiverServer)this.dataXceiverServer.getRunnable()).kill();
+    this.dataXceiverServer.interrupt();
+  }
+  long timeNotified=Time.now();
+  if (localDataXceiverServer != null) {
+    ((DataXceiverServer)this.localDataXceiverServer.getRunnable()).kill();
+    this.localDataXceiverServer.interrupt();
+  }
   shutdownPeriodicScanners();
   if (infoServer != null) {
     try {
@@ -21,24 +32,16 @@
       LOG.warn("Exception shutting down DataNode",e);
     }
   }
-  if (ipcServer != null) {
-    ipcServer.stop();
-  }
   if (pauseMonitor != null) {
     pauseMonitor.stop();
   }
-  if (dataXceiverServer != null) {
-    ((DataXceiverServer)this.dataXceiverServer.getRunnable()).kill();
-    this.dataXceiverServer.interrupt();
-  }
-  if (localDataXceiverServer != null) {
-    ((DataXceiverServer)this.localDataXceiverServer.getRunnable()).kill();
-    this.localDataXceiverServer.interrupt();
-  }
+  this.shouldRun=false;
   if (this.threadGroup != null) {
     int sleepMs=2;
     while (true) {
-      this.threadGroup.interrupt();
+      if (!this.shutdownForUpgrade || (this.shutdownForUpgrade && (Time.now() - timeNotified > 2500))) {
+        this.threadGroup.interrupt();
+      }
       LOG.info("Waiting for threadgroup to exit, active threads is " + this.threadGroup.activeCount());
       if (this.threadGroup.activeCount() == 0) {
         break;
@@ -69,6 +72,9 @@
  catch (    InterruptedException ie) {
     }
   }
+  if (ipcServer != null) {
+    ipcServer.stop();
+  }
   if (blockPoolManager != null) {
     try {
       this.blockPoolManager.shutDownAll(bposArray);
@@ -96,4 +102,9 @@
     dataNodeInfoBeanName=null;
   }
   if (shortCircuitRegistry != null)   shortCircuitRegistry.shutdown();
+  LOG.info("Shutdown complete.");
+synchronized (this) {
+    this.shouldRun=false;
+    notifyAll();
+  }
 }

@@ -1,0 +1,30 @@
+{
+  FSImageTransactionalStorageInspector inspector=new FSImageTransactionalStorageInspector(EnumSet.of(nnf));
+  storage.inspectStorageDirs(inspector);
+  long minImageTxId=getImageTxIdToRetain(inspector);
+  purgeCheckpointsOlderThan(inspector,minImageTxId);
+  if (nnf == NameNodeFile.IMAGE_ROLLBACK) {
+    return;
+  }
+  long minimumRequiredTxId=minImageTxId + 1;
+  long purgeLogsFrom=Math.max(0,minimumRequiredTxId - numExtraEditsToRetain);
+  ArrayList<EditLogInputStream> editLogs=new ArrayList<EditLogInputStream>();
+  purgeableLogs.selectInputStreams(editLogs,purgeLogsFrom,false);
+  Collections.sort(editLogs,new Comparator<EditLogInputStream>(){
+    @Override public int compare(    EditLogInputStream a,    EditLogInputStream b){
+      return ComparisonChain.start().compare(a.getFirstTxId(),b.getFirstTxId()).compare(a.getLastTxId(),b.getLastTxId()).result();
+    }
+  }
+);
+  while (editLogs.size() > 0 && editLogs.get(editLogs.size() - 1).getFirstTxId() >= minimumRequiredTxId) {
+    editLogs.remove(editLogs.size() - 1);
+  }
+  while (editLogs.size() > maxExtraEditsSegmentsToRetain) {
+    purgeLogsFrom=editLogs.get(0).getLastTxId() + 1;
+    editLogs.remove(0);
+  }
+  if (purgeLogsFrom > minimumRequiredTxId) {
+    throw new AssertionError("Should not purge more edits than required to " + "restore: " + purgeLogsFrom + " should be <= "+ minimumRequiredTxId);
+  }
+  purgeableLogs.purgeLogsOlderThan(purgeLogsFrom);
+}

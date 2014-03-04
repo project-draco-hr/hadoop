@@ -1,0 +1,37 @@
+{
+  final FSImage fsImage=getFSImage();
+  if (startOpt == StartupOption.FORMAT) {
+    fsImage.format(this,fsImage.getStorage().determineClusterId());
+    startOpt=StartupOption.REGULAR;
+  }
+  boolean success=false;
+  writeLock();
+  try {
+    MetaRecoveryContext recovery=startOpt.createRecoveryContext();
+    final boolean staleImage=fsImage.recoverTransitionRead(startOpt,this,recovery);
+    if (RollingUpgradeStartupOption.ROLLBACK.matches(startOpt)) {
+      rollingUpgradeInfo=null;
+    }
+    final boolean needToSave=staleImage && !haEnabled && !isRollingUpgrade();
+    LOG.info("Need to save fs image? " + needToSave + " (staleImage="+ staleImage+ ", haEnabled="+ haEnabled+ ", isRollingUpgrade="+ isRollingUpgrade()+ ")");
+    if (needToSave) {
+      fsImage.saveNamespace(this);
+    }
+ else {
+      StartupProgress prog=NameNode.getStartupProgress();
+      prog.beginPhase(Phase.SAVING_CHECKPOINT);
+      prog.endPhase(Phase.SAVING_CHECKPOINT);
+    }
+    if (!haEnabled || (haEnabled && startOpt == StartupOption.UPGRADE)) {
+      fsImage.openEditLogForWrite();
+    }
+    success=true;
+  }
+  finally {
+    if (!success) {
+      fsImage.close();
+    }
+    writeUnlock();
+  }
+  dir.imageLoadComplete();
+}

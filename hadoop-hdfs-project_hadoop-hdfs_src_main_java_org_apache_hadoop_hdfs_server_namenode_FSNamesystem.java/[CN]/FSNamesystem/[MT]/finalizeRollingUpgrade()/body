@@ -1,0 +1,21 @@
+{
+  checkSuperuserPrivilege();
+  checkOperation(OperationCategory.WRITE);
+  writeLock();
+  final RollingUpgradeInfo returnInfo;
+  try {
+    checkOperation(OperationCategory.WRITE);
+    checkNameNodeSafeMode("Failed to finalize rolling upgrade");
+    returnInfo=finalizeRollingUpgradeInternal(now());
+    getEditLog().logFinalizeRollingUpgrade(returnInfo.getFinalizeTime());
+    getFSImage().saveNamespace(this);
+    getFSImage().renameCheckpoint(NameNodeFile.IMAGE_ROLLBACK,NameNodeFile.IMAGE);
+  }
+  finally {
+    writeUnlock();
+  }
+  if (auditLog.isInfoEnabled() && isExternalInvocation()) {
+    logAuditEvent(true,"finalizeRollingUpgrade",null,null,null);
+  }
+  return returnInfo;
+}

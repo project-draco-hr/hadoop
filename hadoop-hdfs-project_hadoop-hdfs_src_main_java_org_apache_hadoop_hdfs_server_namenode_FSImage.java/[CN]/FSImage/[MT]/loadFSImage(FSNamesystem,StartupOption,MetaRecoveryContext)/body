@@ -1,0 +1,72 @@
+{
+  final boolean rollingRollback=RollingUpgradeStartupOption.ROLLBACK.matches(startOpt);
+  final EnumSet<NameNodeFile> nnfs;
+  if (rollingRollback) {
+    nnfs=EnumSet.of(NameNodeFile.IMAGE_ROLLBACK);
+  }
+ else {
+    nnfs=EnumSet.of(NameNodeFile.IMAGE,NameNodeFile.IMAGE_ROLLBACK);
+  }
+  final FSImageStorageInspector inspector=storage.readAndInspectDirs(nnfs);
+  isUpgradeFinalized=inspector.isUpgradeFinalized();
+  List<FSImageFile> imageFiles=inspector.getLatestImages();
+  StartupProgress prog=NameNode.getStartupProgress();
+  prog.beginPhase(Phase.LOADING_FSIMAGE);
+  File phaseFile=imageFiles.get(0).getFile();
+  prog.setFile(Phase.LOADING_FSIMAGE,phaseFile.getAbsolutePath());
+  prog.setSize(Phase.LOADING_FSIMAGE,phaseFile.length());
+  boolean needToSave=inspector.needToSave();
+  Iterable<EditLogInputStream> editStreams=null;
+  initEditLog(startOpt);
+  if (NameNodeLayoutVersion.supports(LayoutVersion.Feature.TXID_BASED_LAYOUT,getLayoutVersion())) {
+    long toAtLeastTxId=editLog.isOpenForWrite() ? inspector.getMaxSeenTxId() : 0;
+    if (rollingRollback) {
+      toAtLeastTxId=imageFiles.get(0).getCheckpointTxId() + 2;
+    }
+    editStreams=editLog.selectInputStreams(imageFiles.get(0).getCheckpointTxId() + 1,toAtLeastTxId,recovery,false);
+  }
+ else {
+    editStreams=FSImagePreTransactionalStorageInspector.getEditLogStreams(storage);
+  }
+  int maxOpSize=conf.getInt(DFSConfigKeys.DFS_NAMENODE_MAX_OP_SIZE_KEY,DFSConfigKeys.DFS_NAMENODE_MAX_OP_SIZE_DEFAULT);
+  for (  EditLogInputStream elis : editStreams) {
+    elis.setMaxOpSize(maxOpSize);
+  }
+  for (  EditLogInputStream l : editStreams) {
+    LOG.debug("Planning to load edit log stream: " + l);
+  }
+  if (!editStreams.iterator().hasNext()) {
+    LOG.info("No edit log streams selected.");
+  }
+  FSImageFile imageFile=null;
+  for (int i=0; i < imageFiles.size(); i++) {
+    try {
+      imageFile=imageFiles.get(i);
+      loadFSImageFile(target,recovery,imageFile);
+      break;
+    }
+ catch (    IOException ioe) {
+      LOG.error("Failed to load image from " + imageFile,ioe);
+      target.clear();
+      imageFile=null;
+    }
+  }
+  if (imageFile == null) {
+    FSEditLog.closeAllStreams(editStreams);
+    throw new IOException("Failed to load an FSImage file!");
+  }
+  prog.endPhase(Phase.LOADING_FSIMAGE);
+  if (!rollingRollback) {
+    long txnsAdvanced=loadEdits(editStreams,target,startOpt,recovery);
+    needToSave|=needsResaveBasedOnStaleCheckpoint(imageFile.getFile(),txnsAdvanced);
+    if (RollingUpgradeStartupOption.DOWNGRADE.matches(startOpt)) {
+      renameCheckpoint(NameNodeFile.IMAGE_ROLLBACK,NameNodeFile.IMAGE);
+    }
+  }
+ else {
+    rollingRollback(lastAppliedTxId + 1,imageFiles.get(0).getCheckpointTxId());
+    needToSave=false;
+  }
+  editLog.setNextTxId(lastAppliedTxId + 1);
+  return needToSave;
+}
