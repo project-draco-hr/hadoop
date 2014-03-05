@@ -1,6 +1,8 @@
 {
+  YarnConfiguration yarnConf=getConf() == null ? new YarnConfiguration() : new YarnConfiguration(getConf());
+  boolean isHAEnabled=yarnConf.getBoolean(YarnConfiguration.RM_HA_ENABLED,YarnConfiguration.DEFAULT_RM_HA_ENABLED);
   if (args.length < 1) {
-    printUsage("");
+    printUsage("",isHAEnabled);
     return -1;
   }
   int exitCode=-1;
@@ -9,19 +11,23 @@
   exitCode=0;
   if ("-help".equals(cmd)) {
     if (i < args.length) {
-      printUsage(args[i]);
+      printUsage(args[i],isHAEnabled);
     }
  else {
-      printHelp("");
+      printHelp("",isHAEnabled);
     }
     return exitCode;
   }
   if (USAGE.containsKey(cmd)) {
-    return super.run(args);
+    if (isHAEnabled) {
+      return super.run(args);
+    }
+    System.out.println("Cannot run " + cmd + " when ResourceManager HA is not enabled");
+    return -1;
   }
   if ("-refreshAdminAcls".equals(cmd) || "-refreshQueues".equals(cmd) || "-refreshNodes".equals(cmd)|| "-refreshServiceAcl".equals(cmd)|| "-refreshUserToGroupsMappings".equals(cmd)|| "-refreshSuperUserGroupsConfiguration".equals(cmd)) {
     if (args.length != 1) {
-      printUsage(cmd);
+      printUsage(cmd,isHAEnabled);
       return exitCode;
     }
   }
@@ -51,14 +57,13 @@
  else {
       exitCode=-1;
       System.err.println(cmd.substring(1) + ": Unknown command");
-      printUsage("");
-      printUsage("");
+      printUsage("",isHAEnabled);
     }
   }
  catch (  IllegalArgumentException arge) {
     exitCode=-1;
     System.err.println(cmd.substring(1) + ": " + arge.getLocalizedMessage());
-    printUsage(cmd);
+    printUsage(cmd,isHAEnabled);
   }
 catch (  RemoteException e) {
     exitCode=-1;
