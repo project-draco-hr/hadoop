@@ -4,7 +4,7 @@
     policy=defaultPolicy;
   }
   int invocationFailoverCount=0;
-  final boolean isRpc=isRpcInvocation(currentProxy);
+  final boolean isRpc=isRpcInvocation(currentProxy.proxy);
   final int callId=isRpc ? Client.nextCallId() : RpcConstants.INVALID_CALL_ID;
   int retries=0;
   while (true) {
@@ -28,7 +28,7 @@ synchronized (proxyProvider) {
       RetryAction action=policy.shouldRetry(e,retries++,invocationFailoverCount,isIdempotentOrAtMostOnce);
       if (action.action == RetryAction.RetryDecision.FAIL) {
         if (action.reason != null) {
-          LOG.warn("Exception while invoking " + currentProxy.getClass() + "."+ method.getName()+ ". Not retrying because "+ action.reason,e);
+          LOG.warn("Exception while invoking " + currentProxy.proxy.getClass() + "."+ method.getName()+ " over "+ currentProxy.proxyInfo+ ". Not retrying because "+ action.reason,e);
         }
         throw e;
       }
@@ -36,7 +36,7 @@ synchronized (proxyProvider) {
         boolean worthLogging=!(invocationFailoverCount == 0 && !hasMadeASuccessfulCall);
         worthLogging|=LOG.isDebugEnabled();
         if (action.action == RetryAction.RetryDecision.FAILOVER_AND_RETRY && worthLogging) {
-          String msg="Exception while invoking " + method.getName() + " of class "+ currentProxy.getClass().getSimpleName();
+          String msg="Exception while invoking " + method.getName() + " of class "+ currentProxy.proxy.getClass().getSimpleName()+ " over "+ currentProxy.proxyInfo;
           if (invocationFailoverCount > 0) {
             msg+=" after " + invocationFailoverCount + " fail over attempts";
           }
@@ -47,7 +47,7 @@ synchronized (proxyProvider) {
         }
  else {
           if (LOG.isDebugEnabled()) {
-            LOG.debug("Exception while invoking " + method.getName() + " of class "+ currentProxy.getClass().getSimpleName()+ ". Retrying "+ formatSleepMessage(action.delayMillis),e);
+            LOG.debug("Exception while invoking " + method.getName() + " of class "+ currentProxy.proxy.getClass().getSimpleName()+ " over "+ currentProxy.proxyInfo+ ". Retrying "+ formatSleepMessage(action.delayMillis),e);
           }
         }
         if (action.delayMillis > 0) {
@@ -56,7 +56,7 @@ synchronized (proxyProvider) {
         if (action.action == RetryAction.RetryDecision.FAILOVER_AND_RETRY) {
 synchronized (proxyProvider) {
             if (invocationAttemptFailoverCount == proxyProviderFailoverCount) {
-              proxyProvider.performFailover(currentProxy);
+              proxyProvider.performFailover(currentProxy.proxy);
               proxyProviderFailoverCount++;
               currentProxy=proxyProvider.getProxy();
             }
