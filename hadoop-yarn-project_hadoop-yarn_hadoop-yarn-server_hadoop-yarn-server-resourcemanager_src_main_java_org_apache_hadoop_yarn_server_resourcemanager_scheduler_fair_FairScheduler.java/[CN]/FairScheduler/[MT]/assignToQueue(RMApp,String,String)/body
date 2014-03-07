@@ -1,21 +1,32 @@
 {
   FSLeafQueue queue=null;
+  String appRejectMsg=null;
   try {
     QueuePlacementPolicy placementPolicy=allocConf.getPlacementPolicy();
     queueName=placementPolicy.assignAppToQueue(queueName,user);
     if (queueName == null) {
-      return null;
+      appRejectMsg="Application rejected by queue placement policy";
     }
-    queue=queueMgr.getLeafQueue(queueName,true);
+ else {
+      queue=queueMgr.getLeafQueue(queueName,true);
+      if (queue == null) {
+        appRejectMsg=queueName + " is not a leaf queue";
+      }
+    }
   }
- catch (  IOException ex) {
-    LOG.error("Error assigning app to queue, rejecting",ex);
+ catch (  IOException ioe) {
+    appRejectMsg="Error assigning app to queue " + queueName;
+  }
+  if (appRejectMsg != null && rmApp != null) {
+    LOG.error(appRejectMsg);
+    rmContext.getDispatcher().getEventHandler().handle(new RMAppRejectedEvent(rmApp.getApplicationId(),appRejectMsg));
+    return null;
   }
   if (rmApp != null) {
     rmApp.setQueue(queue.getName());
   }
  else {
-    LOG.warn("Couldn't find RM app to set queue name on");
+    LOG.error("Couldn't find RM app to set queue name on");
   }
   return queue;
 }
