@@ -1,0 +1,71 @@
+{
+  try {
+    final ServletContext context=getServletContext();
+    final FSImage nnImage=NameNodeHttpServer.getFsImageFromContext(context);
+    final GetImageParams parsedParams=new GetImageParams(request,response);
+    final Configuration conf=(Configuration)context.getAttribute(JspHelper.CURRENT_CONF);
+    final NameNodeMetrics metrics=NameNode.getNameNodeMetrics();
+    validateRequest(context,conf,request,response,nnImage,parsedParams.getStorageInfoString());
+    UserGroupInformation.getCurrentUser().doAs(new PrivilegedExceptionAction<Void>(){
+      @Override public Void run() throws Exception {
+        if (parsedParams.isGetImage()) {
+          long txid=parsedParams.getTxId();
+          File imageFile=null;
+          String errorMessage="Could not find image";
+          if (parsedParams.shouldFetchLatest()) {
+            imageFile=nnImage.getStorage().getHighestFsImageName();
+          }
+ else {
+            errorMessage+=" with txid " + txid;
+            imageFile=nnImage.getStorage().getFsImage(txid,EnumSet.of(NameNodeFile.IMAGE,NameNodeFile.IMAGE_ROLLBACK));
+          }
+          if (imageFile == null) {
+            throw new IOException(errorMessage);
+          }
+          CheckpointFaultInjector.getInstance().beforeGetImageSetsHeaders();
+          long start=now();
+          serveFile(imageFile);
+          if (metrics != null) {
+            long elapsed=now() - start;
+            metrics.addGetImage(elapsed);
+          }
+        }
+ else         if (parsedParams.isGetEdit()) {
+          long startTxId=parsedParams.getStartTxId();
+          long endTxId=parsedParams.getEndTxId();
+          File editFile=nnImage.getStorage().findFinalizedEditsFile(startTxId,endTxId);
+          long start=now();
+          serveFile(editFile);
+          if (metrics != null) {
+            long elapsed=now() - start;
+            metrics.addGetEdit(elapsed);
+          }
+        }
+        return null;
+      }
+      private void serveFile(      File file) throws IOException {
+        FileInputStream fis=new FileInputStream(file);
+        try {
+          setVerificationHeadersForGet(response,file);
+          setFileNameHeaders(response,file);
+          if (!file.exists()) {
+            throw new FileNotFoundException(file.toString());
+          }
+          TransferFsImage.copyFileToStream(response.getOutputStream(),file,fis,getThrottler(conf));
+        }
+  finally {
+          IOUtils.closeStream(fis);
+        }
+      }
+    }
+);
+  }
+ catch (  Throwable t) {
+    String errMsg="GetImage failed. " + StringUtils.stringifyException(t);
+    response.sendError(HttpServletResponse.SC_GONE,errMsg);
+    throw new IOException(errMsg);
+  }
+ finally {
+    response.getOutputStream().close();
+  }
+}

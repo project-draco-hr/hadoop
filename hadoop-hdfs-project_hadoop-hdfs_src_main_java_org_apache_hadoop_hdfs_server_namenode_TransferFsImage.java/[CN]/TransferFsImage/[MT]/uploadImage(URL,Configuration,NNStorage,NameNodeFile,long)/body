@@ -1,0 +1,40 @@
+{
+  File imageFile=storage.findImageFile(nnf,txId);
+  if (imageFile == null) {
+    throw new IOException("Could not find image with txid " + txId);
+  }
+  HttpURLConnection connection=null;
+  try {
+    URIBuilder uriBuilder=new URIBuilder(url.toURI());
+    Map<String,String> params=ImageServlet.getParamsForPutImage(storage,txId,imageFile.length(),nnf);
+    for (    Entry<String,String> entry : params.entrySet()) {
+      uriBuilder.addParameter(entry.getKey(),entry.getValue());
+    }
+    URL urlWithParams=uriBuilder.build().toURL();
+    connection=(HttpURLConnection)connectionFactory.openConnection(urlWithParams,UserGroupInformation.isSecurityEnabled());
+    connection.setRequestMethod("PUT");
+    connection.setDoOutput(true);
+    int chunkSize=conf.getInt(DFSConfigKeys.DFS_IMAGE_TRANSFER_CHUNKSIZE_KEY,DFSConfigKeys.DFS_IMAGE_TRANSFER_CHUNKSIZE_DEFAULT);
+    if (imageFile.length() > chunkSize) {
+      connection.setChunkedStreamingMode(chunkSize);
+    }
+    setTimeout(connection);
+    ImageServlet.setVerificationHeadersForPut(connection,imageFile);
+    writeFileToPutRequest(conf,connection,imageFile);
+    int responseCode=connection.getResponseCode();
+    if (responseCode != HttpURLConnection.HTTP_OK) {
+      throw new HttpPutFailedException(connection.getResponseMessage(),responseCode);
+    }
+  }
+ catch (  AuthenticationException e) {
+    throw new IOException(e);
+  }
+catch (  URISyntaxException e) {
+    throw new IOException(e);
+  }
+ finally {
+    if (connection != null) {
+      connection.disconnect();
+    }
+  }
+}
