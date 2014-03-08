@@ -1,0 +1,113 @@
+{
+  try {
+    final ServletContext context=getServletContext();
+    final FSImage nnImage=NameNodeHttpServer.getFsImageFromContext(context);
+    final GetImageParams parsedParams=new GetImageParams(request,response);
+    final Configuration conf=(Configuration)context.getAttribute(JspHelper.CURRENT_CONF);
+    final NameNodeMetrics metrics=NameNode.getNameNodeMetrics();
+    if (UserGroupInformation.isSecurityEnabled() && !isValidRequestor(context,request.getUserPrincipal().getName(),conf)) {
+      response.sendError(HttpServletResponse.SC_FORBIDDEN,"Only Namenode, Secondary Namenode, and administrators may access " + "this servlet");
+      LOG.warn("Received non-NN/SNN/administrator request for image or edits from " + request.getUserPrincipal().getName() + " at "+ request.getRemoteHost());
+      return;
+    }
+    String myStorageInfoString=nnImage.getStorage().toColonSeparatedString();
+    String theirStorageInfoString=parsedParams.getStorageInfoString();
+    if (theirStorageInfoString != null && !myStorageInfoString.equals(theirStorageInfoString)) {
+      response.sendError(HttpServletResponse.SC_FORBIDDEN,"This namenode has storage info " + myStorageInfoString + " but the secondary expected "+ theirStorageInfoString);
+      LOG.warn("Received an invalid request file transfer request " + "from a secondary with storage info " + theirStorageInfoString);
+      return;
+    }
+    UserGroupInformation.getCurrentUser().doAs(new PrivilegedExceptionAction<Void>(){
+      @Override public Void run() throws Exception {
+        if (parsedParams.isGetImage()) {
+          long txid=parsedParams.getTxId();
+          File imageFile=null;
+          String errorMessage="Could not find image";
+          if (parsedParams.shouldFetchLatest()) {
+            imageFile=nnImage.getStorage().getHighestFsImageName();
+          }
+ else {
+            errorMessage+=" with txid " + txid;
+            imageFile=nnImage.getStorage().getFsImage(txid,EnumSet.of(NameNodeFile.IMAGE,NameNodeFile.IMAGE_ROLLBACK));
+          }
+          if (imageFile == null) {
+            throw new IOException(errorMessage);
+          }
+          CheckpointFaultInjector.getInstance().beforeGetImageSetsHeaders();
+          long start=now();
+          serveFile(imageFile);
+          if (metrics != null) {
+            long elapsed=now() - start;
+            metrics.addGetImage(elapsed);
+          }
+        }
+ else         if (parsedParams.isGetEdit()) {
+          long startTxId=parsedParams.getStartTxId();
+          long endTxId=parsedParams.getEndTxId();
+          File editFile=nnImage.getStorage().findFinalizedEditsFile(startTxId,endTxId);
+          long start=now();
+          serveFile(editFile);
+          if (metrics != null) {
+            long elapsed=now() - start;
+            metrics.addGetEdit(elapsed);
+          }
+        }
+ else         if (parsedParams.isPutImage()) {
+          final long txid=parsedParams.getTxId();
+          final NameNodeFile nnf=parsedParams.getNameNodeFile();
+          if (!currentlyDownloadingCheckpoints.add(txid)) {
+            response.sendError(HttpServletResponse.SC_CONFLICT,"Another checkpointer is already in the process of uploading a" + " checkpoint made at transaction ID " + txid);
+            return null;
+          }
+          try {
+            if (nnImage.getStorage().findImageFile(nnf,txid) != null) {
+              response.sendError(HttpServletResponse.SC_CONFLICT,"Another checkpointer already uploaded an checkpoint " + "for txid " + txid);
+              return null;
+            }
+            if (UserGroupInformation.isSecurityEnabled()) {
+              UserGroupInformation.getCurrentUser().checkTGTAndReloginFromKeytab();
+            }
+            long start=now();
+            MD5Hash downloadImageDigest=TransferFsImage.downloadImageToStorage(parsedParams.getInfoServer(conf),txid,nnImage.getStorage(),true);
+            nnImage.saveDigestAndRenameCheckpointImage(nnf,txid,downloadImageDigest);
+            if (nnf == NameNodeFile.IMAGE_ROLLBACK) {
+              NameNodeHttpServer.getNameNodeFromContext(context).getNamesystem().setCreatedRollbackImages(true);
+            }
+            if (metrics != null) {
+              long elapsed=now() - start;
+              metrics.addPutImage(elapsed);
+            }
+            nnImage.purgeOldStorage(nnf);
+          }
+  finally {
+            currentlyDownloadingCheckpoints.remove(txid);
+          }
+        }
+        return null;
+      }
+      private void serveFile(      File file) throws IOException {
+        FileInputStream fis=new FileInputStream(file);
+        try {
+          setVerificationHeaders(response,file);
+          setFileNameHeaders(response,file);
+          if (!file.exists()) {
+            throw new FileNotFoundException(file.toString());
+          }
+          TransferFsImage.getFileServer(response,file,fis,getThrottler(conf));
+        }
+  finally {
+          IOUtils.closeStream(fis);
+        }
+      }
+    }
+);
+  }
+ catch (  Throwable t) {
+    String errMsg="GetImage failed. " + StringUtils.stringifyException(t);
+    response.sendError(HttpServletResponse.SC_GONE,errMsg);
+    throw new IOException(errMsg);
+  }
+ finally {
+    response.getOutputStream().close();
+  }
+}
