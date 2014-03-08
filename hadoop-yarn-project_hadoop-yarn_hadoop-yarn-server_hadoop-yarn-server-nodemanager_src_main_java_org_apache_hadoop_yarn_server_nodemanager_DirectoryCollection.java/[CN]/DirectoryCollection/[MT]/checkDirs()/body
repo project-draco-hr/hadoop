@@ -1,15 +1,28 @@
 {
   int oldNumFailures=numFailures;
+  HashSet<String> checkFailedDirs=new HashSet<String>();
   for (  final String dir : localDirs) {
     try {
-      DiskChecker.checkDir(new File(dir));
+      File testDir=new File(dir);
+      DiskChecker.checkDir(testDir);
+      if (isDiskUsageUnderPercentageLimit(testDir)) {
+        LOG.warn("Directory " + dir + " error, used space above threshold of "+ diskUtilizationPercentageCutoff+ "%, removing from the list of valid directories.");
+        checkFailedDirs.add(dir);
+      }
+ else       if (isDiskFreeSpaceWithinLimit(testDir)) {
+        LOG.warn("Directory " + dir + " error, free space below limit of "+ diskUtilizationSpaceCutoff+ "MB, removing from the list of valid directories.");
+        checkFailedDirs.add(dir);
+      }
     }
  catch (    DiskErrorException de) {
       LOG.warn("Directory " + dir + " error "+ de.getMessage()+ ", removing from the list of valid directories.");
-      localDirs.remove(dir);
-      failedDirs.add(dir);
-      numFailures++;
+      checkFailedDirs.add(dir);
     }
+  }
+  for (  String dir : checkFailedDirs) {
+    localDirs.remove(dir);
+    failedDirs.add(dir);
+    numFailures++;
   }
   return numFailures > oldNumFailures;
 }
