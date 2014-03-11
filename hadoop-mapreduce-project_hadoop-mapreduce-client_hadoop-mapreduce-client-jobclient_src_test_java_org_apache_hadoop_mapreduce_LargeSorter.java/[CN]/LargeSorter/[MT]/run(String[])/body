@@ -1,0 +1,35 @@
+{
+  Path outDir=new Path(LargeSorter.class.getName() + System.currentTimeMillis());
+  Configuration conf=getConf();
+  verifyNotZero(conf,MBS_PER_MAP);
+  verifyNotZero(conf,NUM_MAP_TASKS);
+  conf.setInt(MRJobConfig.NUM_MAPS,conf.getInt(NUM_MAP_TASKS,2));
+  int ioSortMb=conf.getInt(MRJobConfig.IO_SORT_MB,512);
+  int mapMb=Math.max(2 * ioSortMb,conf.getInt(MRJobConfig.MAP_MEMORY_MB,MRJobConfig.DEFAULT_MAP_MEMORY_MB));
+  conf.setInt(MRJobConfig.MAP_MEMORY_MB,mapMb);
+  conf.set(MRJobConfig.MAP_JAVA_OPTS,"-Xmx" + (mapMb - 200) + "m");
+  @SuppressWarnings("deprecation") Job job=new Job(conf);
+  job.setJarByClass(LargeSorter.class);
+  job.setJobName("large-sorter");
+  FileOutputFormat.setOutputPath(job,outDir);
+  job.setOutputKeyClass(BytesWritable.class);
+  job.setOutputValueClass(BytesWritable.class);
+  job.setInputFormatClass(RandomInputFormat.class);
+  job.setMapperClass(RandomMapper.class);
+  job.setReducerClass(Discarder.class);
+  job.setOutputFormatClass(SequenceFileOutputFormat.class);
+  job.setNumReduceTasks(conf.getInt(NUM_REDUCE_TASKS,1));
+  Date startTime=new Date();
+  System.out.println("Job started: " + startTime);
+  int ret=1;
+  try {
+    ret=job.waitForCompletion(true) ? 0 : 1;
+  }
+  finally {
+    FileSystem.get(conf).delete(outDir,true);
+  }
+  Date endTime=new Date();
+  System.out.println("Job ended: " + endTime);
+  System.out.println("The job took " + (endTime.getTime() - startTime.getTime()) / 1000 + " seconds.");
+  return ret;
+}
