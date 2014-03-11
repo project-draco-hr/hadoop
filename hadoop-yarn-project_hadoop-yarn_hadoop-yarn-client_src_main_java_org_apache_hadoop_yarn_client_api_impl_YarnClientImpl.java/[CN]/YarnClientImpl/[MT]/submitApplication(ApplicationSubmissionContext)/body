@@ -9,23 +9,29 @@
   int pollCount=0;
   long startTime=System.currentTimeMillis();
   while (true) {
-    YarnApplicationState state=getApplicationReport(applicationId).getYarnApplicationState();
-    if (!state.equals(YarnApplicationState.NEW) && !state.equals(YarnApplicationState.NEW_SAVING)) {
-      LOG.info("Submitted application " + applicationId);
-      break;
-    }
-    long elapsedMillis=System.currentTimeMillis() - startTime;
-    if (enforceAsyncAPITimeout() && elapsedMillis >= asyncApiPollTimeoutMillis) {
-      throw new YarnException("Timed out while waiting for application " + applicationId + " to be submitted successfully");
-    }
-    if (++pollCount % 10 == 0) {
-      LOG.info("Application submission is not finished, " + "submitted application " + applicationId + " is still in "+ state);
-    }
     try {
-      Thread.sleep(submitPollIntervalMillis);
+      YarnApplicationState state=getApplicationReport(applicationId).getYarnApplicationState();
+      if (!state.equals(YarnApplicationState.NEW) && !state.equals(YarnApplicationState.NEW_SAVING)) {
+        LOG.info("Submitted application " + applicationId);
+        break;
+      }
+      long elapsedMillis=System.currentTimeMillis() - startTime;
+      if (enforceAsyncAPITimeout() && elapsedMillis >= asyncApiPollTimeoutMillis) {
+        throw new YarnException("Timed out while waiting for application " + applicationId + " to be submitted successfully");
+      }
+      if (++pollCount % 10 == 0) {
+        LOG.info("Application submission is not finished, " + "submitted application " + applicationId + " is still in "+ state);
+      }
+      try {
+        Thread.sleep(submitPollIntervalMillis);
+      }
+ catch (      InterruptedException ie) {
+        LOG.error("Interrupted while waiting for application " + applicationId + " to be successfully submitted.");
+      }
     }
- catch (    InterruptedException ie) {
-      LOG.error("Interrupted while waiting for application " + applicationId + " to be successfully submitted.");
+ catch (    ApplicationNotFoundException ex) {
+      LOG.info("Re-submit application " + applicationId + "with the "+ "same ApplicationSubmissionContext");
+      rmClient.submitApplication(request);
     }
   }
   return applicationId;
