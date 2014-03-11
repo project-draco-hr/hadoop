@@ -6,13 +6,16 @@
   CachePool pool=directive.getPool();
   if (pool.getBytesNeeded() > pool.getLimit()) {
     if (LOG.isDebugEnabled()) {
-      LOG.debug(String.format("Skipping directive id %d file %s because " + "limit of pool %s would be exceeded (%d > %d)",directive.getId(),file.getFullPathName(),pool.getPoolName(),pool.getBytesNeeded(),pool.getLimit()));
+      LOG.debug(String.format("Directive %d: not scanning file %s because " + "bytesNeeded for pool %s is %d, but the pool's limit is %d",directive.getId(),file.getFullPathName(),pool.getPoolName(),pool.getBytesNeeded(),pool.getLimit()));
     }
     return;
   }
   long cachedTotal=0;
   for (  BlockInfo blockInfo : blockInfos) {
     if (!blockInfo.getBlockUCState().equals(BlockUCState.COMPLETE)) {
+      if (LOG.isTraceEnabled()) {
+        LOG.trace("Directive " + directive.getId() + ": can't cache "+ "block "+ blockInfo+ " because it is in state "+ blockInfo.getBlockUCState()+ ", not COMPLETE.");
+      }
       continue;
     }
     Block block=new Block(blockInfo.getBlockId());
@@ -20,6 +23,7 @@
     CachedBlock ocblock=cachedBlocks.get(ncblock);
     if (ocblock == null) {
       cachedBlocks.put(ncblock);
+      ocblock=ncblock;
     }
  else {
       List<DatanodeDescriptor> cachedOn=ocblock.getDatanodes(Type.CACHED);
@@ -29,12 +33,15 @@
         ocblock.setReplicationAndMark(directive.getReplication(),mark);
       }
     }
+    if (LOG.isTraceEnabled()) {
+      LOG.trace("Directive " + directive.getId() + ": setting replication "+ "for block "+ blockInfo+ " to "+ ocblock.getReplication());
+    }
   }
   directive.addBytesCached(cachedTotal);
   if (cachedTotal == neededTotal) {
     directive.addFilesCached(1);
   }
-  if (LOG.isTraceEnabled()) {
-    LOG.trace("Directive " + directive.getId() + " is caching "+ file.getFullPathName()+ ": "+ cachedTotal+ "/"+ neededTotal+ " bytes");
+  if (LOG.isDebugEnabled()) {
+    LOG.debug("Directive " + directive.getId() + ": caching "+ file.getFullPathName()+ ": "+ cachedTotal+ "/"+ neededTotal+ " bytes");
   }
 }
