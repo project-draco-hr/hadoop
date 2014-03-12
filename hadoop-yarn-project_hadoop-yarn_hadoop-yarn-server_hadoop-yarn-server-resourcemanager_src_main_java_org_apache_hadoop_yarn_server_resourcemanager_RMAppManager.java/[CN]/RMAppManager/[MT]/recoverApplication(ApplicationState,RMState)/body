@@ -1,0 +1,26 @@
+{
+  ApplicationSubmissionContext appContext=appState.getApplicationSubmissionContext();
+  ApplicationId appId=appState.getAppId();
+  RMAppImpl application=createAndPopulateNewRMApp(appContext,appState.getSubmitTime(),appState.getUser());
+  application.recover(rmState);
+  if (isApplicationInFinalState(appState.getState())) {
+    application.handle(new RMAppEvent(appId,RMAppEventType.RECOVER));
+    return;
+  }
+  if (UserGroupInformation.isSecurityEnabled()) {
+    Credentials credentials=null;
+    try {
+      credentials=parseCredentials(appContext);
+      rmContext.getDelegationTokenRenewer().addApplicationSync(appId,credentials,appContext.getCancelTokensWhenComplete());
+      application.handle(new RMAppEvent(appId,RMAppEventType.RECOVER));
+    }
+ catch (    Exception e) {
+      LOG.warn("Unable to parse and renew delegation tokens.",e);
+      this.rmContext.getDispatcher().getEventHandler().handle(new RMAppRejectedEvent(appId,e.getMessage()));
+      throw e;
+    }
+  }
+ else {
+    application.handle(new RMAppEvent(appId,RMAppEventType.RECOVER));
+  }
+}
