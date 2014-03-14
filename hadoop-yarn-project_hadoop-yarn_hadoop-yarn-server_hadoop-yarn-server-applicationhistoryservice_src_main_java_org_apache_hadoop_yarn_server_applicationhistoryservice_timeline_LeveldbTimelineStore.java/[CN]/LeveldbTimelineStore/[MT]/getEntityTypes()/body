@@ -1,0 +1,27 @@
+{
+  DBIterator iterator=null;
+  try {
+    iterator=getDbIterator(false);
+    List<String> entityTypes=new ArrayList<String>();
+    iterator.seek(ENTITY_ENTRY_PREFIX);
+    while (iterator.hasNext()) {
+      byte[] key=iterator.peekNext().getKey();
+      if (key[0] != ENTITY_ENTRY_PREFIX[0]) {
+        break;
+      }
+      KeyParser kp=new KeyParser(key,ENTITY_ENTRY_PREFIX.length);
+      String entityType=kp.getNextString();
+      entityTypes.add(entityType);
+      byte[] lookupKey=KeyBuilder.newInstance().add(ENTITY_ENTRY_PREFIX).add(entityType).getBytesForLookup();
+      if (lookupKey[lookupKey.length - 1] != 0x0) {
+        throw new IOException("Found unexpected end byte in lookup key");
+      }
+      lookupKey[lookupKey.length - 1]=0x1;
+      iterator.seek(lookupKey);
+    }
+    return entityTypes;
+  }
+  finally {
+    IOUtils.cleanup(LOG,iterator);
+  }
+}

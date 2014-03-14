@@ -1,0 +1,44 @@
+{
+  byte[] reverseTimestamp=writeReverseOrderedLong(timestamp);
+  long totalCount=0;
+  long t1=System.currentTimeMillis();
+  try {
+    List<String> entityTypes=getEntityTypes();
+    for (    String entityType : entityTypes) {
+      DBIterator iterator=null;
+      DBIterator pfIterator=null;
+      long typeCount=0;
+      try {
+        deleteLock.writeLock().lock();
+        iterator=getDbIterator(false);
+        pfIterator=getDbIterator(false);
+        if (deletionThread != null && deletionThread.isInterrupted()) {
+          throw new InterruptedException();
+        }
+        boolean seeked=false;
+        while (deleteNextEntity(entityType,reverseTimestamp,iterator,pfIterator,seeked)) {
+          typeCount++;
+          totalCount++;
+          seeked=true;
+          if (deletionThread != null && deletionThread.isInterrupted()) {
+            throw new InterruptedException();
+          }
+        }
+      }
+ catch (      IOException e) {
+        LOG.error("Got IOException while deleting entities for type " + entityType + ", continuing to next type",e);
+      }
+ finally {
+        IOUtils.cleanup(LOG,iterator,pfIterator);
+        deleteLock.writeLock().unlock();
+        if (typeCount > 0) {
+          LOG.info("Deleted " + typeCount + " entities of type "+ entityType);
+        }
+      }
+    }
+  }
+  finally {
+    long t2=System.currentTimeMillis();
+    LOG.info("Discarded " + totalCount + " entities for timestamp "+ timestamp+ " and earlier in "+ (t2 - t1) / 1000.0 + " seconds");
+  }
+}

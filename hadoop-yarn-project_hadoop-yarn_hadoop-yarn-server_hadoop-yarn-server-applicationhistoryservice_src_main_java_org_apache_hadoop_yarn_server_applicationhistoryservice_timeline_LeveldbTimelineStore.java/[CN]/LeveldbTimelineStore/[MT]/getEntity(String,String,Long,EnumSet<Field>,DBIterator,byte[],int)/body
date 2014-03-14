@@ -1,15 +1,15 @@
 {
-  if (fields == null)   fields=EnumSet.allOf(Field.class);
+  if (fields == null) {
+    fields=EnumSet.allOf(Field.class);
+  }
   TimelineEntity entity=new TimelineEntity();
   boolean events=false;
   boolean lastEvent=false;
   if (fields.contains(Field.EVENTS)) {
     events=true;
-    entity.setEvents(new ArrayList<TimelineEvent>());
   }
  else   if (fields.contains(Field.LAST_EVENT_ONLY)) {
     lastEvent=true;
-    entity.setEvents(new ArrayList<TimelineEvent>());
   }
  else {
     entity.setEvents(null);
@@ -31,17 +31,21 @@
   boolean otherInfo=false;
   if (fields.contains(Field.OTHER_INFO)) {
     otherInfo=true;
-    entity.setOtherInfo(new HashMap<String,Object>());
   }
  else {
     entity.setOtherInfo(null);
   }
   for (; iterator.hasNext(); iterator.next()) {
     byte[] key=iterator.peekNext().getKey();
-    if (!prefixMatches(prefix,prefixlen,key))     break;
-    if (key[prefixlen] == PRIMARY_FILTER_COLUMN[0]) {
+    if (!prefixMatches(prefix,prefixlen,key)) {
+      break;
+    }
+    if (key.length == prefixlen) {
+      continue;
+    }
+    if (key[prefixlen] == PRIMARY_FILTERS_COLUMN[0]) {
       if (primaryFilters) {
-        addPrimaryFilter(entity,key,prefixlen + PRIMARY_FILTER_COLUMN.length);
+        addPrimaryFilter(entity,key,prefixlen + PRIMARY_FILTERS_COLUMN.length);
       }
     }
  else     if (key[prefixlen] == OTHER_INFO_COLUMN[0]) {
@@ -49,21 +53,23 @@
         entity.addOtherInfo(parseRemainingKey(key,prefixlen + OTHER_INFO_COLUMN.length),GenericObjectMapper.read(iterator.peekNext().getValue()));
       }
     }
- else     if (key[prefixlen] == RELATED_COLUMN[0]) {
+ else     if (key[prefixlen] == RELATED_ENTITIES_COLUMN[0]) {
       if (relatedEntities) {
-        addRelatedEntity(entity,key,prefixlen + RELATED_COLUMN.length);
+        addRelatedEntity(entity,key,prefixlen + RELATED_ENTITIES_COLUMN.length);
       }
     }
- else     if (key[prefixlen] == TIME_COLUMN[0]) {
+ else     if (key[prefixlen] == EVENTS_COLUMN[0]) {
       if (events || (lastEvent && entity.getEvents().size() == 0)) {
-        TimelineEvent event=getEntityEvent(null,key,prefixlen + TIME_COLUMN.length,iterator.peekNext().getValue());
+        TimelineEvent event=getEntityEvent(null,key,prefixlen + EVENTS_COLUMN.length,iterator.peekNext().getValue());
         if (event != null) {
           entity.addEvent(event);
         }
       }
     }
  else {
-      LOG.warn(String.format("Found unexpected column for entity %s of " + "type %s (0x%02x)",entityId,entityType,key[prefixlen]));
+      if (key[prefixlen] != INVISIBLE_REVERSE_RELATED_ENTITIES_COLUMN[0]) {
+        LOG.warn(String.format("Found unexpected column for entity %s of " + "type %s (0x%02x)",entityId,entityType,key[prefixlen]));
+      }
     }
   }
   entity.setEntityId(entityId);

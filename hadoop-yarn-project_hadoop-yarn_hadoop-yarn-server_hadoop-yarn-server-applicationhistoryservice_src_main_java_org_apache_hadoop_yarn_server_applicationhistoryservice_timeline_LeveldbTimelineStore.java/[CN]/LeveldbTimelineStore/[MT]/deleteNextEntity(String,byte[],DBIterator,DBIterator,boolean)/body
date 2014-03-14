@@ -1,0 +1,85 @@
+{
+  WriteBatch writeBatch=null;
+  try {
+    KeyBuilder kb=KeyBuilder.newInstance().add(ENTITY_ENTRY_PREFIX).add(entityType);
+    byte[] typePrefix=kb.getBytesForLookup();
+    kb.add(reverseTimestamp);
+    if (!seeked) {
+      iterator.seek(kb.getBytesForLookup());
+    }
+    if (!iterator.hasNext()) {
+      return false;
+    }
+    byte[] entityKey=iterator.peekNext().getKey();
+    if (!prefixMatches(typePrefix,typePrefix.length,entityKey)) {
+      return false;
+    }
+    KeyParser kp=new KeyParser(entityKey,typePrefix.length + 8);
+    String entityId=kp.getNextString();
+    int prefixlen=kp.getOffset();
+    byte[] deletePrefix=new byte[prefixlen];
+    System.arraycopy(entityKey,0,deletePrefix,0,prefixlen);
+    writeBatch=db.createWriteBatch();
+    if (LOG.isDebugEnabled()) {
+      LOG.debug("Deleting entity type:" + entityType + " id:"+ entityId);
+    }
+    writeBatch.delete(createStartTimeLookupKey(entityId,entityType));
+    EntityIdentifier entityIdentifier=new EntityIdentifier(entityId,entityType);
+    startTimeReadCache.remove(entityIdentifier);
+    startTimeWriteCache.remove(entityIdentifier);
+    for (; iterator.hasNext(); iterator.next()) {
+      byte[] key=iterator.peekNext().getKey();
+      if (!prefixMatches(entityKey,prefixlen,key)) {
+        break;
+      }
+      writeBatch.delete(key);
+      if (key.length == prefixlen) {
+        continue;
+      }
+      if (key[prefixlen] == PRIMARY_FILTERS_COLUMN[0]) {
+        kp=new KeyParser(key,prefixlen + PRIMARY_FILTERS_COLUMN.length);
+        String name=kp.getNextString();
+        Object value=GenericObjectMapper.read(key,kp.getOffset());
+        deleteKeysWithPrefix(writeBatch,addPrimaryFilterToKey(name,value,deletePrefix),pfIterator);
+        if (LOG.isDebugEnabled()) {
+          LOG.debug("Deleting entity type:" + entityType + " id:"+ entityId+ " primary filter entry "+ name+ " "+ value);
+        }
+      }
+ else       if (key[prefixlen] == RELATED_ENTITIES_COLUMN[0]) {
+        kp=new KeyParser(key,prefixlen + RELATED_ENTITIES_COLUMN.length);
+        String type=kp.getNextString();
+        String id=kp.getNextString();
+        byte[] relatedEntityStartTime=getStartTime(id,type);
+        if (relatedEntityStartTime == null) {
+          LOG.warn("Found no start time for " + "related entity " + id + " of type "+ type+ " while "+ "deleting "+ entityId+ " of type "+ entityType);
+          continue;
+        }
+        writeBatch.delete(createReverseRelatedEntityKey(id,type,relatedEntityStartTime,entityId,entityType));
+        if (LOG.isDebugEnabled()) {
+          LOG.debug("Deleting entity type:" + entityType + " id:"+ entityId+ " from invisible reverse related entity "+ "entry of type:"+ type+ " id:"+ id);
+        }
+      }
+ else       if (key[prefixlen] == INVISIBLE_REVERSE_RELATED_ENTITIES_COLUMN[0]) {
+        kp=new KeyParser(key,prefixlen + INVISIBLE_REVERSE_RELATED_ENTITIES_COLUMN.length);
+        String type=kp.getNextString();
+        String id=kp.getNextString();
+        byte[] relatedEntityStartTime=getStartTime(id,type);
+        if (relatedEntityStartTime == null) {
+          LOG.warn("Found no start time for reverse " + "related entity " + id + " of type "+ type+ " while "+ "deleting "+ entityId+ " of type "+ entityType);
+          continue;
+        }
+        writeBatch.delete(createRelatedEntityKey(id,type,relatedEntityStartTime,entityId,entityType));
+        if (LOG.isDebugEnabled()) {
+          LOG.debug("Deleting entity type:" + entityType + " id:"+ entityId+ " from related entity entry of type:"+ type+ " id:"+ id);
+        }
+      }
+    }
+    WriteOptions writeOptions=new WriteOptions();
+    writeOptions.sync(true);
+    db.write(writeBatch,writeOptions);
+    return true;
+  }
+  finally {
+    IOUtils.cleanup(LOG,writeBatch);
+  }
+}

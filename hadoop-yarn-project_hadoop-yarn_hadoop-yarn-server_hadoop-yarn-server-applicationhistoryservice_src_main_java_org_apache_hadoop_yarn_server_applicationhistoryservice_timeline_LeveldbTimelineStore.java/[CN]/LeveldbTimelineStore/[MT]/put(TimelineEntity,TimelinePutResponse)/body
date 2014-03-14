@@ -2,10 +2,12 @@
   LockMap.CountingReentrantLock<EntityIdentifier> lock=writeLocks.getLock(new EntityIdentifier(entity.getEntityId(),entity.getEntityType()));
   lock.lock();
   WriteBatch writeBatch=null;
+  List<EntityIdentifier> relatedEntitiesWithoutStartTimes=new ArrayList<EntityIdentifier>();
+  byte[] revStartTime=null;
   try {
     writeBatch=db.createWriteBatch();
     List<TimelineEvent> events=entity.getEvents();
-    byte[] revStartTime=getAndSetStartTime(entity.getEntityId(),entity.getEntityType(),entity.getStartTime(),events,writeBatch);
+    revStartTime=getAndSetStartTime(entity.getEntityId(),entity.getEntityType(),entity.getStartTime(),events);
     if (revStartTime == null) {
       TimelinePutError error=new TimelinePutError();
       error.setEntityId(entity.getEntityId());
@@ -14,8 +16,8 @@
       response.addError(error);
       return;
     }
-    Long revStartTimeLong=readReverseOrderedLong(revStartTime,0);
     Map<String,Set<Object>> primaryFilters=entity.getPrimaryFilters();
+    writeBatch.put(createEntityMarkerKey(entity.getEntityId(),entity.getEntityType(),revStartTime),EMPTY_BYTES);
     if (events != null && !events.isEmpty()) {
       for (      TimelineEvent event : events) {
         byte[] revts=writeReverseOrderedLong(event.getTimestamp());
@@ -30,13 +32,14 @@
       for (      Entry<String,Set<String>> relatedEntityList : relatedEntities.entrySet()) {
         String relatedEntityType=relatedEntityList.getKey();
         for (        String relatedEntityId : relatedEntityList.getValue()) {
-          byte[] relatedEntityStartTime=getAndSetStartTime(relatedEntityId,relatedEntityType,null,null,writeBatch);
+          byte[] key=createReverseRelatedEntityKey(entity.getEntityId(),entity.getEntityType(),revStartTime,relatedEntityId,relatedEntityType);
+          writeBatch.put(key,EMPTY_BYTES);
+          byte[] relatedEntityStartTime=getStartTime(relatedEntityId,relatedEntityType);
           if (relatedEntityStartTime == null) {
-            relatedEntityStartTime=revStartTime;
-            writeBatch.put(createStartTimeLookupKey(relatedEntityId,relatedEntityType),relatedEntityStartTime);
-            startTimeWriteCache.put(new EntityIdentifier(relatedEntityId,relatedEntityType),revStartTimeLong);
+            relatedEntitiesWithoutStartTimes.add(new EntityIdentifier(relatedEntityId,relatedEntityType));
+            continue;
           }
-          byte[] key=createReleatedEntityKey(relatedEntityId,relatedEntityType,relatedEntityStartTime,entity.getEntityId(),entity.getEntityType());
+          key=createRelatedEntityKey(relatedEntityId,relatedEntityType,relatedEntityStartTime,entity.getEntityId(),entity.getEntityType());
           writeBatch.put(key,EMPTY_BYTES);
         }
       }
@@ -73,5 +76,29 @@
     lock.unlock();
     writeLocks.returnLock(lock);
     IOUtils.cleanup(LOG,writeBatch);
+  }
+  for (  EntityIdentifier relatedEntity : relatedEntitiesWithoutStartTimes) {
+    lock=writeLocks.getLock(relatedEntity);
+    lock.lock();
+    try {
+      byte[] relatedEntityStartTime=getAndSetStartTime(relatedEntity.getId(),relatedEntity.getType(),readReverseOrderedLong(revStartTime,0),null);
+      if (relatedEntityStartTime == null) {
+        throw new IOException("Error setting start time for related entity");
+      }
+      db.put(createRelatedEntityKey(relatedEntity.getId(),relatedEntity.getType(),relatedEntityStartTime,entity.getEntityId(),entity.getEntityType()),EMPTY_BYTES);
+      db.put(createEntityMarkerKey(relatedEntity.getId(),relatedEntity.getType(),relatedEntityStartTime),EMPTY_BYTES);
+    }
+ catch (    IOException e) {
+      LOG.error("Error putting related entity " + relatedEntity.getId() + " of type "+ relatedEntity.getType()+ " for entity "+ entity.getEntityId()+ " of type "+ entity.getEntityType(),e);
+      TimelinePutError error=new TimelinePutError();
+      error.setEntityId(entity.getEntityId());
+      error.setEntityType(entity.getEntityType());
+      error.setErrorCode(TimelinePutError.IO_EXCEPTION);
+      response.addError(error);
+    }
+ finally {
+      lock.unlock();
+      writeLocks.returnLock(lock);
+    }
   }
 }
