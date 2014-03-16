@@ -4,14 +4,29 @@
   ctx.setEnvironment(shellEnv);
   Map<String,LocalResource> localResources=new HashMap<String,LocalResource>();
   if (!shellScriptPath.isEmpty()) {
+    Path renamedSchellScriptPath=null;
+    if (Shell.WINDOWS) {
+      renamedSchellScriptPath=new Path(shellScriptPath + ".bat");
+    }
+ else {
+      renamedSchellScriptPath=new Path(shellScriptPath + ".sh");
+    }
+    try {
+      FileSystem fs=renamedSchellScriptPath.getFileSystem(conf);
+      fs.rename(new Path(shellScriptPath),renamedSchellScriptPath);
+    }
+ catch (    IOException e) {
+      LOG.warn("Not able to add suffix (.bat/.sh) to the shell script filename");
+      throw new YarnRuntimeException(e);
+    }
     LocalResource shellRsrc=Records.newRecord(LocalResource.class);
     shellRsrc.setType(LocalResourceType.FILE);
     shellRsrc.setVisibility(LocalResourceVisibility.APPLICATION);
     try {
-      shellRsrc.setResource(ConverterUtils.getYarnUrlFromURI(new URI(shellScriptPath)));
+      shellRsrc.setResource(ConverterUtils.getYarnUrlFromURI(new URI(renamedSchellScriptPath.toString())));
     }
  catch (    URISyntaxException e) {
-      LOG.error("Error when trying to use shell script path specified" + " in env, path=" + shellScriptPath);
+      LOG.error("Error when trying to use shell script path specified" + " in env, path=" + renamedSchellScriptPath);
       e.printStackTrace();
       numCompletedContainers.incrementAndGet();
       numFailedContainers.incrementAndGet();
