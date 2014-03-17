@@ -6,6 +6,7 @@
   NodeHealthCheckerService healthChecker=new NodeHealthCheckerService();
   healthChecker.init(conf);
   LocalDirsHandlerService dirsHandler=healthChecker.getDiskHandler();
+  NMContext nmContext=new NodeManager.NMContext(null,null,dirsHandler,new ApplicationACLsManager(conf));
   RecordFactory recordFactory=RecordFactoryProvider.getRecordFactory(conf);
   String user="nobody";
   long clusterTimeStamp=1234;
@@ -15,7 +16,15 @@
   when(app.getAppId()).thenReturn(appId);
   ApplicationAttemptId appAttemptId=BuilderUtils.newApplicationAttemptId(appId,1);
   ContainerId container1=BuilderUtils.newContainerId(recordFactory,appId,appAttemptId,0);
+  nmContext.getApplications().put(appId,app);
+  MockContainer container=new MockContainer(appAttemptId,new AsyncDispatcher(),conf,user,appId,1);
+  container.setState(ContainerState.RUNNING);
+  nmContext.getContainers().put(container1,container);
   List<File> files=null;
-  files=ContainerLogsUtils.getContainerLogDirs(container1,dirsHandler);
+  files=ContainerLogsUtils.getContainerLogDirs(container1,user,nmContext);
+  Assert.assertTrue(!(files.get(0).toString().contains("file:")));
+  nmContext.getContainers().remove(container1);
+  Assert.assertNull(nmContext.getContainers().get(container1));
+  files=ContainerLogsUtils.getContainerLogDirs(container1,user,nmContext);
   Assert.assertTrue(!(files.get(0).toString().contains("file:")));
 }
