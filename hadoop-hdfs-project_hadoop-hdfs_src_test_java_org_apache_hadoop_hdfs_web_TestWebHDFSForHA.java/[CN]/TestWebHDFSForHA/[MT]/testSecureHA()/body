@@ -1,15 +1,13 @@
 {
-  Configuration conf=new Configuration();
+  Configuration conf=DFSTestUtil.newHAConfiguration(LOGICAL_NAME);
   conf.setBoolean(DFSConfigKeys.DFS_NAMENODE_DELEGATION_TOKEN_ALWAYS_USE_KEY,true);
-  conf.setInt(DFSConfigKeys.DFS_REPLICATION_KEY,1);
   MiniDFSCluster cluster=null;
   WebHdfsFileSystem fs=null;
   try {
     cluster=new MiniDFSCluster.Builder(conf).nnTopology(topo).numDataNodes(0).build();
     HATestUtil.setFailoverConfigurations(cluster,conf,LOGICAL_NAME);
     cluster.waitActive();
-    final String uri=WebHdfsFileSystem.SCHEME + "://" + LOGICAL_NAME;
-    fs=(WebHdfsFileSystem)FileSystem.get(URI.create(uri),conf);
+    fs=(WebHdfsFileSystem)FileSystem.get(WEBHDFS_URI,conf);
     cluster.transitionToActive(0);
     Token<?> token=fs.getDelegationToken(null);
     cluster.shutdownNameNode(0);
@@ -18,9 +16,7 @@
     fs.cancelDelegationToken(token);
   }
   finally {
-    if (fs != null) {
-      fs.close();
-    }
+    IOUtils.cleanup(null,fs);
     if (cluster != null) {
       cluster.shutdown();
     }
