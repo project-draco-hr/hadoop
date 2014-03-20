@@ -1,0 +1,38 @@
+{
+  checkEnv();
+  if (txId <= maxTxId.get()) {
+    throw new IOException("We've already seen " + txId + ". A new stream cannot be created with it");
+  }
+  try {
+    String existingInprogressNode=ci.read();
+    if (null != existingInprogressNode && zkc.exists(existingInprogressNode,false) != null) {
+      throw new IOException("Inprogress node already exists");
+    }
+    if (currentLedger != null) {
+      currentLedger.close();
+    }
+    currentLedger=bkc.createLedger(ensembleSize,quorumSize,BookKeeper.DigestType.MAC,digestpw.getBytes());
+  }
+ catch (  BKException bke) {
+    throw new IOException("Error creating ledger",bke);
+  }
+catch (  KeeperException ke) {
+    throw new IOException("Error in zookeeper while creating ledger",ke);
+  }
+catch (  InterruptedException ie) {
+    Thread.currentThread().interrupt();
+    throw new IOException("Interrupted creating ledger",ie);
+  }
+  try {
+    String znodePath=inprogressZNode(txId);
+    EditLogLedgerMetadata l=new EditLogLedgerMetadata(znodePath,layoutVersion,currentLedger.getId(),txId);
+    l.write(zkc,znodePath);
+    maxTxId.store(txId);
+    ci.update(znodePath);
+    return new BookKeeperEditLogOutputStream(conf,currentLedger);
+  }
+ catch (  KeeperException ke) {
+    cleanupLedger(currentLedger);
+    throw new IOException("Error storing ledger metadata",ke);
+  }
+}

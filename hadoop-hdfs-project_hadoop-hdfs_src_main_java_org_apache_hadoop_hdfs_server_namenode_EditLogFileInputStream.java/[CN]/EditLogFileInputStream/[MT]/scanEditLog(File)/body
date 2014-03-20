@@ -1,0 +1,39 @@
+{
+  EditLogFileInputStream in;
+  try {
+    in=new EditLogFileInputStream(file);
+    in.getVersion(false);
+  }
+ catch (  LogHeaderCorruptException e) {
+    LOG.warn("Log file " + file + " has no valid header",e);
+    return new FSEditLogLoader.EditLogValidation(0,HdfsConstants.INVALID_TXID,true);
+  }
+  long lastPos=0;
+  long lastTxId=HdfsConstants.INVALID_TXID;
+  long numValid=0;
+  try {
+    while (true) {
+      long txid=HdfsConstants.INVALID_TXID;
+      lastPos=in.getPosition();
+      try {
+        if ((txid=in.scanNextOp()) == HdfsConstants.INVALID_TXID) {
+          break;
+        }
+      }
+ catch (      Throwable t) {
+        FSImage.LOG.warn("Caught exception after scanning through " + numValid + " ops from "+ in+ " while determining its valid length. Position was "+ lastPos,t);
+        in.resync();
+        FSImage.LOG.warn("After resync, position is " + in.getPosition());
+        continue;
+      }
+      if (lastTxId == HdfsConstants.INVALID_TXID || txid > lastTxId) {
+        lastTxId=txid;
+      }
+      numValid++;
+    }
+    return new EditLogValidation(lastPos,lastTxId,false);
+  }
+  finally {
+    IOUtils.closeStream(in);
+  }
+}
