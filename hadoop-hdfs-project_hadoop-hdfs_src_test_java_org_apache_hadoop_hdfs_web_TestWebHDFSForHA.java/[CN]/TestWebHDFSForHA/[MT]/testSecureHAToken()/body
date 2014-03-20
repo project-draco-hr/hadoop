@@ -7,13 +7,16 @@
     cluster=new MiniDFSCluster.Builder(conf).nnTopology(topo).numDataNodes(0).build();
     HATestUtil.setFailoverConfigurations(cluster,conf,LOGICAL_NAME);
     cluster.waitActive();
-    fs=(WebHdfsFileSystem)FileSystem.get(WEBHDFS_URI,conf);
+    fs=spy((WebHdfsFileSystem)FileSystem.get(WEBHDFS_URI,conf));
+    FileSystemTestHelper.addFileSystemForTesting(WEBHDFS_URI,conf,fs);
     cluster.transitionToActive(0);
     Token<?> token=fs.getDelegationToken(null);
     cluster.shutdownNameNode(0);
     cluster.transitionToActive(1);
-    fs.renewDelegationToken(token);
-    fs.cancelDelegationToken(token);
+    token.renew(conf);
+    token.cancel(conf);
+    verify(fs).renewDelegationToken(token);
+    verify(fs).cancelDelegationToken(token);
   }
   finally {
     IOUtils.cleanup(null,fs);
