@@ -1,0 +1,45 @@
+{
+  runningTasks.incrementAndGet();
+  for (  Path p : inputDirs) {
+    runningTasks.incrementAndGet();
+    ListenableFuture<ProcessInitialInputPathCallable.Result> future=exec.submit(new ProcessInitialInputPathCallable(p,conf,inputFilter));
+    Futures.addCallback(future,processInitialInputPathCallback);
+  }
+  runningTasks.decrementAndGet();
+  lock.lock();
+  try {
+    while (runningTasks.get() != 0 && unknownError == null) {
+      condition.await();
+    }
+  }
+  finally {
+    lock.unlock();
+  }
+  this.exec.shutdownNow();
+  if (this.unknownError != null) {
+    if (this.unknownError instanceof Error) {
+      throw (Error)this.unknownError;
+    }
+ else     if (this.unknownError instanceof RuntimeException) {
+      throw (RuntimeException)this.unknownError;
+    }
+ else     if (this.unknownError instanceof IOException) {
+      throw (IOException)this.unknownError;
+    }
+ else     if (this.unknownError instanceof InterruptedException) {
+      throw (InterruptedException)this.unknownError;
+    }
+ else {
+      throw new IOException(this.unknownError);
+    }
+  }
+  if (this.invalidInputErrors.size() != 0) {
+    if (this.newApi) {
+      throw new org.apache.hadoop.mapreduce.lib.input.InvalidInputException(invalidInputErrors);
+    }
+ else {
+      throw new InvalidInputException(invalidInputErrors);
+    }
+  }
+  return Iterables.concat(resultQueue);
+}
