@@ -1,36 +1,31 @@
 {
-  boolean error=false;
+  final List<String> errors=new ArrayList<String>();
   for (int i=0; i < invalidBlks.length; i++) {
     final File f;
     final FsVolumeImpl v;
 synchronized (this) {
-      f=getFile(bpid,invalidBlks[i].getBlockId());
-      ReplicaInfo info=volumeMap.get(bpid,invalidBlks[i]);
+      final ReplicaInfo info=volumeMap.get(bpid,invalidBlks[i]);
       if (info == null) {
-        LOG.warn("Failed to delete replica " + invalidBlks[i] + ": ReplicaInfo not found.");
-        error=true;
+        LOG.info("Failed to delete replica " + invalidBlks[i] + ": ReplicaInfo not found.");
         continue;
       }
       if (info.getGenerationStamp() != invalidBlks[i].getGenerationStamp()) {
-        LOG.warn("Failed to delete replica " + invalidBlks[i] + ": GenerationStamp not matched, info="+ info);
-        error=true;
+        errors.add("Failed to delete replica " + invalidBlks[i] + ": GenerationStamp not matched, info="+ info);
         continue;
       }
+      f=info.getBlockFile();
       v=(FsVolumeImpl)info.getVolume();
       if (f == null) {
-        LOG.warn("Failed to delete replica " + invalidBlks[i] + ": File not found, volume="+ v);
-        error=true;
+        errors.add("Failed to delete replica " + invalidBlks[i] + ": File not found, volume="+ v);
         continue;
       }
       if (v == null) {
-        LOG.warn("Failed to delete replica " + invalidBlks[i] + ". No volume for this replica, file="+ f+ ".");
-        error=true;
+        errors.add("Failed to delete replica " + invalidBlks[i] + ". No volume for this replica, file="+ f);
         continue;
       }
       File parent=f.getParentFile();
       if (parent == null) {
-        LOG.warn("Failed to delete replica " + invalidBlks[i] + ". Parent not found for file "+ f+ ".");
-        error=true;
+        errors.add("Failed to delete replica " + invalidBlks[i] + ". Parent not found for file "+ f);
         continue;
       }
       ReplicaState replicaState=info.getState();
@@ -42,7 +37,11 @@ synchronized (this) {
     cacheManager.uncacheBlock(bpid,invalidBlks[i].getBlockId());
     asyncDiskService.deleteAsync(v,f,FsDatasetUtil.getMetaFile(f,invalidBlks[i].getGenerationStamp()),new ExtendedBlock(bpid,invalidBlks[i]),dataStorage.getTrashDirectoryForBlockFile(bpid,f));
   }
-  if (error) {
-    throw new IOException("Error in deleting blocks.");
+  if (!errors.isEmpty()) {
+    StringBuilder b=new StringBuilder("Failed to delete ").append(errors.size()).append(" (out of ").append(invalidBlks.length).append(") replica(s):");
+    for (int i=0; i < errors.size(); i++) {
+      b.append("\n").append(i).append(") ").append(errors.get(i));
+    }
+    throw new IOException(b.toString());
   }
 }
