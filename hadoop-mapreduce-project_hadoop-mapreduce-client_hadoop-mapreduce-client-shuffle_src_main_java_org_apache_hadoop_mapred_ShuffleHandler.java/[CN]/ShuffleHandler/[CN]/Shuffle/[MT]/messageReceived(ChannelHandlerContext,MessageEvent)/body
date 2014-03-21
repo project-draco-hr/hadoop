@@ -8,11 +8,19 @@
     sendError(ctx,"Incompatible shuffle request version",BAD_REQUEST);
   }
   final Map<String,List<String>> q=new QueryStringDecoder(request.getUri()).getParameters();
+  final List<String> keepAliveList=q.get("keepAlive");
+  boolean keepAliveParam=false;
+  if (keepAliveList != null && keepAliveList.size() == 1) {
+    keepAliveParam=Boolean.valueOf(keepAliveList.get(0));
+    if (LOG.isDebugEnabled()) {
+      LOG.debug("KeepAliveParam : " + keepAliveList + " : "+ keepAliveParam);
+    }
+  }
   final List<String> mapIds=splitMaps(q.get("map"));
   final List<String> reduceQ=q.get("reduce");
   final List<String> jobQ=q.get("job");
   if (LOG.isDebugEnabled()) {
-    LOG.debug("RECV: " + request.getUri() + "\n  mapId: "+ mapIds+ "\n  reduceId: "+ reduceQ+ "\n  jobId: "+ jobQ);
+    LOG.debug("RECV: " + request.getUri() + "\n  mapId: "+ mapIds+ "\n  reduceId: "+ reduceQ+ "\n  jobId: "+ jobQ+ "\n  keepAlive: "+ keepAliveParam);
   }
   if (mapIds == null || reduceQ == null || jobQ == null) {
     sendError(ctx,"Required param job, map and reduce",BAD_REQUEST);
@@ -50,12 +58,29 @@ catch (  IllegalArgumentException e) {
     sendError(ctx,e.getMessage(),UNAUTHORIZED);
     return;
   }
+  Map<String,MapOutputInfo> mapOutputInfoMap=new HashMap<String,MapOutputInfo>();
   Channel ch=evt.getChannel();
+  String user=userRsrc.get(jobId);
+  String outputBasePathStr=getBaseLocation(jobId,user);
+  try {
+    populateHeaders(mapIds,outputBasePathStr,user,reduceId,request,response,keepAliveParam,mapOutputInfoMap);
+  }
+ catch (  IOException e) {
+    ch.write(response);
+    LOG.error("Shuffle error in populating headers :",e);
+    String errorMessage=getErrorMessage(e);
+    sendError(ctx,errorMessage,INTERNAL_SERVER_ERROR);
+    return;
+  }
   ch.write(response);
   ChannelFuture lastMap=null;
   for (  String mapId : mapIds) {
     try {
-      lastMap=sendMapOutput(ctx,ch,userRsrc.get(jobId),jobId,mapId,reduceId);
+      MapOutputInfo info=mapOutputInfoMap.get(mapId);
+      if (info == null) {
+        info=getMapOutputInfo(outputBasePathStr,mapId,reduceId,user);
+      }
+      lastMap=sendMapOutput(ctx,ch,user,mapId,reduceId,info);
       if (null == lastMap) {
         sendError(ctx,NOT_FOUND);
         return;
@@ -63,13 +88,8 @@ catch (  IllegalArgumentException e) {
     }
  catch (    IOException e) {
       LOG.error("Shuffle error :",e);
-      StringBuffer sb=new StringBuffer(e.getMessage());
-      Throwable t=e;
-      while (t.getCause() != null) {
-        sb.append(t.getCause().getMessage());
-        t=t.getCause();
-      }
-      sendError(ctx,sb.toString(),INTERNAL_SERVER_ERROR);
+      String errorMessage=getErrorMessage(e);
+      sendError(ctx,errorMessage,INTERNAL_SERVER_ERROR);
       return;
     }
   }
