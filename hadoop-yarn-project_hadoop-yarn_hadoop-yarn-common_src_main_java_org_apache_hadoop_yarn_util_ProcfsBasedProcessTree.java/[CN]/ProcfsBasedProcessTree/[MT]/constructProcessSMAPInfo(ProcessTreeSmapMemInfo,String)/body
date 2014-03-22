@@ -1,0 +1,51 @@
+{
+  BufferedReader in=null;
+  FileReader fReader=null;
+  try {
+    File pidDir=new File(procfsDir,pInfo.getPid());
+    File file=new File(pidDir,SMAPS);
+    if (!file.exists()) {
+      return;
+    }
+    fReader=new FileReader(file);
+    in=new BufferedReader(fReader);
+    ProcessSmapMemoryInfo memoryMappingInfo=null;
+    List<String> lines=IOUtils.readLines(new FileInputStream(file));
+    for (    String line : lines) {
+      line=line.trim();
+      try {
+        Matcher address=ADDRESS_PATTERN.matcher(line);
+        if (address.find()) {
+          memoryMappingInfo=new ProcessSmapMemoryInfo(line);
+          memoryMappingInfo.setPermission(address.group(4));
+          pInfo.getMemoryInfoList().add(memoryMappingInfo);
+          continue;
+        }
+        Matcher memInfo=MEM_INFO_PATTERN.matcher(line);
+        if (memInfo.find()) {
+          String key=memInfo.group(1).trim();
+          String value=memInfo.group(2).replace(KB,"").trim();
+          if (LOG.isDebugEnabled()) {
+            LOG.debug("MemInfo : " + key + " : Value  : "+ value);
+          }
+          memoryMappingInfo.setMemInfo(key,value);
+        }
+      }
+ catch (      Throwable t) {
+        LOG.warn("Error parsing smaps line : " + line + "; "+ t.getMessage());
+      }
+    }
+  }
+ catch (  FileNotFoundException f) {
+    LOG.error(f.getMessage());
+  }
+catch (  IOException e) {
+    LOG.error(e.getMessage());
+  }
+catch (  Throwable t) {
+    LOG.error(t.getMessage());
+  }
+ finally {
+    IOUtils.closeQuietly(in);
+  }
+}
