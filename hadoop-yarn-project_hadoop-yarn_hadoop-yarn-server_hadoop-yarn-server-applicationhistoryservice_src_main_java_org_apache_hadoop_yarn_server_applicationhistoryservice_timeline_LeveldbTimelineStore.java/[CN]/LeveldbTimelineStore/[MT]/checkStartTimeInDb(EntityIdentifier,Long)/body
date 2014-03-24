@@ -1,21 +1,23 @@
 {
+  StartAndInsertTime startAndInsertTime=null;
   byte[] b=createStartTimeLookupKey(entity.getId(),entity.getType());
   byte[] v=db.get(b);
-  byte[] revStartTime;
   if (v == null) {
     if (suggestedStartTime == null) {
       return null;
     }
-    revStartTime=writeReverseOrderedLong(suggestedStartTime);
+    startAndInsertTime=new StartAndInsertTime(suggestedStartTime,System.currentTimeMillis());
+    v=new byte[16];
+    writeReverseOrderedLong(suggestedStartTime,v,0);
+    writeReverseOrderedLong(startAndInsertTime.insertTime,v,8);
     WriteOptions writeOptions=new WriteOptions();
     writeOptions.sync(true);
-    db.put(b,revStartTime,writeOptions);
+    db.put(b,v,writeOptions);
   }
  else {
-    suggestedStartTime=readReverseOrderedLong(v,0);
-    revStartTime=v;
+    startAndInsertTime=new StartAndInsertTime(readReverseOrderedLong(v,0),readReverseOrderedLong(v,8));
   }
-  startTimeWriteCache.put(entity,suggestedStartTime);
-  startTimeReadCache.put(entity,suggestedStartTime);
-  return revStartTime;
+  startTimeWriteCache.put(entity,startAndInsertTime);
+  startTimeReadCache.put(entity,startAndInsertTime.startTime);
+  return startAndInsertTime;
 }

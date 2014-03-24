@@ -7,8 +7,8 @@
   try {
     writeBatch=db.createWriteBatch();
     List<TimelineEvent> events=entity.getEvents();
-    revStartTime=getAndSetStartTime(entity.getEntityId(),entity.getEntityType(),entity.getStartTime(),events);
-    if (revStartTime == null) {
+    StartAndInsertTime startAndInsertTime=getAndSetStartTime(entity.getEntityId(),entity.getEntityType(),entity.getStartTime(),events);
+    if (startAndInsertTime == null) {
       TimelinePutError error=new TimelinePutError();
       error.setEntityId(entity.getEntityId());
       error.setEntityType(entity.getEntityType());
@@ -16,8 +16,12 @@
       response.addError(error);
       return;
     }
+    revStartTime=writeReverseOrderedLong(startAndInsertTime.startTime);
     Map<String,Set<Object>> primaryFilters=entity.getPrimaryFilters();
-    writeBatch.put(createEntityMarkerKey(entity.getEntityId(),entity.getEntityType(),revStartTime),EMPTY_BYTES);
+    byte[] markerKey=createEntityMarkerKey(entity.getEntityId(),entity.getEntityType(),revStartTime);
+    byte[] markerValue=writeReverseOrderedLong(startAndInsertTime.insertTime);
+    writeBatch.put(markerKey,markerValue);
+    writePrimaryFilterEntries(writeBatch,primaryFilters,markerKey,markerValue);
     if (events != null && !events.isEmpty()) {
       for (      TimelineEvent event : events) {
         byte[] revts=writeReverseOrderedLong(event.getTimestamp());
@@ -81,12 +85,13 @@
     lock=writeLocks.getLock(relatedEntity);
     lock.lock();
     try {
-      byte[] relatedEntityStartTime=getAndSetStartTime(relatedEntity.getId(),relatedEntity.getType(),readReverseOrderedLong(revStartTime,0),null);
-      if (relatedEntityStartTime == null) {
+      StartAndInsertTime relatedEntityStartAndInsertTime=getAndSetStartTime(relatedEntity.getId(),relatedEntity.getType(),readReverseOrderedLong(revStartTime,0),null);
+      if (relatedEntityStartAndInsertTime == null) {
         throw new IOException("Error setting start time for related entity");
       }
+      byte[] relatedEntityStartTime=writeReverseOrderedLong(relatedEntityStartAndInsertTime.startTime);
       db.put(createRelatedEntityKey(relatedEntity.getId(),relatedEntity.getType(),relatedEntityStartTime,entity.getEntityId(),entity.getEntityType()),EMPTY_BYTES);
-      db.put(createEntityMarkerKey(relatedEntity.getId(),relatedEntity.getType(),relatedEntityStartTime),EMPTY_BYTES);
+      db.put(createEntityMarkerKey(relatedEntity.getId(),relatedEntity.getType(),relatedEntityStartTime),writeReverseOrderedLong(relatedEntityStartAndInsertTime.insertTime));
     }
  catch (    IOException e) {
       LOG.error("Error putting related entity " + relatedEntity.getId() + " of type "+ relatedEntity.getType()+ " for entity "+ entity.getEntityId()+ " of type "+ entity.getEntityType(),e);

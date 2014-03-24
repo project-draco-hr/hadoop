@@ -1,0 +1,78 @@
+{
+  DBIterator iterator=null;
+  try {
+    KeyBuilder kb=KeyBuilder.newInstance().add(base).add(entityType);
+    byte[] prefix=kb.getBytesForLookup();
+    if (endtime == null) {
+      endtime=Long.MAX_VALUE;
+    }
+    byte[] first=null;
+    if (fromId != null) {
+      Long fromIdStartTime=getStartTimeLong(fromId,entityType);
+      if (fromIdStartTime == null) {
+        return new TimelineEntities();
+      }
+      if (fromIdStartTime <= endtime) {
+        first=kb.add(writeReverseOrderedLong(fromIdStartTime)).add(fromId).getBytesForLookup();
+      }
+    }
+    if (first == null) {
+      first=kb.add(writeReverseOrderedLong(endtime)).getBytesForLookup();
+    }
+    byte[] last=null;
+    if (starttime != null) {
+      last=KeyBuilder.newInstance().add(base).add(entityType).add(writeReverseOrderedLong(starttime)).getBytesForLookup();
+    }
+    if (limit == null) {
+      limit=DEFAULT_LIMIT;
+    }
+    TimelineEntities entities=new TimelineEntities();
+    iterator=db.iterator();
+    iterator.seek(first);
+    while (entities.getEntities().size() < limit && iterator.hasNext()) {
+      byte[] key=iterator.peekNext().getKey();
+      if (!prefixMatches(prefix,prefix.length,key) || (last != null && WritableComparator.compareBytes(key,0,key.length,last,0,last.length) > 0)) {
+        break;
+      }
+      KeyParser kp=new KeyParser(key,prefix.length);
+      Long startTime=kp.getNextLong();
+      String entityId=kp.getNextString();
+      if (fromTs != null) {
+        long insertTime=readReverseOrderedLong(iterator.peekNext().getValue(),0);
+        if (insertTime > fromTs) {
+          byte[] firstKey=key;
+          while (iterator.hasNext() && prefixMatches(firstKey,kp.getOffset(),key)) {
+            iterator.next();
+            key=iterator.peekNext().getKey();
+          }
+          continue;
+        }
+      }
+      TimelineEntity entity=getEntity(entityId,entityType,startTime,fields,iterator,key,kp.getOffset());
+      boolean filterPassed=true;
+      if (secondaryFilters != null) {
+        for (        NameValuePair filter : secondaryFilters) {
+          Object v=entity.getOtherInfo().get(filter.getName());
+          if (v == null) {
+            Set<Object> vs=entity.getPrimaryFilters().get(filter.getName());
+            if (vs != null && !vs.contains(filter.getValue())) {
+              filterPassed=false;
+              break;
+            }
+          }
+ else           if (!v.equals(filter.getValue())) {
+            filterPassed=false;
+            break;
+          }
+        }
+      }
+      if (filterPassed) {
+        entities.addEntity(entity);
+      }
+    }
+    return entities;
+  }
+  finally {
+    IOUtils.cleanup(LOG,iterator);
+  }
+}
