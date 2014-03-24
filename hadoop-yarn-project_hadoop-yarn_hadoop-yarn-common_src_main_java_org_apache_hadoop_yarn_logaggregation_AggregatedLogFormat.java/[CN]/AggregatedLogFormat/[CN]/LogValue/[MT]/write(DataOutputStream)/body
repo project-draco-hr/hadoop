@@ -8,22 +8,28 @@
     File[] logFiles=containerLogDir.listFiles();
     Arrays.sort(logFiles);
     for (    File logFile : logFiles) {
-      long fileLength=0;
+      final long fileLength=logFile.length();
       out.writeUTF(logFile.getName());
-      out.writeUTF(String.valueOf(fileLength=logFile.length()));
+      out.writeUTF(String.valueOf(fileLength));
       FileInputStream in=null;
       try {
         in=SecureIOUtils.openForRead(logFile,getUser(),null);
         byte[] buf=new byte[65535];
-        long curRead=0;
         int len=0;
-        while (((len=in.read(buf)) != -1) && (curRead < fileLength)) {
-          out.write(buf,0,len);
-          curRead+=len;
+        long bytesLeft=fileLength;
+        while ((len=in.read(buf)) != -1) {
+          if (len < bytesLeft) {
+            out.write(buf,0,len);
+            bytesLeft-=len;
+          }
+ else {
+            out.write(buf,0,(int)bytesLeft);
+            break;
+          }
         }
         long newLength=logFile.length();
         if (fileLength < newLength) {
-          LOG.warn("Aggregated Logs Truncated by " + (newLength - fileLength) + " bytes.");
+          LOG.warn("Aggregated logs truncated by approximately " + (newLength - fileLength) + " bytes.");
         }
       }
  catch (      IOException e) {
