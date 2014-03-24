@@ -1,0 +1,38 @@
+{
+  LOG.info("Starting test testDecommissionWithNamenodeRestart");
+  int numNamenodes=1;
+  int numDatanodes=1;
+  int replicas=1;
+  startCluster(numNamenodes,numDatanodes,conf);
+  Path file1=new Path("testDecommission.dat");
+  FileSystem fileSys=cluster.getFileSystem();
+  writeFile(fileSys,file1,replicas);
+  DFSClient client=getDfsClient(cluster.getNameNode(),conf);
+  DatanodeInfo[] info=client.datanodeReport(DatanodeReportType.LIVE);
+  DatanodeID excludedDatanodeID=info[0];
+  String excludedDatanodeName=info[0].getXferAddr();
+  writeConfigFile(excludeFile,new ArrayList<String>(Arrays.asList(excludedDatanodeName)));
+  cluster.startDataNodes(conf,1,true,null,null,null,null);
+  numDatanodes+=1;
+  assertEquals("Number of datanodes should be 2 ",2,cluster.getDataNodes().size());
+  cluster.restartNameNode();
+  DatanodeInfo datanodeInfo=NameNodeAdapter.getDatanode(cluster.getNamesystem(),excludedDatanodeID);
+  waitNodeState(datanodeInfo,AdminStates.DECOMMISSIONED);
+  assertEquals("All datanodes must be alive",numDatanodes,client.datanodeReport(DatanodeReportType.LIVE).length);
+  int tries=0;
+  while (tries++ < 20) {
+    try {
+      Thread.sleep(1000);
+      if (checkFile(fileSys,file1,replicas,datanodeInfo.getXferAddr(),numDatanodes) == null) {
+        break;
+      }
+    }
+ catch (    InterruptedException ie) {
+    }
+  }
+  assertTrue("Checked if block was replicated after decommission, tried " + tries + " times.",tries < 20);
+  cleanupFile(fileSys,file1);
+  cluster.shutdown();
+  startCluster(numNamenodes,numDatanodes,conf);
+  cluster.shutdown();
+}
