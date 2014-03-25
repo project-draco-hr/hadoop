@@ -1,0 +1,31 @@
+{
+  Configuration conf=new Configuration();
+  MiniDFSCluster cluster=null;
+  String pathName="/snapshot";
+  Path path=new Path(pathName);
+  try {
+    cluster=new MiniDFSCluster.Builder(conf).build();
+    cluster.waitActive();
+    SnapshotManager sm=cluster.getNamesystem().getSnapshotManager();
+    DistributedFileSystem dfs=(DistributedFileSystem)cluster.getFileSystem();
+    dfs.mkdirs(path);
+    dfs.allowSnapshot(path);
+    dfs.createSnapshot(path);
+    MBeanServer mbs=ManagementFactory.getPlatformMBeanServer();
+    ObjectName mxbeanName=new ObjectName("Hadoop:service=NameNode,name=SnapshotInfo");
+    CompositeData statsbean=(CompositeData)mbs.getAttribute(mxbeanName,"SnapshotStats");
+    int numDirectories=Array.getLength(statsbean.get("directory"));
+    assertEquals(sm.getNumSnapshottableDirs(),numDirectories);
+    int numSnapshots=Array.getLength(statsbean.get("snapshots"));
+    assertEquals(sm.getNumSnapshots(),numSnapshots);
+    CompositeData directory=(CompositeData)Array.get(statsbean.get("directory"),0);
+    CompositeData snapshots=(CompositeData)Array.get(statsbean.get("snapshots"),0);
+    assertTrue(((String)directory.get("path")).contains(pathName));
+    assertTrue(((String)snapshots.get("snapshotDirectory")).contains(pathName));
+  }
+  finally {
+    if (cluster != null) {
+      cluster.shutdown();
+    }
+  }
+}
