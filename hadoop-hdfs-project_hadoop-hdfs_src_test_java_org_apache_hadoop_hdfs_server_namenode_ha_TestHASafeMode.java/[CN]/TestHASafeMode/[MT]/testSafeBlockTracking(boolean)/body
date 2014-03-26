@@ -1,0 +1,28 @@
+{
+  banner("Starting with NN0 active and NN1 standby, creating some " + "UC blocks plus some other blocks to force safemode");
+  DFSTestUtil.createFile(fs,new Path("/other-blocks"),10 * BLOCK_SIZE,(short)3,1L);
+  List<FSDataOutputStream> stms=Lists.newArrayList();
+  try {
+    for (int i=0; i < 5; i++) {
+      FSDataOutputStream stm=fs.create(new Path("/test-uc-" + i));
+      stms.add(stm);
+      stm.write(1);
+      stm.hflush();
+    }
+    nn0.getRpcServer().rollEditLog();
+  }
+  finally {
+    if (noFirstBlockReport) {
+      cluster.shutdownNameNode(1);
+    }
+    for (    FSDataOutputStream stm : stms) {
+      IOUtils.closeStream(stm);
+    }
+  }
+  banner("Restarting SBN");
+  restartStandby();
+  assertSafeMode(nn1,10,10,3,0);
+  banner("Allowing SBN to catch up");
+  HATestUtil.waitForStandbyToCatchUp(nn0,nn1);
+  assertSafeMode(nn1,15,15,3,0);
+}
