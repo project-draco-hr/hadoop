@@ -1,0 +1,39 @@
+{
+  HttpRequest request=(HttpRequest)e.getMessage();
+  if (request.getMethod() == HttpMethod.GET) {
+    String uri=request.getUri();
+    QueryStringDecoder decoder=new QueryStringDecoder(uri);
+    String op="null";
+    if (decoder.getParameters().containsKey("op")) {
+      op=decoder.getParameters().get("op").get(0).toUpperCase();
+    }
+    HttpResponse response=new DefaultHttpResponse(HttpVersion.HTTP_1_1,HttpResponseStatus.OK);
+    String json=null;
+    if (op.equals("LISTSTATUS")) {
+      try {
+        json=loader.listStatus(decoder.getPath());
+        response.setStatus(HttpResponseStatus.OK);
+        response.setHeader(HttpHeaders.Names.CONTENT_TYPE,"application/json");
+        HttpHeaders.setContentLength(response,json.length());
+      }
+ catch (      Exception ex) {
+        LOG.warn(ex.getMessage());
+        response.setStatus(HttpResponseStatus.NOT_FOUND);
+      }
+    }
+ else {
+      response.setStatus(HttpResponseStatus.BAD_REQUEST);
+    }
+    e.getChannel().write(response);
+    if (json != null) {
+      e.getChannel().write(json);
+    }
+    LOG.info(response.getStatus().getCode() + " method=GET op=" + op+ " target="+ decoder.getPath());
+  }
+ else {
+    HttpResponse response=new DefaultHttpResponse(HttpVersion.HTTP_1_1,HttpResponseStatus.METHOD_NOT_ALLOWED);
+    e.getChannel().write(response);
+    LOG.info(response.getStatus().getCode() + " method=" + request.getMethod().getName());
+  }
+  e.getFuture().addListener(ChannelFutureListener.CLOSE);
+}

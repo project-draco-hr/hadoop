@@ -1,0 +1,41 @@
+{
+  WebImageViewer viewer=new WebImageViewer(NetUtils.createSocketAddr("localhost:0"));
+  try {
+    viewer.initServer(originalFsimage.getAbsolutePath());
+    int port=viewer.getPort();
+    URL url=new URL("http://localhost:" + port + "/?op=LISTSTATUS");
+    HttpURLConnection connection=(HttpURLConnection)url.openConnection();
+    connection.setRequestMethod("GET");
+    connection.connect();
+    assertEquals(HttpURLConnection.HTTP_OK,connection.getResponseCode());
+    assertEquals("application/json",connection.getContentType());
+    String content=org.apache.commons.io.IOUtils.toString(connection.getInputStream());
+    LOG.info("content: " + content);
+    ObjectMapper mapper=new ObjectMapper();
+    Map<String,Map<String,List<Map<String,Object>>>> fileStatuses=mapper.readValue(content,new TypeReference<Map<String,Map<String,List<Map<String,Object>>>>>(){
+    }
+);
+    List<Map<String,Object>> fileStatusList=fileStatuses.get("FileStatuses").get("FileStatus");
+    assertEquals(NUM_DIRS,fileStatusList.size());
+    Map<String,Object> fileStatusMap=fileStatusList.get(0);
+    assertEquals(FILES_PER_DIR,fileStatusMap.get("childrenNum"));
+    url=new URL("http://localhost:" + port + "/invalid/?op=LISTSTATUS");
+    connection=(HttpURLConnection)url.openConnection();
+    connection.setRequestMethod("GET");
+    connection.connect();
+    assertEquals(HttpURLConnection.HTTP_NOT_FOUND,connection.getResponseCode());
+    url=new URL("http://localhost:" + port + "/?op=INVALID");
+    connection=(HttpURLConnection)url.openConnection();
+    connection.setRequestMethod("GET");
+    connection.connect();
+    assertEquals(HttpURLConnection.HTTP_BAD_REQUEST,connection.getResponseCode());
+    url=new URL("http://localhost:" + port + "/?op=LISTSTATUS");
+    connection=(HttpURLConnection)url.openConnection();
+    connection.setRequestMethod("POST");
+    connection.connect();
+    assertEquals(HttpURLConnection.HTTP_BAD_METHOD,connection.getResponseCode());
+  }
+  finally {
+    viewer.shutdown();
+  }
+}
