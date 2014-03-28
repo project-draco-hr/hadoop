@@ -7,21 +7,23 @@
     Mockito.when(config.getInitParameter(AuthenticationFilter.SIGNATURE_SECRET)).thenReturn("secret");
     Mockito.when(config.getInitParameterNames()).thenReturn(new Vector<String>(Arrays.asList(AuthenticationFilter.AUTH_TYPE,AuthenticationFilter.SIGNATURE_SECRET,"management.operation.return")).elements());
     filter.init(config);
-    AuthenticationToken token=new AuthenticationToken("u","p","invalidtype");
+    AuthenticationToken token=new AuthenticationToken("u","p",DummyAuthenticationHandler.TYPE);
     token.setExpires(System.currentTimeMillis() - TOKEN_VALIDITY_SEC);
     Signer signer=new Signer("secret".getBytes());
     String tokenSigned=signer.sign(token.toString());
     Cookie cookie=new Cookie(AuthenticatedURL.AUTH_COOKIE,tokenSigned);
     HttpServletRequest request=Mockito.mock(HttpServletRequest.class);
     Mockito.when(request.getCookies()).thenReturn(new Cookie[]{cookie});
+    boolean failed=false;
     try {
       filter.getToken(request);
-      Assert.fail();
     }
  catch (    AuthenticationException ex) {
+      Assert.assertEquals("AuthenticationToken expired",ex.getMessage());
+      failed=true;
     }
-catch (    Exception ex) {
-      Assert.fail();
+ finally {
+      Assert.assertTrue("token not expired",failed);
     }
   }
   finally {

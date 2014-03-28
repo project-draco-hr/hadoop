@@ -1,6 +1,7 @@
 {
   boolean unauthorizedResponse=true;
-  String unauthorizedMsg="";
+  int errCode=HttpServletResponse.SC_UNAUTHORIZED;
+  AuthenticationException authenticationEx=null;
   HttpServletRequest httpRequest=(HttpServletRequest)request;
   HttpServletResponse httpResponse=(HttpServletResponse)response;
   boolean isHttps="https".equals(httpRequest.getScheme());
@@ -12,6 +13,7 @@
     }
  catch (    AuthenticationException ex) {
       LOG.warn("AuthenticationToken ignored: " + ex.getMessage());
+      authenticationEx=ex;
       token=null;
     }
     if (authHandler.managementOperation(token,httpRequest,httpResponse)) {
@@ -55,13 +57,19 @@
     }
   }
  catch (  AuthenticationException ex) {
-    unauthorizedMsg=ex.toString();
+    errCode=HttpServletResponse.SC_FORBIDDEN;
+    authenticationEx=ex;
     LOG.warn("Authentication exception: " + ex.getMessage(),ex);
   }
   if (unauthorizedResponse) {
     if (!httpResponse.isCommitted()) {
       createAuthCookie(httpResponse,"",getCookieDomain(),getCookiePath(),0,isHttps);
-      httpResponse.sendError(HttpServletResponse.SC_UNAUTHORIZED,unauthorizedMsg);
+      if (authenticationEx == null) {
+        httpResponse.sendError(errCode,"Authentication required");
+      }
+ else {
+        httpResponse.sendError(errCode,authenticationEx.getMessage());
+      }
     }
   }
 }
