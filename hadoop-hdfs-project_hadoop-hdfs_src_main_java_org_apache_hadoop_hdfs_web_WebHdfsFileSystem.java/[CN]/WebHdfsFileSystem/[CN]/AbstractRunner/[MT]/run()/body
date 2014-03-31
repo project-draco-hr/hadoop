@@ -1,17 +1,20 @@
 {
-  for (int retry=0; ; retry++) {
-    try {
-      init();
-      if (op.getDoOutput()) {
-        twoStepWrite();
+  UserGroupInformation connectUgi=ugi.getRealUser();
+  if (connectUgi == null) {
+    connectUgi=ugi;
+  }
+  if (op.getRequireAuth()) {
+    connectUgi.checkTGTAndReloginFromKeytab();
+  }
+  try {
+    return connectUgi.doAs(new PrivilegedExceptionAction<AbstractRunner>(){
+      @Override public AbstractRunner run() throws IOException {
+        return runWithRetry();
       }
- else {
-        getResponse(op != GetOpParam.Op.OPEN);
-      }
-      return this;
     }
- catch (    IOException ioe) {
-      shouldRetry(ioe,retry);
-    }
+);
+  }
+ catch (  InterruptedException e) {
+    throw new IOException(e);
   }
 }
