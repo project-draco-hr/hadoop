@@ -1,12 +1,7 @@
 {
   final Configuration conf=new HdfsConfiguration();
   Options fetcherOptions=new Options();
-  fetcherOptions.addOption(WEBSERVICE,true,"HTTP url to reach the NameNode at");
-  fetcherOptions.addOption(RENEWER,true,"Name of the delegation token renewer");
-  fetcherOptions.addOption(CANCEL,false,"cancel the token");
-  fetcherOptions.addOption(RENEW,false,"renew the token");
-  fetcherOptions.addOption(PRINT,false,"print the token");
-  fetcherOptions.addOption(HELP_SHORT,HELP,false,"print out help information");
+  fetcherOptions.addOption(WEBSERVICE,true,"HTTP url to reach the NameNode at").addOption(RENEWER,true,"Name of the delegation token renewer").addOption(CANCEL,false,"cancel the token").addOption(RENEW,false,"renew the token").addOption(PRINT,false,"print the token").addOption(HELP_SHORT,HELP,false,"print out help information");
   GenericOptionsParser parser=new GenericOptionsParser(conf,fetcherOptions,args);
   CommandLine cmd=parser.getCommandLine();
   final String webUrl=cmd.hasOption(WEBSERVICE) ? cmd.getOptionValue(WEBSERVICE) : null;
@@ -20,7 +15,8 @@
     printUsage(System.out);
     System.exit(0);
   }
-  if (cancel && renew || cancel && print || renew && print || cancel && renew && print) {
+  int commandCount=(cancel ? 1 : 0) + (renew ? 1 : 0) + (print ? 1 : 0);
+  if (commandCount > 1) {
     System.err.println("ERROR: Only specify cancel, renew or print.");
     printUsage(System.err);
   }
@@ -30,58 +26,20 @@
   }
   FileSystem local=FileSystem.getLocal(conf);
   final Path tokenFile=new Path(local.getWorkingDirectory(),remaining[0]);
-  final URLConnectionFactory connectionFactory=URLConnectionFactory.DEFAULT_SYSTEM_CONNECTION_FACTORY;
   UserGroupInformation.getCurrentUser().doAs(new PrivilegedExceptionAction<Object>(){
     @Override public Object run() throws Exception {
       if (print) {
-        DelegationTokenIdentifier id=new DelegationTokenSecretManager(0,0,0,0,null).createIdentifier();
-        for (        Token<?> token : readTokens(tokenFile,conf)) {
-          DataInputStream in=new DataInputStream(new ByteArrayInputStream(token.getIdentifier()));
-          id.readFields(in);
-          System.out.println("Token (" + id + ") for "+ token.getService());
-        }
+        printTokens(conf,tokenFile);
       }
  else       if (cancel) {
-        for (        Token<?> token : readTokens(tokenFile,conf)) {
-          if (token.isManaged()) {
-            token.cancel(conf);
-            if (LOG.isDebugEnabled()) {
-              LOG.debug("Cancelled token for " + token.getService());
-            }
-          }
-        }
+        cancelTokens(conf,tokenFile);
       }
  else       if (renew) {
-        for (        Token<?> token : readTokens(tokenFile,conf)) {
-          if (token.isManaged()) {
-            long result=token.renew(conf);
-            if (LOG.isDebugEnabled()) {
-              LOG.debug("Renewed token for " + token.getService() + " until: "+ new Date(result));
-            }
-          }
-        }
+        renewTokens(conf,tokenFile);
       }
  else {
-        if (webUrl != null) {
-          Credentials creds=getDTfromRemote(connectionFactory,new URI(webUrl),renewer,null);
-          creds.writeTokenStorageFile(tokenFile,conf);
-          for (          Token<?> token : creds.getAllTokens()) {
-            if (LOG.isDebugEnabled()) {
-              LOG.debug("Fetched token via " + webUrl + " for "+ token.getService()+ " into "+ tokenFile);
-            }
-          }
-        }
- else {
-          FileSystem fs=FileSystem.get(conf);
-          Credentials cred=new Credentials();
-          Token<?> tokens[]=fs.addDelegationTokens(renewer,cred);
-          cred.writeTokenStorageFile(tokenFile,conf);
-          if (LOG.isDebugEnabled()) {
-            for (            Token<?> token : tokens) {
-              LOG.debug("Fetched token for " + token.getService() + " into "+ tokenFile);
-            }
-          }
-        }
+        FileSystem fs=getFileSystem(conf,webUrl);
+        saveDelegationToken(conf,fs,renewer,tokenFile);
       }
       return null;
     }
