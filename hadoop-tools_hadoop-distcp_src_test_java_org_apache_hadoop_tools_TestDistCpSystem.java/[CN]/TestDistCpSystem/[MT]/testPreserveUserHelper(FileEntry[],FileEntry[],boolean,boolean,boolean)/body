@@ -1,0 +1,43 @@
+{
+  Configuration conf=null;
+  MiniDFSCluster cluster=null;
+  try {
+    final String testRoot="/testdir";
+    final String testSrcRel=SRCDAT;
+    final String testSrc=testRoot + "/" + testSrcRel;
+    final String testDstRel=DSTDAT;
+    final String testDst=testRoot + "/" + testDstRel;
+    conf=new Configuration();
+    cluster=new MiniDFSCluster.Builder(conf).numDataNodes(2).build();
+    String nnUri=FileSystem.getDefaultUri(conf).toString();
+    FileSystem fs=FileSystem.get(URI.create(nnUri),conf);
+    fs.mkdirs(new Path(testRoot));
+    if (createSrcDir) {
+      fs.mkdirs(new Path(testSrc));
+    }
+    if (createTgtDir) {
+      fs.mkdirs(new Path(testDst));
+    }
+    createFiles(fs,testRoot,srcEntries);
+    FileStatus[] srcstats=getFileStatus(fs,testRoot,srcEntries);
+    for (int i=0; i < srcEntries.length; i++) {
+      fs.setOwner(srcstats[i].getPath(),"u" + i,null);
+    }
+    String[] args=update ? new String[]{"-pu","-update",nnUri + testSrc,nnUri + testDst} : new String[]{"-pu",nnUri + testSrc,nnUri + testDst};
+    ToolRunner.run(conf,new DistCp(),args);
+    String realTgtPath=testDst;
+    if (!createTgtDir) {
+      realTgtPath=testRoot;
+    }
+    FileStatus[] dststat=getFileStatus(fs,realTgtPath,dstEntries);
+    for (int i=0; i < dststat.length; i++) {
+      assertEquals("i=" + i,"u" + i,dststat[i].getOwner());
+    }
+    deldir(fs,testRoot);
+  }
+  finally {
+    if (cluster != null) {
+      cluster.shutdown();
+    }
+  }
+}
