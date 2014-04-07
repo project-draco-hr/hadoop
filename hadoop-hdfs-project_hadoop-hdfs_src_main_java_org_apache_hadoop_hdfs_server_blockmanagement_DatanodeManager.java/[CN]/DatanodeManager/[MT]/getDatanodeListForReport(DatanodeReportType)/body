@@ -1,29 +1,28 @@
 {
   boolean listLiveNodes=type == DatanodeReportType.ALL || type == DatanodeReportType.LIVE;
   boolean listDeadNodes=type == DatanodeReportType.ALL || type == DatanodeReportType.DEAD;
-  ArrayList<DatanodeDescriptor> nodes=null;
-  final MutableEntrySet foundNodes=new MutableEntrySet();
+  ArrayList<DatanodeDescriptor> nodes;
+  final HostFileManager.HostSet foundNodes=new HostFileManager.HostSet();
+  final HostFileManager.HostSet includedNodes=hostFileManager.getIncludes();
+  final HostFileManager.HostSet excludedNodes=hostFileManager.getExcludes();
 synchronized (datanodeMap) {
     nodes=new ArrayList<DatanodeDescriptor>(datanodeMap.size());
-    Iterator<DatanodeDescriptor> it=datanodeMap.values().iterator();
-    while (it.hasNext()) {
-      DatanodeDescriptor dn=it.next();
+    for (    DatanodeDescriptor dn : datanodeMap.values()) {
       final boolean isDead=isDatanodeDead(dn);
-      if ((isDead && listDeadNodes) || (!isDead && listLiveNodes)) {
+      if ((listLiveNodes && !isDead) || (listDeadNodes && isDead)) {
         nodes.add(dn);
       }
-      foundNodes.add(dn);
+      foundNodes.add(HostFileManager.resolvedAddressFromDatanodeID(dn));
     }
   }
   if (listDeadNodes) {
-    final EntrySet includedNodes=hostFileManager.getIncludes();
-    final EntrySet excludedNodes=hostFileManager.getExcludes();
-    for (    Entry entry : includedNodes) {
-      if ((foundNodes.find(entry) == null) && (excludedNodes.find(entry) == null)) {
-        DatanodeDescriptor dn=new DatanodeDescriptor(new DatanodeID(entry.getIpAddress(),entry.getPrefix(),"",entry.getPort() == 0 ? defaultXferPort : entry.getPort(),defaultInfoPort,defaultInfoSecurePort,defaultIpcPort));
-        dn.setLastUpdate(0);
-        nodes.add(dn);
+    for (    InetSocketAddress addr : includedNodes) {
+      if (foundNodes.matchedBy(addr) || excludedNodes.match(addr)) {
+        continue;
       }
+      DatanodeDescriptor dn=new DatanodeDescriptor(new DatanodeID(addr.getAddress().getHostAddress(),addr.getHostName(),"",addr.getPort() == 0 ? defaultXferPort : addr.getPort(),defaultInfoPort,defaultInfoSecurePort,defaultIpcPort));
+      dn.setLastUpdate(0);
+      nodes.add(dn);
     }
   }
   if (LOG.isDebugEnabled()) {
