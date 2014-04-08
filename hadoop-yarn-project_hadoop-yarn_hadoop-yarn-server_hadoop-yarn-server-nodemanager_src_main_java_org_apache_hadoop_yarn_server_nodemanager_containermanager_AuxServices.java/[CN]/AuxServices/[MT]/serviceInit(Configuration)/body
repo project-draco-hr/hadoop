@@ -1,4 +1,12 @@
 {
+  final FsPermission storeDirPerms=new FsPermission((short)0700);
+  Path stateStoreRoot=null;
+  FileSystem stateStoreFs=null;
+  boolean recoveryEnabled=conf.getBoolean(YarnConfiguration.NM_RECOVERY_ENABLED,YarnConfiguration.DEFAULT_NM_RECOVERY_ENABLED);
+  if (recoveryEnabled) {
+    stateStoreRoot=new Path(conf.get(YarnConfiguration.NM_RECOVERY_DIR),STATE_STORE_ROOT_NAME);
+    stateStoreFs=FileSystem.getLocal(conf);
+  }
   Collection<String> auxNames=conf.getStringCollection(YarnConfiguration.NM_AUX_SERVICES);
   for (  final String sName : auxNames) {
     try {
@@ -12,6 +20,11 @@
         LOG.warn("The Auxilurary Service named '" + sName + "' in the "+ "configuration is for class "+ sClass+ " which has "+ "a name of '"+ s.getName()+ "'. Because these are "+ "not the same tools trying to send ServiceData and read "+ "Service Meta Data may have issues unless the refer to "+ "the name in the config.");
       }
       addService(sName,s);
+      if (recoveryEnabled) {
+        Path storePath=new Path(stateStoreRoot,sName);
+        stateStoreFs.mkdirs(storePath,storeDirPerms);
+        s.setRecoveryPath(storePath);
+      }
       s.init(conf);
     }
  catch (    RuntimeException e) {
