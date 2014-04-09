@@ -1,28 +1,34 @@
 {
-  if (!changed) {
-    return;
-  }
-  for (  Map.Entry<String,Metadata> entry : cache.entrySet()) {
+  writeLock.lock();
+  try {
+    if (!changed) {
+      return;
+    }
+    for (    Map.Entry<String,Metadata> entry : cache.entrySet()) {
+      try {
+        keyStore.setKeyEntry(entry.getKey(),new KeyMetadata(entry.getValue()),password,null);
+      }
+ catch (      KeyStoreException e) {
+        throw new IOException("Can't set metadata key " + entry.getKey(),e);
+      }
+    }
+    FSDataOutputStream out=FileSystem.create(fs,path,permissions);
     try {
-      keyStore.setKeyEntry(entry.getKey(),new KeyMetadata(entry.getValue()),password,null);
+      keyStore.store(out,password);
     }
  catch (    KeyStoreException e) {
-      throw new IOException("Can't set metadata key " + entry.getKey(),e);
+      throw new IOException("Can't store keystore " + this,e);
     }
+catch (    NoSuchAlgorithmException e) {
+      throw new IOException("No such algorithm storing keystore " + this,e);
+    }
+catch (    CertificateException e) {
+      throw new IOException("Certificate exception storing keystore " + this,e);
+    }
+    out.close();
+    changed=false;
   }
-  FSDataOutputStream out=FileSystem.create(fs,path,permissions);
-  try {
-    keyStore.store(out,password);
+  finally {
+    writeLock.unlock();
   }
- catch (  KeyStoreException e) {
-    throw new IOException("Can't store keystore " + this,e);
-  }
-catch (  NoSuchAlgorithmException e) {
-    throw new IOException("No such algorithm storing keystore " + this,e);
-  }
-catch (  CertificateException e) {
-    throw new IOException("Certificate exception storing keystore " + this,e);
-  }
-  out.close();
-  changed=false;
 }

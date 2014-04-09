@@ -1,22 +1,28 @@
 {
-  if (cache.containsKey(name)) {
-    return cache.get(name);
-  }
+  readLock.lock();
   try {
-    if (!keyStore.containsAlias(name)) {
-      return null;
+    if (cache.containsKey(name)) {
+      return cache.get(name);
     }
-    Metadata meta=((KeyMetadata)keyStore.getKey(name,password)).metadata;
-    cache.put(name,meta);
-    return meta;
+    try {
+      if (!keyStore.containsAlias(name)) {
+        return null;
+      }
+      Metadata meta=((KeyMetadata)keyStore.getKey(name,password)).metadata;
+      cache.put(name,meta);
+      return meta;
+    }
+ catch (    KeyStoreException e) {
+      throw new IOException("Can't get metadata for " + name + " from keystore "+ path,e);
+    }
+catch (    NoSuchAlgorithmException e) {
+      throw new IOException("Can't get algorithm for " + name + " from keystore "+ path,e);
+    }
+catch (    UnrecoverableKeyException e) {
+      throw new IOException("Can't recover key for " + name + " from keystore "+ path,e);
+    }
   }
- catch (  KeyStoreException e) {
-    throw new IOException("Can't get metadata for " + name + " from keystore "+ path,e);
-  }
-catch (  NoSuchAlgorithmException e) {
-    throw new IOException("Can't get algorithm for " + name + " from keystore "+ path,e);
-  }
-catch (  UnrecoverableKeyException e) {
-    throw new IOException("Can't recover key for " + name + " from keystore "+ path,e);
+  finally {
+    readLock.unlock();
   }
 }
