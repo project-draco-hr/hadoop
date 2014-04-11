@@ -2,13 +2,16 @@
   assumeTrue(NativeIO.isAvailable());
   final long memlockLimit=NativeIO.POSIX.getCacheManipulator().getMemlockLimit();
   assumeTrue(memlockLimit != Long.MAX_VALUE);
+  File dataDir=new File(BASE_DIR,"data").getCanonicalFile();
   Configuration conf=cluster.getConfiguration(0);
+  conf.set(DFSConfigKeys.DFS_DATANODE_DATA_DIR_KEY,makeURI("file",null,fileAsURI(dataDir).getPath()));
   long prevLimit=conf.getLong(DFSConfigKeys.DFS_DATANODE_MAX_LOCKED_MEMORY_KEY,DFSConfigKeys.DFS_DATANODE_MAX_LOCKED_MEMORY_DEFAULT);
+  DataNode dn=null;
   try {
     conf.setLong(DFSConfigKeys.DFS_DATANODE_MAX_LOCKED_MEMORY_KEY,memlockLimit);
-    DataNode dn=null;
     dn=DataNode.createDataNode(new String[]{},conf);
     dn.shutdown();
+    dn=null;
     conf.setLong(DFSConfigKeys.DFS_DATANODE_MAX_LOCKED_MEMORY_KEY,memlockLimit + 1);
     try {
       dn=DataNode.createDataNode(new String[]{},conf);
@@ -18,6 +21,9 @@
     }
   }
   finally {
+    if (dn != null) {
+      dn.shutdown();
+    }
     conf.setLong(DFSConfigKeys.DFS_DATANODE_MAX_LOCKED_MEMORY_KEY,prevLimit);
   }
 }
