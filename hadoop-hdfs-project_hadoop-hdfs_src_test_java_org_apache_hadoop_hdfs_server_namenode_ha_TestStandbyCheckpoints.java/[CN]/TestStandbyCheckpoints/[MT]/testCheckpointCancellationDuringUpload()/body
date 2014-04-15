@@ -12,4 +12,20 @@
   HATestUtil.waitForCheckpoint(cluster,1,ImmutableList.of(104));
   cluster.transitionToStandby(0);
   cluster.transitionToActive(1);
+  cluster.shutdown();
+  cluster=null;
+  GenericTestUtils.waitFor(new Supplier<Boolean>(){
+    @Override public Boolean get(){
+      ThreadMXBean threadBean=ManagementFactory.getThreadMXBean();
+      ThreadInfo[] threads=threadBean.getThreadInfo(threadBean.getAllThreadIds(),1);
+      for (      ThreadInfo thread : threads) {
+        if (thread.getThreadName().startsWith("TransferFsImageUpload")) {
+          return false;
+        }
+      }
+      return true;
+    }
+  }
+,1000,30000);
+  assertEquals(0,nn0.getFSImage().getMostRecentCheckpointTxId());
 }

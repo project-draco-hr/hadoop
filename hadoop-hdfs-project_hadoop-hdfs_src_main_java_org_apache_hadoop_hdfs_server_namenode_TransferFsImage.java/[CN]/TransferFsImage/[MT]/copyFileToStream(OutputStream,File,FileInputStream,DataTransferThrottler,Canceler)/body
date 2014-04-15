@@ -1,0 +1,34 @@
+{
+  byte buf[]=new byte[HdfsConstants.IO_FILE_BUFFER_SIZE];
+  try {
+    CheckpointFaultInjector.getInstance().aboutToSendFile(localfile);
+    if (CheckpointFaultInjector.getInstance().shouldSendShortFile(localfile)) {
+      long len=localfile.length();
+      buf=new byte[(int)Math.min(len / 2,HdfsConstants.IO_FILE_BUFFER_SIZE)];
+      infile.read(buf);
+    }
+    int num=1;
+    while (num > 0) {
+      if (canceler != null && canceler.isCancelled()) {
+        throw new SaveNamespaceCancelledException(canceler.getCancellationReason());
+      }
+      num=infile.read(buf);
+      if (num <= 0) {
+        break;
+      }
+      if (CheckpointFaultInjector.getInstance().shouldCorruptAByte(localfile)) {
+        LOG.warn("SIMULATING A CORRUPT BYTE IN IMAGE TRANSFER!");
+        buf[0]++;
+      }
+      out.write(buf,0,num);
+      if (throttler != null) {
+        throttler.throttle(num,canceler);
+      }
+    }
+  }
+  finally {
+    if (out != null) {
+      out.close();
+    }
+  }
+}
