@@ -10,9 +10,11 @@
   dispatcher.getEventHandler().handle(new JobHistoryEvent(job.getID(),new AMStartedEvent(amInfo.getAppAttemptId(),amInfo.getStartTime(),amInfo.getContainerId(),amInfo.getNodeManagerHost(),amInfo.getNodeManagerPort(),amInfo.getNodeManagerHttpPort(),this.forcedState == null ? null : this.forcedState.toString())));
   amInfos.add(amInfo);
   DefaultMetricsSystem.initialize("MRAppMaster");
+  boolean initFailed=false;
   if (!errorHappenedShutDown) {
     JobEvent initJobEvent=new JobEvent(job.getID(),JobEventType.JOB_INIT);
     jobEventDispatcher.handle(initJobEvent);
+    initFailed=(((JobImpl)job).getInternalState() != JobStateInternal.INITED);
     if (job.isUber()) {
       speculatorEventDispatcher.disableSpeculation();
       LOG.info("MRAppMaster uberizing job " + job.getID() + " in local container (\"uber-AM\") on node "+ nmHost+ ":"+ nmPort+ ".");
@@ -25,5 +27,11 @@
   }
   super.serviceStart();
   MRApps.setJobClassLoader(getConfig());
-  startJobs();
+  if (initFailed) {
+    JobEvent initFailedEvent=new JobEvent(job.getID(),JobEventType.JOB_INIT_FAILED);
+    jobEventDispatcher.handle(initFailedEvent);
+  }
+ else {
+    startJobs();
+  }
 }

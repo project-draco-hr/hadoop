@@ -1,6 +1,12 @@
 {
   job.metrics.submittedJob(job);
   job.metrics.preparingJob(job);
+  if (job.newApiCommitter) {
+    job.jobContext=new JobContextImpl(job.conf,job.oldJobId);
+  }
+ else {
+    job.jobContext=new org.apache.hadoop.mapred.JobContextImpl(job.conf,job.oldJobId);
+  }
   try {
     setup(job);
     job.fs=job.getFileSystem(job.conf);
@@ -22,12 +28,6 @@
       job.mapWeight=job.reduceWeight=0.45f;
     }
     checkTaskLimits();
-    if (job.newApiCommitter) {
-      job.jobContext=new JobContextImpl(job.conf,job.oldJobId);
-    }
- else {
-      job.jobContext=new org.apache.hadoop.mapred.JobContextImpl(job.conf,job.oldJobId);
-    }
     long inputLength=0;
     for (int i=0; i < job.numMapTasks; ++i) {
       inputLength+=taskSplitMetaInfo[i].getInputDataLength();
@@ -43,11 +43,10 @@
     job.metrics.endPreparingJob(job);
     return JobStateInternal.INITED;
   }
- catch (  IOException e) {
+ catch (  Exception e) {
     LOG.warn("Job init failed",e);
     job.metrics.endPreparingJob(job);
     job.addDiagnostic("Job init failed : " + StringUtils.stringifyException(e));
-    job.eventHandler.handle(new CommitterJobAbortEvent(job.jobId,job.jobContext,org.apache.hadoop.mapreduce.JobStatus.State.FAILED));
-    return JobStateInternal.FAILED;
+    return JobStateInternal.NEW;
   }
 }
