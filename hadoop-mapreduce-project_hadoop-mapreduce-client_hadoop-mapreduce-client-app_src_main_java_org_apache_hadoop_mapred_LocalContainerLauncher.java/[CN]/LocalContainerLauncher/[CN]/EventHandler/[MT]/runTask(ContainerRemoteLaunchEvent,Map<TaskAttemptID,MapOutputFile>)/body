@@ -1,0 +1,41 @@
+{
+  TaskAttemptId attemptID=launchEv.getTaskAttemptID();
+  Job job=context.getAllJobs().get(attemptID.getTaskId().getJobId());
+  int numMapTasks=job.getTotalMaps();
+  int numReduceTasks=job.getTotalReduces();
+  org.apache.hadoop.mapreduce.v2.app.job.Task ytask=job.getTask(attemptID.getTaskId());
+  org.apache.hadoop.mapred.Task remoteTask=launchEv.getRemoteTask();
+  context.getEventHandler().handle(new TaskAttemptContainerLaunchedEvent(attemptID,-1));
+  if (numMapTasks == 0) {
+    doneWithMaps=true;
+  }
+  try {
+    if (remoteTask.isMapOrReduce()) {
+      JobCounterUpdateEvent jce=new JobCounterUpdateEvent(attemptID.getTaskId().getJobId());
+      jce.addCounterUpdate(JobCounter.TOTAL_LAUNCHED_UBERTASKS,1);
+      if (remoteTask.isMapTask()) {
+        jce.addCounterUpdate(JobCounter.NUM_UBER_SUBMAPS,1);
+      }
+ else {
+        jce.addCounterUpdate(JobCounter.NUM_UBER_SUBREDUCES,1);
+      }
+      context.getEventHandler().handle(jce);
+    }
+    runSubtask(remoteTask,ytask.getType(),attemptID,numMapTasks,(numReduceTasks > 0),localMapFiles);
+  }
+ catch (  RuntimeException re) {
+    JobCounterUpdateEvent jce=new JobCounterUpdateEvent(attemptID.getTaskId().getJobId());
+    jce.addCounterUpdate(JobCounter.NUM_FAILED_UBERTASKS,1);
+    context.getEventHandler().handle(jce);
+    context.getEventHandler().handle(new TaskAttemptEvent(attemptID,TaskAttemptEventType.TA_CONTAINER_COMPLETED));
+  }
+catch (  IOException ioe) {
+    LOG.fatal("oopsie...  this can never happen: " + StringUtils.stringifyException(ioe));
+    ExitUtil.terminate(-1);
+  }
+ finally {
+    if (futures.remove(attemptID) != null) {
+      LOG.info("removed attempt " + attemptID + " from the futures to keep track of");
+    }
+  }
+}

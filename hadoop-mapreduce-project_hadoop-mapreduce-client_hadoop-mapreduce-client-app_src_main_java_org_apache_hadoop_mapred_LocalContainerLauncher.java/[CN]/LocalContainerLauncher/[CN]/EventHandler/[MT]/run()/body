@@ -1,0 +1,36 @@
+{
+  ContainerLauncherEvent event=null;
+  final Map<TaskAttemptID,MapOutputFile> localMapFiles=new HashMap<TaskAttemptID,MapOutputFile>();
+  while (!Thread.currentThread().isInterrupted()) {
+    try {
+      event=eventQueue.take();
+    }
+ catch (    InterruptedException e) {
+      LOG.error("Returning, interrupted : " + e);
+      break;
+    }
+    LOG.info("Processing the event " + event.toString());
+    if (event.getType() == EventType.CONTAINER_REMOTE_LAUNCH) {
+      final ContainerRemoteLaunchEvent launchEv=(ContainerRemoteLaunchEvent)event;
+      Future<?> future=taskRunner.submit(new Runnable(){
+        public void run(){
+          runTask(launchEv,localMapFiles);
+        }
+      }
+);
+      futures.put(event.getTaskAttemptID(),future);
+    }
+ else     if (event.getType() == EventType.CONTAINER_REMOTE_CLEANUP) {
+      TaskAttemptId taId=event.getTaskAttemptID();
+      Future<?> future=futures.remove(taId);
+      if (future != null) {
+        LOG.info("canceling the task attempt " + taId);
+        future.cancel(true);
+      }
+      context.getEventHandler().handle(new TaskAttemptEvent(taId,TaskAttemptEventType.TA_CONTAINER_CLEANED));
+    }
+ else {
+      LOG.warn("Ignoring unexpected event " + event.toString());
+    }
+  }
+}
