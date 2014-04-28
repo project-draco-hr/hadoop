@@ -1,0 +1,39 @@
+{
+  Configuration conf=new HdfsConfiguration();
+  conf.set(DFS_NAMENODE_AUDIT_LOGGERS_KEY,DummyAuditLogger.class.getName());
+  MiniDFSCluster cluster=new MiniDFSCluster.Builder(conf).build();
+  GetOpParam.Op op=GetOpParam.Op.GETFILESTATUS;
+  try {
+    cluster.waitClusterUp();
+    assertTrue(DummyAuditLogger.initialized);
+    URI uri=new URI("http",NetUtils.getHostPortString(cluster.getNameNode().getHttpAddress()),"/webhdfs/v1/",op.toQueryString(),null);
+    HttpURLConnection conn=(HttpURLConnection)uri.toURL().openConnection();
+    conn.setRequestMethod(op.getType().toString());
+    conn.connect();
+    assertEquals(200,conn.getResponseCode());
+    conn.disconnect();
+    assertEquals(1,DummyAuditLogger.logCount);
+    assertEquals("127.0.0.1",DummyAuditLogger.remoteAddr);
+    conn=(HttpURLConnection)uri.toURL().openConnection();
+    conn.setRequestMethod(op.getType().toString());
+    conn.setRequestProperty("X-Forwarded-For","1.1.1.1");
+    conn.connect();
+    assertEquals(200,conn.getResponseCode());
+    conn.disconnect();
+    assertEquals(2,DummyAuditLogger.logCount);
+    assertEquals("127.0.0.1",DummyAuditLogger.remoteAddr);
+    conf.set(ProxyUsers.CONF_HADOOP_PROXYSERVERS,"127.0.0.1");
+    ProxyUsers.refreshSuperUserGroupsConfiguration(conf);
+    conn=(HttpURLConnection)uri.toURL().openConnection();
+    conn.setRequestMethod(op.getType().toString());
+    conn.setRequestProperty("X-Forwarded-For","1.1.1.1");
+    conn.connect();
+    assertEquals(200,conn.getResponseCode());
+    conn.disconnect();
+    assertEquals(3,DummyAuditLogger.logCount);
+    assertEquals("1.1.1.1",DummyAuditLogger.remoteAddr);
+  }
+  finally {
+    cluster.shutdown();
+  }
+}
