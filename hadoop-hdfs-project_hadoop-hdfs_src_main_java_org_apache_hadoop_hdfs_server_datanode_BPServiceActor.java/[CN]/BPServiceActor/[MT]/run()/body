@@ -1,14 +1,25 @@
 {
   LOG.info(this + " starting to offer service");
   try {
-    try {
-      connectToNNAndHandshake();
+    while (true) {
+      try {
+        connectToNNAndHandshake();
+        break;
+      }
+ catch (      IOException ioe) {
+        runningState=RunningState.INIT_FAILED;
+        if (shouldRetryInit()) {
+          LOG.error("Initialization failed for " + this + " "+ ioe.getLocalizedMessage());
+          sleepAndLogInterrupts(5000,"initializing");
+        }
+ else {
+          runningState=RunningState.FAILED;
+          LOG.fatal("Initialization failed for " + this + ". Exiting. ",ioe);
+          return;
+        }
+      }
     }
- catch (    IOException ioe) {
-      LOG.fatal("Initialization failed for block pool " + this,ioe);
-      return;
-    }
-    initialized=true;
+    runningState=RunningState.RUNNING;
     while (shouldRun()) {
       try {
         offerService();
@@ -18,9 +29,11 @@
         sleepAndLogInterrupts(5000,"offering service");
       }
     }
+    runningState=RunningState.EXITED;
   }
  catch (  Throwable ex) {
     LOG.warn("Unexpected exception in block pool " + this,ex);
+    runningState=RunningState.FAILED;
   }
  finally {
     LOG.warn("Ending block pool service for: " + this);
