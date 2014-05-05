@@ -1,0 +1,241 @@
+{
+  final File testDir=getTestDir();
+  Configuration conf=createBaseKMSConf(testDir);
+  conf.set("hadoop.kms.authentication.type","kerberos");
+  conf.set("hadoop.kms.authentication.kerberos.keytab",keytab.getAbsolutePath());
+  conf.set("hadoop.kms.authentication.kerberos.principal","HTTP/localhost");
+  conf.set("hadoop.kms.authentication.kerberos.name.rules","DEFAULT");
+  for (  KMSACLs.Type type : KMSACLs.Type.values()) {
+    conf.set(type.getConfigKey(),type.toString());
+  }
+  conf.set(KMSACLs.Type.CREATE.getConfigKey(),KMSACLs.Type.CREATE.toString() + ",SET_KEY_MATERIAL");
+  conf.set(KMSACLs.Type.ROLLOVER.getConfigKey(),KMSACLs.Type.ROLLOVER.toString() + ",SET_KEY_MATERIAL");
+  writeConf(testDir,conf);
+  runServer(null,null,testDir,new KMSCallable(){
+    @Override public Void call() throws Exception {
+      final Configuration conf=new Configuration();
+      conf.setInt(KeyProvider.DEFAULT_BITLENGTH_NAME,64);
+      URI uri=createKMSUri(getKMSUrl());
+      final KeyProvider kp=new KMSClientProvider(uri,conf);
+      doAs("client",new PrivilegedExceptionAction<Void>(){
+        @Override public Void run() throws Exception {
+          try {
+            kp.createKey("k",new KeyProvider.Options(conf));
+            Assert.fail();
+          }
+ catch (          AuthorizationException ex) {
+          }
+catch (          Exception ex) {
+            Assert.fail(ex.toString());
+          }
+          try {
+            kp.createKey("k",new byte[8],new KeyProvider.Options(conf));
+            Assert.fail();
+          }
+ catch (          AuthorizationException ex) {
+          }
+catch (          Exception ex) {
+            Assert.fail(ex.toString());
+          }
+          try {
+            kp.rollNewVersion("k");
+            Assert.fail();
+          }
+ catch (          AuthorizationException ex) {
+          }
+catch (          Exception ex) {
+            Assert.fail(ex.toString());
+          }
+          try {
+            kp.rollNewVersion("k",new byte[8]);
+            Assert.fail();
+          }
+ catch (          AuthorizationException ex) {
+          }
+catch (          Exception ex) {
+            Assert.fail(ex.toString());
+          }
+          try {
+            kp.getKeys();
+            Assert.fail();
+          }
+ catch (          AuthorizationException ex) {
+          }
+catch (          Exception ex) {
+            Assert.fail(ex.toString());
+          }
+          try {
+            kp.getKeysMetadata("k");
+            Assert.fail();
+          }
+ catch (          AuthorizationException ex) {
+          }
+catch (          Exception ex) {
+            Assert.fail(ex.toString());
+          }
+          try {
+            kp.getKeyVersion(KMSClientProvider.buildVersionName("k",0));
+            Assert.fail();
+          }
+ catch (          AuthorizationException ex) {
+          }
+catch (          Exception ex) {
+            Assert.fail(ex.toString());
+          }
+          try {
+            kp.getCurrentKey("k");
+            Assert.fail();
+          }
+ catch (          AuthorizationException ex) {
+          }
+catch (          Exception ex) {
+            Assert.fail(ex.toString());
+          }
+          try {
+            kp.getMetadata("k");
+            Assert.fail();
+          }
+ catch (          AuthorizationException ex) {
+          }
+catch (          Exception ex) {
+            Assert.fail(ex.toString());
+          }
+          try {
+            kp.getKeyVersions("k");
+            Assert.fail();
+          }
+ catch (          AuthorizationException ex) {
+          }
+catch (          Exception ex) {
+            Assert.fail(ex.toString());
+          }
+          return null;
+        }
+      }
+);
+      doAs("CREATE",new PrivilegedExceptionAction<Void>(){
+        @Override public Void run() throws Exception {
+          try {
+            KeyProvider.KeyVersion kv=kp.createKey("k0",new KeyProvider.Options(conf));
+            Assert.assertNull(kv.getMaterial());
+          }
+ catch (          Exception ex) {
+            Assert.fail(ex.toString());
+          }
+          return null;
+        }
+      }
+);
+      doAs("DELETE",new PrivilegedExceptionAction<Void>(){
+        @Override public Void run() throws Exception {
+          try {
+            kp.deleteKey("k0");
+          }
+ catch (          Exception ex) {
+            Assert.fail(ex.toString());
+          }
+          return null;
+        }
+      }
+);
+      doAs("SET_KEY_MATERIAL",new PrivilegedExceptionAction<Void>(){
+        @Override public Void run() throws Exception {
+          try {
+            KeyProvider.KeyVersion kv=kp.createKey("k1",new byte[8],new KeyProvider.Options(conf));
+            Assert.assertNull(kv.getMaterial());
+          }
+ catch (          Exception ex) {
+            Assert.fail(ex.toString());
+          }
+          return null;
+        }
+      }
+);
+      doAs("ROLLOVER",new PrivilegedExceptionAction<Void>(){
+        @Override public Void run() throws Exception {
+          try {
+            KeyProvider.KeyVersion kv=kp.rollNewVersion("k1");
+            Assert.assertNull(kv.getMaterial());
+          }
+ catch (          Exception ex) {
+            Assert.fail(ex.toString());
+          }
+          return null;
+        }
+      }
+);
+      doAs("SET_KEY_MATERIAL",new PrivilegedExceptionAction<Void>(){
+        @Override public Void run() throws Exception {
+          try {
+            KeyProvider.KeyVersion kv=kp.rollNewVersion("k1",new byte[8]);
+            Assert.assertNull(kv.getMaterial());
+          }
+ catch (          Exception ex) {
+            Assert.fail(ex.toString());
+          }
+          return null;
+        }
+      }
+);
+      doAs("GET",new PrivilegedExceptionAction<Void>(){
+        @Override public Void run() throws Exception {
+          try {
+            kp.getKeyVersion("k1@0");
+            kp.getCurrentKey("k1");
+          }
+ catch (          Exception ex) {
+            Assert.fail(ex.toString());
+          }
+          return null;
+        }
+      }
+);
+      doAs("GET_KEYS",new PrivilegedExceptionAction<Void>(){
+        @Override public Void run() throws Exception {
+          try {
+            kp.getKeys();
+          }
+ catch (          Exception ex) {
+            Assert.fail(ex.toString());
+          }
+          return null;
+        }
+      }
+);
+      doAs("GET_METADATA",new PrivilegedExceptionAction<Void>(){
+        @Override public Void run() throws Exception {
+          try {
+            kp.getMetadata("k1");
+            kp.getKeysMetadata("k1");
+          }
+ catch (          Exception ex) {
+            Assert.fail(ex.toString());
+          }
+          return null;
+        }
+      }
+);
+      Thread.sleep(10);
+      conf.set(KMSACLs.Type.CREATE.getConfigKey(),"foo");
+      writeConf(testDir,conf);
+      KMSWebApp.getACLs().run();
+      doAs("CREATE",new PrivilegedExceptionAction<Void>(){
+        @Override public Void run() throws Exception {
+          try {
+            KeyProvider.KeyVersion kv=kp.createKey("k2",new KeyProvider.Options(conf));
+            Assert.fail();
+          }
+ catch (          AuthorizationException ex) {
+          }
+catch (          Exception ex) {
+            Assert.fail(ex.toString());
+          }
+          return null;
+        }
+      }
+);
+      return null;
+    }
+  }
+);
+}

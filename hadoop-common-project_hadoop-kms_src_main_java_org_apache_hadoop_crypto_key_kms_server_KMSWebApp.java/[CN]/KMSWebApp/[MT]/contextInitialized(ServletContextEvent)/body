@@ -1,0 +1,50 @@
+{
+  try {
+    String confDir=System.getProperty(KMSConfiguration.KMS_CONFIG_DIR);
+    if (confDir == null) {
+      throw new RuntimeException("System property '" + KMSConfiguration.KMS_CONFIG_DIR + "' not defined");
+    }
+    kmsConf=KMSConfiguration.getKMSConf();
+    initLogging(confDir);
+    LOG.info("-------------------------------------------------------------");
+    LOG.info("  Java runtime version : {}",System.getProperty("java.runtime.version"));
+    LOG.info("  KMS Hadoop Version: " + VersionInfo.getVersion());
+    LOG.info("-------------------------------------------------------------");
+    acls=new KMSACLs();
+    acls.startReloader();
+    metricRegistry=new MetricRegistry();
+    jmxReporter=JmxReporter.forRegistry(metricRegistry).build();
+    jmxReporter.start();
+    adminCallsMeter=metricRegistry.register(ADMIN_CALLS_METER,new Meter());
+    keyCallsMeter=metricRegistry.register(KEY_CALLS_METER,new Meter());
+    invalidCallsMeter=metricRegistry.register(INVALID_CALLS_METER,new Meter());
+    unauthorizedCallsMeter=metricRegistry.register(UNAUTHORIZED_CALLS_METER,new Meter());
+    unauthenticatedCallsMeter=metricRegistry.register(UNAUTHENTICATED_CALLS_METER,new Meter());
+    sce.getServletContext().setAttribute(HttpServer2.CONF_CONTEXT_ATTRIBUTE,kmsConf);
+    sce.getServletContext().setAttribute(HttpServer2.ADMINS_ACL,new AccessControlList(AccessControlList.WILDCARD_ACL_VALUE));
+    List<KeyProvider> providers=KeyProviderFactory.getProviders(kmsConf);
+    if (providers.isEmpty()) {
+      throw new IllegalStateException("No KeyProvider has been defined");
+    }
+    if (providers.size() > 1) {
+      LOG.warn("There is more than one KeyProvider configured '{}', using " + "the first provider",kmsConf.get(KeyProviderFactory.KEY_PROVIDER_PATH));
+    }
+    keyProvider=providers.get(0);
+    long timeOutMillis=kmsConf.getLong(KMSConfiguration.KEY_CACHE_TIMEOUT_KEY,KMSConfiguration.KEY_CACHE_TIMEOUT_DEFAULT);
+    keyProvider=new KMSCacheKeyProvider(keyProvider,timeOutMillis);
+    LOG.info("KMS Started");
+  }
+ catch (  Throwable ex) {
+    System.out.println();
+    System.out.println("ERROR: Hadoop KMS could not be started");
+    System.out.println();
+    System.out.println("REASON: " + ex.toString());
+    System.out.println();
+    System.out.println("Stacktrace:");
+    System.out.println("---------------------------------------------------");
+    ex.printStackTrace(System.out);
+    System.out.println("---------------------------------------------------");
+    System.out.println();
+    System.exit(1);
+  }
+}

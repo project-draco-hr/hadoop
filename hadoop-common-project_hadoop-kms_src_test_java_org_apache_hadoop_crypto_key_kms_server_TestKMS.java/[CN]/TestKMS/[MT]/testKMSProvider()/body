@@ -1,0 +1,89 @@
+{
+  File confDir=getTestDir();
+  Configuration conf=createBaseKMSConf(confDir);
+  writeConf(confDir,conf);
+  runServer(null,null,confDir,new KMSCallable(){
+    @Override public Void call() throws Exception {
+      Date started=new Date();
+      Configuration conf=new Configuration();
+      URI uri=createKMSUri(getKMSUrl());
+      KeyProvider kp=new KMSClientProvider(uri,conf);
+      Assert.assertTrue(kp.getKeys().isEmpty());
+      Assert.assertEquals(0,kp.getKeysMetadata().length);
+      KeyProvider.Options options=new KeyProvider.Options(conf);
+      options.setCipher("AES/CTR/NoPadding");
+      options.setBitLength(128);
+      options.setDescription("l1");
+      KeyProvider.KeyVersion kv0=kp.createKey("k1",options);
+      Assert.assertNotNull(kv0);
+      Assert.assertNotNull(kv0.getVersionName());
+      Assert.assertNotNull(kv0.getMaterial());
+      KeyProvider.KeyVersion kv1=kp.getKeyVersion(kv0.getVersionName());
+      Assert.assertEquals(kv0.getVersionName(),kv1.getVersionName());
+      Assert.assertNotNull(kv1.getMaterial());
+      KeyProvider.KeyVersion cv1=kp.getCurrentKey("k1");
+      Assert.assertEquals(kv0.getVersionName(),cv1.getVersionName());
+      Assert.assertNotNull(cv1.getMaterial());
+      KeyProvider.Metadata m1=kp.getMetadata("k1");
+      Assert.assertEquals("AES/CTR/NoPadding",m1.getCipher());
+      Assert.assertEquals("AES",m1.getAlgorithm());
+      Assert.assertEquals(128,m1.getBitLength());
+      Assert.assertEquals(1,m1.getVersions());
+      Assert.assertNotNull(m1.getCreated());
+      Assert.assertTrue(started.before(m1.getCreated()));
+      List<KeyProvider.KeyVersion> lkv1=kp.getKeyVersions("k1");
+      Assert.assertEquals(1,lkv1.size());
+      Assert.assertEquals(kv0.getVersionName(),lkv1.get(0).getVersionName());
+      Assert.assertNotNull(kv1.getMaterial());
+      KeyProvider.KeyVersion kv2=kp.rollNewVersion("k1");
+      Assert.assertNotSame(kv0.getVersionName(),kv2.getVersionName());
+      Assert.assertNotNull(kv2.getMaterial());
+      kv2=kp.getKeyVersion(kv2.getVersionName());
+      boolean eq=true;
+      for (int i=0; i < kv1.getMaterial().length; i++) {
+        eq=eq && kv1.getMaterial()[i] == kv2.getMaterial()[i];
+      }
+      Assert.assertFalse(eq);
+      KeyProvider.KeyVersion cv2=kp.getCurrentKey("k1");
+      Assert.assertEquals(kv2.getVersionName(),cv2.getVersionName());
+      Assert.assertNotNull(cv2.getMaterial());
+      eq=true;
+      for (int i=0; i < kv1.getMaterial().length; i++) {
+        eq=eq && cv2.getMaterial()[i] == kv2.getMaterial()[i];
+      }
+      Assert.assertTrue(eq);
+      List<KeyProvider.KeyVersion> lkv2=kp.getKeyVersions("k1");
+      Assert.assertEquals(2,lkv2.size());
+      Assert.assertEquals(kv1.getVersionName(),lkv2.get(0).getVersionName());
+      Assert.assertNotNull(lkv2.get(0).getMaterial());
+      Assert.assertEquals(kv2.getVersionName(),lkv2.get(1).getVersionName());
+      Assert.assertNotNull(lkv2.get(1).getMaterial());
+      KeyProvider.Metadata m2=kp.getMetadata("k1");
+      Assert.assertEquals("AES/CTR/NoPadding",m2.getCipher());
+      Assert.assertEquals("AES",m2.getAlgorithm());
+      Assert.assertEquals(128,m2.getBitLength());
+      Assert.assertEquals(2,m2.getVersions());
+      Assert.assertNotNull(m2.getCreated());
+      Assert.assertTrue(started.before(m2.getCreated()));
+      List<String> ks1=kp.getKeys();
+      Assert.assertEquals(1,ks1.size());
+      Assert.assertEquals("k1",ks1.get(0));
+      KeyProvider.Metadata[] kms1=kp.getKeysMetadata("k1");
+      Assert.assertEquals(1,kms1.length);
+      Assert.assertEquals("AES/CTR/NoPadding",kms1[0].getCipher());
+      Assert.assertEquals("AES",kms1[0].getAlgorithm());
+      Assert.assertEquals(128,kms1[0].getBitLength());
+      Assert.assertEquals(2,kms1[0].getVersions());
+      Assert.assertNotNull(kms1[0].getCreated());
+      Assert.assertTrue(started.before(kms1[0].getCreated()));
+      kp.deleteKey("k1");
+      Assert.assertNull(kp.getKeyVersion("k1"));
+      Assert.assertNull(kp.getKeyVersions("k1"));
+      Assert.assertNull(kp.getMetadata("k1"));
+      Assert.assertTrue(kp.getKeys().isEmpty());
+      Assert.assertEquals(0,kp.getKeysMetadata().length);
+      return null;
+    }
+  }
+);
+}

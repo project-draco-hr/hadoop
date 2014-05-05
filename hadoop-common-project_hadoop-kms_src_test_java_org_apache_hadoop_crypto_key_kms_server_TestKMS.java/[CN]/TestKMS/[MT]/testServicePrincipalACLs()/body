@@ -1,0 +1,49 @@
+{
+  File testDir=getTestDir();
+  Configuration conf=createBaseKMSConf(testDir);
+  conf.set("hadoop.kms.authentication.type","kerberos");
+  conf.set("hadoop.kms.authentication.kerberos.keytab",keytab.getAbsolutePath());
+  conf.set("hadoop.kms.authentication.kerberos.principal","HTTP/localhost");
+  conf.set("hadoop.kms.authentication.kerberos.name.rules","DEFAULT");
+  for (  KMSACLs.Type type : KMSACLs.Type.values()) {
+    conf.set(type.getConfigKey()," ");
+  }
+  conf.set(KMSACLs.Type.CREATE.getConfigKey(),"client");
+  writeConf(testDir,conf);
+  runServer(null,null,testDir,new KMSCallable(){
+    @Override public Void call() throws Exception {
+      final Configuration conf=new Configuration();
+      conf.setInt(KeyProvider.DEFAULT_BITLENGTH_NAME,64);
+      URI uri=createKMSUri(getKMSUrl());
+      final KeyProvider kp=new KMSClientProvider(uri,conf);
+      doAs("client",new PrivilegedExceptionAction<Void>(){
+        @Override public Void run() throws Exception {
+          try {
+            KeyProvider.KeyVersion kv=kp.createKey("ck0",new KeyProvider.Options(conf));
+            Assert.assertNull(kv.getMaterial());
+          }
+ catch (          Exception ex) {
+            Assert.fail(ex.toString());
+          }
+          return null;
+        }
+      }
+);
+      doAs("client/host",new PrivilegedExceptionAction<Void>(){
+        @Override public Void run() throws Exception {
+          try {
+            KeyProvider.KeyVersion kv=kp.createKey("ck1",new KeyProvider.Options(conf));
+            Assert.assertNull(kv.getMaterial());
+          }
+ catch (          Exception ex) {
+            Assert.fail(ex.toString());
+          }
+          return null;
+        }
+      }
+);
+      return null;
+    }
+  }
+);
+}

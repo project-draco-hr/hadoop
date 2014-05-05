@@ -1,0 +1,48 @@
+{
+  File testDir=getTestDir();
+  Configuration conf=createBaseKMSConf(testDir);
+  final String keystore;
+  final String password;
+  if (ssl) {
+    String sslConfDir=KeyStoreTestUtil.getClasspathDir(TestKMS.class);
+    KeyStoreTestUtil.setupSSLConfig(testDir.getAbsolutePath(),sslConfDir,conf,false);
+    keystore=testDir.getAbsolutePath() + "/serverKS.jks";
+    password="serverP";
+  }
+ else {
+    keystore=null;
+    password=null;
+  }
+  if (kerberos) {
+    conf.set("hadoop.kms.authentication.type","kerberos");
+    conf.set("hadoop.kms.authentication.kerberos.keytab",keytab.getAbsolutePath());
+    conf.set("hadoop.kms.authentication.kerberos.principal","HTTP/localhost");
+    conf.set("hadoop.kms.authentication.kerberos.name.rules","DEFAULT");
+  }
+  writeConf(testDir,conf);
+  runServer(keystore,password,testDir,new KMSCallable(){
+    @Override public Void call() throws Exception {
+      Configuration conf=new Configuration();
+      URL url=getKMSUrl();
+      Assert.assertEquals(keystore != null,url.getProtocol().equals("https"));
+      URI uri=createKMSUri(getKMSUrl());
+      final KeyProvider kp=new KMSClientProvider(uri,conf);
+      if (kerberos) {
+        for (        String user : new String[]{"client","client/host"}) {
+          doAs(user,new PrivilegedExceptionAction<Void>(){
+            @Override public Void run() throws Exception {
+              Assert.assertTrue(kp.getKeys().isEmpty());
+              return null;
+            }
+          }
+);
+        }
+      }
+ else {
+        Assert.assertTrue(kp.getKeys().isEmpty());
+      }
+      return null;
+    }
+  }
+);
+}

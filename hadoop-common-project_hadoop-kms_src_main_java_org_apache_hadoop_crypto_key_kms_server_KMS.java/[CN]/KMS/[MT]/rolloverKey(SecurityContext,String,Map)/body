@@ -1,0 +1,18 @@
+{
+  KMSWebApp.getAdminCallsMeter().mark();
+  Principal user=getPrincipal(securityContext);
+  assertAccess(KMSACLs.Type.ROLLOVER,user,ROLL_NEW_VERSION,name);
+  KMSClientProvider.checkNotEmpty(name,"name");
+  String material=(String)jsonMaterial.get(KMSRESTConstants.MATERIAL_FIELD);
+  if (material != null) {
+    assertAccess(KMSACLs.Type.SET_KEY_MATERIAL,user,ROLL_NEW_VERSION + " with user provided material",name);
+  }
+  KeyProvider.KeyVersion keyVersion=(material != null) ? provider.rollNewVersion(name,Base64.decodeBase64(material)) : provider.rollNewVersion(name);
+  provider.flush();
+  KMSAudit.ok(user,ROLL_NEW_VERSION,name,"UserProvidedMaterial:" + (material != null) + " NewVersion:"+ keyVersion.getVersionName());
+  if (!KMSWebApp.getACLs().hasAccess(KMSACLs.Type.GET,user.getName())) {
+    keyVersion=removeKeyMaterial(keyVersion);
+  }
+  Map json=KMSServerJSONUtils.toJSON(keyVersion);
+  return Response.ok().type(MediaType.APPLICATION_JSON).entity(json).build();
+}
