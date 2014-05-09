@@ -5,12 +5,16 @@
   conf.setInt(DFSConfigKeys.DFS_NAMENODE_HEARTBEAT_RECHECK_INTERVAL_KEY,1000);
   conf.setInt(DFSConfigKeys.DFS_HEARTBEAT_INTERVAL_KEY,1);
   conf.setInt(DFSConfigKeys.DFS_NAMENODE_SAFEMODE_THRESHOLD_PCT_KEY,1);
+  conf.setInt(DFSConfigKeys.DFS_BLOCK_SIZE_KEY,TestFileCreation.blockSize);
   System.out.println("Test 1*****************************");
   MiniDFSCluster cluster=new MiniDFSCluster.Builder(conf).build();
   FileSystem fs=null;
   try {
     cluster.waitActive();
     fs=cluster.getFileSystem();
+    FSEditLog spyLog=spy(cluster.getNameNode().getFSImage().getEditLog());
+    doNothing().when(spyLog).endCurrentLogSegment(Mockito.anyBoolean());
+    cluster.getNameNode().getFSImage().setEditLogForTesting(spyLog);
     final int nnport=cluster.getNameNodePort();
     Path dir1=new Path("/user/a+b/dir1");
     Path file1=new Path(dir1,"file1");
@@ -28,14 +32,11 @@
     fs.mkdirs(dir3);
     fs.rename(dir1,dir3);
     Path file3=new Path(dir3,"file3");
-    FSDataOutputStream stm3=TestFileCreation.createFile(fs,file3,1);
-    TestFileCreation.writeFile(stm3);
-    try {
-      fs.rename(file3,new Path(dir3,"$ "));
-    }
- catch (    Exception e) {
-      e.printStackTrace();
-    }
+    FSDataOutputStream stm3=fs.create(file3);
+    fs.rename(file3,new Path(dir3,"bozo"));
+    TestFileCreation.writeFile(stm3,TestFileCreation.blockSize + 1);
+    stm3.hflush();
+    cluster.getNameNode().stop();
     cluster.shutdown();
     try {
       Thread.sleep(2 * MAX_IDLE_TIME);
