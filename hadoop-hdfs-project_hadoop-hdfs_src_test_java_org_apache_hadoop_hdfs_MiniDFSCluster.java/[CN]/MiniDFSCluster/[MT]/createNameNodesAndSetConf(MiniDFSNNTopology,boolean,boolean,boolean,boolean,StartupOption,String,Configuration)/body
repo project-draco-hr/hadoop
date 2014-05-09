@@ -2,7 +2,7 @@
   Preconditions.checkArgument(nnTopology.countNameNodes() > 0,"empty NN topology: no namenodes specified!");
   if (!federation && nnTopology.countNameNodes() == 1) {
     NNConf onlyNN=nnTopology.getOnlyNameNode();
-    conf.set(FS_DEFAULT_NAME_KEY,"127.0.0.1:" + onlyNN.getIpcPort());
+    conf.set(FS_DEFAULT_NAME_KEY,"hdfs://127.0.0.1:" + onlyNN.getIpcPort());
   }
   List<String> allNsIds=Lists.newArrayList();
   for (  MiniDFSNNTopology.NSConf nameservice : nnTopology.getNameservices()) {
@@ -16,6 +16,7 @@
   int nnCounter=0;
   for (  MiniDFSNNTopology.NSConf nameservice : nnTopology.getNameservices()) {
     String nsId=nameservice.getId();
+    String lastDefaultFileSystem=null;
     Preconditions.checkArgument(!federation || nsId != null,"if there is more than one NS, they must have names");
     List<String> nnIds=Lists.newArrayList();
     for (    NNConf nn : nameservice.getNNs()) {
@@ -71,7 +72,14 @@
     }
     for (    NNConf nn : nameservice.getNNs()) {
       initNameNodeConf(conf,nsId,nn.getNnId(),manageNameDfsDirs,enableManagedDfsDirsRedundancy,nnCounter);
-      createNameNode(nnCounter++,conf,numDataNodes,false,operation,clusterId,nsId,nn.getNnId());
+      createNameNode(nnCounter,conf,numDataNodes,false,operation,clusterId,nsId,nn.getNnId());
+      if (nameNodes[nnCounter] != null && nameNodes[nnCounter].conf != null) {
+        lastDefaultFileSystem=nameNodes[nnCounter].conf.get(FS_DEFAULT_NAME_KEY);
+      }
+      nnCounter++;
+    }
+    if (!federation && lastDefaultFileSystem != null) {
+      conf.set(FS_DEFAULT_NAME_KEY,lastDefaultFileSystem);
     }
   }
 }
