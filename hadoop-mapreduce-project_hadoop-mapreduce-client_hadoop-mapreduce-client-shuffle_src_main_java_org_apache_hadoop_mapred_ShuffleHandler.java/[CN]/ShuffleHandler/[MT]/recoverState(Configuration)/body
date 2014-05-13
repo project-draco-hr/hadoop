@@ -1,0 +1,28 @@
+{
+  Path recoveryRoot=getRecoveryPath();
+  if (recoveryRoot != null) {
+    startStore(recoveryRoot);
+    Pattern jobPattern=Pattern.compile(JobID.JOBID_REGEX);
+    LeveldbIterator iter=null;
+    try {
+      iter=new LeveldbIterator(stateDb);
+      iter.seek(bytes(JobID.JOB));
+      while (iter.hasNext()) {
+        Map.Entry<byte[],byte[]> entry=iter.next();
+        String key=asString(entry.getKey());
+        if (!jobPattern.matcher(key).matches()) {
+          break;
+        }
+        recoverJobShuffleInfo(key,entry.getValue());
+      }
+    }
+ catch (    DBException e) {
+      throw new IOException("Database error during recovery",e);
+    }
+ finally {
+      if (iter != null) {
+        iter.close();
+      }
+    }
+  }
+}

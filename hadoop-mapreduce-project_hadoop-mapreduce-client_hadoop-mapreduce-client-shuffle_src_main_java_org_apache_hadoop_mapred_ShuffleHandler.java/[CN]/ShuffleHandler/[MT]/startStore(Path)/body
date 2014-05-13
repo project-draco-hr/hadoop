@@ -1,0 +1,39 @@
+{
+  Options options=new Options();
+  options.createIfMissing(false);
+  options.logger(new LevelDBLogger());
+  Path dbPath=new Path(recoveryRoot,STATE_DB_NAME);
+  LOG.info("Using state database at " + dbPath + " for recovery");
+  File dbfile=new File(dbPath.toString());
+  byte[] schemaVersionData;
+  try {
+    stateDb=JniDBFactory.factory.open(dbfile,options);
+    schemaVersionData=stateDb.get(bytes(STATE_DB_SCHEMA_VERSION_KEY));
+  }
+ catch (  NativeDB.DBException e) {
+    if (e.isNotFound() || e.getMessage().contains(" does not exist ")) {
+      LOG.info("Creating state database at " + dbfile);
+      options.createIfMissing(true);
+      try {
+        stateDb=JniDBFactory.factory.open(dbfile,options);
+        schemaVersionData=bytes(STATE_DB_SCHEMA_VERSION);
+        stateDb.put(bytes(STATE_DB_SCHEMA_VERSION_KEY),schemaVersionData);
+      }
+ catch (      DBException dbExc) {
+        throw new IOException("Unable to create state store",dbExc);
+      }
+    }
+ else {
+      throw e;
+    }
+  }
+  if (schemaVersionData != null) {
+    String schemaVersion=asString(schemaVersionData);
+    if (!STATE_DB_SCHEMA_VERSION.equals(schemaVersion)) {
+      throw new IOException("Incompatible state database schema, found " + schemaVersion + " expected "+ STATE_DB_SCHEMA_VERSION);
+    }
+  }
+ else {
+    throw new IOException("State database schema version not found");
+  }
+}
