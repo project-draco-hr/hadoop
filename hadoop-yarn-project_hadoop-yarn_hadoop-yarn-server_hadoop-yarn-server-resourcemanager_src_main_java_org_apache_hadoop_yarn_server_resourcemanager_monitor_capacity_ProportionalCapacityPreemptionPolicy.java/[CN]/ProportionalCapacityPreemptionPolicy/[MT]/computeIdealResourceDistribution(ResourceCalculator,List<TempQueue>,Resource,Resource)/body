@@ -1,20 +1,19 @@
 {
   List<TempQueue> qAlloc=new ArrayList<TempQueue>(queues);
   Resource unassigned=Resources.clone(tot_guarant);
-  while (!qAlloc.isEmpty() && Resources.greaterThan(rc,tot_guarant,unassigned,Resources.none())) {
-    Resource wQassigned=Resource.newInstance(0,0);
-    resetCapacity(rc,unassigned,qAlloc);
-    for (Iterator<TempQueue> i=qAlloc.iterator(); i.hasNext(); ) {
-      TempQueue sub=i.next();
-      Resource wQavail=Resources.multiply(unassigned,sub.normalizedGuarantee);
-      Resource wQidle=sub.offer(wQavail,rc,tot_guarant);
-      Resource wQdone=Resources.subtract(wQavail,wQidle);
-      if (!Resources.greaterThan(rc,tot_guarant,wQdone,Resources.none())) {
-        i.remove();
-      }
-      Resources.addTo(wQassigned,wQdone);
+  Set<TempQueue> nonZeroGuarQueues=new HashSet<TempQueue>();
+  Set<TempQueue> zeroGuarQueues=new HashSet<TempQueue>();
+  for (  TempQueue q : qAlloc) {
+    if (Resources.greaterThan(rc,tot_guarant,q.guaranteed,Resources.none())) {
+      nonZeroGuarQueues.add(q);
     }
-    Resources.subtractFrom(unassigned,wQassigned);
+ else {
+      zeroGuarQueues.add(q);
+    }
+  }
+  computeFixpointAllocation(rc,tot_guarant,nonZeroGuarQueues,unassigned,false);
+  if (!zeroGuarQueues.isEmpty() && Resources.greaterThan(rc,tot_guarant,unassigned,Resources.none())) {
+    computeFixpointAllocation(rc,tot_guarant,zeroGuarQueues,unassigned,true);
   }
   Resource totPreemptionNeeded=Resource.newInstance(0,0);
   for (  TempQueue t : queues) {
