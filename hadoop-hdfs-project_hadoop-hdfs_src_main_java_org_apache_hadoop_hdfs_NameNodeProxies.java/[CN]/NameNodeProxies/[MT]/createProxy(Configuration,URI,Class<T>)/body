@@ -1,13 +1,18 @@
 {
-  Class<FailoverProxyProvider<T>> failoverProxyProviderClass=getFailoverProxyProviderClass(conf,nameNodeUri,xface);
-  if (failoverProxyProviderClass == null) {
+  AbstractNNFailoverProxyProvider<T> failoverProxyProvider=createFailoverProxyProvider(conf,nameNodeUri,xface,true);
+  if (failoverProxyProvider == null) {
     return createNonHAProxy(conf,NameNode.getAddress(nameNodeUri),xface,UserGroupInformation.getCurrentUser(),true);
   }
  else {
-    FailoverProxyProvider<T> failoverProxyProvider=NameNodeProxies.createFailoverProxyProvider(conf,failoverProxyProviderClass,xface,nameNodeUri);
     Conf config=new Conf(conf);
     T proxy=(T)RetryProxy.create(xface,failoverProxyProvider,RetryPolicies.failoverOnNetworkException(RetryPolicies.TRY_ONCE_THEN_FAIL,config.maxFailoverAttempts,config.maxRetryAttempts,config.failoverSleepBaseMillis,config.failoverSleepMaxMillis));
-    Text dtService=HAUtil.buildTokenServiceForLogicalUri(nameNodeUri);
+    Text dtService;
+    if (failoverProxyProvider.useLogicalURI()) {
+      dtService=HAUtil.buildTokenServiceForLogicalUri(nameNodeUri);
+    }
+ else {
+      dtService=SecurityUtil.buildTokenService(NameNode.getAddress(nameNodeUri));
+    }
     return new ProxyAndInfo<T>(proxy,dtService);
   }
 }
