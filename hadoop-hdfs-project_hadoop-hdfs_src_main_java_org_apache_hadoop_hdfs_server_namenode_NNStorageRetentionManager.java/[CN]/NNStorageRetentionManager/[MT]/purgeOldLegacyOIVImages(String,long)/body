@@ -1,0 +1,38 @@
+{
+  File oivImageDir=new File(dir);
+  final String oivImagePrefix=NameNodeFile.IMAGE_LEGACY_OIV.getName();
+  String filesInStorage[];
+  filesInStorage=oivImageDir.list(new FilenameFilter(){
+    @Override public boolean accept(    File dir,    String name){
+      return name.matches(oivImagePrefix + "_(\\d+)");
+    }
+  }
+);
+  if (filesInStorage.length <= numCheckpointsToRetain) {
+    return;
+  }
+  TreeSet<Long> sortedTxIds=new TreeSet<Long>();
+  for (  String fName : filesInStorage) {
+    long fTxId;
+    try {
+      fTxId=Long.parseLong(fName.substring(oivImagePrefix.length() + 1));
+    }
+ catch (    NumberFormatException nfe) {
+      LOG.warn("Invalid file name. Skipping " + fName);
+      continue;
+    }
+    sortedTxIds.add(Long.valueOf(fTxId));
+  }
+  int numFilesToDelete=sortedTxIds.size() - numCheckpointsToRetain;
+  Iterator<Long> iter=sortedTxIds.iterator();
+  while (numFilesToDelete > 0 && iter.hasNext()) {
+    long txIdVal=iter.next().longValue();
+    String fileName=NNStorage.getLegacyOIVImageFileName(txIdVal);
+    LOG.info("Deleting " + fileName);
+    File fileToDelete=new File(oivImageDir,fileName);
+    if (!fileToDelete.delete()) {
+      LOG.warn("Failed to delete image file: " + fileToDelete);
+    }
+    numFilesToDelete--;
+  }
+}

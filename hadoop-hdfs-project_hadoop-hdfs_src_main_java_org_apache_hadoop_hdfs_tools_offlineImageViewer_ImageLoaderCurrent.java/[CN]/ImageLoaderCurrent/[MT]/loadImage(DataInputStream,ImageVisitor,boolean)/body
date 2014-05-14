@@ -1,0 +1,70 @@
+{
+  boolean done=false;
+  try {
+    v.start();
+    v.visitEnclosingElement(ImageElement.FS_IMAGE);
+    imageVersion=in.readInt();
+    if (!canLoadVersion(imageVersion))     throw new IOException("Cannot process fslayout version " + imageVersion);
+    if (NameNodeLayoutVersion.supports(Feature.ADD_LAYOUT_FLAGS,imageVersion)) {
+      LayoutFlags.read(in);
+    }
+    v.visit(ImageElement.IMAGE_VERSION,imageVersion);
+    v.visit(ImageElement.NAMESPACE_ID,in.readInt());
+    long numInodes=in.readLong();
+    v.visit(ImageElement.GENERATION_STAMP,in.readLong());
+    if (NameNodeLayoutVersion.supports(Feature.SEQUENTIAL_BLOCK_ID,imageVersion)) {
+      v.visit(ImageElement.GENERATION_STAMP_V2,in.readLong());
+      v.visit(ImageElement.GENERATION_STAMP_V1_LIMIT,in.readLong());
+      v.visit(ImageElement.LAST_ALLOCATED_BLOCK_ID,in.readLong());
+    }
+    if (NameNodeLayoutVersion.supports(Feature.STORED_TXIDS,imageVersion)) {
+      v.visit(ImageElement.TRANSACTION_ID,in.readLong());
+    }
+    if (NameNodeLayoutVersion.supports(Feature.ADD_INODE_ID,imageVersion)) {
+      v.visit(ImageElement.LAST_INODE_ID,in.readLong());
+    }
+    boolean supportSnapshot=NameNodeLayoutVersion.supports(Feature.SNAPSHOT,imageVersion);
+    if (supportSnapshot) {
+      v.visit(ImageElement.SNAPSHOT_COUNTER,in.readInt());
+      int numSnapshots=in.readInt();
+      v.visit(ImageElement.NUM_SNAPSHOTS_TOTAL,numSnapshots);
+      for (int i=0; i < numSnapshots; i++) {
+        processSnapshot(in,v);
+      }
+    }
+    if (NameNodeLayoutVersion.supports(Feature.FSIMAGE_COMPRESSION,imageVersion)) {
+      boolean isCompressed=in.readBoolean();
+      v.visit(ImageElement.IS_COMPRESSED,String.valueOf(isCompressed));
+      if (isCompressed) {
+        String codecClassName=Text.readString(in);
+        v.visit(ImageElement.COMPRESS_CODEC,codecClassName);
+        CompressionCodecFactory codecFac=new CompressionCodecFactory(new Configuration());
+        CompressionCodec codec=codecFac.getCodecByClassName(codecClassName);
+        if (codec == null) {
+          throw new IOException("Image compression codec not supported: " + codecClassName);
+        }
+        in=new DataInputStream(codec.createInputStream(in));
+      }
+    }
+    processINodes(in,v,numInodes,skipBlocks,supportSnapshot);
+    subtreeMap.clear();
+    dirNodeMap.clear();
+    processINodesUC(in,v,skipBlocks);
+    if (NameNodeLayoutVersion.supports(Feature.DELEGATION_TOKEN,imageVersion)) {
+      processDelegationTokens(in,v);
+    }
+    if (NameNodeLayoutVersion.supports(Feature.CACHING,imageVersion)) {
+      processCacheManagerState(in,v);
+    }
+    v.leaveEnclosingElement();
+    done=true;
+  }
+  finally {
+    if (done) {
+      v.finish();
+    }
+ else {
+      v.finishAbnormally();
+    }
+  }
+}
