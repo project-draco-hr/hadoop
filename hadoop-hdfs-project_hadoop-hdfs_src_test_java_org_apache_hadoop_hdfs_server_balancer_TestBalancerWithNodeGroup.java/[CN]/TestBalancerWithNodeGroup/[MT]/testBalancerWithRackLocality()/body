@@ -13,27 +13,19 @@
     client=NameNodeProxies.createProxy(conf,cluster.getFileSystem(0).getUri(),ClientProtocol.class).getProxy();
     long totalCapacity=TestBalancer.sum(capacities);
     long totalUsedSpace=totalCapacity * 3 / 10;
-    TestBalancer.createFile(cluster,filePath,totalUsedSpace / numOfDatanodes,(short)numOfDatanodes,0);
+    long length=totalUsedSpace / numOfDatanodes;
+    TestBalancer.createFile(cluster,filePath,length,(short)numOfDatanodes,0);
+    LocatedBlocks lbs=client.getBlockLocations(filePath.toUri().getPath(),0,length);
+    Set<ExtendedBlock> before=getBlocksOnRack(lbs.getLocatedBlocks(),RACK0);
     long newCapacity=CAPACITY;
     String newRack=RACK1;
     String newNodeGroup=NODEGROUP2;
     cluster.startDataNodes(conf,1,true,null,new String[]{newRack},new long[]{newCapacity},new String[]{newNodeGroup});
     totalCapacity+=newCapacity;
     runBalancerCanFinish(conf,totalUsedSpace,totalCapacity);
-    DatanodeInfo[] datanodeReport=client.getDatanodeReport(DatanodeReportType.ALL);
-    Map<String,Integer> rackToUsedCapacity=new HashMap<String,Integer>();
-    for (    DatanodeInfo datanode : datanodeReport) {
-      String rack=NetworkTopology.getFirstHalf(datanode.getNetworkLocation());
-      int usedCapacity=(int)datanode.getDfsUsed();
-      if (rackToUsedCapacity.get(rack) != null) {
-        rackToUsedCapacity.put(rack,usedCapacity + rackToUsedCapacity.get(rack));
-      }
- else {
-        rackToUsedCapacity.put(rack,usedCapacity);
-      }
-    }
-    assertEquals(rackToUsedCapacity.size(),2);
-    assertEquals(rackToUsedCapacity.get(RACK0),rackToUsedCapacity.get(RACK1));
+    lbs=client.getBlockLocations(filePath.toUri().getPath(),0,length);
+    Set<ExtendedBlock> after=getBlocksOnRack(lbs.getLocatedBlocks(),RACK0);
+    assertEquals(before,after);
   }
   finally {
     cluster.shutdown();
