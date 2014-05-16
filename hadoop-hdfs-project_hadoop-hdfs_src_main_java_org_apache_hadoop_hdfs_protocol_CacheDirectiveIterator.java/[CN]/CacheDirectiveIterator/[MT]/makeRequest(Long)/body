@@ -1,3 +1,23 @@
 {
-  return namenode.listCacheDirectives(prevKey,filter);
+  BatchedEntries<CacheDirectiveEntry> entries=null;
+  try {
+    entries=namenode.listCacheDirectives(prevKey,filter);
+  }
+ catch (  IOException e) {
+    if (e.getMessage().contains("Filtering by ID is unsupported")) {
+      long id=filter.getId();
+      filter=removeIdFromFilter(filter);
+      entries=namenode.listCacheDirectives(id - 1,filter);
+      for (int i=0; i < entries.size(); i++) {
+        CacheDirectiveEntry entry=entries.get(i);
+        if (entry.getInfo().getId().equals((Long)id)) {
+          return new SingleEntry(entry);
+        }
+      }
+      throw new RemoteException(InvalidRequestException.class.getName(),"Did not find requested id " + id);
+    }
+    throw e;
+  }
+  Preconditions.checkNotNull(entries);
+  return entries;
 }

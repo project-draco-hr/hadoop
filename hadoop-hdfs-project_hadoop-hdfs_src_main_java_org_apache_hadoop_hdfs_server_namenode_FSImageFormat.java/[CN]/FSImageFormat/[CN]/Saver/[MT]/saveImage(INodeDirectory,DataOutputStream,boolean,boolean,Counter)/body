@@ -1,0 +1,38 @@
+{
+  out.writeLong(current.getId());
+  if (!toSaveSubtree) {
+    return;
+  }
+  final ReadOnlyList<INode> children=current.getChildrenList(Snapshot.CURRENT_STATE_ID);
+  int dirNum=0;
+  List<INodeDirectory> snapshotDirs=null;
+  DirectoryWithSnapshotFeature sf=current.getDirectoryWithSnapshotFeature();
+  if (sf != null) {
+    snapshotDirs=new ArrayList<INodeDirectory>();
+    sf.getSnapshotDirectory(snapshotDirs);
+    dirNum+=snapshotDirs.size();
+  }
+  if (current instanceof INodeDirectorySnapshottable) {
+    INodeDirectorySnapshottable snapshottableNode=(INodeDirectorySnapshottable)current;
+    SnapshotFSImageFormat.saveSnapshots(snapshottableNode,out);
+  }
+ else {
+    out.writeInt(-1);
+  }
+  dirNum+=saveChildren(children,out,inSnapshot,counter);
+  SnapshotFSImageFormat.saveDirectoryDiffList(current,out,referenceMap);
+  out.writeInt(dirNum);
+  for (  INode child : children) {
+    if (!child.isDirectory()) {
+      continue;
+    }
+    boolean toSave=child.isReference() ? referenceMap.toProcessSubtree(child.getId()) : true;
+    saveImage(child.asDirectory(),out,toSave,inSnapshot,counter);
+  }
+  if (snapshotDirs != null) {
+    for (    INodeDirectory subDir : snapshotDirs) {
+      boolean toSave=subDir.getParentReference() != null ? referenceMap.toProcessSubtree(subDir.getId()) : true;
+      saveImage(subDir,out,toSave,true,counter);
+    }
+  }
+}
