@@ -1,0 +1,46 @@
+{
+  Path sourcePath=sourceFileStatus.getPath();
+  if (LOG.isDebugEnabled())   LOG.debug("DistCpMapper::map(): Received " + sourcePath + ", "+ relPath);
+  Path target=new Path(targetWorkPath.makeQualified(targetFS.getUri(),targetFS.getWorkingDirectory()) + relPath.toString());
+  EnumSet<DistCpOptions.FileAttribute> fileAttributes=getFileAttributeSettings(context);
+  final String description="Copying " + sourcePath + " to "+ target;
+  context.setStatus(description);
+  LOG.info(description);
+  try {
+    CopyListingFileStatus sourceCurrStatus;
+    FileSystem sourceFS;
+    try {
+      sourceFS=sourcePath.getFileSystem(conf);
+      sourceCurrStatus=DistCpUtils.toCopyListingFileStatus(sourceFS,sourceFS.getFileStatus(sourcePath),fileAttributes.contains(FileAttribute.ACL));
+    }
+ catch (    FileNotFoundException e) {
+      throw new IOException(new RetriableFileCopyCommand.CopyReadException(e));
+    }
+    FileStatus targetStatus=null;
+    try {
+      targetStatus=targetFS.getFileStatus(target);
+    }
+ catch (    FileNotFoundException ignore) {
+      if (LOG.isDebugEnabled())       LOG.debug("Path could not be found: " + target,ignore);
+    }
+    if (targetStatus != null && (targetStatus.isDirectory() != sourceCurrStatus.isDirectory())) {
+      throw new IOException("Can't replace " + target + ". Target is "+ getFileType(targetStatus)+ ", Source is "+ getFileType(sourceCurrStatus));
+    }
+    if (sourceCurrStatus.isDirectory()) {
+      createTargetDirsWithRetry(description,target,context);
+      return;
+    }
+    if (skipFile(sourceFS,sourceCurrStatus,target)) {
+      LOG.info("Skipping copy of " + sourceCurrStatus.getPath() + " to "+ target);
+      updateSkipCounters(context,sourceCurrStatus);
+      context.write(null,new Text("SKIP: " + sourceCurrStatus.getPath()));
+    }
+ else {
+      copyFileWithRetry(description,sourceCurrStatus,target,context,fileAttributes);
+    }
+    DistCpUtils.preserve(target.getFileSystem(conf),target,sourceCurrStatus,fileAttributes);
+  }
+ catch (  IOException exception) {
+    handleFailures(exception,sourceFileStatus,target,context);
+  }
+}
