@@ -1,0 +1,35 @@
+{
+  nnConf.checkXAttrsConfigFlag();
+  HdfsFileStatus resultingStat=null;
+  FSPermissionChecker pc=getPermissionChecker();
+  try {
+    XAttrPermissionFilter.checkPermissionForApi(pc,xAttr);
+  }
+ catch (  AccessControlException e) {
+    logAuditEvent(false,"removeXAttr",src);
+    throw e;
+  }
+  checkOperation(OperationCategory.WRITE);
+  byte[][] pathComponents=FSDirectory.getPathComponentsForReservedPath(src);
+  writeLock();
+  try {
+    checkOperation(OperationCategory.WRITE);
+    checkNameNodeSafeMode("Cannot remove XAttr entry on " + src);
+    src=FSDirectory.resolvePath(src,pathComponents,dir);
+    if (isPermissionEnabled) {
+      checkOwner(pc,src);
+      checkPathAccess(pc,src,FsAction.WRITE);
+    }
+    dir.removeXAttr(src,xAttr);
+    resultingStat=getAuditFileInfo(src,false);
+  }
+ catch (  AccessControlException e) {
+    logAuditEvent(false,"removeXAttr",src);
+    throw e;
+  }
+ finally {
+    writeUnlock();
+  }
+  getEditLog().logSync();
+  logAuditEvent(true,"removeXAttr",src,null,resultingStat);
+}
