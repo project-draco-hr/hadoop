@@ -1,0 +1,91 @@
+{
+  final String USER1="user1";
+  final String GROUP1="mygroup1";
+  final UserGroupInformation user1=UserGroupInformation.createUserForTesting(USER1,new String[]{GROUP1});
+  final UserGroupInformation user2=UserGroupInformation.createUserForTesting("user2",new String[]{"mygroup2"});
+  MiniDFSCluster cluster=null;
+  PrintStream bak=null;
+  try {
+    final Configuration conf=new HdfsConfiguration();
+    cluster=new MiniDFSCluster.Builder(conf).numDataNodes(1).build();
+    cluster.waitActive();
+    final FileSystem fs=cluster.getFileSystem();
+    fs.setOwner(new Path("/"),USER1,GROUP1);
+    bak=System.err;
+    final FsShell fshell=new FsShell(conf);
+    final ByteArrayOutputStream out=new ByteArrayOutputStream();
+    System.setErr(new PrintStream(out));
+    user1.doAs(new PrivilegedExceptionAction<Object>(){
+      @Override public Object run() throws Exception {
+        final int ret=ToolRunner.run(fshell,new String[]{"-mkdir","/foo"});
+        assertEquals("Return should be 0",0,ret);
+        out.reset();
+        return null;
+      }
+    }
+);
+    user1.doAs(new PrivilegedExceptionAction<Object>(){
+      @Override public Object run() throws Exception {
+        final int ret=ToolRunner.run(fshell,new String[]{"-chmod","707","/foo"});
+        assertEquals("Return should be 0",0,ret);
+        out.reset();
+        return null;
+      }
+    }
+);
+    user2.doAs(new PrivilegedExceptionAction<Object>(){
+      @Override public Object run() throws Exception {
+        final int ret=ToolRunner.run(fshell,new String[]{"-setfattr","-n","user.a1","-v","1234","/foo"});
+        assertEquals("Returned should be 1",1,ret);
+        final String str=out.toString();
+        assertTrue("Permission denied printed",str.indexOf("Permission denied") != -1);
+        out.reset();
+        return null;
+      }
+    }
+);
+    user1.doAs(new PrivilegedExceptionAction<Object>(){
+      @Override public Object run() throws Exception {
+        final int ret=ToolRunner.run(fshell,new String[]{"-setfattr","-n","user.a1","-v","1234","/foo"});
+        assertEquals("Returned should be 0",0,ret);
+        out.reset();
+        return null;
+      }
+    }
+);
+    user2.doAs(new PrivilegedExceptionAction<Object>(){
+      @Override public Object run() throws Exception {
+        int ret=ToolRunner.run(fshell,new String[]{"-getfattr","-n","user.a1","/foo"});
+        assertEquals("Returned should be 0",0,ret);
+        out.reset();
+        ret=ToolRunner.run(fshell,new String[]{"-setfattr","-x","user.a1","/foo"});
+        assertEquals("Returned should be 1",1,ret);
+        final String str=out.toString();
+        assertTrue("Permission denied printed",str.indexOf("Permission denied") != -1);
+        out.reset();
+        return null;
+      }
+    }
+);
+    user1.doAs(new PrivilegedExceptionAction<Object>(){
+      @Override public Object run() throws Exception {
+        int ret=ToolRunner.run(fshell,new String[]{"-getfattr","-n","user.a1","/foo"});
+        assertEquals("Returned should be 0",0,ret);
+        out.reset();
+        ret=ToolRunner.run(fshell,new String[]{"-setfattr","-x","user.a1","/foo"});
+        assertEquals("Returned should be 0",0,ret);
+        out.reset();
+        return null;
+      }
+    }
+);
+  }
+  finally {
+    if (bak != null) {
+      System.setErr(bak);
+    }
+    if (cluster != null) {
+      cluster.shutdown();
+    }
+  }
+}

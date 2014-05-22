@@ -1,0 +1,26 @@
+{
+  nnConf.checkXAttrsConfigFlag();
+  checkXAttrSize(xAttr);
+  HdfsFileStatus resultingStat=null;
+  FSPermissionChecker pc=getPermissionChecker();
+  XAttrPermissionFilter.checkPermissionForApi(pc,xAttr);
+  checkOperation(OperationCategory.WRITE);
+  byte[][] pathComponents=FSDirectory.getPathComponentsForReservedPath(src);
+  writeLock();
+  try {
+    checkOperation(OperationCategory.WRITE);
+    checkNameNodeSafeMode("Cannot set XAttr on " + src);
+    src=FSDirectory.resolvePath(src,pathComponents,dir);
+    if (isPermissionEnabled) {
+      checkOwner(pc,src);
+      checkPathAccess(pc,src,FsAction.WRITE);
+    }
+    dir.setXAttr(src,xAttr,flag,logRetryCache);
+    resultingStat=getAuditFileInfo(src,false);
+  }
+  finally {
+    writeUnlock();
+  }
+  getEditLog().logSync();
+  logAuditEvent(true,"setXAttr",src,null,resultingStat);
+}

@@ -1,0 +1,28 @@
+{
+  UserGroupInformation userGroupInfo=UserGroupInformation.createUserForTesting(USER_NAME,GROUP_NAMES);
+  userGroupInfo.doAs(new PrivilegedExceptionAction<Void>(){
+    @Override public Void run() throws Exception {
+      assertNotEquals(UserGroupInformation.getLoginUser(),UserGroupInformation.getCurrentUser());
+      GetTokenThread thread=new GetTokenThread();
+      try {
+        thread.start();
+        for (int i=0; i < 100; i++) {
+          @SuppressWarnings("unchecked") Token<? extends TokenIdentifier> t=mock(Token.class);
+          when(t.getService()).thenReturn(new Text("t" + i));
+          UserGroupInformation.getCurrentUser().addToken(t);
+          assertNull("ConcurrentModificationException encountered",thread.cme);
+        }
+      }
+ catch (      ConcurrentModificationException cme) {
+        cme.printStackTrace();
+        fail("ConcurrentModificationException encountered");
+      }
+ finally {
+        thread.runThread=false;
+        thread.join(5 * 1000);
+      }
+      return null;
+    }
+  }
+);
+}

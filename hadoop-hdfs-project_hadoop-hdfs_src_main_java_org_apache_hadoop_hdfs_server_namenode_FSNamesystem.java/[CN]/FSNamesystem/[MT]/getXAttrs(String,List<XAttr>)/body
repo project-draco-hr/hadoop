@@ -1,0 +1,47 @@
+{
+  nnConf.checkXAttrsConfigFlag();
+  FSPermissionChecker pc=getPermissionChecker();
+  boolean getAll=xAttrs == null || xAttrs.isEmpty();
+  List<XAttr> filteredXAttrs=null;
+  if (!getAll) {
+    filteredXAttrs=XAttrPermissionFilter.filterXAttrsForApi(pc,xAttrs);
+    if (filteredXAttrs.isEmpty()) {
+      return filteredXAttrs;
+    }
+  }
+  checkOperation(OperationCategory.READ);
+  readLock();
+  try {
+    checkOperation(OperationCategory.READ);
+    if (isPermissionEnabled) {
+      checkPathAccess(pc,src,FsAction.READ);
+    }
+    List<XAttr> all=dir.getXAttrs(src);
+    List<XAttr> filteredAll=XAttrPermissionFilter.filterXAttrsForApi(pc,all);
+    if (getAll) {
+      return filteredAll;
+    }
+ else {
+      if (filteredAll == null || filteredAll.isEmpty()) {
+        return null;
+      }
+      List<XAttr> toGet=Lists.newArrayListWithCapacity(filteredXAttrs.size());
+      for (      XAttr xAttr : filteredXAttrs) {
+        for (        XAttr a : filteredAll) {
+          if (xAttr.getNameSpace() == a.getNameSpace() && xAttr.getName().equals(a.getName())) {
+            toGet.add(a);
+            break;
+          }
+        }
+      }
+      return toGet;
+    }
+  }
+ catch (  AccessControlException e) {
+    logAuditEvent(false,"getXAttrs",src);
+    throw e;
+  }
+ finally {
+    readUnlock();
+  }
+}
