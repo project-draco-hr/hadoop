@@ -1,8 +1,20 @@
 {
-  String bindAddress=WebAppUtils.getAHSWebAppURLWithoutScheme(getConfig());
+  Configuration conf=getConfig();
+  if (UserGroupInformation.isSecurityEnabled() && conf.get(TimelineAuthenticationFilterInitializer.PREFIX + "type","").equals("kerberos")) {
+    String initializers=conf.get("hadoop.http.filter.initializers");
+    initializers=initializers == null || initializers.length() == 0 ? "" : "," + initializers;
+    if (!initializers.contains(TimelineAuthenticationFilterInitializer.class.getName())) {
+      conf.set("hadoop.http.filter.initializers",TimelineAuthenticationFilterInitializer.class.getName() + initializers);
+    }
+  }
+  String bindAddress=WebAppUtils.getAHSWebAppURLWithoutScheme(conf);
   LOG.info("Instantiating AHSWebApp at " + bindAddress);
   try {
-    webApp=WebApps.$for("applicationhistory",ApplicationHistoryClientService.class,ahsClientService,"ws").with(getConfig()).withHttpSpnegoPrincipalKey(YarnConfiguration.TIMELINE_SERVICE_WEBAPP_SPNEGO_USER_NAME_KEY).withHttpSpnegoKeytabKey(YarnConfiguration.TIMELINE_SERVICE_WEBAPP_SPNEGO_KEYTAB_FILE_KEY).at(bindAddress).start(new AHSWebApp(historyManager,timelineStore));
+    AHSWebApp ahsWebApp=AHSWebApp.getInstance();
+    ahsWebApp.setApplicationHistoryManager(historyManager);
+    ahsWebApp.setTimelineStore(timelineStore);
+    ahsWebApp.setTimelineDelegationTokenSecretManagerService(secretManagerService);
+    webApp=WebApps.$for("applicationhistory",ApplicationHistoryClientService.class,ahsClientService,"ws").with(conf).at(bindAddress).start(ahsWebApp);
   }
  catch (  Exception e) {
     String msg="AHSWebApp failed to start.";

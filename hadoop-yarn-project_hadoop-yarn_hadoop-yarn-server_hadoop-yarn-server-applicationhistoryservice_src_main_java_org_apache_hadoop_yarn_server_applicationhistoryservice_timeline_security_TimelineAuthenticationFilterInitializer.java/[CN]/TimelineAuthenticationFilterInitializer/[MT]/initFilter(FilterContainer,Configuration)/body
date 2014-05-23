@@ -1,0 +1,41 @@
+{
+  Map<String,String> filterConfig=new HashMap<String,String>();
+  filterConfig.put(TimelineAuthenticationFilter.COOKIE_PATH,"/");
+  for (  Map.Entry<String,String> entry : conf) {
+    String name=entry.getKey();
+    if (name.startsWith(PREFIX)) {
+      String value=conf.get(name);
+      name=name.substring(PREFIX.length());
+      filterConfig.put(name,value);
+    }
+  }
+  String signatureSecretFile=filterConfig.get(SIGNATURE_SECRET_FILE);
+  if (signatureSecretFile != null) {
+    try {
+      StringBuilder secret=new StringBuilder();
+      Reader reader=new FileReader(signatureSecretFile);
+      int c=reader.read();
+      while (c > -1) {
+        secret.append((char)c);
+        c=reader.read();
+      }
+      reader.close();
+      filterConfig.put(TimelineAuthenticationFilter.SIGNATURE_SECRET,secret.toString());
+    }
+ catch (    IOException ex) {
+      throw new RuntimeException("Could not read HTTP signature secret file: " + signatureSecretFile);
+    }
+  }
+  String bindAddress=conf.get(HttpServer2.BIND_ADDRESS);
+  String principal=filterConfig.get(TimelineClientAuthenticationService.PRINCIPAL);
+  if (principal != null) {
+    try {
+      principal=SecurityUtil.getServerPrincipal(principal,bindAddress);
+    }
+ catch (    IOException ex) {
+      throw new RuntimeException("Could not resolve Kerberos principal name: " + ex.toString(),ex);
+    }
+    filterConfig.put(TimelineClientAuthenticationService.PRINCIPAL,principal);
+  }
+  container.addGlobalFilter("Timeline Authentication Filter",TimelineAuthenticationFilter.class.getName(),filterConfig);
+}
