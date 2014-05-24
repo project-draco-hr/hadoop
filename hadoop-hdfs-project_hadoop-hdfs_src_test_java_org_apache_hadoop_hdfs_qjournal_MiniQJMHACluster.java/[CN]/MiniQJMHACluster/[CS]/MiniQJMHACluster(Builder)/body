@@ -1,15 +1,26 @@
 {
   this.conf=builder.conf;
-  journalCluster=new MiniJournalCluster.Builder(conf).format(true).build();
-  URI journalURI=journalCluster.getQuorumJournalURI(NAMESERVICE);
-  MiniDFSNNTopology topology=createDefaultTopology();
-  initHAConf(journalURI,builder.conf);
-  cluster=builder.dfsBuilder.nnTopology(topology).manageNameDfsSharedDirs(false).build();
-  cluster.waitActive();
-  cluster.shutdown();
-  Configuration confNN0=cluster.getConfiguration(0);
-  NameNode.initializeSharedEdits(confNN0,true);
-  cluster.getNameNodeInfos()[0].setStartOpt(builder.startOpt);
-  cluster.getNameNodeInfos()[1].setStartOpt(builder.startOpt);
-  cluster.restartNameNodes();
+  int retryCount=0;
+  while (true) {
+    try {
+      basePort=10000 + RANDOM.nextInt(1000) * 4;
+      journalCluster=new MiniJournalCluster.Builder(conf).format(true).build();
+      URI journalURI=journalCluster.getQuorumJournalURI(NAMESERVICE);
+      MiniDFSNNTopology topology=createDefaultTopology(basePort);
+      initHAConf(journalURI,builder.conf);
+      cluster=builder.dfsBuilder.nnTopology(topology).manageNameDfsSharedDirs(false).build();
+      cluster.waitActive();
+      cluster.shutdown();
+      Configuration confNN0=cluster.getConfiguration(0);
+      NameNode.initializeSharedEdits(confNN0,true);
+      cluster.getNameNodeInfos()[0].setStartOpt(builder.startOpt);
+      cluster.getNameNodeInfos()[1].setStartOpt(builder.startOpt);
+      cluster.restartNameNodes();
+      ++retryCount;
+      break;
+    }
+ catch (    BindException e) {
+      LOG.info("MiniQJMHACluster port conflicts, retried " + retryCount + " times");
+    }
+  }
 }
