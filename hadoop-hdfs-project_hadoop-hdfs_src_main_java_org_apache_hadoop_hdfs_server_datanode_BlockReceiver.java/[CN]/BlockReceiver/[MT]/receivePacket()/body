@@ -28,8 +28,13 @@
   }
   if (mirrorOut != null && !mirrorError) {
     try {
+      long begin=Time.monotonicNow();
       packetReceiver.mirrorPacketTo(mirrorOut);
       mirrorOut.flush();
+      long duration=Time.monotonicNow() - begin;
+      if (duration > datanodeSlowLogThresholdMs) {
+        LOG.warn("Slow BlockReceiver write packet to mirror took " + duration + "ms (threshold="+ datanodeSlowLogThresholdMs+ "ms)");
+      }
     }
  catch (    IOException e) {
       handleMirrorOutError(e);
@@ -83,7 +88,12 @@
         }
         int startByteToDisk=(int)(onDiskLen - firstByteInBlock) + dataBuf.arrayOffset() + dataBuf.position();
         int numBytesToDisk=(int)(offsetInBlock - onDiskLen);
+        long begin=Time.monotonicNow();
         out.write(dataBuf.array(),startByteToDisk,numBytesToDisk);
+        long duration=Time.monotonicNow() - begin;
+        if (duration > datanodeSlowLogThresholdMs) {
+          LOG.warn("Slow BlockReceiver write data to disk cost:" + duration + "ms (threshold="+ datanodeSlowLogThresholdMs+ "ms)");
+        }
         if (partialCrc != null) {
           if (len > bytesPerChecksum) {
             throw new IOException("Got wrong length during writeBlock(" + block + ") from "+ inAddr+ " "+ "A packet can have only one partial chunk."+ " len = "+ len+ " bytesPerChecksum "+ bytesPerChecksum);

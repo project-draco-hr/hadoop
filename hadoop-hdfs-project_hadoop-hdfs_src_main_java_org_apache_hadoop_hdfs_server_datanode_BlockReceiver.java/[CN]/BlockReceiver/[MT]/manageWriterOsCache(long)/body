@@ -1,6 +1,7 @@
 {
   try {
     if (outFd != null && offsetInBlock > lastCacheManagementOffset + CACHE_DROP_LAG_BYTES) {
+      long begin=Time.monotonicNow();
       if (syncBehindWrites) {
         NativeIO.POSIX.syncFileRangeIfPossible(outFd,lastCacheManagementOffset,offsetInBlock - lastCacheManagementOffset,NativeIO.POSIX.SYNC_FILE_RANGE_WRITE);
       }
@@ -9,6 +10,10 @@
         NativeIO.POSIX.getCacheManipulator().posixFadviseIfPossible(block.getBlockName(),outFd,0,dropPos,NativeIO.POSIX.POSIX_FADV_DONTNEED);
       }
       lastCacheManagementOffset=offsetInBlock;
+      long duration=Time.monotonicNow() - begin;
+      if (duration > datanodeSlowLogThresholdMs) {
+        LOG.warn("Slow manageWriterOsCache took " + duration + "ms (threshold="+ datanodeSlowLogThresholdMs+ "ms)");
+      }
     }
   }
  catch (  Throwable t) {
