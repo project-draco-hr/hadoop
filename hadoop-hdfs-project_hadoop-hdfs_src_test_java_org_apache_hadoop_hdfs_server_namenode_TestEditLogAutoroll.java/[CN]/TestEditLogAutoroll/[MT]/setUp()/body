@@ -4,12 +4,23 @@
   conf.setLong(DFS_NAMENODE_CHECKPOINT_TXNS_KEY,20);
   conf.setFloat(DFS_NAMENODE_EDIT_LOG_AUTOROLL_MULTIPLIER_THRESHOLD,0.5f);
   conf.setInt(DFS_NAMENODE_EDIT_LOG_AUTOROLL_CHECK_INTERVAL_MS,100);
-  MiniDFSNNTopology topology=new MiniDFSNNTopology().addNameservice(new MiniDFSNNTopology.NSConf("ns1").addNN(new MiniDFSNNTopology.NNConf("nn1").setHttpPort(10061)).addNN(new MiniDFSNNTopology.NNConf("nn2").setHttpPort(10062)));
-  cluster=new MiniDFSCluster.Builder(conf).nnTopology(topology).numDataNodes(0).build();
-  cluster.waitActive();
-  nn0=cluster.getNameNode(0);
-  fs=HATestUtil.configureFailoverFs(cluster,conf);
-  cluster.transitionToActive(0);
-  fs=cluster.getFileSystem(0);
-  editLog=nn0.getNamesystem().getEditLog();
+  int retryCount=0;
+  while (true) {
+    try {
+      int basePort=10060 + random.nextInt(100) * 2;
+      MiniDFSNNTopology topology=new MiniDFSNNTopology().addNameservice(new MiniDFSNNTopology.NSConf("ns1").addNN(new MiniDFSNNTopology.NNConf("nn1").setHttpPort(basePort)).addNN(new MiniDFSNNTopology.NNConf("nn2").setHttpPort(basePort + 1)));
+      cluster=new MiniDFSCluster.Builder(conf).nnTopology(topology).numDataNodes(0).build();
+      cluster.waitActive();
+      nn0=cluster.getNameNode(0);
+      fs=HATestUtil.configureFailoverFs(cluster,conf);
+      cluster.transitionToActive(0);
+      fs=cluster.getFileSystem(0);
+      editLog=nn0.getNamesystem().getEditLog();
+      ++retryCount;
+      break;
+    }
+ catch (    BindException e) {
+      LOG.info("Set up MiniDFSCluster failed due to port conflicts, retry " + retryCount + " times");
+    }
+  }
 }
