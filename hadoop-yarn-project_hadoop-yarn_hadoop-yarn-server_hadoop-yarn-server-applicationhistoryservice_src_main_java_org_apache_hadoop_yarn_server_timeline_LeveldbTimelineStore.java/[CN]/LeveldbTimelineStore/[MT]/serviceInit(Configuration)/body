@@ -1,0 +1,29 @@
+{
+  Options options=new Options();
+  options.createIfMissing(true);
+  options.cacheSize(conf.getLong(YarnConfiguration.TIMELINE_SERVICE_LEVELDB_READ_CACHE_SIZE,YarnConfiguration.DEFAULT_TIMELINE_SERVICE_LEVELDB_READ_CACHE_SIZE));
+  JniDBFactory factory=new JniDBFactory();
+  Path dbPath=new Path(conf.get(YarnConfiguration.TIMELINE_SERVICE_LEVELDB_PATH),FILENAME);
+  FileSystem localFS=null;
+  try {
+    localFS=FileSystem.getLocal(conf);
+    if (!localFS.exists(dbPath)) {
+      if (!localFS.mkdirs(dbPath)) {
+        throw new IOException("Couldn't create directory for leveldb " + "timeline store " + dbPath);
+      }
+      localFS.setPermission(dbPath,LEVELDB_DIR_UMASK);
+    }
+  }
+  finally {
+    IOUtils.cleanup(LOG,localFS);
+  }
+  LOG.info("Using leveldb path " + dbPath);
+  db=factory.open(new File(dbPath.toString()),options);
+  startTimeWriteCache=Collections.synchronizedMap(new LRUMap(getStartTimeWriteCacheSize(conf)));
+  startTimeReadCache=Collections.synchronizedMap(new LRUMap(getStartTimeReadCacheSize(conf)));
+  if (conf.getBoolean(YarnConfiguration.TIMELINE_SERVICE_TTL_ENABLE,true)) {
+    deletionThread=new EntityDeletionThread(conf);
+    deletionThread.start();
+  }
+  super.serviceInit(conf);
+}

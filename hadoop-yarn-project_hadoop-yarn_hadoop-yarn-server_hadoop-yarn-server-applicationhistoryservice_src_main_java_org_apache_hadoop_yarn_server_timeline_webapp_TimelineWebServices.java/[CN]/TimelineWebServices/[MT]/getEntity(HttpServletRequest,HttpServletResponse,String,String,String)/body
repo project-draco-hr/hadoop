@@ -1,0 +1,38 @@
+{
+  init(res);
+  TimelineEntity entity=null;
+  try {
+    EnumSet<Field> fieldEnums=parseFieldsStr(fields,",");
+    boolean modified=extendFields(fieldEnums);
+    entity=store.getEntity(parseStr(entityId),parseStr(entityType),fieldEnums);
+    if (entity != null) {
+      UserGroupInformation callerUGI=getUser(req);
+      if (!timelineACLsManager.checkAccess(callerUGI,entity)) {
+        entity=null;
+      }
+ else {
+        if (modified) {
+          entity.setPrimaryFilters(null);
+        }
+ else {
+          cleanupOwnerInfo(entity);
+        }
+      }
+    }
+  }
+ catch (  IllegalArgumentException e) {
+    throw new BadRequestException("requested invalid field.");
+  }
+catch (  IOException e) {
+    LOG.error("Error getting entity",e);
+    throw new WebApplicationException(e,Response.Status.INTERNAL_SERVER_ERROR);
+  }
+catch (  YarnException e) {
+    LOG.error("Error getting entity",e);
+    throw new WebApplicationException(e,Response.Status.INTERNAL_SERVER_ERROR);
+  }
+  if (entity == null) {
+    throw new NotFoundException("Timeline entity " + new EntityIdentifier(parseStr(entityId),parseStr(entityType)) + " is not found");
+  }
+  return entity;
+}

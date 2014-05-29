@@ -1,0 +1,47 @@
+{
+  init(res);
+  TimelineEntities entities=null;
+  try {
+    EnumSet<Field> fieldEnums=parseFieldsStr(fields,",");
+    boolean modified=extendFields(fieldEnums);
+    UserGroupInformation callerUGI=getUser(req);
+    entities=store.getEntities(parseStr(entityType),parseLongStr(limit),parseLongStr(windowStart),parseLongStr(windowEnd),parseStr(fromId),parseLongStr(fromTs),parsePairStr(primaryFilter,":"),parsePairsStr(secondaryFilter,",",":"),fieldEnums);
+    if (entities != null) {
+      Iterator<TimelineEntity> entitiesItr=entities.getEntities().iterator();
+      while (entitiesItr.hasNext()) {
+        TimelineEntity entity=entitiesItr.next();
+        try {
+          if (!timelineACLsManager.checkAccess(callerUGI,entity)) {
+            entitiesItr.remove();
+          }
+ else {
+            if (modified) {
+              entity.setPrimaryFilters(null);
+            }
+ else {
+              cleanupOwnerInfo(entity);
+            }
+          }
+        }
+ catch (        YarnException e) {
+          LOG.error("Error when verifying access for user " + callerUGI + " on the events of the timeline entity "+ new EntityIdentifier(entity.getEntityId(),entity.getEntityType()),e);
+          entitiesItr.remove();
+        }
+      }
+    }
+  }
+ catch (  NumberFormatException e) {
+    throw new BadRequestException("windowStart, windowEnd or limit is not a numeric value.");
+  }
+catch (  IllegalArgumentException e) {
+    throw new BadRequestException("requested invalid field.");
+  }
+catch (  IOException e) {
+    LOG.error("Error getting entities",e);
+    throw new WebApplicationException(e,Response.Status.INTERNAL_SERVER_ERROR);
+  }
+  if (entities == null) {
+    return new TimelineEntities();
+  }
+  return entities;
+}

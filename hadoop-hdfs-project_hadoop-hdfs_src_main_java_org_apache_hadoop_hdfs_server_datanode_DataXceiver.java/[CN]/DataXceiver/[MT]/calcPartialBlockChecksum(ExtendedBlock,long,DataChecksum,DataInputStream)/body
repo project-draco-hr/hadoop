@@ -1,0 +1,30 @@
+{
+  final int bytesPerCRC=checksum.getBytesPerChecksum();
+  final int csize=checksum.getChecksumSize();
+  final byte[] buffer=new byte[4 * 1024];
+  MessageDigest digester=MD5Hash.getDigester();
+  long remaining=requestLength / bytesPerCRC * csize;
+  for (int toDigest=0; remaining > 0; remaining-=toDigest) {
+    toDigest=checksumIn.read(buffer,0,(int)Math.min(remaining,buffer.length));
+    if (toDigest < 0) {
+      break;
+    }
+    digester.update(buffer,0,toDigest);
+  }
+  int partialLength=(int)(requestLength % bytesPerCRC);
+  if (partialLength > 0) {
+    byte[] buf=new byte[partialLength];
+    final InputStream blockIn=datanode.data.getBlockInputStream(block,requestLength - partialLength);
+    try {
+      IOUtils.readFully(blockIn,buf,0,partialLength);
+    }
+  finally {
+      IOUtils.closeStream(blockIn);
+    }
+    checksum.update(buf,0,partialLength);
+    byte[] partialCrc=new byte[csize];
+    checksum.writeValue(partialCrc,0,true);
+    digester.update(partialCrc);
+  }
+  return new MD5Hash(digester.digest());
+}

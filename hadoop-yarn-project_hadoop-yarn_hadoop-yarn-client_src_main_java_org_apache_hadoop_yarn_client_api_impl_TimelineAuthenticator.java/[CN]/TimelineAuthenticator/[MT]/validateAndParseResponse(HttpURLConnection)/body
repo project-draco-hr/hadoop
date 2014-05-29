@@ -1,0 +1,32 @@
+{
+  int status=conn.getResponseCode();
+  JsonNode json=mapper.readTree(conn.getInputStream());
+  if (status == HttpURLConnection.HTTP_OK) {
+    return mapper.readValue(json,TimelineDelegationTokenResponse.class);
+  }
+ else {
+    try {
+      String message=json.get(TimelineAuthenticationConsts.ERROR_MESSAGE_JSON).getTextValue();
+      String exception=json.get(TimelineAuthenticationConsts.ERROR_EXCEPTION_JSON).getTextValue();
+      String className=json.get(TimelineAuthenticationConsts.ERROR_CLASSNAME_JSON).getTextValue();
+      try {
+        ClassLoader cl=TimelineAuthenticator.class.getClassLoader();
+        Class<?> klass=cl.loadClass(className);
+        Constructor<?> constr=klass.getConstructor(String.class);
+        throw (IOException)constr.newInstance(message);
+      }
+ catch (      IOException ex) {
+        throw ex;
+      }
+catch (      Exception ex) {
+        throw new IOException(MessageFormat.format("{0} - {1}",exception,message));
+      }
+    }
+ catch (    IOException ex) {
+      if (ex.getCause() instanceof IOException) {
+        throw (IOException)ex.getCause();
+      }
+      throw new IOException(MessageFormat.format("HTTP status [{0}], {1}",status,conn.getResponseMessage()));
+    }
+  }
+}

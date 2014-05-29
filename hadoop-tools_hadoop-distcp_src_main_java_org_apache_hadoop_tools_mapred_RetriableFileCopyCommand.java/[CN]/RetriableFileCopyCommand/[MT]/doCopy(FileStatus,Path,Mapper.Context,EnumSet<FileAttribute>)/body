@@ -1,24 +1,30 @@
 {
-  Path tmpTargetPath=getTmpFile(target,context);
+  final boolean toAppend=action == FileAction.APPEND;
+  Path targetPath=toAppend ? target : getTmpFile(target,context);
   final Configuration configuration=context.getConfiguration();
   FileSystem targetFS=target.getFileSystem(configuration);
   try {
     if (LOG.isDebugEnabled()) {
       LOG.debug("Copying " + sourceFileStatus.getPath() + " to "+ target);
-      LOG.debug("Tmp-file path: " + tmpTargetPath);
+      LOG.debug("Target file path: " + targetPath);
     }
     final Path sourcePath=sourceFileStatus.getPath();
     final FileSystem sourceFS=sourcePath.getFileSystem(configuration);
     final FileChecksum sourceChecksum=fileAttributes.contains(FileAttribute.CHECKSUMTYPE) ? sourceFS.getFileChecksum(sourcePath) : null;
-    long bytesRead=copyToTmpFile(tmpTargetPath,targetFS,sourceFileStatus,context,fileAttributes,sourceChecksum);
-    compareFileLengths(sourceFileStatus,tmpTargetPath,configuration,bytesRead);
+    final long offset=action == FileAction.APPEND ? targetFS.getFileStatus(target).getLen() : 0;
+    long bytesRead=copyToFile(targetPath,targetFS,sourceFileStatus,offset,context,fileAttributes,sourceChecksum);
+    compareFileLengths(sourceFileStatus,targetPath,configuration,bytesRead + offset);
     if ((bytesRead != 0) && (!skipCrc)) {
-      compareCheckSums(sourceFS,sourceFileStatus.getPath(),sourceChecksum,targetFS,tmpTargetPath);
+      compareCheckSums(sourceFS,sourceFileStatus.getPath(),sourceChecksum,targetFS,targetPath);
     }
-    promoteTmpToTarget(tmpTargetPath,target,targetFS);
+    if (!toAppend) {
+      promoteTmpToTarget(targetPath,target,targetFS);
+    }
     return bytesRead;
   }
   finally {
-    if (targetFS.exists(tmpTargetPath))     targetFS.delete(tmpTargetPath,false);
+    if (!toAppend && targetFS.exists(targetPath)) {
+      targetFS.delete(targetPath,false);
+    }
   }
 }

@@ -1,0 +1,44 @@
+{
+  File jsonFile=new File(path);
+  if (!jsonFile.exists()) {
+    System.out.println("Error: File [" + jsonFile.getAbsolutePath() + "] doesn't exist");
+    return;
+  }
+  ObjectMapper mapper=new ObjectMapper();
+  YarnJacksonJaxbJsonProvider.configObjectMapper(mapper);
+  TimelineEntities entities=null;
+  try {
+    entities=mapper.readValue(jsonFile,TimelineEntities.class);
+  }
+ catch (  Exception e) {
+    System.err.println("Error: " + e.getMessage());
+    e.printStackTrace(System.err);
+    return;
+  }
+  Configuration conf=new YarnConfiguration();
+  TimelineClient client=TimelineClient.createTimelineClient();
+  client.init(conf);
+  client.start();
+  try {
+    if (UserGroupInformation.isSecurityEnabled() && conf.getBoolean(YarnConfiguration.TIMELINE_SERVICE_ENABLED,false)) {
+      Token<TimelineDelegationTokenIdentifier> token=client.getDelegationToken(UserGroupInformation.getCurrentUser().getUserName());
+      UserGroupInformation.getCurrentUser().addToken(token);
+    }
+    TimelinePutResponse response=client.putEntities(entities.getEntities().toArray(new TimelineEntity[entities.getEntities().size()]));
+    if (response.getErrors().size() == 0) {
+      System.out.println("Timeline data is successfully put");
+    }
+ else {
+      for (      TimelinePutResponse.TimelinePutError error : response.getErrors()) {
+        System.out.println("TimelineEntity [" + error.getEntityType() + ":"+ error.getEntityId()+ "] is not successfully put. Error code: "+ error.getErrorCode());
+      }
+    }
+  }
+ catch (  Exception e) {
+    System.err.println("Error: " + e.getMessage());
+    e.printStackTrace(System.err);
+  }
+ finally {
+    client.stop();
+  }
+}

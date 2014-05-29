@@ -1,0 +1,41 @@
+{
+  if (Resources.equals(toPreempt,Resources.none())) {
+    return;
+  }
+  Iterator<RMContainer> warnedIter=warnedContainers.iterator();
+  while (warnedIter.hasNext()) {
+    RMContainer container=warnedIter.next();
+    if ((container.getState() == RMContainerState.RUNNING || container.getState() == RMContainerState.ALLOCATED) && Resources.greaterThan(RESOURCE_CALCULATOR,clusterResource,toPreempt,Resources.none())) {
+      warnOrKillContainer(container);
+      Resources.subtractFrom(toPreempt,container.getContainer().getResource());
+    }
+ else {
+      warnedIter.remove();
+    }
+  }
+  try {
+    for (    FSLeafQueue queue : getQueueManager().getLeafQueues()) {
+      for (      AppSchedulable app : queue.getRunnableAppSchedulables()) {
+        app.getApp().resetPreemptedResources();
+      }
+    }
+    while (Resources.greaterThan(RESOURCE_CALCULATOR,clusterResource,toPreempt,Resources.none())) {
+      RMContainer container=getQueueManager().getRootQueue().preemptContainer();
+      if (container == null) {
+        break;
+      }
+ else {
+        warnOrKillContainer(container);
+        warnedContainers.add(container);
+        Resources.subtractFrom(toPreempt,container.getContainer().getResource());
+      }
+    }
+  }
+  finally {
+    for (    FSLeafQueue queue : getQueueManager().getLeafQueues()) {
+      for (      AppSchedulable app : queue.getRunnableAppSchedulables()) {
+        app.getApp().clearPreemptedResources();
+      }
+    }
+  }
+}
