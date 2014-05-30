@@ -1,23 +1,26 @@
 {
-  final byte[] tmp=getTmpBuf();
-  int unread=outBuffer.remaining();
-  if (unread > 0) {
-    outBuffer.get(tmp,0,unread);
+  ByteBuffer inBuffer=getBuffer();
+  ByteBuffer outBuffer=getBuffer();
+  Decryptor decryptor=null;
+  try {
+    decryptor=getDecryptor();
+    byte[] iv=initIV.clone();
+    updateDecryptor(decryptor,position,iv);
+    byte padding=getPadding(position);
+    inBuffer.position(padding);
+    int n=0;
+    while (n < length) {
+      int toDecrypt=Math.min(length - n,inBuffer.remaining());
+      inBuffer.put(buffer,offset + n,toDecrypt);
+      decrypt(decryptor,inBuffer,outBuffer,padding);
+      outBuffer.get(buffer,offset + n,toDecrypt);
+      n+=toDecrypt;
+      padding=afterDecryption(decryptor,inBuffer,position + n,iv);
+    }
   }
-  final long curOffset=streamOffset;
-  resetStreamOffset(position);
-  int n=0;
-  while (n < length) {
-    final int toDecrypt=Math.min(length - n,inBuffer.remaining());
-    inBuffer.put(buffer,offset + n,toDecrypt);
-    decrypt();
-    outBuffer.get(buffer,offset + n,toDecrypt);
-    n+=toDecrypt;
-  }
-  resetStreamOffset(curOffset);
-  if (unread > 0) {
-    outBuffer.clear();
-    outBuffer.put(tmp,0,unread);
-    outBuffer.flip();
+  finally {
+    returnBuffer(inBuffer);
+    returnBuffer(outBuffer);
+    returnDecryptor(decryptor);
   }
 }
