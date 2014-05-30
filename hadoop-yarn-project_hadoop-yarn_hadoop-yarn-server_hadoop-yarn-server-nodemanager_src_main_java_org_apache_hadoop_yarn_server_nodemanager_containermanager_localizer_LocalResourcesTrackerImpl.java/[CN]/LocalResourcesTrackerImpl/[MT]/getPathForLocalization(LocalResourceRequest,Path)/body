@@ -1,18 +1,27 @@
 {
+  Path rPath=localDirPath;
   if (useLocalCacheDirectoryManager && localDirPath != null) {
     if (!directoryManagers.containsKey(localDirPath)) {
       directoryManagers.putIfAbsent(localDirPath,new LocalCacheDirectoryManager(conf));
     }
     LocalCacheDirectoryManager dir=directoryManagers.get(localDirPath);
-    Path rPath=localDirPath;
+    rPath=localDirPath;
     String hierarchicalPath=dir.getRelativePathForLocalization();
     if (!hierarchicalPath.isEmpty()) {
       rPath=new Path(localDirPath,hierarchicalPath);
     }
     inProgressLocalResourcesMap.put(req,rPath);
-    return rPath;
   }
- else {
-    return localDirPath;
+  rPath=new Path(rPath,Long.toString(uniqueNumberGenerator.incrementAndGet()));
+  Path localPath=new Path(rPath,req.getPath().getName());
+  LocalizedResource rsrc=localrsrc.get(req);
+  rsrc.setLocalPath(localPath);
+  LocalResource lr=LocalResource.newInstance(req.getResource(),req.getType(),req.getVisibility(),req.getSize(),req.getTimestamp());
+  try {
+    stateStore.startResourceLocalization(user,appId,((LocalResourcePBImpl)lr).getProto(),localPath);
   }
+ catch (  IOException e) {
+    LOG.error("Unable to record localization start for " + rsrc,e);
+  }
+  return rPath;
 }

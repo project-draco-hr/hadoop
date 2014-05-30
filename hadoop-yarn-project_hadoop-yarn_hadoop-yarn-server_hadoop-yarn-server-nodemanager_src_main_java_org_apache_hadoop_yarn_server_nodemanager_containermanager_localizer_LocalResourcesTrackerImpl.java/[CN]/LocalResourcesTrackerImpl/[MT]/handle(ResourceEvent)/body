@@ -10,8 +10,7 @@ case LOCALIZED:
 case REQUEST:
 if (rsrc != null && (!isResourcePresent(rsrc))) {
   LOG.info("Resource " + rsrc.getLocalPath() + " is missing, localizing it again");
-  localrsrc.remove(req);
-  decrementFileCountForLocalCacheDirectory(req,rsrc);
+  removeResource(req);
   rsrc=null;
 }
 if (null == rsrc) {
@@ -27,9 +26,29 @@ return;
 }
 break;
 case LOCALIZATION_FAILED:
-decrementFileCountForLocalCacheDirectory(req,null);
-localrsrc.remove(req);
+removeResource(req);
+break;
+case RECOVERED:
+if (rsrc != null) {
+LOG.warn("Ignoring attempt to recover existing resource " + rsrc);
+return;
+}
+rsrc=recoverResource(req,(ResourceRecoveredEvent)event);
+localrsrc.put(req,rsrc);
 break;
 }
 rsrc.handle(event);
+if (event.getType() == ResourceEventType.LOCALIZED) {
+if (rsrc.getLocalPath() != null) {
+try {
+stateStore.finishResourceLocalization(user,appId,buildLocalizedResourceProto(rsrc));
+}
+ catch (IOException ioe) {
+LOG.error("Error storing resource state for " + rsrc,ioe);
+}
+}
+ else {
+LOG.warn("Resource " + rsrc + " localized without a location");
+}
+}
 }
