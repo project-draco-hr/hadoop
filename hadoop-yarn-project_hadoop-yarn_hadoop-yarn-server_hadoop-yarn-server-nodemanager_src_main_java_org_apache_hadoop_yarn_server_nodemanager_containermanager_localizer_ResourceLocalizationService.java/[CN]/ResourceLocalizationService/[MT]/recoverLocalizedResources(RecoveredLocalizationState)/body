@@ -1,0 +1,30 @@
+{
+  LocalResourceTrackerState trackerState=state.getPublicTrackerState();
+  recoverTrackerResources(publicRsrc,trackerState);
+  for (  Map.Entry<String,RecoveredUserResources> userEntry : state.getUserResources().entrySet()) {
+    String user=userEntry.getKey();
+    RecoveredUserResources userResources=userEntry.getValue();
+    trackerState=userResources.getPrivateTrackerState();
+    if (!trackerState.isEmpty()) {
+      LocalResourcesTracker tracker=new LocalResourcesTrackerImpl(user,null,dispatcher,true,super.getConfig(),stateStore);
+      LocalResourcesTracker oldTracker=privateRsrc.putIfAbsent(user,tracker);
+      if (oldTracker != null) {
+        tracker=oldTracker;
+      }
+      recoverTrackerResources(tracker,trackerState);
+    }
+    for (    Map.Entry<ApplicationId,LocalResourceTrackerState> appEntry : userResources.getAppTrackerStates().entrySet()) {
+      trackerState=appEntry.getValue();
+      if (!trackerState.isEmpty()) {
+        ApplicationId appId=appEntry.getKey();
+        String appIdStr=ConverterUtils.toString(appId);
+        LocalResourcesTracker tracker=new LocalResourcesTrackerImpl(user,appId,dispatcher,false,super.getConfig(),stateStore);
+        LocalResourcesTracker oldTracker=appRsrc.putIfAbsent(appIdStr,tracker);
+        if (oldTracker != null) {
+          tracker=oldTracker;
+        }
+        recoverTrackerResources(tracker,trackerState);
+      }
+    }
+  }
+}
