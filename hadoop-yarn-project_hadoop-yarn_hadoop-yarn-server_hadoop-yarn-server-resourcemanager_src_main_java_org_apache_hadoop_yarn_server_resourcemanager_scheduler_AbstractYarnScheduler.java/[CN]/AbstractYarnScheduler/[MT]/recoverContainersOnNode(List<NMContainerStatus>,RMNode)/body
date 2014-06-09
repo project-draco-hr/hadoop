@@ -1,0 +1,33 @@
+{
+  if (!rmContext.isWorkPreservingRecoveryEnabled() || containerReports == null || (containerReports != null && containerReports.isEmpty())) {
+    return;
+  }
+  for (  NMContainerStatus container : containerReports) {
+    ApplicationId appId=container.getContainerId().getApplicationAttemptId().getApplicationId();
+    RMApp rmApp=rmContext.getRMApps().get(appId);
+    if (rmApp == null) {
+      LOG.error("Skip recovering container " + container + " for unknown application.");
+      killOrphanContainerOnNode(nm,container);
+      continue;
+    }
+    if (rmApp.getApplicationSubmissionContext().getUnmanagedAM()) {
+      LOG.info("Skip recovering container " + container + " for unmanaged AM."+ rmApp.getApplicationId());
+      killOrphanContainerOnNode(nm,container);
+      continue;
+    }
+    SchedulerApplication<T> schedulerApp=applications.get(appId);
+    if (schedulerApp == null) {
+      LOG.info("Skip recovering container  " + container + " for unknown SchedulerApplication. Application current state is "+ rmApp.getState());
+      killOrphanContainerOnNode(nm,container);
+      continue;
+    }
+    LOG.info("Recovering container " + container);
+    SchedulerApplicationAttempt schedulerAttempt=schedulerApp.getCurrentAppAttempt();
+    RMContainer rmContainer=recoverAndCreateContainer(container,nm);
+    rmContainer.handle(new RMContainerRecoverEvent(container.getContainerId(),container));
+    nodes.get(nm.getNodeID()).recoverContainer(rmContainer);
+    Queue queue=schedulerAttempt.getQueue();
+    queue.recoverContainer(clusterResource,schedulerAttempt,rmContainer);
+    schedulerAttempt.recoverContainer(rmContainer);
+  }
+}
