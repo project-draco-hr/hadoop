@@ -56,20 +56,23 @@ synchronized (containersToBeRemoved) {
         LOG.info(String.format("Memory usage of ProcessTree %s for container-id %s: ",pId,containerId.toString()) + formatUsageString(currentVmemUsage,vmemLimit,currentPmemUsage,pmemLimit));
         boolean isMemoryOverLimit=false;
         String msg="";
+        int containerExitStatus=ContainerExitStatus.INVALID;
         if (isVmemCheckEnabled() && isProcessTreeOverLimit(containerId.toString(),currentVmemUsage,curMemUsageOfAgedProcesses,vmemLimit)) {
           msg=formatErrorMessage("virtual",currentVmemUsage,vmemLimit,currentPmemUsage,pmemLimit,pId,containerId,pTree);
           isMemoryOverLimit=true;
+          containerExitStatus=ContainerExitStatus.KILLED_EXCEEDED_VMEM;
         }
  else         if (isPmemCheckEnabled() && isProcessTreeOverLimit(containerId.toString(),currentPmemUsage,curRssMemUsageOfAgedProcesses,pmemLimit)) {
           msg=formatErrorMessage("physical",currentVmemUsage,vmemLimit,currentPmemUsage,pmemLimit,pId,containerId,pTree);
           isMemoryOverLimit=true;
+          containerExitStatus=ContainerExitStatus.KILLED_EXCEEDED_PMEM;
         }
         if (isMemoryOverLimit) {
           LOG.warn(msg);
           if (!pTree.checkPidPgrpidForMatch()) {
             LOG.error("Killed container process with PID " + pId + " but it is not a process group leader.");
           }
-          eventDispatcher.getEventHandler().handle(new ContainerKillEvent(containerId,msg));
+          eventDispatcher.getEventHandler().handle(new ContainerKillEvent(containerId,containerExitStatus,msg));
           it.remove();
           LOG.info("Removed ProcessTree with root " + pId);
         }
