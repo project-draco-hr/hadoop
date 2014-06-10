@@ -1,0 +1,35 @@
+{
+  long lastLatency;
+  boolean operationIsRead;
+synchronized (this) {
+    lastLatency=this.lastE2Elatency;
+  }
+  float sleepMultiple;
+  HttpURLConnection urlConnection=(HttpURLConnection)sendEvent.getConnectionObject();
+  if (urlConnection.getRequestMethod().equalsIgnoreCase("PUT")) {
+    operationIsRead=false;
+    sleepMultiple=(1 / writeFactor) - 1;
+  }
+ else {
+    operationIsRead=true;
+    sleepMultiple=(1 / readFactor) - 1;
+  }
+  long sleepDuration=(long)(sleepMultiple * lastLatency);
+  if (sleepDuration < 0) {
+    sleepDuration=0;
+  }
+  if (sleepDuration > 0) {
+    try {
+      Thread.sleep(sleepDuration);
+    }
+ catch (    InterruptedException ie) {
+      Thread.currentThread().interrupt();
+    }
+    sendEvent.getRequestResult().setStartDate(new Date());
+  }
+  if (LOG.isDebugEnabled()) {
+    boolean isFirstRequest=(lastLatency == 0);
+    long threadId=Thread.currentThread().getId();
+    LOG.debug(String.format(" SelfThrottlingIntercept:: SendingRequest:   threadId=%d, requestType=%s, isFirstRequest=%b, sleepDuration=%d",threadId,operationIsRead ? "read " : "write",isFirstRequest,sleepDuration));
+  }
+}

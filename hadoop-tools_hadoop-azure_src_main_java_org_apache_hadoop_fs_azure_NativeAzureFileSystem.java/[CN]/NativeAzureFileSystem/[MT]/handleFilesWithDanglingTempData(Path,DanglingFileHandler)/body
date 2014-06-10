@@ -1,0 +1,20 @@
+{
+  long cutoffForDangling=new Date().getTime() - getConf().getInt(AZURE_TEMP_EXPIRY_PROPERTY_NAME,AZURE_TEMP_EXPIRY_DEFAULT) * 1000;
+  String priorLastKey=null;
+  do {
+    PartialListing listing=store.listAll(pathToKey(root),AZURE_LIST_ALL,AZURE_UNBOUNDED_DEPTH,priorLastKey);
+    for (    FileMetadata file : listing.getFiles()) {
+      if (!file.isDir()) {
+        String link=store.getLinkInFileMetadata(file.getKey());
+        if (link != null) {
+          FileMetadata linkMetadata=store.retrieveMetadata(link);
+          if (linkMetadata != null && linkMetadata.getLastModified() >= cutoffForDangling) {
+            handler.handleFile(file,linkMetadata);
+          }
+        }
+      }
+    }
+    priorLastKey=listing.getPriorLastKey();
+  }
+ while (priorLastKey != null);
+}

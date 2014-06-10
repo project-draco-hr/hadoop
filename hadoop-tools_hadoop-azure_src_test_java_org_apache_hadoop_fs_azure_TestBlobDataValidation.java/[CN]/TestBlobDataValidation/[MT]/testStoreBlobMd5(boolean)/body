@@ -1,0 +1,38 @@
+{
+  assumeNotNull(testAccount);
+  String testFileKey="testFile";
+  Path testFilePath=new Path("/" + testFileKey);
+  OutputStream outStream=testAccount.getFileSystem().create(testFilePath);
+  outStream.write(new byte[]{5,15});
+  outStream.close();
+  CloudBlockBlob blob=testAccount.getBlobReference(testFileKey);
+  blob.downloadAttributes();
+  String obtainedMd5=blob.getProperties().getContentMD5();
+  if (expectMd5Stored) {
+    assertNotNull(obtainedMd5);
+  }
+ else {
+    assertNull("Expected no MD5, found: " + obtainedMd5,obtainedMd5);
+  }
+  String newBlockId=Base64.encode(new byte[]{55,44,33,22});
+  blob.uploadBlock(newBlockId,new ByteArrayInputStream(new byte[]{6,45}),2);
+  blob.commitBlockList(Arrays.asList(new BlockEntry[]{new BlockEntry(newBlockId,BlockSearchMode.UNCOMMITTED)}));
+  InputStream inStream=testAccount.getFileSystem().open(testFilePath);
+  try {
+    byte[] inBuf=new byte[100];
+    while (inStream.read(inBuf) > 0) {
+    }
+    inStream.close();
+    if (expectMd5Stored) {
+      fail("Should've thrown because of data corruption.");
+    }
+  }
+ catch (  IOException ex) {
+    if (!expectMd5Stored) {
+      throw ex;
+    }
+    StorageException cause=(StorageException)ex.getCause();
+    assertNotNull(cause);
+    assertTrue("Unexpected cause: " + cause,cause.getErrorCode().equals(StorageErrorCodeStrings.INVALID_MD5));
+  }
+}

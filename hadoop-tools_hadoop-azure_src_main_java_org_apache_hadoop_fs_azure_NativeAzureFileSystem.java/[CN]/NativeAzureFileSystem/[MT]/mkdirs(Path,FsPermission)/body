@@ -1,0 +1,40 @@
+{
+  if (LOG.isDebugEnabled()) {
+    LOG.debug("Creating directory: " + f.toString());
+  }
+  if (containsColon(f)) {
+    throw new IOException("Cannot create directory " + f + " through WASB that has colons in the name");
+  }
+  Path absolutePath=makeAbsolute(f);
+  PermissionStatus permissionStatus=createPermissionStatus(applyUMask(permission,UMaskApplyMode.NewDirectory));
+  ArrayList<String> keysToCreateAsFolder=new ArrayList<String>();
+  ArrayList<String> keysToUpdateAsFolder=new ArrayList<String>();
+  boolean childCreated=false;
+  for (Path current=absolutePath, parent=current.getParent(); parent != null; current=parent, parent=current.getParent()) {
+    String currentKey=pathToKey(current);
+    FileMetadata currentMetadata=store.retrieveMetadata(currentKey);
+    if (currentMetadata != null && !currentMetadata.isDir()) {
+      throw new IOException("Cannot create directory " + f + " because "+ current+ " is an existing file.");
+    }
+ else     if (currentMetadata == null || (currentMetadata.isDir() && currentMetadata.getBlobMaterialization() == BlobMaterialization.Implicit)) {
+      keysToCreateAsFolder.add(currentKey);
+      childCreated=true;
+    }
+ else {
+      if (childCreated) {
+        keysToUpdateAsFolder.add(currentKey);
+      }
+      childCreated=false;
+    }
+  }
+  for (  String currentKey : keysToCreateAsFolder) {
+    store.storeEmptyFolder(currentKey,permissionStatus);
+  }
+  final Calendar lastModifiedCalendar=Calendar.getInstance(Utility.LOCALE_US);
+  lastModifiedCalendar.setTimeZone(Utility.UTC_ZONE);
+  Date lastModified=lastModifiedCalendar.getTime();
+  for (  String key : keysToUpdateAsFolder) {
+    store.updateFolderLastModifiedTime(key,lastModified);
+  }
+  return true;
+}

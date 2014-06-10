@@ -1,0 +1,56 @@
+{
+  try {
+    checkContainer(ContainerAccessType.PureRead);
+    if (0 < prefix.length() && !prefix.endsWith(PATH_DELIMITER)) {
+      prefix+=PATH_DELIMITER;
+    }
+    Iterable<ListBlobItem> objects;
+    if (prefix.equals("/")) {
+      objects=listRootBlobs(true);
+    }
+ else {
+      objects=listRootBlobs(prefix,true);
+    }
+    ArrayList<FileMetadata> fileMetadata=new ArrayList<FileMetadata>();
+    for (    ListBlobItem blobItem : objects) {
+      if (0 < maxListingCount && fileMetadata.size() >= maxListingCount) {
+        break;
+      }
+      if (blobItem instanceof CloudBlockBlobWrapper) {
+        String blobKey=null;
+        CloudBlockBlobWrapper blob=(CloudBlockBlobWrapper)blobItem;
+        BlobProperties properties=blob.getProperties();
+        blobKey=normalizeKey(blob);
+        FileMetadata metadata;
+        if (retrieveFolderAttribute(blob)) {
+          metadata=new FileMetadata(blobKey,properties.getLastModified().getTime(),getPermissionStatus(blob),BlobMaterialization.Explicit);
+        }
+ else {
+          metadata=new FileMetadata(blobKey,properties.getLength(),properties.getLastModified().getTime(),getPermissionStatus(blob));
+        }
+        FileMetadata existing=getDirectoryInList(fileMetadata,blobKey);
+        if (existing != null) {
+          fileMetadata.remove(existing);
+        }
+        fileMetadata.add(metadata);
+      }
+ else       if (blobItem instanceof CloudBlobDirectoryWrapper) {
+        CloudBlobDirectoryWrapper directory=(CloudBlobDirectoryWrapper)blobItem;
+        String dirKey=normalizeKey(directory);
+        if (dirKey.endsWith(PATH_DELIMITER)) {
+          dirKey=dirKey.substring(0,dirKey.length() - 1);
+        }
+        FileMetadata directoryMetadata=new FileMetadata(dirKey,0,defaultPermissionNoBlobMetadata(),BlobMaterialization.Implicit);
+        if (getDirectoryInList(fileMetadata,dirKey) == null) {
+          fileMetadata.add(directoryMetadata);
+        }
+        buildUpList(directory,fileMetadata,maxListingCount,maxListingDepth - 1);
+      }
+    }
+    priorLastKey=null;
+    return new PartialListing(priorLastKey,fileMetadata.toArray(new FileMetadata[]{}),0 == fileMetadata.size() ? new String[]{} : new String[]{prefix});
+  }
+ catch (  Exception e) {
+    throw new AzureException(e);
+  }
+}

@@ -1,0 +1,62 @@
+{
+  LinkedList<Iterator<ListBlobItem>> dirIteratorStack=new LinkedList<Iterator<ListBlobItem>>();
+  Iterable<ListBlobItem> blobItems=aCloudBlobDirectory.listBlobs(null,false,EnumSet.of(BlobListingDetails.METADATA),null,getInstrumentedContext());
+  Iterator<ListBlobItem> blobItemIterator=blobItems.iterator();
+  if (0 == maxListingDepth || 0 == maxListingCount) {
+    return;
+  }
+  final boolean isUnboundedDepth=(maxListingDepth < 0);
+  int listingDepth=1;
+  while (null != blobItemIterator && (maxListingCount <= 0 || aFileMetadataList.size() < maxListingCount)) {
+    while (blobItemIterator.hasNext()) {
+      if (0 < maxListingCount && aFileMetadataList.size() >= maxListingCount) {
+        break;
+      }
+      ListBlobItem blobItem=blobItemIterator.next();
+      if (blobItem instanceof CloudBlockBlobWrapper) {
+        String blobKey=null;
+        CloudBlockBlobWrapper blob=(CloudBlockBlobWrapper)blobItem;
+        BlobProperties properties=blob.getProperties();
+        blobKey=normalizeKey(blob);
+        FileMetadata metadata;
+        if (retrieveFolderAttribute(blob)) {
+          metadata=new FileMetadata(blobKey,properties.getLastModified().getTime(),getPermissionStatus(blob),BlobMaterialization.Explicit);
+        }
+ else {
+          metadata=new FileMetadata(blobKey,properties.getLength(),properties.getLastModified().getTime(),getPermissionStatus(blob));
+        }
+        FileMetadata existing=getDirectoryInList(aFileMetadataList,blobKey);
+        if (existing != null) {
+          aFileMetadataList.remove(existing);
+        }
+        aFileMetadataList.add(metadata);
+      }
+ else       if (blobItem instanceof CloudBlobDirectoryWrapper) {
+        CloudBlobDirectoryWrapper directory=(CloudBlobDirectoryWrapper)blobItem;
+        if (isUnboundedDepth || maxListingDepth > listingDepth) {
+          dirIteratorStack.push(blobItemIterator);
+          ++listingDepth;
+          blobItems=directory.listBlobs(null,false,EnumSet.noneOf(BlobListingDetails.class),null,getInstrumentedContext());
+          blobItemIterator=blobItems.iterator();
+        }
+ else {
+          String dirKey=normalizeKey(directory);
+          if (getDirectoryInList(aFileMetadataList,dirKey) == null) {
+            FileMetadata directoryMetadata=new FileMetadata(dirKey,0,defaultPermissionNoBlobMetadata(),BlobMaterialization.Implicit);
+            aFileMetadataList.add(directoryMetadata);
+          }
+        }
+      }
+    }
+    if (dirIteratorStack.isEmpty()) {
+      blobItemIterator=null;
+    }
+ else {
+      blobItemIterator=dirIteratorStack.pop();
+      --listingDepth;
+      if (listingDepth < 0) {
+        throw new AssertionError("Non-negative listing depth expected");
+      }
+    }
+  }
+}
