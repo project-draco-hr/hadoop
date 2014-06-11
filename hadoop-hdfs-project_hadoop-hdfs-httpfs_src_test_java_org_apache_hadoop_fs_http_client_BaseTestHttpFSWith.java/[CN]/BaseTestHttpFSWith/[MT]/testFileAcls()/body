@@ -1,0 +1,34 @@
+{
+  if (isLocalFS()) {
+    return;
+  }
+  final String aclUser1="user:foo:rw-";
+  final String aclUser2="user:bar:r--";
+  final String aclGroup1="group::r--";
+  final String aclSet="user::rwx," + aclUser1 + ","+ aclGroup1+ ",other::---";
+  FileSystem proxyFs=FileSystem.get(getProxiedFSConf());
+  FileSystem httpfs=getHttpFSFileSystem();
+  Path path=new Path(getProxiedFSTestDir(),"testAclStatus.txt");
+  OutputStream os=proxyFs.create(path);
+  os.write(1);
+  os.close();
+  AclStatus proxyAclStat=proxyFs.getAclStatus(path);
+  AclStatus httpfsAclStat=httpfs.getAclStatus(path);
+  assertSameAcls(httpfsAclStat,proxyAclStat);
+  httpfs.setAcl(path,AclEntry.parseAclSpec(aclSet,true));
+  proxyAclStat=proxyFs.getAclStatus(path);
+  httpfsAclStat=httpfs.getAclStatus(path);
+  assertSameAcls(httpfsAclStat,proxyAclStat);
+  httpfs.modifyAclEntries(path,AclEntry.parseAclSpec(aclUser2,true));
+  proxyAclStat=proxyFs.getAclStatus(path);
+  httpfsAclStat=httpfs.getAclStatus(path);
+  assertSameAcls(httpfsAclStat,proxyAclStat);
+  httpfs.removeAclEntries(path,AclEntry.parseAclSpec(aclUser1,true));
+  proxyAclStat=proxyFs.getAclStatus(path);
+  httpfsAclStat=httpfs.getAclStatus(path);
+  assertSameAcls(httpfsAclStat,proxyAclStat);
+  httpfs.removeAcl(path);
+  proxyAclStat=proxyFs.getAclStatus(path);
+  httpfsAclStat=httpfs.getAclStatus(path);
+  assertSameAcls(httpfsAclStat,proxyAclStat);
+}
