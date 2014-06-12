@@ -1,0 +1,42 @@
+{
+  if (app == null) {
+    throw new IllegalArgumentException("app cannot be null");
+  }
+  String userName=callerUGI.getUserName();
+  final ApplicationId appid=app.getApplicationId();
+  KillApplicationResponse resp=null;
+  try {
+    resp=callerUGI.doAs(new PrivilegedExceptionAction<KillApplicationResponse>(){
+      @Override public KillApplicationResponse run() throws IOException, YarnException {
+        KillApplicationRequest req=KillApplicationRequest.newInstance(appid);
+        return rm.getClientRMService().forceKillApplication(req);
+      }
+    }
+);
+  }
+ catch (  UndeclaredThrowableException ue) {
+    if (ue.getCause() instanceof YarnException) {
+      YarnException ye=(YarnException)ue.getCause();
+      if (ye.getCause() instanceof AccessControlException) {
+        String appId=app.getApplicationId().toString();
+        String msg="Unauthorized attempt to kill appid " + appId + " by remote user "+ userName;
+        return Response.status(Status.FORBIDDEN).entity(msg).build();
+      }
+ else {
+        throw ue;
+      }
+    }
+ else {
+      throw ue;
+    }
+  }
+  AppState ret=new AppState();
+  ret.setState(app.getState().toString());
+  if (resp.getIsKillCompleted()) {
+    RMAuditLogger.logSuccess(userName,AuditConstants.KILL_APP_REQUEST,"RMWebService",app.getApplicationId());
+  }
+ else {
+    return Response.status(Status.ACCEPTED).entity(ret).header(HttpHeaders.LOCATION,hsr.getRequestURL()).build();
+  }
+  return Response.status(Status.OK).entity(ret).build();
+}
