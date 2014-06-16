@@ -5,14 +5,6 @@
   int httpPort=request.getHttpPort();
   Resource capability=request.getResource();
   String nodeManagerVersion=request.getNMVersion();
-  if (!rmContext.isWorkPreservingRecoveryEnabled()) {
-    if (!request.getNMContainerStatuses().isEmpty()) {
-      LOG.info("received container statuses on node manager register :" + request.getNMContainerStatuses());
-      for (      NMContainerStatus status : request.getNMContainerStatuses()) {
-        handleNMContainerStatus(status);
-      }
-    }
-  }
   RegisterNodeManagerResponse response=recordFactory.newRecordInstance(RegisterNodeManagerResponse.class);
   if (!minimumNodeManagerVersion.equals("NONE")) {
     if (minimumNodeManagerVersion.equals("EqualToRM")) {
@@ -45,7 +37,7 @@
   RMNode rmNode=new RMNodeImpl(nodeId,rmContext,host,cmPort,httpPort,resolve(host),ResourceOption.newInstance(capability,RMNode.OVER_COMMIT_TIMEOUT_MILLIS_DEFAULT),nodeManagerVersion);
   RMNode oldNode=this.rmContext.getRMNodes().putIfAbsent(nodeId,rmNode);
   if (oldNode == null) {
-    this.rmContext.getDispatcher().getEventHandler().handle(new RMNodeStartedEvent(nodeId,request.getNMContainerStatuses()));
+    this.rmContext.getDispatcher().getEventHandler().handle(new RMNodeStartedEvent(nodeId,request.getNMContainerStatuses(),request.getRunningApplications()));
   }
  else {
     LOG.info("Reconnect from the node at: " + host);
@@ -54,6 +46,14 @@
   }
   this.nmTokenSecretManager.removeNodeKey(nodeId);
   this.nmLivelinessMonitor.register(nodeId);
+  if (!rmContext.isWorkPreservingRecoveryEnabled()) {
+    if (!request.getNMContainerStatuses().isEmpty()) {
+      LOG.info("received container statuses on node manager register :" + request.getNMContainerStatuses());
+      for (      NMContainerStatus status : request.getNMContainerStatuses()) {
+        handleNMContainerStatus(status);
+      }
+    }
+  }
   String message="NodeManager from node " + host + "(cmPort: "+ cmPort+ " httpPort: "+ httpPort+ ") "+ "registered with capability: "+ capability+ ", assigned nodeId "+ nodeId;
   LOG.info(message);
   response.setNodeAction(NodeAction.NORMAL);
