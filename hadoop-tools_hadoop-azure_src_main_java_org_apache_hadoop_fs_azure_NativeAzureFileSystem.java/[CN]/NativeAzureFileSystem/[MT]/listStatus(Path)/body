@@ -1,0 +1,41 @@
+{
+  if (LOG.isDebugEnabled()) {
+    LOG.debug("Listing status for " + f.toString());
+  }
+  Path absolutePath=makeAbsolute(f);
+  String key=pathToKey(absolutePath);
+  Set<FileStatus> status=new TreeSet<FileStatus>();
+  FileMetadata meta=store.retrieveMetadata(key);
+  if (meta != null) {
+    if (!meta.isDir()) {
+      if (LOG.isDebugEnabled()) {
+        LOG.debug("Found path as a file");
+      }
+      return new FileStatus[]{newFile(meta,absolutePath)};
+    }
+    String partialKey=null;
+    PartialListing listing=store.list(key,AZURE_LIST_ALL,1,partialKey);
+    for (    FileMetadata fileMetadata : listing.getFiles()) {
+      Path subpath=keyToPath(fileMetadata.getKey());
+      if (fileMetadata.isDir()) {
+        if (fileMetadata.getKey().equals(AZURE_TEMP_FOLDER)) {
+          continue;
+        }
+        status.add(newDirectory(fileMetadata,subpath));
+      }
+ else {
+        status.add(newFile(fileMetadata,subpath));
+      }
+    }
+    if (LOG.isDebugEnabled()) {
+      LOG.debug("Found path as a directory with " + status.size() + " files in it.");
+    }
+  }
+ else {
+    if (LOG.isDebugEnabled()) {
+      LOG.debug("Did not find any metadata for path: " + key);
+    }
+    throw new FileNotFoundException("File" + f + " does not exist.");
+  }
+  return status.toArray(new FileStatus[0]);
+}

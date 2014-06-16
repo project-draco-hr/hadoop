@@ -1,0 +1,50 @@
+{
+  if (null == storageInteractionLayer) {
+    final String errMsg=String.format("Storage session expected for URI '%s' but does not exist.",sessionUri);
+    throw new AssertionError(errMsg);
+  }
+  if (LOG.isDebugEnabled()) {
+    LOG.debug("Retrieving metadata for " + key);
+  }
+  try {
+    if (checkContainer(ContainerAccessType.PureRead) == ContainerState.DoesntExist) {
+      return null;
+    }
+    if (key.equals("/")) {
+      return new FileMetadata(key,0,defaultPermissionNoBlobMetadata(),BlobMaterialization.Implicit);
+    }
+    CloudBlockBlobWrapper blob=getBlobReference(key);
+    if (null != blob && blob.exists(getInstrumentedContext())) {
+      if (LOG.isDebugEnabled()) {
+        LOG.debug("Found " + key + " as an explicit blob. Checking if it's a file or folder.");
+      }
+      blob.downloadAttributes(getInstrumentedContext());
+      BlobProperties properties=blob.getProperties();
+      if (retrieveFolderAttribute(blob)) {
+        if (LOG.isDebugEnabled()) {
+          LOG.debug(key + " is a folder blob.");
+        }
+        return new FileMetadata(key,properties.getLastModified().getTime(),getPermissionStatus(blob),BlobMaterialization.Explicit);
+      }
+ else {
+        if (LOG.isDebugEnabled()) {
+          LOG.debug(key + " is a normal blob.");
+        }
+        return new FileMetadata(key,properties.getLength(),properties.getLastModified().getTime(),getPermissionStatus(blob));
+      }
+    }
+    Iterable<ListBlobItem> objects=listRootBlobs(key,true,EnumSet.of(BlobListingDetails.METADATA),null,getInstrumentedContext());
+    for (    ListBlobItem blobItem : objects) {
+      if (blobItem instanceof CloudBlockBlobWrapper) {
+        LOG.debug("Found blob as a directory-using this file under it to infer its properties " + blobItem.getUri());
+        blob=(CloudBlockBlobWrapper)blobItem;
+        BlobProperties properties=blob.getProperties();
+        return new FileMetadata(key,properties.getLastModified().getTime(),getPermissionStatus(blob),BlobMaterialization.Implicit);
+      }
+    }
+    return null;
+  }
+ catch (  Exception e) {
+    throw new AzureException(e);
+  }
+}

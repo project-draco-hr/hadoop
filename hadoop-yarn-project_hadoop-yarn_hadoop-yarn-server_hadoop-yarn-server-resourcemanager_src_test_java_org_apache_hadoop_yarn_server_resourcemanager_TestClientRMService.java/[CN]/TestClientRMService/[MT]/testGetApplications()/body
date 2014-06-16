@@ -18,16 +18,25 @@
   String[] appNames={MockApps.newAppName(),MockApps.newAppName(),MockApps.newAppName()};
   ApplicationId[] appIds={getApplicationId(101),getApplicationId(102),getApplicationId(103)};
   List<String> tags=Arrays.asList("Tag1","Tag2","Tag3");
+  long[] submitTimeMillis=new long[3];
   for (int i=0; i < appIds.length; i++) {
     ApplicationId appId=appIds[i];
     when(mockAclsManager.checkAccess(UserGroupInformation.getCurrentUser(),ApplicationAccessType.VIEW_APP,null,appId)).thenReturn(true);
     SubmitApplicationRequest submitRequest=mockSubmitAppRequest(appId,appNames[i],queues[i % queues.length],new HashSet<String>(tags.subList(0,i + 1)));
     rmService.submitApplication(submitRequest);
+    submitTimeMillis[i]=System.currentTimeMillis();
   }
   GetApplicationsRequest request=GetApplicationsRequest.newInstance();
   assertEquals("Incorrect total number of apps",6,rmService.getApplications(request).getApplicationList().size());
   request.setLimit(1L);
   assertEquals("Failed to limit applications",1,rmService.getApplications(request).getApplicationList().size());
+  request=GetApplicationsRequest.newInstance();
+  request.setStartRange(submitTimeMillis[0],System.currentTimeMillis());
+  assertEquals("Incorrect number of matching start range",2,rmService.getApplications(request).getApplicationList().size());
+  request.setStartRange(submitTimeMillis[1],System.currentTimeMillis());
+  assertEquals("Incorrect number of matching start range",1,rmService.getApplications(request).getApplicationList().size());
+  request.setStartRange(submitTimeMillis[2],System.currentTimeMillis());
+  assertEquals("Incorrect number of matching start range",0,rmService.getApplications(request).getApplicationList().size());
   request=GetApplicationsRequest.newInstance();
   Set<String> queueSet=new HashSet<String>();
   request.setQueues(queueSet);

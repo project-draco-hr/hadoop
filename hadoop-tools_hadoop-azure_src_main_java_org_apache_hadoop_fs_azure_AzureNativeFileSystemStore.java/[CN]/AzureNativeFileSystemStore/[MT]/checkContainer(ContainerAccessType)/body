@@ -1,0 +1,60 @@
+{
+synchronized (containerStateLock) {
+    if (isOkContainerState(accessType)) {
+      return currentKnownContainerState;
+    }
+    if (currentKnownContainerState == ContainerState.ExistsAtWrongVersion) {
+      String containerVersion=retrieveVersionAttribute(container);
+      throw wrongVersionException(containerVersion);
+    }
+    if (currentKnownContainerState == ContainerState.ExistsAtRightVersion) {
+      throw new AssertionError("Unexpected state: " + currentKnownContainerState);
+    }
+    try {
+      container.downloadAttributes(getInstrumentedContext());
+      currentKnownContainerState=ContainerState.Unknown;
+    }
+ catch (    StorageException ex) {
+      if (ex.getErrorCode().equals(StorageErrorCode.RESOURCE_NOT_FOUND.toString())) {
+        currentKnownContainerState=ContainerState.DoesntExist;
+      }
+ else {
+        throw ex;
+      }
+    }
+    if (currentKnownContainerState == ContainerState.DoesntExist) {
+      if (needToCreateContainer(accessType)) {
+        storeVersionAttribute(container);
+        container.create(getInstrumentedContext());
+        currentKnownContainerState=ContainerState.ExistsAtRightVersion;
+      }
+    }
+ else {
+      String containerVersion=retrieveVersionAttribute(container);
+      if (containerVersion != null) {
+        if (containerVersion.equals(FIRST_WASB_VERSION)) {
+          if (needToStampVersion(accessType)) {
+            storeVersionAttribute(container);
+            container.uploadMetadata(getInstrumentedContext());
+          }
+        }
+ else         if (!containerVersion.equals(CURRENT_WASB_VERSION)) {
+          currentKnownContainerState=ContainerState.ExistsAtWrongVersion;
+          throw wrongVersionException(containerVersion);
+        }
+ else {
+          currentKnownContainerState=ContainerState.ExistsAtRightVersion;
+        }
+      }
+ else {
+        currentKnownContainerState=ContainerState.ExistsNoVersion;
+        if (needToStampVersion(accessType)) {
+          storeVersionAttribute(container);
+          container.uploadMetadata(getInstrumentedContext());
+          currentKnownContainerState=ContainerState.ExistsAtRightVersion;
+        }
+      }
+    }
+    return currentKnownContainerState;
+  }
+}

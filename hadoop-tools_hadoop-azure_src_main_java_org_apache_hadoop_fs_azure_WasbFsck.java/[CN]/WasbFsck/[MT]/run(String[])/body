@@ -1,0 +1,58 @@
+{
+  if (doPrintUsage(Arrays.asList(args))) {
+    printUsage();
+    return -1;
+  }
+  Path pathToCheck=null;
+  boolean doRecover=false;
+  boolean doDelete=false;
+  for (  String arg : args) {
+    if (!arg.startsWith("-")) {
+      if (pathToCheck != null) {
+        System.err.println("Can't specify multiple paths to check on the command-line");
+        return 1;
+      }
+      pathToCheck=new Path(arg);
+    }
+ else     if (arg.equals("-move")) {
+      doRecover=true;
+    }
+ else     if (arg.equals("-delete")) {
+      doDelete=true;
+    }
+  }
+  if (doRecover && doDelete) {
+    System.err.println("Conflicting options: can't specify both -move and -delete.");
+    return 1;
+  }
+  if (pathToCheck == null) {
+    pathToCheck=new Path("/");
+  }
+  FileSystem fs;
+  if (mockFileSystemForTesting == null) {
+    fs=FileSystem.get(pathToCheck.toUri(),getConf());
+  }
+ else {
+    fs=mockFileSystemForTesting;
+  }
+  if (!recursiveCheckChildPathName(fs,fs.makeQualified(pathToCheck))) {
+    pathNameWarning=true;
+  }
+  if (!(fs instanceof NativeAzureFileSystem)) {
+    System.err.println("Can only check WASB file system. Instead I'm asked to" + " check: " + fs.getUri());
+    return 2;
+  }
+  NativeAzureFileSystem wasbFs=(NativeAzureFileSystem)fs;
+  if (doRecover) {
+    System.out.println("Recovering files with dangling data under: " + pathToCheck);
+    wasbFs.recoverFilesWithDanglingTempData(pathToCheck,new Path(LOST_AND_FOUND_PATH));
+  }
+ else   if (doDelete) {
+    System.out.println("Deleting temp files with dangling data under: " + pathToCheck);
+    wasbFs.deleteFilesWithDanglingTempData(pathToCheck);
+  }
+ else {
+    System.out.println("Please specify -move or -delete");
+  }
+  return 0;
+}

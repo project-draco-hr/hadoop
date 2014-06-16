@@ -1,0 +1,50 @@
+{
+  src=FSDirectory.normalizePath(src);
+  String[] names=INode.getPathNames(src);
+  byte[][] components=INode.getPathComponents(names);
+  final int lastInodeIndex=components.length - 1;
+  dir.writeLock();
+  try {
+    INodesInPath iip=dir.getExistingPathINodes(components);
+    if (iip.isSnapshot()) {
+      throw new SnapshotAccessControlException("Modification on RO snapshot is disallowed");
+    }
+    INode[] inodes=iip.getINodes();
+    StringBuilder pathbuilder=new StringBuilder();
+    int i=1;
+    for (; i < inodes.length && inodes[i] != null; i++) {
+      pathbuilder.append(Path.SEPARATOR).append(names[i]);
+      if (!inodes[i].isDirectory()) {
+        throw new FileAlreadyExistsException("Parent path is not a directory: " + pathbuilder + " "+ inodes[i].getLocalName());
+      }
+    }
+    PermissionStatus parentPermissions=permissions;
+    if (inheritPermission || (i < lastInodeIndex)) {
+      FsPermission parentFsPerm=inheritPermission ? inodes[i - 1].getFsPermission() : permissions.getPermission();
+      if (!parentFsPerm.getUserAction().implies(FsAction.WRITE_EXECUTE)) {
+        parentFsPerm=new FsPermission(parentFsPerm.getUserAction().or(FsAction.WRITE_EXECUTE),parentFsPerm.getGroupAction(),parentFsPerm.getOtherAction());
+      }
+      if (!parentPermissions.getPermission().equals(parentFsPerm)) {
+        parentPermissions=new PermissionStatus(parentPermissions.getUserName(),parentPermissions.getGroupName(),parentFsPerm);
+        if (inheritPermission)         permissions=parentPermissions;
+      }
+    }
+    for (; i < inodes.length; i++) {
+      pathbuilder.append(Path.SEPARATOR).append(names[i]);
+      dir.unprotectedMkdir(allocateNewInodeId(),iip,i,components[i],(i < lastInodeIndex) ? parentPermissions : permissions,null,now);
+      if (inodes[i] == null) {
+        return false;
+      }
+      NameNode.getNameNodeMetrics().incrFilesCreated();
+      final String cur=pathbuilder.toString();
+      getEditLog().logMkDir(cur,inodes[i]);
+      if (NameNode.stateChangeLog.isDebugEnabled()) {
+        NameNode.stateChangeLog.debug("mkdirs: created directory " + cur);
+      }
+    }
+  }
+  finally {
+    dir.writeUnlock();
+  }
+  return true;
+}

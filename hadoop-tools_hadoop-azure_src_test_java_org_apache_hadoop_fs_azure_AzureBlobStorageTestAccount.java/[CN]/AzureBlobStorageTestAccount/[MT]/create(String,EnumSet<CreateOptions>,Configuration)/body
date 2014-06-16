@@ -1,0 +1,34 @@
+{
+  NativeAzureFileSystem fs=null;
+  CloudBlobContainer container=null;
+  Configuration conf=createTestConfiguration(initialConfiguration);
+  CloudStorageAccount account=createTestAccount(conf);
+  if (account == null) {
+    return null;
+  }
+  fs=new NativeAzureFileSystem();
+  String containerName=String.format("wasbtests-%s-%tQ%s",System.getProperty("user.name"),new Date(),containerNameSuffix);
+  container=account.createCloudBlobClient().getContainerReference(containerName);
+  if (createOptions.contains(CreateOptions.CreateContainer)) {
+    container.create();
+  }
+  String accountName=conf.get(TEST_ACCOUNT_NAME_PROPERTY_NAME);
+  if (createOptions.contains(CreateOptions.UseSas)) {
+    String sas=generateSAS(container,createOptions.contains(CreateOptions.Readonly));
+    if (!createOptions.contains(CreateOptions.CreateContainer)) {
+      container.delete();
+    }
+    conf.set(ACCOUNT_KEY_PROPERTY_NAME + accountName,"");
+    conf.set(SAS_PROPERTY_NAME + containerName + "."+ accountName,sas);
+  }
+  if (createOptions.contains(CreateOptions.useThrottling)) {
+    conf.setBoolean(KEY_DISABLE_THROTTLING,false);
+  }
+ else {
+    conf.setBoolean(KEY_DISABLE_THROTTLING,true);
+  }
+  URI accountUri=createAccountUri(accountName,containerName);
+  fs.initialize(accountUri,conf);
+  AzureBlobStorageTestAccount testAcct=new AzureBlobStorageTestAccount(fs,account,container);
+  return testAcct;
+}

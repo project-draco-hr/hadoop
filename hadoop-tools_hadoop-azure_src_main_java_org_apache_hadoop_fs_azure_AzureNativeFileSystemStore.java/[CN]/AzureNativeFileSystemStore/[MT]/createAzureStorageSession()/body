@@ -1,0 +1,34 @@
+{
+  if (null == sessionUri || null == sessionConfiguration) {
+    throw new AzureException("Filesystem object not initialized properly." + "Unable to start session with Azure Storage server.");
+  }
+  try {
+    if (getContainerFromAuthority(sessionUri) == null) {
+      throw new AssertionError(String.format("Non-null container expected from session URI: %s.",sessionUri.toString()));
+    }
+    String accountName=getAccountFromAuthority(sessionUri);
+    if (null == accountName) {
+      final String errMsg=String.format("Cannot load WASB file system account name not" + " specified in URI: %s.",sessionUri.toString());
+      throw new AzureException(errMsg);
+    }
+    String containerName=getContainerFromAuthority(sessionUri);
+    if (isStorageEmulatorAccount(accountName)) {
+      connectUsingCredentials(accountName,null,containerName);
+      return;
+    }
+    String propertyValue=sessionConfiguration.get(KEY_ACCOUNT_SAS_PREFIX + containerName + "."+ accountName);
+    if (propertyValue != null) {
+      connectUsingSASCredentials(accountName,containerName,propertyValue);
+      return;
+    }
+    propertyValue=getAccountKeyFromConfiguration(accountName,sessionConfiguration);
+    if (propertyValue != null) {
+      connectUsingConnectionStringCredentials(getAccountFromAuthority(sessionUri),getContainerFromAuthority(sessionUri),propertyValue);
+      return;
+    }
+    connectUsingAnonymousCredentials(sessionUri);
+  }
+ catch (  Exception e) {
+    throw new AzureException(e);
+  }
+}
