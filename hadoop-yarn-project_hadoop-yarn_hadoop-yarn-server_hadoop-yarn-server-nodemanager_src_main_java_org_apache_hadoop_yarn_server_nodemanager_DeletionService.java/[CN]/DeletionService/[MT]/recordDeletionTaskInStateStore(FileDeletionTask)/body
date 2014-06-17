@@ -1,0 +1,36 @@
+{
+  if (!stateStore.canRecover()) {
+    return;
+  }
+  if (task.taskId != FileDeletionTask.INVALID_TASK_ID) {
+    return;
+  }
+  task.taskId=generateTaskId();
+  FileDeletionTask[] successors=task.getSuccessorTasks();
+  for (  FileDeletionTask successor : successors) {
+    recordDeletionTaskInStateStore(successor);
+  }
+  DeletionServiceDeleteTaskProto.Builder builder=DeletionServiceDeleteTaskProto.newBuilder();
+  builder.setId(task.taskId);
+  if (task.getUser() != null) {
+    builder.setUser(task.getUser());
+  }
+  if (task.getSubDir() != null) {
+    builder.setSubdir(task.getSubDir().toString());
+  }
+  builder.setDeletionTime(System.currentTimeMillis() + TimeUnit.MILLISECONDS.convert(debugDelay,TimeUnit.SECONDS));
+  if (task.getBaseDirs() != null) {
+    for (    Path dir : task.getBaseDirs()) {
+      builder.addBasedirs(dir.toString());
+    }
+  }
+  for (  FileDeletionTask successor : successors) {
+    builder.addSuccessorIds(successor.taskId);
+  }
+  try {
+    stateStore.storeDeletionTask(task.taskId,builder.build());
+  }
+ catch (  IOException e) {
+    LOG.error("Unable to store deletion task " + task.taskId + " for "+ task.getSubDir(),e);
+  }
+}

@@ -1,0 +1,27 @@
+{
+  List<DeletionServiceDeleteTaskProto> taskProtos=state.getTasks();
+  Map<Integer,DeletionTaskRecoveryInfo> idToInfoMap=new HashMap<Integer,DeletionTaskRecoveryInfo>(taskProtos.size());
+  Set<Integer> successorTasks=new HashSet<Integer>();
+  for (  DeletionServiceDeleteTaskProto proto : taskProtos) {
+    DeletionTaskRecoveryInfo info=parseTaskProto(proto);
+    idToInfoMap.put(info.task.taskId,info);
+    nextTaskId.set(Math.max(nextTaskId.get(),info.task.taskId));
+    successorTasks.addAll(info.successorTaskIds);
+  }
+  final long now=System.currentTimeMillis();
+  for (  DeletionTaskRecoveryInfo info : idToInfoMap.values()) {
+    for (    Integer successorId : info.successorTaskIds) {
+      DeletionTaskRecoveryInfo successor=idToInfoMap.get(successorId);
+      if (successor != null) {
+        info.task.addFileDeletionTaskDependency(successor.task);
+      }
+ else {
+        LOG.error("Unable to locate dependency task for deletion task " + info.task.taskId + " at "+ info.task.getSubDir());
+      }
+    }
+    if (!successorTasks.contains(info.task.taskId)) {
+      long msecTilDeletion=info.deletionTimestamp - now;
+      sched.schedule(info.task,msecTilDeletion,TimeUnit.MILLISECONDS);
+    }
+  }
+}
