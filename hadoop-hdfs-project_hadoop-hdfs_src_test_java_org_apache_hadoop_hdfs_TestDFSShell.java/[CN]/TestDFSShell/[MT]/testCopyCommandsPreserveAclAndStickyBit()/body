@@ -1,0 +1,63 @@
+{
+  Configuration conf=new Configuration();
+  conf.setBoolean(DFSConfigKeys.DFS_NAMENODE_ACLS_ENABLED_KEY,true);
+  MiniDFSCluster cluster=new MiniDFSCluster.Builder(conf).numDataNodes(1).format(true).build();
+  FsShell shell=null;
+  FileSystem fs=null;
+  final String testdir="/tmp/TestDFSShell-testCopyCommandsPreserveAclAndStickyBit-" + counter.getAndIncrement();
+  final Path hdfsTestDir=new Path(testdir);
+  try {
+    fs=cluster.getFileSystem();
+    fs.mkdirs(hdfsTestDir);
+    Path src=new Path(hdfsTestDir,"srcfile");
+    fs.create(src).close();
+    fs.setAcl(src,Lists.newArrayList(aclEntry(ACCESS,USER,ALL),aclEntry(ACCESS,USER,"foo",ALL),aclEntry(ACCESS,GROUP,READ_EXECUTE),aclEntry(ACCESS,GROUP,"bar",READ_EXECUTE),aclEntry(ACCESS,OTHER,EXECUTE)));
+    fs.setPermission(src,new FsPermission(ALL,READ_EXECUTE,EXECUTE,true));
+    FileStatus status=fs.getFileStatus(src);
+    final long mtime=status.getModificationTime();
+    final long atime=status.getAccessTime();
+    final String owner=status.getOwner();
+    final String group=status.getGroup();
+    final FsPermission perm=status.getPermission();
+    shell=new FsShell(conf);
+    Path target1=new Path(hdfsTestDir,"targetfile1");
+    String[] argv=new String[]{"-cp","-p",src.toUri().toString(),target1.toUri().toString()};
+    int ret=ToolRunner.run(shell,argv);
+    assertEquals("cp is not working",SUCCESS,ret);
+    FileStatus targetStatus=fs.getFileStatus(target1);
+    assertEquals(mtime,targetStatus.getModificationTime());
+    assertEquals(atime,targetStatus.getAccessTime());
+    assertEquals(owner,targetStatus.getOwner());
+    assertEquals(group,targetStatus.getGroup());
+    FsPermission targetPerm=targetStatus.getPermission();
+    assertTrue(perm.equals(targetPerm));
+    List<AclEntry> acls=fs.getAclStatus(target1).getEntries();
+    assertTrue(acls.isEmpty());
+    assertFalse(targetPerm.getAclBit());
+    Path target2=new Path(hdfsTestDir,"targetfile2");
+    argv=new String[]{"-cp","-ptopa",src.toUri().toString(),target2.toUri().toString()};
+    ret=ToolRunner.run(shell,argv);
+    assertEquals("cp -ptopa is not working",SUCCESS,ret);
+    targetStatus=fs.getFileStatus(target2);
+    assertEquals(mtime,targetStatus.getModificationTime());
+    assertEquals(atime,targetStatus.getAccessTime());
+    assertEquals(owner,targetStatus.getOwner());
+    assertEquals(group,targetStatus.getGroup());
+    targetPerm=targetStatus.getPermission();
+    assertTrue(perm.equals(targetPerm));
+    acls=fs.getAclStatus(target2).getEntries();
+    assertFalse(acls.isEmpty());
+    assertTrue(targetPerm.getAclBit());
+    assertEquals(fs.getAclStatus(src),fs.getAclStatus(target2));
+  }
+  finally {
+    if (null != shell) {
+      shell.close();
+    }
+    if (null != fs) {
+      fs.delete(hdfsTestDir,true);
+      fs.close();
+    }
+    cluster.shutdown();
+  }
+}
