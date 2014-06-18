@@ -1,0 +1,63 @@
+{
+  int startIndex=getBlockIndex(blkLocations,offset);
+  long bytesInThisBlock=blkLocations[startIndex].getOffset() + blkLocations[startIndex].getLength() - offset;
+  if (bytesInThisBlock >= splitSize) {
+    return new String[][]{blkLocations[startIndex].getHosts(),blkLocations[startIndex].getCachedHosts()};
+  }
+  long bytesInFirstBlock=bytesInThisBlock;
+  int index=startIndex + 1;
+  splitSize-=bytesInThisBlock;
+  while (splitSize > 0) {
+    bytesInThisBlock=Math.min(splitSize,blkLocations[index++].getLength());
+    splitSize-=bytesInThisBlock;
+  }
+  long bytesInLastBlock=bytesInThisBlock;
+  int endIndex=index - 1;
+  Map<Node,NodeInfo> hostsMap=new IdentityHashMap<Node,NodeInfo>();
+  Map<Node,NodeInfo> racksMap=new IdentityHashMap<Node,NodeInfo>();
+  String[] allTopos=new String[0];
+  for (index=startIndex; index <= endIndex; index++) {
+    if (index == startIndex) {
+      bytesInThisBlock=bytesInFirstBlock;
+    }
+ else     if (index == endIndex) {
+      bytesInThisBlock=bytesInLastBlock;
+    }
+ else {
+      bytesInThisBlock=blkLocations[index].getLength();
+    }
+    allTopos=blkLocations[index].getTopologyPaths();
+    if (allTopos.length == 0) {
+      allTopos=fakeRacks(blkLocations,index);
+    }
+    for (    String topo : allTopos) {
+      Node node, parentNode;
+      NodeInfo nodeInfo, parentNodeInfo;
+      node=clusterMap.getNode(topo);
+      if (node == null) {
+        node=new NodeBase(topo);
+        clusterMap.add(node);
+      }
+      nodeInfo=hostsMap.get(node);
+      if (nodeInfo == null) {
+        nodeInfo=new NodeInfo(node);
+        hostsMap.put(node,nodeInfo);
+        parentNode=node.getParent();
+        parentNodeInfo=racksMap.get(parentNode);
+        if (parentNodeInfo == null) {
+          parentNodeInfo=new NodeInfo(parentNode);
+          racksMap.put(parentNode,parentNodeInfo);
+        }
+        parentNodeInfo.addLeaf(nodeInfo);
+      }
+ else {
+        nodeInfo=hostsMap.get(node);
+        parentNode=node.getParent();
+        parentNodeInfo=racksMap.get(parentNode);
+      }
+      nodeInfo.addValue(index,bytesInThisBlock);
+      parentNodeInfo.addValue(index,bytesInThisBlock);
+    }
+  }
+  return new String[][]{identifyHosts(allTopos.length,racksMap),new String[0]};
+}
