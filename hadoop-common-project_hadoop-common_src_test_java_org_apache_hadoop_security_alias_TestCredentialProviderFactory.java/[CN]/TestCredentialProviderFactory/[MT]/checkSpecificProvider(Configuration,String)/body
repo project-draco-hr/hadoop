@@ -1,0 +1,47 @@
+{
+  CredentialProvider provider=CredentialProviderFactory.getProviders(conf).get(0);
+  char[] passwd=generatePassword(16);
+  assertEquals(null,provider.getCredentialEntry("no-such-key"));
+  assertEquals(null,provider.getCredentialEntry("key"));
+  try {
+    provider.createCredentialEntry("pass",passwd);
+  }
+ catch (  Exception e) {
+    e.printStackTrace();
+    throw e;
+  }
+  assertArrayEquals(passwd,provider.getCredentialEntry("pass").getCredential());
+  try {
+    provider.createCredentialEntry("pass",passwd);
+    assertTrue("should throw",false);
+  }
+ catch (  IOException e) {
+    assertEquals("Credential pass already exists in " + ourUrl,e.getMessage());
+  }
+  provider.deleteCredentialEntry("pass");
+  try {
+    provider.deleteCredentialEntry("pass");
+    assertTrue("should throw",false);
+  }
+ catch (  IOException e) {
+    assertEquals("Credential pass does not exist in " + ourUrl,e.getMessage());
+  }
+  char[] passTwo=new char[]{'1','2','3'};
+  provider.createCredentialEntry("pass",passwd);
+  provider.createCredentialEntry("pass2",passTwo);
+  assertArrayEquals(passTwo,provider.getCredentialEntry("pass2").getCredential());
+  provider.flush();
+  assertArrayEquals(passTwo,conf.getPassword("pass2"));
+  conf.set("onetwothree","123");
+  assertArrayEquals(passTwo,conf.getPassword("onetwothree"));
+  conf.set(CredentialProvider.CLEAR_TEXT_FALLBACK,"false");
+  assertArrayEquals(null,conf.getPassword("onetwothree"));
+  provider=CredentialProviderFactory.getProviders(conf).get(0);
+  assertTrue(provider != null);
+  assertArrayEquals(new char[]{'1','2','3'},provider.getCredentialEntry("pass2").getCredential());
+  assertArrayEquals(passwd,provider.getCredentialEntry("pass").getCredential());
+  List<String> creds=provider.getAliases();
+  assertTrue("Credentials should have been returned.",creds.size() == 2);
+  assertTrue("Returned Credentials should have included pass.",creds.contains("pass"));
+  assertTrue("Returned Credentials should have included pass2.",creds.contains("pass2"));
+}
