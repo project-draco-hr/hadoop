@@ -1,0 +1,23 @@
+{
+  final HdfsAdmin dfsAdmin=new HdfsAdmin(FileSystem.getDefaultUri(conf),conf);
+  final UserGroupInformation user=UserGroupInformation.createUserForTesting("user",new String[]{"mygroup"});
+  final Path TEST_PATH_SUPERUSER_ONLY=new Path(TEST_PATH,"superuseronly");
+  final Path TEST_PATH_ALL=new Path(TEST_PATH,"accessall");
+  FileSystem.mkdirs(fs,TEST_PATH_SUPERUSER_ONLY,new FsPermission((short)0700));
+  dfsAdmin.createEncryptionZone(TEST_PATH_SUPERUSER_ONLY,null);
+  FileSystem.mkdirs(fs,TEST_PATH_ALL,new FsPermission((short)0707));
+  dfsAdmin.createEncryptionZone(TEST_PATH_ALL,null);
+  user.doAs(new PrivilegedExceptionAction<Object>(){
+    @Override public Object run() throws Exception {
+      final HdfsAdmin userAdmin=new HdfsAdmin(FileSystem.getDefaultUri(conf),conf);
+      try {
+        final List<EncryptionZone> zones=userAdmin.listEncryptionZones();
+      }
+ catch (      AccessControlException e) {
+        GenericTestUtils.assertExceptionContains("Superuser privilege is required",e);
+      }
+      return null;
+    }
+  }
+);
+}

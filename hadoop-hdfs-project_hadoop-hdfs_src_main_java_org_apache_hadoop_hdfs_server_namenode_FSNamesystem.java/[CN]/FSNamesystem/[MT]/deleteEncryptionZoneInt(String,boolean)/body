@@ -1,0 +1,29 @@
+{
+  String src=srcArg;
+  HdfsFileStatus resultingStat=null;
+  checkSuperuserPrivilege();
+  checkOperation(OperationCategory.WRITE);
+  final byte[][] pathComponents=FSDirectory.getPathComponentsForReservedPath(src);
+  writeLock();
+  try {
+    checkSuperuserPrivilege();
+    checkOperation(OperationCategory.WRITE);
+    checkNameNodeSafeMode("Cannot delete encryption zone on " + src);
+    src=FSDirectory.resolvePath(src,pathComponents,dir);
+    final EncryptionZone ez=encryptionZones.get(src);
+    if (ez == null) {
+      throw new IOException("Directory " + src + " is not the root of an encryption zone.");
+    }
+    final XAttr removedXAttr=dir.deleteEncryptionZone(src);
+    if (removedXAttr != null) {
+      getEditLog().logRemoveXAttr(src,removedXAttr);
+    }
+    encryptionZones.remove(src);
+    resultingStat=getAuditFileInfo(src,false);
+  }
+  finally {
+    writeUnlock();
+  }
+  getEditLog().logSync();
+  logAuditEvent(true,"deleteEncryptionZone",src,null,resultingStat);
+}
