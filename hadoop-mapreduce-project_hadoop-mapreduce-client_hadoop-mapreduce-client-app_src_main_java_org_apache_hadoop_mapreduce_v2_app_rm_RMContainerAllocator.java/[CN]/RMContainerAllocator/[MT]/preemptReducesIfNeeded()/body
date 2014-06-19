@@ -1,22 +1,25 @@
 {
-  if (reduceResourceReqt == 0) {
+  if (reduceResourceRequest == 0) {
     return;
   }
   if (scheduledRequests.maps.size() > 0) {
     int memLimit=getMemLimit();
-    int availableMemForMap=memLimit - ((assignedRequests.reduces.size() - assignedRequests.preemptionWaitingReduces.size()) * reduceResourceReqt);
-    if (availableMemForMap < mapResourceReqt) {
+    int availableMemForMap=memLimit - ((assignedRequests.reduces.size() - assignedRequests.preemptionWaitingReduces.size()) * reduceResourceRequest);
+    if (availableMemForMap < mapResourceRequest) {
       LOG.info("Ramping down all scheduled reduces:" + scheduledRequests.reduces.size());
       for (      ContainerRequest req : scheduledRequests.reduces.values()) {
         pendingReduces.add(req);
       }
       scheduledRequests.reduces.clear();
-      int premeptionLimit=Math.max(mapResourceReqt,(int)(maxReducePreemptionLimit * memLimit));
-      int preemptMem=Math.min(scheduledRequests.maps.size() * mapResourceReqt,premeptionLimit);
-      int toPreempt=(int)Math.ceil((float)preemptMem / reduceResourceReqt);
-      toPreempt=Math.min(toPreempt,assignedRequests.reduces.size());
-      LOG.info("Going to preempt " + toPreempt + " due to lack of space for maps");
-      assignedRequests.preemptReduce(toPreempt);
+      int hangingMapRequests=getNumOfHangingRequests(scheduledRequests.maps);
+      if (hangingMapRequests > 0) {
+        int premeptionLimit=Math.max(mapResourceRequest,(int)(maxReducePreemptionLimit * memLimit));
+        int preemptMem=Math.min(hangingMapRequests * mapResourceRequest,premeptionLimit);
+        int toPreempt=(int)Math.ceil((float)preemptMem / reduceResourceRequest);
+        toPreempt=Math.min(toPreempt,assignedRequests.reduces.size());
+        LOG.info("Going to preempt " + toPreempt + " due to lack of space for maps");
+        assignedRequests.preemptReduce(toPreempt);
+      }
     }
   }
 }
