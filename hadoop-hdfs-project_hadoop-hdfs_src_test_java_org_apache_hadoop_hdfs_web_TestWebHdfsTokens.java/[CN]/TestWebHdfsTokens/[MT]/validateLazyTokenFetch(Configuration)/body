@@ -1,0 +1,165 @@
+{
+  final String testUser="DummyUser";
+  UserGroupInformation ugi=UserGroupInformation.createUserForTesting(testUser,new String[]{"supergroup"});
+  WebHdfsFileSystem fs=ugi.doAs(new PrivilegedExceptionAction<WebHdfsFileSystem>(){
+    @Override public WebHdfsFileSystem run() throws IOException {
+      return spy((WebHdfsFileSystem)FileSystem.newInstance(uri,clusterConf));
+    }
+  }
+);
+  Assert.assertNull(fs.getRenewToken());
+  Token<?> token=fs.getDelegationToken(null);
+  fs.renewDelegationToken(token);
+  fs.cancelDelegationToken(token);
+  verify(fs,never()).getDelegationToken();
+  verify(fs,never()).replaceExpiredDelegationToken();
+  verify(fs,never()).setDelegationToken(any(Token.class));
+  Assert.assertNull(fs.getRenewToken());
+  reset(fs);
+  final Path p=new Path("/f");
+  fs.create(p,(short)1).close();
+  verify(fs,times(1)).getDelegationToken();
+  verify(fs,never()).replaceExpiredDelegationToken();
+  verify(fs,times(1)).getDelegationToken(anyString());
+  verify(fs,times(1)).setDelegationToken(any(Token.class));
+  token=fs.getRenewToken();
+  Assert.assertNotNull(token);
+  Assert.assertEquals(testUser,getTokenOwner(token));
+  Assert.assertEquals(fs.getTokenKind(),token.getKind());
+  reset(fs);
+  fs.getFileStatus(p);
+  verify(fs,times(1)).getDelegationToken();
+  verify(fs,never()).replaceExpiredDelegationToken();
+  verify(fs,never()).getDelegationToken(anyString());
+  verify(fs,never()).setDelegationToken(any(Token.class));
+  Token<?> token2=fs.getRenewToken();
+  Assert.assertNotNull(token2);
+  Assert.assertEquals(fs.getTokenKind(),token.getKind());
+  Assert.assertSame(token,token2);
+  reset(fs);
+  token=fs.getRenewToken();
+  fs.cancelDelegationToken(token);
+  try {
+    fs.renewDelegationToken(token);
+    Assert.fail("should have failed");
+  }
+ catch (  InvalidToken it) {
+  }
+catch (  Exception ex) {
+    Assert.fail("wrong exception:" + ex);
+  }
+  verify(fs,never()).getDelegationToken();
+  verify(fs,never()).replaceExpiredDelegationToken();
+  verify(fs,never()).getDelegationToken(anyString());
+  verify(fs,never()).setDelegationToken(any(Token.class));
+  token2=fs.getRenewToken();
+  Assert.assertNotNull(token2);
+  Assert.assertEquals(fs.getTokenKind(),token.getKind());
+  Assert.assertSame(token,token2);
+  reset(fs);
+  try {
+    fs.cancelDelegationToken(token);
+    Assert.fail("should have failed");
+  }
+ catch (  InvalidToken it) {
+  }
+catch (  Exception ex) {
+    Assert.fail("wrong exception:" + ex);
+  }
+  verify(fs,never()).getDelegationToken();
+  verify(fs,never()).replaceExpiredDelegationToken();
+  verify(fs,never()).getDelegationToken(anyString());
+  verify(fs,never()).setDelegationToken(any(Token.class));
+  token2=fs.getRenewToken();
+  Assert.assertNotNull(token2);
+  Assert.assertEquals(fs.getTokenKind(),token.getKind());
+  Assert.assertSame(token,token2);
+  reset(fs);
+  fs.open(p).close();
+  verify(fs,times(2)).getDelegationToken();
+  verify(fs,times(1)).replaceExpiredDelegationToken();
+  verify(fs,times(1)).getDelegationToken(null);
+  verify(fs,times(1)).setDelegationToken(any(Token.class));
+  token2=fs.getRenewToken();
+  Assert.assertNotNull(token2);
+  Assert.assertNotSame(token,token2);
+  Assert.assertEquals(fs.getTokenKind(),token.getKind());
+  Assert.assertEquals(testUser,getTokenOwner(token2));
+  reset(fs);
+  fs.cancelDelegationToken(fs.getRenewToken());
+  InputStream is=fs.open(p);
+  is.read();
+  is.close();
+  verify(fs,times(2)).getDelegationToken();
+  verify(fs,times(1)).replaceExpiredDelegationToken();
+  verify(fs,times(1)).getDelegationToken(null);
+  verify(fs,times(1)).setDelegationToken(any(Token.class));
+  token2=fs.getRenewToken();
+  Assert.assertNotNull(token2);
+  Assert.assertNotSame(token,token2);
+  Assert.assertEquals(fs.getTokenKind(),token.getKind());
+  Assert.assertEquals(testUser,getTokenOwner(token2));
+  reset(fs);
+  fs.close();
+  verify(fs,never()).getDelegationToken();
+  verify(fs,never()).replaceExpiredDelegationToken();
+  verify(fs,never()).getDelegationToken(anyString());
+  verify(fs,never()).setDelegationToken(any(Token.class));
+  verify(fs,times(1)).cancelDelegationToken(eq(token2));
+  token=fs.getDelegationToken(null);
+  ugi.addToken(token);
+  fs=ugi.doAs(new PrivilegedExceptionAction<WebHdfsFileSystem>(){
+    @Override public WebHdfsFileSystem run() throws IOException {
+      return spy((WebHdfsFileSystem)FileSystem.newInstance(uri,clusterConf));
+    }
+  }
+);
+  Assert.assertNull(fs.getRenewToken());
+  fs.getFileStatus(new Path("/"));
+  verify(fs,times(1)).getDelegationToken();
+  verify(fs,never()).replaceExpiredDelegationToken();
+  verify(fs,never()).getDelegationToken(anyString());
+  verify(fs,times(1)).setDelegationToken(eq(token));
+  token2=fs.getRenewToken();
+  Assert.assertNotNull(token2);
+  Assert.assertEquals(fs.getTokenKind(),token.getKind());
+  Assert.assertSame(token,token2);
+  reset(fs);
+  fs.getFileStatus(new Path("/"));
+  verify(fs,times(1)).getDelegationToken();
+  verify(fs,never()).replaceExpiredDelegationToken();
+  verify(fs,never()).getDelegationToken(anyString());
+  verify(fs,never()).setDelegationToken(any(Token.class));
+  token2=fs.getRenewToken();
+  Assert.assertNotNull(token2);
+  Assert.assertEquals(fs.getTokenKind(),token.getKind());
+  Assert.assertSame(token,token2);
+  reset(fs);
+  fs.cancelDelegationToken(token);
+  for (int i=0; i < 2; i++) {
+    try {
+      fs.getFileStatus(new Path("/"));
+      Assert.fail("didn't fail");
+    }
+ catch (    InvalidToken it) {
+    }
+catch (    Exception ex) {
+      Assert.fail("wrong exception:" + ex);
+    }
+    verify(fs,times(1)).getDelegationToken();
+    verify(fs,times(1)).replaceExpiredDelegationToken();
+    verify(fs,never()).getDelegationToken(anyString());
+    verify(fs,never()).setDelegationToken(any(Token.class));
+    token2=fs.getRenewToken();
+    Assert.assertNotNull(token2);
+    Assert.assertEquals(fs.getTokenKind(),token.getKind());
+    Assert.assertSame(token,token2);
+    reset(fs);
+  }
+  fs.close();
+  verify(fs,never()).getDelegationToken();
+  verify(fs,never()).replaceExpiredDelegationToken();
+  verify(fs,never()).getDelegationToken(anyString());
+  verify(fs,never()).setDelegationToken(any(Token.class));
+  verify(fs,never()).cancelDelegationToken(any(Token.class));
+}
