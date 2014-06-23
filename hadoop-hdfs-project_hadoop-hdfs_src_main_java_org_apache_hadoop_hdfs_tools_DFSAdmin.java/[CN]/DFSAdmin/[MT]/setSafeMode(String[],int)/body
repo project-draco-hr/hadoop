@@ -23,17 +23,26 @@
     return;
   }
   DistributedFileSystem dfs=getDFS();
-  boolean inSafeMode=dfs.setSafeMode(action);
-  if (waitExitSafe) {
-    while (inSafeMode) {
-      try {
-        Thread.sleep(5000);
+  Configuration dfsConf=dfs.getConf();
+  URI dfsUri=dfs.getUri();
+  boolean isHaEnabled=HAUtil.isLogicalUri(dfsConf,dfsUri);
+  if (isHaEnabled) {
+    String nsId=dfsUri.getHost();
+    List<ProxyAndInfo<ClientProtocol>> proxies=HAUtil.getProxiesForAllNameNodesInNameservice(dfsConf,nsId,ClientProtocol.class);
+    for (    ProxyAndInfo<ClientProtocol> proxy : proxies) {
+      ClientProtocol haNn=proxy.getProxy();
+      boolean inSafeMode=haNn.setSafeMode(action,false);
+      if (waitExitSafe) {
+        inSafeMode=waitExitSafeMode(haNn,inSafeMode);
       }
- catch (      java.lang.InterruptedException e) {
-        throw new IOException("Wait Interrupted");
-      }
-      inSafeMode=dfs.setSafeMode(SafeModeAction.SAFEMODE_GET);
+      System.out.println("Safe mode is " + (inSafeMode ? "ON" : "OFF") + " in "+ proxy.getAddress());
     }
   }
-  System.out.println("Safe mode is " + (inSafeMode ? "ON" : "OFF"));
+ else {
+    boolean inSafeMode=dfs.setSafeMode(action);
+    if (waitExitSafe) {
+      inSafeMode=waitExitSafeMode(dfs,inSafeMode);
+    }
+    System.out.println("Safe mode is " + (inSafeMode ? "ON" : "OFF"));
+  }
 }

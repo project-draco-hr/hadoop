@@ -1,7 +1,20 @@
 {
   String pathname=argv[idx];
   DistributedFileSystem dfs=getDFS();
-  dfs.metaSave(pathname);
-  System.out.println("Created metasave file " + pathname + " in the log "+ "directory of namenode "+ dfs.getUri());
+  Configuration dfsConf=dfs.getConf();
+  URI dfsUri=dfs.getUri();
+  boolean isHaEnabled=HAUtil.isLogicalUri(dfsConf,dfsUri);
+  if (isHaEnabled) {
+    String nsId=dfsUri.getHost();
+    List<ProxyAndInfo<ClientProtocol>> proxies=HAUtil.getProxiesForAllNameNodesInNameservice(dfsConf,nsId,ClientProtocol.class);
+    for (    ProxyAndInfo<ClientProtocol> proxy : proxies) {
+      proxy.getProxy().metaSave(pathname);
+      System.out.println("Created metasave file " + pathname + " in the log "+ "directory of namenode "+ proxy.getAddress());
+    }
+  }
+ else {
+    dfs.metaSave(pathname);
+    System.out.println("Created metasave file " + pathname + " in the log "+ "directory of namenode "+ dfs.getUri());
+  }
   return 0;
 }

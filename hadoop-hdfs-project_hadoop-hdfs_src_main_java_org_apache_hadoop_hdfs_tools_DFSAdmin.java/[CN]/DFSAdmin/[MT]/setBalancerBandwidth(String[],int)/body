@@ -15,7 +15,21 @@
     return exitCode;
   }
   DistributedFileSystem dfs=(DistributedFileSystem)fs;
-  dfs.setBalancerBandwidth(bandwidth);
+  Configuration dfsConf=dfs.getConf();
+  URI dfsUri=dfs.getUri();
+  boolean isHaEnabled=HAUtil.isLogicalUri(dfsConf,dfsUri);
+  if (isHaEnabled) {
+    String nsId=dfsUri.getHost();
+    List<ProxyAndInfo<ClientProtocol>> proxies=HAUtil.getProxiesForAllNameNodesInNameservice(dfsConf,nsId,ClientProtocol.class);
+    for (    ProxyAndInfo<ClientProtocol> proxy : proxies) {
+      proxy.getProxy().setBalancerBandwidth(bandwidth);
+      System.out.println("Balancer bandwidth is set to " + bandwidth + " for "+ proxy.getAddress());
+    }
+  }
+ else {
+    dfs.setBalancerBandwidth(bandwidth);
+    System.out.println("Balancer bandwidth is set to " + bandwidth);
+  }
   exitCode=0;
   return exitCode;
 }

@@ -1,7 +1,21 @@
 {
   Configuration conf=getConf();
   conf.set(CommonConfigurationKeys.HADOOP_SECURITY_SERVICE_USER_NAME_KEY,conf.get(DFSConfigKeys.DFS_NAMENODE_KERBEROS_PRINCIPAL_KEY,""));
-  RefreshAuthorizationPolicyProtocol refreshProtocol=NameNodeProxies.createProxy(conf,FileSystem.getDefaultUri(conf),RefreshAuthorizationPolicyProtocol.class).getProxy();
-  refreshProtocol.refreshServiceAcl();
+  DistributedFileSystem dfs=getDFS();
+  URI dfsUri=dfs.getUri();
+  boolean isHaEnabled=HAUtil.isLogicalUri(conf,dfsUri);
+  if (isHaEnabled) {
+    String nsId=dfsUri.getHost();
+    List<ProxyAndInfo<RefreshAuthorizationPolicyProtocol>> proxies=HAUtil.getProxiesForAllNameNodesInNameservice(conf,nsId,RefreshAuthorizationPolicyProtocol.class);
+    for (    ProxyAndInfo<RefreshAuthorizationPolicyProtocol> proxy : proxies) {
+      proxy.getProxy().refreshServiceAcl();
+      System.out.println("Refresh service acl successful for " + proxy.getAddress());
+    }
+  }
+ else {
+    RefreshAuthorizationPolicyProtocol refreshProtocol=NameNodeProxies.createProxy(conf,FileSystem.getDefaultUri(conf),RefreshAuthorizationPolicyProtocol.class).getProxy();
+    refreshProtocol.refreshServiceAcl();
+    System.out.println("Refresh service acl successful");
+  }
   return 0;
 }

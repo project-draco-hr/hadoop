@@ -1,7 +1,21 @@
 {
   Configuration conf=getConf();
   conf.set(CommonConfigurationKeys.HADOOP_SECURITY_SERVICE_USER_NAME_KEY,conf.get(DFSConfigKeys.DFS_NAMENODE_KERBEROS_PRINCIPAL_KEY,""));
-  RefreshCallQueueProtocol refreshProtocol=NameNodeProxies.createProxy(conf,FileSystem.getDefaultUri(conf),RefreshCallQueueProtocol.class).getProxy();
-  refreshProtocol.refreshCallQueue();
+  DistributedFileSystem dfs=getDFS();
+  URI dfsUri=dfs.getUri();
+  boolean isHaEnabled=HAUtil.isLogicalUri(conf,dfsUri);
+  if (isHaEnabled) {
+    String nsId=dfsUri.getHost();
+    List<ProxyAndInfo<RefreshCallQueueProtocol>> proxies=HAUtil.getProxiesForAllNameNodesInNameservice(conf,nsId,RefreshCallQueueProtocol.class);
+    for (    ProxyAndInfo<RefreshCallQueueProtocol> proxy : proxies) {
+      proxy.getProxy().refreshCallQueue();
+      System.out.println("Refresh call queue successful for " + proxy.getAddress());
+    }
+  }
+ else {
+    RefreshCallQueueProtocol refreshProtocol=NameNodeProxies.createProxy(conf,FileSystem.getDefaultUri(conf),RefreshCallQueueProtocol.class).getProxy();
+    refreshProtocol.refreshCallQueue();
+    System.out.println("Refresh call queue successful");
+  }
   return 0;
 }
