@@ -1,0 +1,38 @@
+{
+  cluster.transitionToStandby(0);
+  cluster.transitionToActive(1);
+  final DelegationTokenSecretManager stSecretManager=NameNodeAdapter.getDtSecretManager(nn1.getNamesystem());
+  final Token<DelegationTokenIdentifier> token=getDelegationToken(fs,"JobTracker");
+  final DelegationTokenIdentifier identifier=new DelegationTokenIdentifier();
+  byte[] tokenId=token.getIdentifier();
+  identifier.readFields(new DataInputStream(new ByteArrayInputStream(tokenId)));
+  assertTrue(null != stSecretManager.retrievePassword(identifier));
+  final UserGroupInformation ugi=UserGroupInformation.createRemoteUser("JobTracker");
+  ugi.addToken(token);
+  ugi.doAs(new PrivilegedExceptionAction<Object>(){
+    @Override public Object run(){
+      try {
+        try {
+          byte[] tmppw=dtSecretManager.retrievePassword(identifier);
+          fail("InvalidToken with cause StandbyException is expected" + " since nn0 is standby");
+          return tmppw;
+        }
+ catch (        IOException e) {
+          throw new SecurityException("Failed to obtain user group information: " + e,e);
+        }
+      }
+ catch (      Exception oe) {
+        HttpServletResponse response=mock(HttpServletResponse.class);
+        ExceptionHandler eh=new ExceptionHandler();
+        eh.initResponse(response);
+        Response resp=eh.toResponse(oe);
+        Map<?,?> m=(Map<?,?>)JSON.parse(resp.getEntity().toString());
+        RemoteException re=JsonUtil.toRemoteException(m);
+        Exception unwrapped=((RemoteException)re).unwrapRemoteException(StandbyException.class);
+        assertTrue(unwrapped instanceof StandbyException);
+        return null;
+      }
+    }
+  }
+);
+}
