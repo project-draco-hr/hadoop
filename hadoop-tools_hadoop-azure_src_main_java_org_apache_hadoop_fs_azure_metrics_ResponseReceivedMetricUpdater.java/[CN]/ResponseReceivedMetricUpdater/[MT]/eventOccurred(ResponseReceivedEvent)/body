@@ -1,0 +1,28 @@
+{
+  instrumentation.webResponse();
+  if (!(eventArg.getConnectionObject() instanceof HttpURLConnection)) {
+    return;
+  }
+  HttpURLConnection connection=(HttpURLConnection)eventArg.getConnectionObject();
+  RequestResult currentResult=eventArg.getRequestResult();
+  if (currentResult == null) {
+    return;
+  }
+  long requestLatency=currentResult.getStopDate().getTime() - currentResult.getStartDate().getTime();
+  if (currentResult.getStatusCode() == HttpURLConnection.HTTP_CREATED && connection.getRequestMethod().equalsIgnoreCase("PUT")) {
+    long length=getRequestContentLength(connection);
+    if (length > 0) {
+      blockUploadGaugeUpdater.blockUploaded(currentResult.getStartDate(),currentResult.getStopDate(),length);
+      instrumentation.rawBytesUploaded(length);
+      instrumentation.blockUploaded(requestLatency);
+    }
+  }
+ else   if (currentResult.getStatusCode() == HttpURLConnection.HTTP_PARTIAL && connection.getRequestMethod().equalsIgnoreCase("GET")) {
+    long length=getResponseContentLength(connection);
+    if (length > 0) {
+      blockUploadGaugeUpdater.blockDownloaded(currentResult.getStartDate(),currentResult.getStopDate(),length);
+      instrumentation.rawBytesDownloaded(length);
+      instrumentation.blockDownloaded(requestLatency);
+    }
+  }
+}
