@@ -1,37 +1,14 @@
 {
-  if (user.getRealUser() == null) {
+  UserGroupInformation realUser=user.getRealUser();
+  if (realUser == null) {
     return;
   }
-  boolean userAuthorized=false;
+  AccessControlList acl=proxyUserAcl.get(CONF_HADOOP_PROXYUSER + realUser.getShortUserName());
+  if (acl == null || !acl.isUserAllowed(user)) {
+    throw new AuthorizationException("User: " + realUser.getUserName() + " is not allowed to impersonate "+ user.getUserName());
+  }
   boolean ipAuthorized=false;
-  UserGroupInformation superUser=user.getRealUser();
-  Collection<String> allowedUsers=proxyUsers.get(getProxySuperuserUserConfKey(superUser.getShortUserName()));
-  if (isWildcardList(allowedUsers)) {
-    userAuthorized=true;
-  }
- else   if (allowedUsers != null && !allowedUsers.isEmpty()) {
-    if (allowedUsers.contains(user.getShortUserName())) {
-      userAuthorized=true;
-    }
-  }
-  if (!userAuthorized) {
-    Collection<String> allowedUserGroups=proxyGroups.get(getProxySuperuserGroupConfKey(superUser.getShortUserName()));
-    if (isWildcardList(allowedUserGroups)) {
-      userAuthorized=true;
-    }
- else     if (allowedUserGroups != null && !allowedUserGroups.isEmpty()) {
-      for (      String group : user.getGroupNames()) {
-        if (allowedUserGroups.contains(group)) {
-          userAuthorized=true;
-          break;
-        }
-      }
-    }
-    if (!userAuthorized) {
-      throw new AuthorizationException("User: " + superUser.getUserName() + " is not allowed to impersonate "+ user.getUserName());
-    }
-  }
-  Collection<String> ipList=proxyHosts.get(getProxySuperuserIpConfKey(superUser.getShortUserName()));
+  Collection<String> ipList=proxyHosts.get(getProxySuperuserIpConfKey(realUser.getShortUserName()));
   if (isWildcardList(ipList)) {
     ipAuthorized=true;
   }
@@ -50,6 +27,6 @@
     }
   }
   if (!ipAuthorized) {
-    throw new AuthorizationException("Unauthorized connection for super-user: " + superUser.getUserName() + " from IP "+ remoteAddress);
+    throw new AuthorizationException("Unauthorized connection for super-user: " + realUser.getUserName() + " from IP "+ remoteAddress);
   }
 }
