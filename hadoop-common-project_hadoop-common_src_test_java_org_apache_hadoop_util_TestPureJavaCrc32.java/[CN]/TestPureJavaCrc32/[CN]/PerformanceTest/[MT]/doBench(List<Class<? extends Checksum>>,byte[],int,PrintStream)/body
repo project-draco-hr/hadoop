@@ -1,0 +1,44 @@
+{
+  final String numBytesStr=" #Bytes ";
+  final String numThreadsStr="#T";
+  final String diffStr="% diff";
+  out.print('|');
+  printCell(numBytesStr,0,out);
+  printCell(numThreadsStr,0,out);
+  for (int i=0; i < crcs.size(); i++) {
+    final Class<? extends Checksum> c=crcs.get(i);
+    out.print('|');
+    printCell(c.getSimpleName(),8,out);
+    for (int j=0; j < i; j++) {
+      printCell(diffStr,diffStr.length(),out);
+    }
+  }
+  out.printf("\n");
+  for (int numThreads=1; numThreads <= 16; numThreads<<=1) {
+    out.printf("|");
+    printCell(String.valueOf(size),numBytesStr.length(),out);
+    printCell(String.valueOf(numThreads),numThreadsStr.length(),out);
+    BenchResult expected=null;
+    final List<BenchResult> previous=new ArrayList<BenchResult>();
+    for (    Class<? extends Checksum> c : crcs) {
+      System.gc();
+      final BenchResult result=doBench(c,numThreads,bytes,size);
+      printCell(String.format("%9.1f",result.mbps),c.getSimpleName().length() + 1,out);
+      if (c == zip) {
+        expected=result;
+      }
+ else       if (expected == null) {
+        throw new RuntimeException("The first class is " + c.getName() + " but not "+ zip.getName());
+      }
+ else       if (result.value != expected.value) {
+        throw new RuntimeException(c + " has bugs!");
+      }
+      for (      BenchResult p : previous) {
+        final double diff=(result.mbps - p.mbps) / p.mbps * 100;
+        printCell(String.format("%5.1f%%",diff),diffStr.length(),out);
+      }
+      previous.add(result);
+    }
+    out.printf("\n");
+  }
+}
