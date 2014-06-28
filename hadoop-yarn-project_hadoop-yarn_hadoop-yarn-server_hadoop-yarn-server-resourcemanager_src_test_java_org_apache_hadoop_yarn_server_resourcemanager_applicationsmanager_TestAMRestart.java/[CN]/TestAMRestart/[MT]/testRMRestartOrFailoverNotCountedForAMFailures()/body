@@ -1,0 +1,37 @@
+{
+  YarnConfiguration conf=new YarnConfiguration();
+  conf.setClass(YarnConfiguration.RM_SCHEDULER,CapacityScheduler.class,ResourceScheduler.class);
+  conf.setBoolean(YarnConfiguration.RECOVERY_ENABLED,true);
+  conf.set(YarnConfiguration.RM_STORE,MemoryRMStateStore.class.getName());
+  conf.setInt(YarnConfiguration.RM_AM_MAX_ATTEMPTS,1);
+  MemoryRMStateStore memStore=new MemoryRMStateStore();
+  memStore.init(conf);
+  MockRM rm1=new MockRM(conf,memStore);
+  rm1.start();
+  MockNM nm1=new MockNM("127.0.0.1:1234",8000,rm1.getResourceTrackerService());
+  nm1.registerNode();
+  RMApp app1=rm1.submitApp(200);
+  MockAM am1=MockRM.launchAndRegisterAM(app1,rm1,nm1);
+  RMAppAttempt attempt1=app1.getCurrentAppAttempt();
+  Assert.assertTrue(((RMAppAttemptImpl)attempt1).mayBeLastAttempt());
+  MockRM rm2=new MockRM(conf,memStore);
+  rm2.start();
+  ApplicationState appState=memStore.getState().getApplicationState().get(app1.getApplicationId());
+  nm1.setResourceTrackerService(rm2.getResourceTrackerService());
+  NMContainerStatus status=Records.newRecord(NMContainerStatus.class);
+  status.setContainerExitStatus(ContainerExitStatus.KILLED_BY_RESOURCEMANAGER);
+  status.setContainerId(attempt1.getMasterContainer().getId());
+  status.setContainerState(ContainerState.COMPLETE);
+  status.setDiagnostics("");
+  nm1.registerNode(Collections.singletonList(status),null);
+  rm2.waitForState(attempt1.getAppAttemptId(),RMAppAttemptState.FAILED);
+  Assert.assertEquals(ContainerExitStatus.KILLED_BY_RESOURCEMANAGER,appState.getAttempt(am1.getApplicationAttemptId()).getAMContainerExitStatus());
+  rm2.waitForState(app1.getApplicationId(),RMAppState.ACCEPTED);
+  MockAM am2=rm2.waitForNewAMToLaunchAndRegister(app1.getApplicationId(),2,nm1);
+  MockRM.finishAMAndVerifyAppState(app1,rm2,nm1,am2);
+  RMAppAttempt attempt3=rm2.getRMContext().getRMApps().get(app1.getApplicationId()).getCurrentAppAttempt();
+  Assert.assertTrue(attempt3.shouldCountTowardsMaxAttemptRetry());
+  Assert.assertEquals(ContainerExitStatus.INVALID,appState.getAttempt(am2.getApplicationAttemptId()).getAMContainerExitStatus());
+  rm1.stop();
+  rm2.stop();
+}
