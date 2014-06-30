@@ -1,41 +1,49 @@
 {
   ArrayList<Future<ByteBuffer>> futures=new ArrayList<Future<ByteBuffer>>();
+  CompletionService<ByteBuffer> hedgedService=new ExecutorCompletionService<ByteBuffer>(dfsClient.getHedgedReadsThreadPool());
   ArrayList<DatanodeInfo> ignored=new ArrayList<DatanodeInfo>();
   ByteBuffer bb=null;
   int len=(int)(end - start + 1);
   block=getBlockAt(block.getStartOffset(),false);
-  CountDownLatch hasReceivedResult=new CountDownLatch(1);
   while (true) {
+    hedgedReadOpsLoopNumForTesting++;
     DNAddrPair chosenNode=null;
-    Future<ByteBuffer> future=null;
     if (futures.isEmpty()) {
       chosenNode=chooseDataNode(block,ignored);
       bb=ByteBuffer.wrap(buf,offset,len);
-      future=getHedgedReadFuture(chosenNode,block,start,end,bb,corruptedBlockMap,hasReceivedResult);
+      Callable<ByteBuffer> getFromDataNodeCallable=getFromOneDataNode(chosenNode,block,start,end,bb,corruptedBlockMap);
+      Future<ByteBuffer> firstRequest=hedgedService.submit(getFromDataNodeCallable);
+      futures.add(firstRequest);
       try {
-        future.get(dfsClient.getHedgedReadTimeout(),TimeUnit.MILLISECONDS);
-        return;
-      }
- catch (      TimeoutException e) {
+        Future<ByteBuffer> future=hedgedService.poll(dfsClient.getHedgedReadTimeout(),TimeUnit.MILLISECONDS);
+        if (future != null) {
+          future.get();
+          return;
+        }
         if (DFSClient.LOG.isDebugEnabled()) {
           DFSClient.LOG.debug("Waited " + dfsClient.getHedgedReadTimeout() + "ms to read from "+ chosenNode.info+ "; spawning hedged read");
         }
         ignored.add(chosenNode.info);
         dfsClient.getHedgedReadMetrics().incHedgedReadOps();
-        futures.add(future);
         continue;
       }
-catch (      InterruptedException e) {
+ catch (      InterruptedException e) {
       }
 catch (      ExecutionException e) {
       }
     }
  else {
       try {
-        chosenNode=getBestNodeDNAddrPair(block.getLocations(),ignored);
+        try {
+          chosenNode=getBestNodeDNAddrPair(block.getLocations(),ignored);
+        }
+ catch (        IOException ioe) {
+          chosenNode=chooseDataNode(block,ignored);
+        }
         bb=ByteBuffer.allocate(len);
-        future=getHedgedReadFuture(chosenNode,block,start,end,bb,corruptedBlockMap,hasReceivedResult);
-        futures.add(future);
+        Callable<ByteBuffer> getFromDataNodeCallable=getFromOneDataNode(chosenNode,block,start,end,bb,corruptedBlockMap);
+        Future<ByteBuffer> oneMoreRequest=hedgedService.submit(getFromDataNodeCallable);
+        futures.add(oneMoreRequest);
       }
  catch (      IOException ioe) {
         if (DFSClient.LOG.isDebugEnabled()) {
@@ -43,7 +51,7 @@ catch (      ExecutionException e) {
         }
       }
       try {
-        ByteBuffer result=getFirstToComplete(futures,hasReceivedResult);
+        ByteBuffer result=getFirstToComplete(hedgedService,futures);
         cancelAll(futures);
         if (result.array() != buf) {
           dfsClient.getHedgedReadMetrics().incHedgedReadWins();
@@ -56,12 +64,9 @@ catch (      ExecutionException e) {
       }
  catch (      InterruptedException ie) {
       }
-catch (      ExecutionException e) {
-      }
       if (chosenNode != null && chosenNode.info != null) {
         ignored.add(chosenNode.info);
       }
     }
-    block=getBlockAt(block.getStartOffset(),false);
   }
 }
