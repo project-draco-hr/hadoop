@@ -1,0 +1,49 @@
+{
+  final HdfsAdmin dfsAdmin=new HdfsAdmin(FileSystem.getDefaultUri(conf),conf);
+  final Path zone=new Path("/zone");
+  fs.mkdirs(zone);
+  dfsAdmin.createEncryptionZone(zone,null);
+  DFSTestUtil.createFile(fs,new Path(zone,"success1"),0,(short)1,0xFEED);
+  fs.getClient().cipherSuites=Lists.newArrayListWithCapacity(0);
+  try {
+    DFSTestUtil.createFile(fs,new Path(zone,"fail"),0,(short)1,0xFEED);
+    fail("Created a file without specifying a CipherSuite!");
+  }
+ catch (  UnknownCipherSuiteException e) {
+    GenericTestUtils.assertExceptionContains("No cipher suites",e);
+  }
+  fs.getClient().cipherSuites=Lists.newArrayListWithCapacity(3);
+  fs.getClient().cipherSuites.add(CipherSuite.UNKNOWN);
+  fs.getClient().cipherSuites.add(CipherSuite.UNKNOWN);
+  fs.getClient().cipherSuites.add(CipherSuite.UNKNOWN);
+  try {
+    DFSTestUtil.createFile(fs,new Path(zone,"fail"),0,(short)1,0xFEED);
+    fail("Created a file without specifying a CipherSuite!");
+  }
+ catch (  UnknownCipherSuiteException e) {
+    GenericTestUtils.assertExceptionContains("No cipher suites",e);
+  }
+  fs.getClient().cipherSuites=Lists.newArrayListWithCapacity(3);
+  fs.getClient().cipherSuites.add(CipherSuite.AES_CTR_NOPADDING);
+  fs.getClient().cipherSuites.add(CipherSuite.UNKNOWN);
+  fs.getClient().cipherSuites.add(CipherSuite.UNKNOWN);
+  DFSTestUtil.createFile(fs,new Path(zone,"success2"),0,(short)1,0xFEED);
+  fs.getClient().cipherSuites=Lists.newArrayListWithCapacity(3);
+  fs.getClient().cipherSuites.add(CipherSuite.UNKNOWN);
+  fs.getClient().cipherSuites.add(CipherSuite.UNKNOWN);
+  fs.getClient().cipherSuites.add(CipherSuite.AES_CTR_NOPADDING);
+  DFSTestUtil.createFile(fs,new Path(zone,"success3"),4096,(short)1,0xFEED);
+  for (int i=2; i <= 3; i++) {
+    LocatedBlocks blocks=fs.getClient().getLocatedBlocks(zone.toString() + "/success2",0);
+    FileEncryptionInfo feInfo=blocks.getFileEncryptionInfo();
+    assertEquals(feInfo.getCipherSuite(),CipherSuite.AES_CTR_NOPADDING);
+    byte[] key=feInfo.getEncryptedDataEncryptionKey();
+    for (int j=0; j < key.length; j++) {
+      assertEquals("Unexpected key byte",(byte)j,key[j]);
+    }
+    byte[] iv=feInfo.getIV();
+    for (int j=0; j < iv.length; j++) {
+      assertEquals("Unexpected IV byte",(byte)(3 + j * 2),iv[j]);
+    }
+  }
+}

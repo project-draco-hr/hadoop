@@ -1,0 +1,49 @@
+{
+  if (NameNode.stateChangeLog.isDebugEnabled()) {
+    StringBuilder builder=new StringBuilder();
+    builder.append("DIR* NameSystem.startFile: src=" + src + ", holder="+ holder+ ", clientMachine="+ clientMachine+ ", createParent="+ createParent+ ", replication="+ replication+ ", createFlag="+ flag.toString()+ ", blockSize="+ blockSize);
+    builder.append(", cipherSuites=");
+    if (cipherSuites != null) {
+      builder.append(Arrays.toString(cipherSuites.toArray()));
+    }
+ else {
+      builder.append("null");
+    }
+    NameNode.stateChangeLog.debug(builder.toString());
+  }
+  if (!DFSUtil.isValidName(src)) {
+    throw new InvalidPathException(src);
+  }
+  blockManager.verifyReplication(src,replication,clientMachine);
+  boolean skipSync=false;
+  HdfsFileStatus stat=null;
+  FSPermissionChecker pc=getPermissionChecker();
+  checkOperation(OperationCategory.WRITE);
+  if (blockSize < minBlockSize) {
+    throw new IOException("Specified block size is less than configured" + " minimum value (" + DFSConfigKeys.DFS_NAMENODE_MIN_BLOCK_SIZE_KEY + "): "+ blockSize+ " < "+ minBlockSize);
+  }
+  byte[][] pathComponents=FSDirectory.getPathComponentsForReservedPath(src);
+  boolean create=flag.contains(CreateFlag.CREATE);
+  boolean overwrite=flag.contains(CreateFlag.OVERWRITE);
+  waitForLoadingFSImage();
+  writeLock();
+  try {
+    checkOperation(OperationCategory.WRITE);
+    checkNameNodeSafeMode("Cannot create file" + src);
+    src=FSDirectory.resolvePath(src,pathComponents,dir);
+    startFileInternal(pc,src,permissions,holder,clientMachine,create,overwrite,createParent,replication,blockSize,cipherSuites,logRetryCache);
+    stat=dir.getFileInfo(src,false);
+  }
+ catch (  StandbyException se) {
+    skipSync=true;
+    throw se;
+  }
+ finally {
+    writeUnlock();
+    if (!skipSync) {
+      getEditLog().logSync();
+    }
+  }
+  logAuditEvent(true,"create",src,null,stat);
+  return stat;
+}
