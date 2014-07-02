@@ -1,0 +1,21 @@
+{
+  MemoryRMStateStore memStore=new MemoryRMStateStore();
+  memStore.init(conf);
+  rm1=new MockRM(conf,memStore);
+  rm1.start();
+  MockNM nm1=new MockNM("127.0.0.1:1234",8192,rm1.getResourceTrackerService());
+  nm1.registerNode();
+  RMApp app1_1=rm1.submitApp(1024);
+  MockAM am1_1=MockRM.launchAndRegisterAM(app1_1,rm1,nm1);
+  RMAppAttempt attempt0=app1_1.getCurrentAppAttempt();
+  AbstractYarnScheduler scheduler=((AbstractYarnScheduler)rm1.getResourceScheduler());
+  Assert.assertTrue(scheduler.getRMContainer(attempt0.getMasterContainer().getId()).isAMContainer());
+  rm2=new MockRM(conf,memStore);
+  rm2.start();
+  nm1.setResourceTrackerService(rm2.getResourceTrackerService());
+  List<NMContainerStatus> am1_1Containers=createNMContainerStatusForApp(am1_1);
+  nm1.registerNode(am1_1Containers,null);
+  waitForNumContainersToRecover(2,rm2,am1_1.getApplicationAttemptId());
+  scheduler=((AbstractYarnScheduler)rm2.getResourceScheduler());
+  Assert.assertTrue(scheduler.getRMContainer(attempt0.getMasterContainer().getId()).isAMContainer());
+}
