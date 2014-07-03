@@ -1,0 +1,51 @@
+{
+  IOException result;
+  if (thrown.getCause() != null) {
+    result=processException(thrown.getCause(),original,key);
+  }
+ else   if (thrown instanceof HttpException) {
+    HttpException httpException=(HttpException)thrown;
+    String responseMessage=httpException.getResponseMessage();
+    int responseCode=httpException.getResponseCode();
+    String bucketName="s3n://" + bucket.getName();
+    String text=String.format("%s : %03d : %s",bucketName,responseCode,responseMessage);
+    String filename=!key.isEmpty() ? (bucketName + "/" + key) : text;
+    IOException ioe;
+switch (responseCode) {
+case 404:
+      result=new FileNotFoundException(filename);
+    break;
+case 416:
+  result=new EOFException(FSExceptionMessages.CANNOT_SEEK_PAST_EOF + ": " + filename);
+break;
+case 403:
+result=new AccessControlException("Permission denied" + ": " + filename);
+break;
+default :
+result=new IOException(text);
+}
+result.initCause(thrown);
+}
+ else if (thrown instanceof S3ServiceException) {
+S3ServiceException se=(S3ServiceException)thrown;
+LOG.debug("S3ServiceException: {}: {} : {}",se.getS3ErrorCode(),se.getS3ErrorMessage(),se,se);
+if ("InvalidRange".equals(se.getS3ErrorCode())) {
+result=new EOFException(FSExceptionMessages.CANNOT_SEEK_PAST_EOF);
+}
+ else {
+result=new S3Exception(se);
+}
+}
+ else if (thrown instanceof ServiceException) {
+ServiceException se=(ServiceException)thrown;
+LOG.debug("S3ServiceException: {}: {} : {}",se.getErrorCode(),se.toString(),se,se);
+result=new S3Exception(se);
+}
+ else if (thrown instanceof IOException) {
+result=(IOException)thrown;
+}
+ else {
+result=new S3Exception(original);
+}
+return result;
+}
