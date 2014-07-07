@@ -1,8 +1,10 @@
 {
-  Map<ApplicationAttemptId,Set<RMContainer>> list=new HashMap<ApplicationAttemptId,Set<RMContainer>>();
+  Map<ApplicationAttemptId,Set<RMContainer>> preemptMap=new HashMap<ApplicationAttemptId,Set<RMContainer>>();
+  List<RMContainer> skippedAMContainerlist=new ArrayList<RMContainer>();
   for (  TempQueue qT : queues) {
     if (Resources.greaterThan(rc,clusterResource,qT.current,Resources.multiply(qT.guaranteed,1.0 + maxIgnoredOverCapacity))) {
       Resource resToObtain=Resources.multiply(qT.toBePreempted,naturalTerminationFactor);
+      Resource skippedAMSize=Resource.newInstance(0,0);
 synchronized (qT.leafQueue) {
         NavigableSet<FiCaSchedulerApp> ns=(NavigableSet<FiCaSchedulerApp>)qT.leafQueue.getApplications();
         Iterator<FiCaSchedulerApp> desc=ns.descendingIterator();
@@ -12,10 +14,12 @@ synchronized (qT.leafQueue) {
           if (Resources.lessThanOrEqual(rc,clusterResource,resToObtain,Resources.none())) {
             break;
           }
-          list.put(fc.getApplicationAttemptId(),preemptFrom(fc,clusterResource,resToObtain));
+          preemptMap.put(fc.getApplicationAttemptId(),preemptFrom(fc,clusterResource,resToObtain,skippedAMContainerlist,skippedAMSize));
         }
+        Resource maxAMCapacityForThisQueue=Resources.multiply(Resources.multiply(clusterResource,qT.leafQueue.getAbsoluteCapacity()),qT.leafQueue.getMaxAMResourcePerQueuePercent());
+        preemptAMContainers(clusterResource,preemptMap,skippedAMContainerlist,resToObtain,skippedAMSize,maxAMCapacityForThisQueue);
       }
     }
   }
-  return list;
+  return preemptMap;
 }

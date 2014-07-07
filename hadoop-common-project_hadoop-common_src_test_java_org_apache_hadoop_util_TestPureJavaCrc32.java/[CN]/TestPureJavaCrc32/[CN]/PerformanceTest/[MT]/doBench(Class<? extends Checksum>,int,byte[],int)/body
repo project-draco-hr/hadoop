@@ -1,0 +1,41 @@
+{
+  final Thread[] threads=new Thread[numThreads];
+  final BenchResult[] results=new BenchResult[threads.length];
+{
+    final int trials=BYTES_PER_SIZE / size;
+    final double mbProcessed=trials * size / 1024.0 / 1024.0;
+    final Constructor<? extends Checksum> ctor=clazz.getConstructor();
+    for (int i=0; i < threads.length; i++) {
+      final int index=i;
+      threads[i]=new Thread(){
+        final Checksum crc=ctor.newInstance();
+        @Override public void run(){
+          final long st=System.nanoTime();
+          crc.reset();
+          for (int i=0; i < trials; i++) {
+            crc.update(bytes,0,size);
+          }
+          final long et=System.nanoTime();
+          double secsElapsed=(et - st) / 1000000000.0d;
+          results[index]=new BenchResult(crc.getValue(),mbProcessed / secsElapsed);
+        }
+      }
+;
+    }
+  }
+  for (int i=0; i < threads.length; i++) {
+    threads[i].start();
+  }
+  for (int i=0; i < threads.length; i++) {
+    threads[i].join();
+  }
+  final long expected=results[0].value;
+  double sum=results[0].mbps;
+  for (int i=1; i < results.length; i++) {
+    if (results[i].value != expected) {
+      throw new AssertionError(clazz.getSimpleName() + " results not matched.");
+    }
+    sum+=results[i].mbps;
+  }
+  return new BenchResult(expected,sum / results.length);
+}

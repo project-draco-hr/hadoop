@@ -1,0 +1,26 @@
+{
+  init();
+  UserGroupInformation callerUGI=getCallerUserGroupInformation(hsr);
+  if (callerUGI == null) {
+    throw new AuthorizationException("Unable to obtain user name, " + "user not authenticated");
+  }
+  ApplicationSubmissionContext appContext=createAppSubmissionContext(newApp);
+  final SubmitApplicationRequest req=SubmitApplicationRequest.newInstance(appContext);
+  try {
+    callerUGI.doAs(new PrivilegedExceptionAction<SubmitApplicationResponse>(){
+      @Override public SubmitApplicationResponse run() throws IOException, YarnException {
+        return rm.getClientRMService().submitApplication(req);
+      }
+    }
+);
+  }
+ catch (  UndeclaredThrowableException ue) {
+    if (ue.getCause() instanceof YarnException) {
+      throw new BadRequestException(ue.getCause().getMessage());
+    }
+    LOG.info("Submit app request failed",ue);
+    throw ue;
+  }
+  String url=hsr.getRequestURL() + "/" + newApp.getApplicationId();
+  return Response.status(Status.ACCEPTED).header(HttpHeaders.LOCATION,url).build();
+}

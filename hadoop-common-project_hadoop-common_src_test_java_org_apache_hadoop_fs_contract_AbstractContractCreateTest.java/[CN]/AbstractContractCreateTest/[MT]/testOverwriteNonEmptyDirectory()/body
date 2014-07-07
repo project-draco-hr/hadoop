@@ -1,0 +1,37 @@
+{
+  describe("verify trying to create a file over a non-empty dir fails");
+  Path path=path("testOverwriteNonEmptyDirectory");
+  mkdirs(path);
+  try {
+    assertIsDirectory(path);
+  }
+ catch (  AssertionError failure) {
+    if (isSupported(IS_BLOBSTORE)) {
+      throw new AssumptionViolatedException(failure.toString()).initCause(failure);
+    }
+    throw failure;
+  }
+  Path child=new Path(path,"child");
+  writeTextFile(getFileSystem(),child,"child file",true);
+  byte[] data=dataset(256,'a','z');
+  try {
+    writeDataset(getFileSystem(),path,data,data.length,1024,true);
+    FileStatus status=getFileSystem().getFileStatus(path);
+    boolean isDir=status.isDirectory();
+    if (!isDir && isSupported(IS_BLOBSTORE)) {
+      skip("Object store allows a file to overwrite a directory");
+    }
+    fail("write of file over dir succeeded");
+  }
+ catch (  FileAlreadyExistsException expected) {
+    handleExpectedException(expected);
+  }
+catch (  FileNotFoundException e) {
+    handleRelaxedException("overwriting a dir with a file ","FileAlreadyExistsException",e);
+  }
+catch (  IOException e) {
+    handleRelaxedException("overwriting a dir with a file ","FileAlreadyExistsException",e);
+  }
+  assertIsDirectory(path);
+  assertIsFile(child);
+}

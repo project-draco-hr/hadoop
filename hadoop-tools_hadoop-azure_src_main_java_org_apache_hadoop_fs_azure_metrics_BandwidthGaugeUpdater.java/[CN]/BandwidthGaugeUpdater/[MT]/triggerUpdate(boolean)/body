@@ -1,0 +1,40 @@
+{
+  ArrayList<BlockTransferWindow> toProcess=null;
+synchronized (updateWrite ? blocksWrittenLock : blocksReadLock) {
+    if (updateWrite && !allBlocksWritten.isEmpty()) {
+      toProcess=allBlocksWritten;
+      allBlocksWritten=createNewToProcessQueue();
+    }
+ else     if (!updateWrite && !allBlocksRead.isEmpty()) {
+      toProcess=allBlocksRead;
+      allBlocksRead=createNewToProcessQueue();
+    }
+  }
+  if (toProcess == null) {
+    updateBytesTransferred(updateWrite,0);
+    updateBytesTransferRate(updateWrite,0);
+    return;
+  }
+  long cutoffTime=new Date().getTime() - windowSizeMs;
+  long maxSingleBlockTransferRate=0;
+  long bytesInLastSecond=0;
+  for (  BlockTransferWindow currentWindow : toProcess) {
+    long windowDuration=currentWindow.getEndDate().getTime() - currentWindow.getStartDate().getTime();
+    if (windowDuration == 0) {
+      windowDuration=1;
+    }
+    if (currentWindow.getStartDate().getTime() > cutoffTime) {
+      bytesInLastSecond+=currentWindow.bytesTransferred;
+    }
+ else     if (currentWindow.getEndDate().getTime() > cutoffTime) {
+      long adjustedBytes=(currentWindow.getBytesTransferred() * (currentWindow.getEndDate().getTime() - cutoffTime)) / windowDuration;
+      bytesInLastSecond+=adjustedBytes;
+    }
+    long currentBlockTransferRate=(currentWindow.getBytesTransferred() * 1000) / windowDuration;
+    maxSingleBlockTransferRate=Math.max(maxSingleBlockTransferRate,currentBlockTransferRate);
+  }
+  updateBytesTransferred(updateWrite,bytesInLastSecond);
+  long aggregateTransferRate=bytesInLastSecond;
+  long maxObservedTransferRate=Math.max(aggregateTransferRate,maxSingleBlockTransferRate);
+  updateBytesTransferRate(updateWrite,maxObservedTransferRate);
+}

@@ -1,0 +1,29 @@
+{
+  Set<RMContainer> ret=new HashSet<RMContainer>();
+  ApplicationAttemptId appId=app.getApplicationAttemptId();
+  List<RMContainer> reservations=new ArrayList<RMContainer>(app.getReservedContainers());
+  for (  RMContainer c : reservations) {
+    if (Resources.lessThanOrEqual(rc,clusterResource,rsrcPreempt,Resources.none())) {
+      return ret;
+    }
+    if (!observeOnly) {
+      dispatcher.handle(new ContainerPreemptEvent(appId,c,ContainerPreemptEventType.DROP_RESERVATION));
+    }
+    Resources.subtractFrom(rsrcPreempt,c.getContainer().getResource());
+  }
+  List<RMContainer> containers=new ArrayList<RMContainer>(app.getLiveContainers());
+  sortContainers(containers);
+  for (  RMContainer c : containers) {
+    if (Resources.lessThanOrEqual(rc,clusterResource,rsrcPreempt,Resources.none())) {
+      return ret;
+    }
+    if (c.isAMContainer()) {
+      skippedAMContainerlist.add(c);
+      Resources.addTo(skippedAMSize,c.getContainer().getResource());
+      continue;
+    }
+    ret.add(c);
+    Resources.subtractFrom(rsrcPreempt,c.getContainer().getResource());
+  }
+  return ret;
+}

@@ -10,22 +10,11 @@
   RMAppAttempt attempt=app.getCurrentAppAttempt();
   MockAM am=rm.sendAMLaunched(attempt.getAppAttemptId());
   int request=2;
-  try {
-    AllocateResponse ar=am.allocate("h1",1000,request,new ArrayList<ContainerId>());
-  }
- catch (  Exception e) {
-    Assert.assertEquals("Application Master is trying to allocate before " + "registering for: " + attempt.getAppAttemptId().getApplicationId(),e.getMessage());
-    thrown=true;
-  }
+  AllocateResponse ar=am.allocate("h1",1000,request,new ArrayList<ContainerId>());
+  Assert.assertTrue(ar.getAMCommand() == AMCommand.AM_RESYNC);
   nm1.nodeHeartbeat(true);
-  try {
-    AllocateResponse amrs=am.allocate(new ArrayList<ResourceRequest>(),new ArrayList<ContainerId>());
-  }
- catch (  Exception e) {
-    Assert.assertEquals("Application Master is trying to allocate before " + "registering for: " + attempt.getAppAttemptId().getApplicationId(),e.getMessage());
-    thrown=true;
-  }
-  Assert.assertTrue(thrown);
+  AllocateResponse amrs=am.allocate(new ArrayList<ResourceRequest>(),new ArrayList<ContainerId>());
+  Assert.assertTrue(ar.getAMCommand() == AMCommand.AM_RESYNC);
   am.registerAppAttempt();
   thrown=false;
   try {
@@ -36,4 +25,9 @@
     thrown=true;
   }
   Assert.assertTrue(thrown);
+  am.unregisterAppAttempt();
+  nm1.nodeHeartbeat(attempt.getAppAttemptId(),1,ContainerState.COMPLETE);
+  am.waitForState(RMAppAttemptState.FINISHED);
+  AllocateResponse amrs2=am.allocate(new ArrayList<ResourceRequest>(),new ArrayList<ContainerId>());
+  Assert.assertTrue(amrs2.getAMCommand() == AMCommand.AM_SHUTDOWN);
 }

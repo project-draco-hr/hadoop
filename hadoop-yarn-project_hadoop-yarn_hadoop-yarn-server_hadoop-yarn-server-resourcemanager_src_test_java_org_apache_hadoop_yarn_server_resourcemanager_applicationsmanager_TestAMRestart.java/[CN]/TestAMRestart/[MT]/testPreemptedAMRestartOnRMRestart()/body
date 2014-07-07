@@ -1,0 +1,36 @@
+{
+  YarnConfiguration conf=new YarnConfiguration();
+  conf.setClass(YarnConfiguration.RM_SCHEDULER,CapacityScheduler.class,ResourceScheduler.class);
+  conf.setBoolean(YarnConfiguration.RECOVERY_ENABLED,true);
+  conf.set(YarnConfiguration.RM_STORE,MemoryRMStateStore.class.getName());
+  conf.setInt(YarnConfiguration.RM_AM_MAX_ATTEMPTS,1);
+  MemoryRMStateStore memStore=new MemoryRMStateStore();
+  memStore.init(conf);
+  MockRM rm1=new MockRM(conf,memStore);
+  rm1.start();
+  MockNM nm1=new MockNM("127.0.0.1:1234",8000,rm1.getResourceTrackerService());
+  nm1.registerNode();
+  RMApp app1=rm1.submitApp(200);
+  RMAppAttempt attempt1=app1.getCurrentAppAttempt();
+  MockAM am1=MockRM.launchAndRegisterAM(app1,rm1,nm1);
+  CapacityScheduler scheduler=(CapacityScheduler)rm1.getResourceScheduler();
+  ContainerId amContainer=ContainerId.newInstance(am1.getApplicationAttemptId(),1);
+  scheduler.killContainer(scheduler.getRMContainer(amContainer));
+  am1.waitForState(RMAppAttemptState.FAILED);
+  Assert.assertTrue(!attempt1.shouldCountTowardsMaxAttemptRetry());
+  rm1.waitForState(app1.getApplicationId(),RMAppState.ACCEPTED);
+  ApplicationState appState=memStore.getState().getApplicationState().get(app1.getApplicationId());
+  Assert.assertEquals(1,appState.getAttemptCount());
+  Assert.assertEquals(ContainerExitStatus.PREEMPTED,appState.getAttempt(am1.getApplicationAttemptId()).getAMContainerExitStatus());
+  MockRM rm2=new MockRM(conf,memStore);
+  nm1.setResourceTrackerService(rm2.getResourceTrackerService());
+  nm1.registerNode();
+  rm2.start();
+  MockAM am2=rm2.waitForNewAMToLaunchAndRegister(app1.getApplicationId(),2,nm1);
+  MockRM.finishAMAndVerifyAppState(app1,rm2,nm1,am2);
+  RMAppAttempt attempt2=rm2.getRMContext().getRMApps().get(app1.getApplicationId()).getCurrentAppAttempt();
+  Assert.assertTrue(attempt2.shouldCountTowardsMaxAttemptRetry());
+  Assert.assertEquals(ContainerExitStatus.INVALID,appState.getAttempt(am2.getApplicationAttemptId()).getAMContainerExitStatus());
+  rm1.stop();
+  rm2.stop();
+}

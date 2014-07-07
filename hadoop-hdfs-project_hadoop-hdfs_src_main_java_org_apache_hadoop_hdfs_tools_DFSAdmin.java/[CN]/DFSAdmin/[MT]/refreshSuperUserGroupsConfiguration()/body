@@ -1,7 +1,21 @@
 {
   Configuration conf=getConf();
   conf.set(CommonConfigurationKeys.HADOOP_SECURITY_SERVICE_USER_NAME_KEY,conf.get(DFSConfigKeys.DFS_NAMENODE_KERBEROS_PRINCIPAL_KEY,""));
-  RefreshUserMappingsProtocol refreshProtocol=NameNodeProxies.createProxy(conf,FileSystem.getDefaultUri(conf),RefreshUserMappingsProtocol.class).getProxy();
-  refreshProtocol.refreshSuperUserGroupsConfiguration();
+  DistributedFileSystem dfs=getDFS();
+  URI dfsUri=dfs.getUri();
+  boolean isHaEnabled=HAUtil.isLogicalUri(conf,dfsUri);
+  if (isHaEnabled) {
+    String nsId=dfsUri.getHost();
+    List<ProxyAndInfo<RefreshUserMappingsProtocol>> proxies=HAUtil.getProxiesForAllNameNodesInNameservice(conf,nsId,RefreshUserMappingsProtocol.class);
+    for (    ProxyAndInfo<RefreshUserMappingsProtocol> proxy : proxies) {
+      proxy.getProxy().refreshSuperUserGroupsConfiguration();
+      System.out.println("Refresh super user groups configuration " + "successful for " + proxy.getAddress());
+    }
+  }
+ else {
+    RefreshUserMappingsProtocol refreshProtocol=NameNodeProxies.createProxy(conf,FileSystem.getDefaultUri(conf),RefreshUserMappingsProtocol.class).getProxy();
+    refreshProtocol.refreshSuperUserGroupsConfiguration();
+    System.out.println("Refresh super user groups configuration successful");
+  }
   return 0;
 }

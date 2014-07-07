@@ -1,7 +1,7 @@
 {
   final int code=conn.getResponseCode();
   if (code == HttpURLConnection.HTTP_UNAUTHORIZED) {
-    throw new IOException(new AuthenticationException(conn.getResponseMessage()));
+    throw new AccessControlException(conn.getResponseMessage());
   }
   if (code != op.getExpectedHttpResponseCode()) {
     final Map<?,?> m;
@@ -17,7 +17,12 @@
  else     if (m.get(RemoteException.class.getSimpleName()) == null) {
       return m;
     }
-    final RemoteException re=JsonUtil.toRemoteException(m);
+    IOException re=JsonUtil.toRemoteException(m);
+    if (re.getMessage().startsWith("Failed to obtain user group information:")) {
+      String[] parts=re.getMessage().split(":\\s+",3);
+      re=new RemoteException(parts[1],parts[2]);
+      re=((RemoteException)re).unwrapRemoteException(InvalidToken.class);
+    }
     throw unwrapException ? toIOException(re) : re;
   }
   return null;
