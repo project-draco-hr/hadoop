@@ -1,0 +1,40 @@
+{
+  final Snapshot earlierSnapshot=diffReport.isFromEarlier() ? diffReport.getFrom() : diffReport.getTo();
+  final Snapshot laterSnapshot=diffReport.isFromEarlier() ? diffReport.getTo() : diffReport.getFrom();
+  byte[][] relativePath=parentPath.toArray(new byte[parentPath.size()][]);
+  if (node.isDirectory()) {
+    final ChildrenDiff diff=new ChildrenDiff();
+    INodeDirectory dir=node.asDirectory();
+    DirectoryWithSnapshotFeature sf=dir.getDirectoryWithSnapshotFeature();
+    if (sf != null) {
+      boolean change=sf.computeDiffBetweenSnapshots(earlierSnapshot,laterSnapshot,diff,dir);
+      if (change) {
+        diffReport.addDirDiff(dir,relativePath,diff);
+      }
+    }
+    ReadOnlyList<INode> children=dir.getChildrenList(earlierSnapshot.getId());
+    for (    INode child : children) {
+      final byte[] name=child.getLocalNameBytes();
+      boolean toProcess=diff.searchIndex(ListType.DELETED,name) < 0;
+      if (!toProcess && child instanceof INodeReference.WithName) {
+        byte[][] renameTargetPath=findRenameTargetPath(snapshotRoot,(WithName)child,laterSnapshot == null ? Snapshot.CURRENT_STATE_ID : laterSnapshot.getId());
+        if (renameTargetPath != null) {
+          toProcess=true;
+          diffReport.setRenameTarget(child.getId(),renameTargetPath);
+        }
+      }
+      if (toProcess) {
+        parentPath.add(name);
+        computeDiffRecursively(snapshotRoot,child,parentPath,diffReport);
+        parentPath.remove(parentPath.size() - 1);
+      }
+    }
+  }
+ else   if (node.isFile() && node.asFile().isWithSnapshot()) {
+    INodeFile file=node.asFile();
+    boolean change=file.getFileWithSnapshotFeature().changedBetweenSnapshots(file,earlierSnapshot,laterSnapshot);
+    if (change) {
+      diffReport.addFileDiff(file,relativePath);
+    }
+  }
+}
