@@ -23,12 +23,31 @@ synchronized (this) {
       blacklistRemovals.clear();
     }
     allocateResponse=rmClient.allocate(allocateRequest);
+    if (isResyncCommand(allocateResponse)) {
+      LOG.warn("ApplicationMaster is out of sync with ResourceManager," + " hence resyncing.");
+synchronized (this) {
+        release.addAll(this.pendingRelease);
+        blacklistAdditions.addAll(this.blacklistedNodes);
+        for (        Map<String,TreeMap<Resource,ResourceRequestInfo>> rr : remoteRequestsTable.values()) {
+          for (          Map<Resource,ResourceRequestInfo> capabalities : rr.values()) {
+            for (            ResourceRequestInfo request : capabalities.values()) {
+              addResourceRequestToAsk(request.remoteRequest);
+            }
+          }
+        }
+      }
+      registerApplicationMaster();
+      return allocate(progressIndicator);
+    }
 synchronized (this) {
       clusterNodeCount=allocateResponse.getNumClusterNodes();
       lastResponseId=allocateResponse.getResponseId();
       clusterAvailableResources=allocateResponse.getAvailableResources();
       if (!allocateResponse.getNMTokens().isEmpty()) {
         populateNMTokens(allocateResponse.getNMTokens());
+      }
+      if (!pendingRelease.isEmpty() && !allocateResponse.getCompletedContainersStatuses().isEmpty()) {
+        removePendingReleaseRequests(allocateResponse.getCompletedContainersStatuses());
       }
     }
   }
