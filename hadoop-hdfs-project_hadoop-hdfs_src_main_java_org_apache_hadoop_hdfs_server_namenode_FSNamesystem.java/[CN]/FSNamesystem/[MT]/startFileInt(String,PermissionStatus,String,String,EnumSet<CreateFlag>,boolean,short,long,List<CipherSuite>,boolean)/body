@@ -26,20 +26,41 @@
   boolean create=flag.contains(CreateFlag.CREATE);
   boolean overwrite=flag.contains(CreateFlag.OVERWRITE);
   waitForLoadingFSImage();
-  writeLock();
   try {
-    checkOperation(OperationCategory.WRITE);
-    checkNameNodeSafeMode("Cannot create file" + src);
-    src=FSDirectory.resolvePath(src,pathComponents,dir);
-    startFileInternal(pc,src,permissions,holder,clientMachine,create,overwrite,createParent,replication,blockSize,cipherSuites,logRetryCache);
-    stat=dir.getFileInfo(src,false);
-  }
- catch (  StandbyException se) {
-    skipSync=true;
-    throw se;
-  }
+    boolean shouldContinue=true;
+    int iters=0;
+    while (shouldContinue) {
+      skipSync=false;
+      if (iters >= 10) {
+        throw new IOException("Too many retries because of encryption zone " + "operations, something might be broken!");
+      }
+      shouldContinue=false;
+      iters++;
+      FileEncryptionInfo feInfo=newFileEncryptionInfo(src,pathComponents,cipherSuites);
+      writeLock();
+      try {
+        checkOperation(OperationCategory.WRITE);
+        checkNameNodeSafeMode("Cannot create file" + src);
+        src=FSDirectory.resolvePath(src,pathComponents,dir);
+        startFileInternal(pc,src,permissions,holder,clientMachine,create,overwrite,createParent,replication,blockSize,feInfo,logRetryCache);
+        stat=dir.getFileInfo(src,false);
+      }
+ catch (      StandbyException se) {
+        skipSync=true;
+        throw se;
+      }
+catch (      RetryStartFileException e) {
+        shouldContinue=true;
+        if (LOG.isTraceEnabled()) {
+          LOG.trace("Preconditions failed, retrying creation of " + "FileEncryptionInfo",e);
+        }
+      }
  finally {
-    writeUnlock();
+        writeUnlock();
+      }
+    }
+  }
+  finally {
     if (!skipSync) {
       getEditLog().logSync();
     }

@@ -33,17 +33,18 @@
   fs.getClient().cipherSuites.add(CipherSuite.UNKNOWN);
   fs.getClient().cipherSuites.add(CipherSuite.AES_CTR_NOPADDING);
   DFSTestUtil.createFile(fs,new Path(zone,"success3"),4096,(short)1,0xFEED);
+  cluster.getNamesystem().getProvider().flush();
+  KeyProvider provider=KeyProviderFactory.getProviders(conf).get(0);
+  List<String> keys=provider.getKeys();
+  assertEquals("Expected NN to have created one key per zone",1,keys.size());
+  List<KeyProvider.KeyVersion> allVersions=Lists.newArrayList();
+  for (  String key : keys) {
+    List<KeyProvider.KeyVersion> versions=provider.getKeyVersions(key);
+    assertEquals("Should only have one key version per key",1,versions.size());
+    allVersions.addAll(versions);
+  }
   for (int i=2; i <= 3; i++) {
-    LocatedBlocks blocks=fs.getClient().getLocatedBlocks(zone.toString() + "/success2",0);
-    FileEncryptionInfo feInfo=blocks.getFileEncryptionInfo();
+    FileEncryptionInfo feInfo=getFileEncryptionInfo(new Path(zone.toString() + "/success" + i));
     assertEquals(feInfo.getCipherSuite(),CipherSuite.AES_CTR_NOPADDING);
-    byte[] key=feInfo.getEncryptedDataEncryptionKey();
-    for (int j=0; j < key.length; j++) {
-      assertEquals("Unexpected key byte",(byte)j,key[j]);
-    }
-    byte[] iv=feInfo.getIV();
-    for (int j=0; j < iv.length; j++) {
-      assertEquals("Unexpected IV byte",(byte)(3 + j * 2),iv[j]);
-    }
   }
 }
