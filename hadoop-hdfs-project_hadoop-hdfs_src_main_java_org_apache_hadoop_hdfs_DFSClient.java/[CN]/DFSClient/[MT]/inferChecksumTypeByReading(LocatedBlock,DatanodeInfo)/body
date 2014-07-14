@@ -1,0 +1,21 @@
+{
+  IOStreamPair pair=connectToDN(dn,dfsClientConf.socketTimeout,lb);
+  try {
+    DataOutputStream out=new DataOutputStream(new BufferedOutputStream(pair.out,HdfsConstants.SMALL_BUFFER_SIZE));
+    DataInputStream in=new DataInputStream(pair.in);
+    new Sender(out).readBlock(lb.getBlock(),lb.getBlockToken(),clientName,0,1,true,CachingStrategy.newDefaultStrategy());
+    final BlockOpResponseProto reply=BlockOpResponseProto.parseFrom(PBHelper.vintPrefixed(in));
+    if (reply.getStatus() != Status.SUCCESS) {
+      if (reply.getStatus() == Status.ERROR_ACCESS_TOKEN) {
+        throw new InvalidBlockTokenException();
+      }
+ else {
+        throw new IOException("Bad response " + reply + " trying to read "+ lb.getBlock()+ " from datanode "+ dn);
+      }
+    }
+    return PBHelper.convert(reply.getReadOpChecksumInfo().getChecksum().getType());
+  }
+  finally {
+    IOUtils.cleanup(null,pair.in,pair.out);
+  }
+}

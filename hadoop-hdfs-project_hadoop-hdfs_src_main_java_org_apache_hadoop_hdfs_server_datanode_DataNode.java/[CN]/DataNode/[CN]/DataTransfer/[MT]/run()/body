@@ -14,22 +14,21 @@
     sock=newSocket();
     NetUtils.connect(sock,curTarget,dnConf.socketTimeout);
     sock.setSoTimeout(targets.length * dnConf.socketTimeout);
-    long writeTimeout=dnConf.socketWriteTimeout + HdfsServerConstants.WRITE_TIMEOUT_EXTENSION * (targets.length - 1);
-    OutputStream unbufOut=NetUtils.getOutputStream(sock,writeTimeout);
-    InputStream unbufIn=NetUtils.getInputStream(sock);
-    if (dnConf.encryptDataTransfer && !dnConf.trustedChannelResolver.isTrusted(sock.getInetAddress())) {
-      IOStreamPair encryptedStreams=DataTransferEncryptor.getEncryptedStreams(unbufOut,unbufIn,blockPoolTokenSecretManager.generateDataEncryptionKey(b.getBlockPoolId()));
-      unbufOut=encryptedStreams.out;
-      unbufIn=encryptedStreams.in;
-    }
-    out=new DataOutputStream(new BufferedOutputStream(unbufOut,HdfsConstants.SMALL_BUFFER_SIZE));
-    in=new DataInputStream(unbufIn);
-    blockSender=new BlockSender(b,0,b.getNumBytes(),false,false,true,DataNode.this,null,cachingStrategy);
-    DatanodeInfo srcNode=new DatanodeInfo(bpReg);
     Token<BlockTokenIdentifier> accessToken=BlockTokenSecretManager.DUMMY_TOKEN;
     if (isBlockTokenEnabled) {
       accessToken=blockPoolTokenSecretManager.generateToken(b,EnumSet.of(BlockTokenSecretManager.AccessMode.WRITE));
     }
+    long writeTimeout=dnConf.socketWriteTimeout + HdfsServerConstants.WRITE_TIMEOUT_EXTENSION * (targets.length - 1);
+    OutputStream unbufOut=NetUtils.getOutputStream(sock,writeTimeout);
+    InputStream unbufIn=NetUtils.getInputStream(sock);
+    DataEncryptionKeyFactory keyFactory=getDataEncryptionKeyFactoryForBlock(b);
+    IOStreamPair saslStreams=saslClient.socketSend(sock,unbufOut,unbufIn,keyFactory,accessToken,bpReg);
+    unbufOut=saslStreams.out;
+    unbufIn=saslStreams.in;
+    out=new DataOutputStream(new BufferedOutputStream(unbufOut,HdfsConstants.SMALL_BUFFER_SIZE));
+    in=new DataInputStream(unbufIn);
+    blockSender=new BlockSender(b,0,b.getNumBytes(),false,false,true,DataNode.this,null,cachingStrategy);
+    DatanodeInfo srcNode=new DatanodeInfo(bpReg);
     new Sender(out).writeBlock(b,accessToken,clientname,targets,srcNode,stage,0,0,0,0,blockSender.getChecksum(),cachingStrategy);
     blockSender.sendBlock(out,unbufOut,null);
     LOG.info(getClass().getSimpleName() + ": Transmitted " + b+ " (numBytes="+ b.getNumBytes()+ ") to "+ curTarget);

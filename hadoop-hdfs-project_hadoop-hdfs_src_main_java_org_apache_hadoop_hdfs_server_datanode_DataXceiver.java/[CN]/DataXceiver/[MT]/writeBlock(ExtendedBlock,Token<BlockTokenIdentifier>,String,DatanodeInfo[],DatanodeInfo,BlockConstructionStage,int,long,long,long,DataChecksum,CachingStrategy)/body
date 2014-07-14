@@ -49,11 +49,10 @@
         mirrorSock.setSendBufferSize(HdfsConstants.DEFAULT_DATA_SOCKET_SIZE);
         OutputStream unbufMirrorOut=NetUtils.getOutputStream(mirrorSock,writeTimeout);
         InputStream unbufMirrorIn=NetUtils.getInputStream(mirrorSock);
-        if (dnConf.encryptDataTransfer && !dnConf.trustedChannelResolver.isTrusted(mirrorSock.getInetAddress())) {
-          IOStreamPair encryptedStreams=DataTransferEncryptor.getEncryptedStreams(unbufMirrorOut,unbufMirrorIn,datanode.blockPoolTokenSecretManager.generateDataEncryptionKey(block.getBlockPoolId()));
-          unbufMirrorOut=encryptedStreams.out;
-          unbufMirrorIn=encryptedStreams.in;
-        }
+        DataEncryptionKeyFactory keyFactory=datanode.getDataEncryptionKeyFactoryForBlock(block);
+        IOStreamPair saslStreams=datanode.saslClient.socketSend(mirrorSock,unbufMirrorOut,unbufMirrorIn,keyFactory,blockToken,targets[0]);
+        unbufMirrorOut=saslStreams.out;
+        unbufMirrorIn=saslStreams.in;
         mirrorOut=new DataOutputStream(new BufferedOutputStream(unbufMirrorOut,HdfsConstants.SMALL_BUFFER_SIZE));
         mirrorIn=new DataInputStream(unbufMirrorIn);
         new Sender(mirrorOut).writeBlock(originalBlock,blockToken,clientname,targets,srcDataNode,stage,pipelineSize,minBytesRcvd,maxBytesRcvd,latestGenerationStamp,requestedChecksum,cachingStrategy);
