@@ -1,0 +1,44 @@
+{
+  final byte COLD=(byte)4;
+  final byte WARM=(byte)8;
+  final byte HOT=(byte)12;
+  final Map<Byte,String> expectedPolicyStrings=new HashMap<Byte,String>();
+  expectedPolicyStrings.put(COLD,"BlockStoragePolicy{COLD:4, storageTypes=[ARCHIVE], creationFallbacks=[], replicationFallbacks=[]");
+  expectedPolicyStrings.put(WARM,"BlockStoragePolicy{WARM:8, storageTypes=[DISK, ARCHIVE], creationFallbacks=[DISK, ARCHIVE], replicationFallbacks=[DISK, ARCHIVE]");
+  expectedPolicyStrings.put(HOT,"BlockStoragePolicy{HOT:12, storageTypes=[DISK], creationFallbacks=[], replicationFallbacks=[ARCHIVE]");
+  final Configuration conf=new Configuration();
+  final BlockStoragePolicy[] policies=BlockStoragePolicy.readBlockStoragePolicies(conf);
+  for (int i=0; i < policies.length; i++) {
+    if (policies[i] != null) {
+      final String s=policies[i].toString();
+      Assert.assertEquals(expectedPolicyStrings.get((byte)i),s);
+    }
+  }
+{
+    final BlockStoragePolicy cold=policies[COLD];
+    for (short replication=1; replication < 6; replication++) {
+      final StorageType[] computed=cold.getStoragteTypes(replication);
+      assertStorageType(computed,replication,StorageType.ARCHIVE);
+    }
+    assertCreationFallback(cold,null,null,null);
+    assertReplicationFallback(cold,null,null,null);
+  }
+{
+    final BlockStoragePolicy warm=policies[WARM];
+    for (short replication=1; replication < 6; replication++) {
+      final StorageType[] computed=warm.getStoragteTypes(replication);
+      assertStorageType(computed,replication,StorageType.DISK,StorageType.ARCHIVE);
+    }
+    assertCreationFallback(warm,StorageType.DISK,StorageType.DISK,StorageType.ARCHIVE);
+    assertReplicationFallback(warm,StorageType.DISK,StorageType.DISK,StorageType.ARCHIVE);
+  }
+{
+    final BlockStoragePolicy hot=policies[HOT];
+    for (short replication=1; replication < 6; replication++) {
+      final StorageType[] computed=hot.getStoragteTypes(replication);
+      assertStorageType(computed,replication,StorageType.DISK);
+    }
+    assertCreationFallback(hot,null,null,null);
+    assertReplicationFallback(hot,StorageType.ARCHIVE,null,StorageType.ARCHIVE);
+  }
+}
