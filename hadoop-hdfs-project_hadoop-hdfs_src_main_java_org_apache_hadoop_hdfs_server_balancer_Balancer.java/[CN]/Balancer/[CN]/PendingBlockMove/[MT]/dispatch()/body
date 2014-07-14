@@ -8,14 +8,14 @@
     sock.setKeepAlive(true);
     OutputStream unbufOut=sock.getOutputStream();
     InputStream unbufIn=sock.getInputStream();
-    if (nnc.getDataEncryptionKey() != null) {
-      IOStreamPair encryptedStreams=DataTransferEncryptor.getEncryptedStreams(unbufOut,unbufIn,nnc.getDataEncryptionKey());
-      unbufOut=encryptedStreams.out;
-      unbufIn=encryptedStreams.in;
-    }
+    ExtendedBlock eb=new ExtendedBlock(nnc.blockpoolID,block.getBlock());
+    Token<BlockTokenIdentifier> accessToken=nnc.getAccessToken(eb);
+    IOStreamPair saslStreams=saslClient.socketSend(sock,unbufOut,unbufIn,nnc,accessToken,target.datanode);
+    unbufOut=saslStreams.out;
+    unbufIn=saslStreams.in;
     out=new DataOutputStream(new BufferedOutputStream(unbufOut,HdfsConstants.IO_FILE_BUFFER_SIZE));
     in=new DataInputStream(new BufferedInputStream(unbufIn,HdfsConstants.IO_FILE_BUFFER_SIZE));
-    sendRequest(out);
+    sendRequest(out,eb,accessToken);
     receiveResponse(in);
     bytesMoved.addAndGet(block.getNumBytes());
     LOG.info("Successfully moved " + this);

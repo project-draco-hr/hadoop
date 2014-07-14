@@ -1,0 +1,26 @@
+{
+  DataInputStream in=new DataInputStream(underlyingIn);
+  DataOutputStream out=new DataOutputStream(underlyingOut);
+  SaslParticipant sasl=SaslParticipant.createServerSaslParticipant(saslProps,callbackHandler);
+  int magicNumber=in.readInt();
+  if (magicNumber != SASL_TRANSFER_MAGIC_NUMBER) {
+    throw new InvalidMagicNumberException(magicNumber);
+  }
+  try {
+    performSaslStep1(out,in,sasl);
+    byte[] remoteResponse=readSaslMessage(in);
+    byte[] localResponse=sasl.evaluateChallengeOrResponse(remoteResponse);
+    sendSaslMessage(out,localResponse);
+    checkSaslComplete(sasl,saslProps);
+    return sasl.createStreamPair(out,in);
+  }
+ catch (  IOException ioe) {
+    if (ioe instanceof SaslException && ioe.getCause() != null && ioe.getCause() instanceof InvalidEncryptionKeyException) {
+      sendInvalidKeySaslErrorMessage(out,ioe.getCause().getMessage());
+    }
+ else {
+      sendGenericSaslErrorMessage(out,ioe.getMessage());
+    }
+    throw ioe;
+  }
+}
