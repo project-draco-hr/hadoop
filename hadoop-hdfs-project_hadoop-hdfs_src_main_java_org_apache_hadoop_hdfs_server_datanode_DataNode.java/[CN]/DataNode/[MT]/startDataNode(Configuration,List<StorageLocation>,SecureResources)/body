@@ -1,9 +1,5 @@
 {
-  if (UserGroupInformation.isSecurityEnabled() && resources == null) {
-    if (!conf.getBoolean("ignore.secure.ports.for.testing",false)) {
-      throw new RuntimeException("Cannot start secure cluster without " + "privileged resources.");
-    }
-  }
+  checkSecureConfig(conf,resources);
   this.secureResources=resources;
   this.dataDirs=dataDirs;
   this.conf=conf;
@@ -12,9 +8,14 @@
     if (!NativeIO.POSIX.getCacheManipulator().verifyCanMlock()) {
       throw new RuntimeException(String.format("Cannot start datanode because the configured max locked memory" + " size (%s) is greater than zero and native code is not available.",DFS_DATANODE_MAX_LOCKED_MEMORY_KEY));
     }
-    long ulimit=NativeIO.POSIX.getCacheManipulator().getMemlockLimit();
-    if (dnConf.maxLockedMemory > ulimit) {
-      throw new RuntimeException(String.format("Cannot start datanode because the configured max locked memory" + " size (%s) of %d bytes is more than the datanode's available" + " RLIMIT_MEMLOCK ulimit of %d bytes.",DFS_DATANODE_MAX_LOCKED_MEMORY_KEY,dnConf.maxLockedMemory,ulimit));
+    if (Path.WINDOWS) {
+      NativeIO.Windows.extendWorkingSetSize(dnConf.maxLockedMemory);
+    }
+ else {
+      long ulimit=NativeIO.POSIX.getCacheManipulator().getMemlockLimit();
+      if (dnConf.maxLockedMemory > ulimit) {
+        throw new RuntimeException(String.format("Cannot start datanode because the configured max locked memory" + " size (%s) of %d bytes is more than the datanode's available" + " RLIMIT_MEMLOCK ulimit of %d bytes.",DFS_DATANODE_MAX_LOCKED_MEMORY_KEY,dnConf.maxLockedMemory,ulimit));
+      }
     }
   }
   LOG.info("Starting DataNode with maxLockedMemory = " + dnConf.maxLockedMemory);
@@ -34,4 +35,6 @@
   blockPoolManager=new BlockPoolManager(this);
   blockPoolManager.refreshNamenodes(conf);
   readaheadPool=ReadaheadPool.getInstance();
+  saslClient=new SaslDataTransferClient(dnConf.saslPropsResolver,dnConf.trustedChannelResolver,conf.getBoolean(IPC_CLIENT_FALLBACK_TO_SIMPLE_AUTH_ALLOWED_KEY,IPC_CLIENT_FALLBACK_TO_SIMPLE_AUTH_ALLOWED_DEFAULT));
+  saslServer=new SaslDataTransferServer(dnConf,blockPoolTokenSecretManager);
 }

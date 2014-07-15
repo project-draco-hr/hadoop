@@ -34,11 +34,10 @@
     proxySock.setSoTimeout(dnConf.socketTimeout);
     OutputStream unbufProxyOut=NetUtils.getOutputStream(proxySock,dnConf.socketWriteTimeout);
     InputStream unbufProxyIn=NetUtils.getInputStream(proxySock);
-    if (dnConf.encryptDataTransfer && !dnConf.trustedChannelResolver.isTrusted(proxySock.getInetAddress())) {
-      IOStreamPair encryptedStreams=DataTransferEncryptor.getEncryptedStreams(unbufProxyOut,unbufProxyIn,datanode.blockPoolTokenSecretManager.generateDataEncryptionKey(block.getBlockPoolId()));
-      unbufProxyOut=encryptedStreams.out;
-      unbufProxyIn=encryptedStreams.in;
-    }
+    DataEncryptionKeyFactory keyFactory=datanode.getDataEncryptionKeyFactoryForBlock(block);
+    IOStreamPair saslStreams=datanode.saslClient.socketSend(proxySock,unbufProxyOut,unbufProxyIn,keyFactory,blockToken,proxySource);
+    unbufProxyOut=saslStreams.out;
+    unbufProxyIn=saslStreams.in;
     proxyOut=new DataOutputStream(new BufferedOutputStream(unbufProxyOut,HdfsConstants.SMALL_BUFFER_SIZE));
     proxyReply=new DataInputStream(new BufferedInputStream(unbufProxyIn,HdfsConstants.IO_FILE_BUFFER_SIZE));
     new Sender(proxyOut).copyBlock(block,blockToken);
