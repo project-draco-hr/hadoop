@@ -1,0 +1,22 @@
+{
+  final String renewer=tokenData.getRenewer();
+  GetDelegationTokenResponse resp;
+  try {
+    resp=callerUGI.doAs(new PrivilegedExceptionAction<GetDelegationTokenResponse>(){
+      @Override public GetDelegationTokenResponse run() throws IOException, YarnException {
+        GetDelegationTokenRequest createReq=GetDelegationTokenRequest.newInstance(renewer);
+        return rm.getClientRMService().getDelegationToken(createReq);
+      }
+    }
+);
+  }
+ catch (  Exception e) {
+    LOG.info("Create delegation token request failed",e);
+    throw e;
+  }
+  Token<RMDelegationTokenIdentifier> tk=new Token<RMDelegationTokenIdentifier>(resp.getRMDelegationToken().getIdentifier().array(),resp.getRMDelegationToken().getPassword().array(),new Text(resp.getRMDelegationToken().getKind()),new Text(resp.getRMDelegationToken().getService()));
+  RMDelegationTokenIdentifier identifier=tk.decodeIdentifier();
+  long currentExpiration=rm.getRMContext().getRMDelegationTokenSecretManager().getRenewDate(identifier);
+  DelegationToken respToken=new DelegationToken(tk.encodeToUrlString(),renewer,identifier.getOwner().toString(),tk.getKind().toString(),currentExpiration,identifier.getMaxDate());
+  return Response.status(Status.OK).entity(respToken).build();
+}
