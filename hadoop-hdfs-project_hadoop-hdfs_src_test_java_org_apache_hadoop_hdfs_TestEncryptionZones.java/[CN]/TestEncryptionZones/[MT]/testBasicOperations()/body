@@ -1,0 +1,86 @@
+{
+  int numZones=0;
+  final Path zone1=new Path("/zone1");
+  try {
+    dfsAdmin.createEncryptionZone(zone1,null);
+    fail("expected /test doesn't exist");
+  }
+ catch (  IOException e) {
+    assertExceptionContains("cannot find",e);
+  }
+  fsWrapper.mkdir(zone1,FsPermission.getDirDefault(),true);
+  dfsAdmin.createEncryptionZone(zone1,null);
+  assertNumZones(++numZones);
+  assertZonePresent(null,zone1.toString());
+  try {
+    dfsAdmin.createEncryptionZone(zone1,null);
+  }
+ catch (  IOException e) {
+    assertExceptionContains("already in an encryption zone",e);
+  }
+  final Path zone1Child=new Path(zone1,"child");
+  fsWrapper.mkdir(zone1Child,FsPermission.getDirDefault(),false);
+  try {
+    dfsAdmin.createEncryptionZone(zone1Child,null);
+    fail("EZ in an EZ");
+  }
+ catch (  IOException e) {
+    assertExceptionContains("already in an encryption zone",e);
+  }
+  final Path notEmpty=new Path("/notEmpty");
+  final Path notEmptyChild=new Path(notEmpty,"child");
+  fsWrapper.mkdir(notEmptyChild,FsPermission.getDirDefault(),true);
+  try {
+    dfsAdmin.createEncryptionZone(notEmpty,null);
+    fail("Created EZ on an non-empty directory with folder");
+  }
+ catch (  IOException e) {
+    assertExceptionContains("create an encryption zone",e);
+  }
+  fsWrapper.delete(notEmptyChild,false);
+  fsWrapper.createFile(notEmptyChild);
+  try {
+    dfsAdmin.createEncryptionZone(notEmpty,null);
+    fail("Created EZ on an non-empty directory with file");
+  }
+ catch (  IOException e) {
+    assertExceptionContains("create an encryption zone",e);
+  }
+  final Path zone2=new Path("/zone2");
+  fsWrapper.mkdir(zone2,FsPermission.getDirDefault(),false);
+  final String myKeyId="mykeyid";
+  try {
+    dfsAdmin.createEncryptionZone(zone2,myKeyId);
+    fail("expected key doesn't exist");
+  }
+ catch (  IOException e) {
+    assertExceptionContains("doesn't exist.",e);
+  }
+  assertNumZones(1);
+  createKey(myKeyId);
+  dfsAdmin.createEncryptionZone(zone2,myKeyId);
+  assertNumZones(++numZones);
+  assertZonePresent(myKeyId,zone2.toString());
+  final UserGroupInformation user=UserGroupInformation.createUserForTesting("user",new String[]{"mygroup"});
+  final Path nonSuper=new Path("/nonSuper");
+  fsWrapper.mkdir(nonSuper,FsPermission.getDirDefault(),false);
+  user.doAs(new PrivilegedExceptionAction<Object>(){
+    @Override public Object run() throws Exception {
+      final HdfsAdmin userAdmin=new HdfsAdmin(FileSystem.getDefaultUri(conf),conf);
+      try {
+        userAdmin.createEncryptionZone(nonSuper,null);
+        fail("createEncryptionZone is superuser-only operation");
+      }
+ catch (      AccessControlException e) {
+        assertExceptionContains("Superuser privilege is required",e);
+      }
+      return null;
+    }
+  }
+);
+  Path deepZone=new Path("/d/e/e/p/zone");
+  fsWrapper.mkdir(deepZone,FsPermission.getDirDefault(),true);
+  dfsAdmin.createEncryptionZone(deepZone,null);
+  assertNumZones(++numZones);
+  assertZonePresent(null,deepZone.toString());
+}
