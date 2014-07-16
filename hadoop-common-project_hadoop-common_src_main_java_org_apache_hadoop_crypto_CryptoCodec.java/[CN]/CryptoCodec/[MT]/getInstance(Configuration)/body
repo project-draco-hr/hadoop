@@ -1,4 +1,27 @@
 {
-  final Class<? extends CryptoCodec> klass=conf.getClass(HADOOP_SECURITY_CRYPTO_CODEC_CLASS_KEY,JceAesCtrCryptoCodec.class,CryptoCodec.class);
-  return ReflectionUtils.newInstance(klass,conf);
+  List<Class<? extends CryptoCodec>> klasses=getCodecClasses(conf);
+  String name=conf.get(HADOOP_SECURITY_CRYPTO_CIPHER_SUITE_KEY,HADOOP_SECURITY_CRYPTO_CIPHER_SUITE_DEFAULT);
+  CipherSuite.checkName(name);
+  CryptoCodec codec=null;
+  for (  Class<? extends CryptoCodec> klass : klasses) {
+    try {
+      CryptoCodec c=ReflectionUtils.newInstance(klass,conf);
+      if (c.getCipherSuite().getName().equalsIgnoreCase(name)) {
+        if (codec == null) {
+          LOG.debug("Using crypto codec {}.",klass.getName());
+          codec=c;
+        }
+      }
+ else {
+        LOG.warn("Crypto codec {} doesn't meet the cipher suite {}.",klass.getName(),name);
+      }
+    }
+ catch (    Exception e) {
+      LOG.warn("Crypto codec {} is not available.",klass.getName());
+    }
+  }
+  if (codec != null) {
+    return codec;
+  }
+  throw new RuntimeException("No available crypto codec which meets " + "the cipher suite " + name + ".");
 }
