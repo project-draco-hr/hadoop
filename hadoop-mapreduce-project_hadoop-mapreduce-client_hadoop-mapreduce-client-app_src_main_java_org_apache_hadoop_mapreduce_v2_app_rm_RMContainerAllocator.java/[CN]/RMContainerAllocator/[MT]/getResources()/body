@@ -16,11 +16,16 @@
   if (response.getAMCommand() != null) {
 switch (response.getAMCommand()) {
 case AM_RESYNC:
+      LOG.info("ApplicationMaster is out of sync with ResourceManager," + " hence resyncing.");
+    lastResponseID=0;
+  register();
+addOutstandingRequestOnResync();
+break;
 case AM_SHUTDOWN:
-      eventHandler.handle(new JobEvent(this.getJob().getID(),JobEventType.JOB_AM_REBOOT));
-    throw new YarnRuntimeException("Resource Manager doesn't recognize AttemptId: " + this.getContext().getApplicationID());
+eventHandler.handle(new JobEvent(this.getJob().getID(),JobEventType.JOB_AM_REBOOT));
+throw new YarnRuntimeException("Resource Manager doesn't recognize AttemptId: " + this.getContext().getApplicationID());
 default :
-  String msg="Unhandled value of AMCommand: " + response.getAMCommand();
+String msg="Unhandled value of AMCommand: " + response.getAMCommand();
 LOG.error(msg);
 throw new YarnRuntimeException(msg);
 }
@@ -57,6 +62,7 @@ if (attemptID == null) {
 LOG.error("Container complete event for unknown container id " + cont.getContainerId());
 }
  else {
+pendingRelease.remove(cont.getContainerId());
 assignedRequests.remove(attemptID);
 eventHandler.handle(createContainerFinishedEvent(cont,attemptID));
 String diagnostics=StringInterner.weakIntern(cont.getDiagnostics());
