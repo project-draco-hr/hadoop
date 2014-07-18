@@ -1,4 +1,5 @@
 {
+  String redirectHost=null;
   if (op.getRedirect() && !redirected) {
     final HttpOpParam.Op redirectOp=HttpOpParam.TemporaryRedirectOp.valueOf(op);
     final HttpURLConnection conn=connect(redirectOp,url);
@@ -8,10 +9,24 @@
     try {
       validateResponse(redirectOp,conn,false);
       url=new URL(conn.getHeaderField("Location"));
+      redirectHost=url.getHost() + ":" + url.getPort();
     }
   finally {
       conn.disconnect();
     }
   }
-  return connect(op,url);
+  try {
+    return connect(op,url);
+  }
+ catch (  IOException ioe) {
+    if (redirectHost != null) {
+      if (excludeDatanodes.getValue() != null) {
+        excludeDatanodes=new ExcludeDatanodesParam(redirectHost + "," + excludeDatanodes.getValue());
+      }
+ else {
+        excludeDatanodes=new ExcludeDatanodesParam(redirectHost);
+      }
+    }
+    throw ioe;
+  }
 }
