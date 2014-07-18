@@ -1,0 +1,32 @@
+{
+  if (queueName == null || queueName.isEmpty()) {
+    String message="Reject application " + applicationId + " submitted by user "+ user+ " with an empty queue name.";
+    LOG.info(message);
+    rmContext.getDispatcher().getEventHandler().handle(new RMAppRejectedEvent(applicationId,message));
+    return;
+  }
+  RMApp rmApp=rmContext.getRMApps().get(applicationId);
+  FSLeafQueue queue=assignToQueue(rmApp,queueName,user);
+  if (queue == null) {
+    return;
+  }
+  UserGroupInformation userUgi=UserGroupInformation.createRemoteUser(user);
+  if (!queue.hasAccess(QueueACL.SUBMIT_APPLICATIONS,userUgi) && !queue.hasAccess(QueueACL.ADMINISTER_QUEUE,userUgi)) {
+    String msg="User " + userUgi.getUserName() + " cannot submit applications to queue "+ queue.getName();
+    LOG.info(msg);
+    rmContext.getDispatcher().getEventHandler().handle(new RMAppRejectedEvent(applicationId,msg));
+    return;
+  }
+  SchedulerApplication<FSSchedulerApp> application=new SchedulerApplication<FSSchedulerApp>(queue,user);
+  applications.put(applicationId,application);
+  queue.getMetrics().submitApp(user);
+  LOG.info("Accepted application " + applicationId + " from user: "+ user+ ", in queue: "+ queueName+ ", currently num of applications: "+ applications.size());
+  if (isAppRecovering) {
+    if (LOG.isDebugEnabled()) {
+      LOG.debug(applicationId + " is recovering. Skip notifying APP_ACCEPTED");
+    }
+  }
+ else {
+    rmContext.getDispatcher().getEventHandler().handle(new RMAppEvent(applicationId,RMAppEventType.APP_ACCEPTED));
+  }
+}
