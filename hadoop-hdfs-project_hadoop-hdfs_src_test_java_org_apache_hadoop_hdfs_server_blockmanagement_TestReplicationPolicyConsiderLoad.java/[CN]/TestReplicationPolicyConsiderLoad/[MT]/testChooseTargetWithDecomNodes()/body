@@ -1,14 +1,19 @@
 {
   namenode.getNamesystem().writeLock();
   try {
-    for (int i=0; i < 3; i++) {
-      DatanodeInfo d=dnManager.getDatanodeByXferAddr(dnrList.get(i).getIpAddr(),dnrList.get(i).getXferPort());
-      d.setDecommissioned();
-    }
     String blockPoolId=namenode.getNamesystem().getBlockPoolId();
     dnManager.handleHeartbeat(dnrList.get(3),BlockManagerTestUtil.getStorageReportsForDatanode(dataNodes[3]),blockPoolId,dataNodes[3].getCacheCapacity(),dataNodes[3].getCacheRemaining(),2,0,0);
     dnManager.handleHeartbeat(dnrList.get(4),BlockManagerTestUtil.getStorageReportsForDatanode(dataNodes[4]),blockPoolId,dataNodes[4].getCacheCapacity(),dataNodes[4].getCacheRemaining(),4,0,0);
     dnManager.handleHeartbeat(dnrList.get(5),BlockManagerTestUtil.getStorageReportsForDatanode(dataNodes[5]),blockPoolId,dataNodes[5].getCacheCapacity(),dataNodes[5].getCacheRemaining(),4,0,0);
+    final int load=2 + 4 + 4;
+    FSNamesystem fsn=namenode.getNamesystem();
+    assertEquals((double)load / 6,fsn.getInServiceXceiverAverage(),EPSILON);
+    for (int i=0; i < 3; i++) {
+      DatanodeDescriptor d=dnManager.getDatanode(dnrList.get(i));
+      dnManager.startDecommission(d);
+      d.setDecommissioned();
+    }
+    assertEquals((double)load / 3,fsn.getInServiceXceiverAverage(),EPSILON);
     DatanodeStorageInfo[] targets=namenode.getNamesystem().getBlockManager().getBlockPlacementPolicy().chooseTarget("testFile.txt",3,dataNodes[0],new ArrayList<DatanodeStorageInfo>(),false,null,1024,StorageType.DEFAULT);
     assertEquals(3,targets.length);
     Set<DatanodeStorageInfo> targetSet=new HashSet<DatanodeStorageInfo>(Arrays.asList(targets));
