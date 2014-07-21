@@ -1,0 +1,21 @@
+{
+  Preconditions.checkArgument(numValues > 0,"\"numValues\" must be > 0");
+  Preconditions.checkArgument(((lowWatermark > 0) && (lowWatermark <= 1)),"\"lowWatermark\" must be > 0 and <= 1");
+  Preconditions.checkArgument(expiry > 0,"\"expiry\" must be > 0");
+  Preconditions.checkArgument(numFillerThreads > 0,"\"numFillerThreads\" must be > 0");
+  Preconditions.checkNotNull(policy,"\"policy\" must not be null");
+  this.refiller=refiller;
+  this.policy=policy;
+  this.numValues=numValues;
+  this.lowWatermark=lowWatermark;
+  keyQueues=CacheBuilder.newBuilder().expireAfterAccess(expiry,TimeUnit.MILLISECONDS).build(new CacheLoader<String,LinkedBlockingQueue<E>>(){
+    @Override public LinkedBlockingQueue<E> load(    String keyName) throws Exception {
+      LinkedBlockingQueue<E> keyQueue=new LinkedBlockingQueue<E>();
+      refiller.fillQueueForKey(keyName,keyQueue,(int)(lowWatermark * numValues));
+      return keyQueue;
+    }
+  }
+);
+  executor=new ThreadPoolExecutor(numFillerThreads,numFillerThreads,0L,TimeUnit.MILLISECONDS,queue,new ThreadFactoryBuilder().setDaemon(true).setNameFormat(REFILL_THREAD).build());
+  executor.prestartAllCoreThreads();
+}
