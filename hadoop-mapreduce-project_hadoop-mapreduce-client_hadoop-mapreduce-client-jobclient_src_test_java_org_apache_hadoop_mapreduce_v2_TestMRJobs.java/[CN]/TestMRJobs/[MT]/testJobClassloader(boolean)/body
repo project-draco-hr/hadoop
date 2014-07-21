@@ -1,0 +1,36 @@
+{
+  LOG.info("\n\n\nStarting testJobClassloader()" + " useCustomClasses=" + useCustomClasses);
+  if (!(new File(MiniMRYarnCluster.APPJAR)).exists()) {
+    LOG.info("MRAppJar " + MiniMRYarnCluster.APPJAR + " not found. Not running test.");
+    return;
+  }
+  final Configuration sleepConf=new Configuration(mrCluster.getConfig());
+  sleepConf.set(MRConfig.MASTER_ADDRESS,"local");
+  sleepConf.setBoolean(MRJobConfig.MAPREDUCE_JOB_CLASSLOADER,true);
+  if (useCustomClasses) {
+    String systemClasses=sleepConf.get(MRJobConfig.MAPREDUCE_JOB_CLASSLOADER_SYSTEM_CLASSES);
+    systemClasses="-" + CustomOutputFormat.class.getName() + ",-"+ CustomSpeculator.class.getName()+ ","+ systemClasses;
+    sleepConf.set(MRJobConfig.MAPREDUCE_JOB_CLASSLOADER_SYSTEM_CLASSES,systemClasses);
+  }
+  sleepConf.set(MRJobConfig.IO_SORT_MB,TEST_IO_SORT_MB);
+  sleepConf.set(MRJobConfig.MR_AM_LOG_LEVEL,Level.ALL.toString());
+  sleepConf.set(MRJobConfig.MAP_LOG_LEVEL,Level.ALL.toString());
+  sleepConf.set(MRJobConfig.REDUCE_LOG_LEVEL,Level.ALL.toString());
+  sleepConf.set(MRJobConfig.MAP_JAVA_OPTS,"-verbose:class");
+  final SleepJob sleepJob=new SleepJob();
+  sleepJob.setConf(sleepConf);
+  final Job job=sleepJob.createJob(1,1,10,1,10,1);
+  job.setMapperClass(ConfVerificationMapper.class);
+  job.addFileToClassPath(APP_JAR);
+  job.setJarByClass(SleepJob.class);
+  job.setMaxMapAttempts(1);
+  if (useCustomClasses) {
+    job.setOutputFormatClass(CustomOutputFormat.class);
+    final Configuration jobConf=job.getConfiguration();
+    jobConf.setClass(MRJobConfig.MR_AM_JOB_SPECULATOR,CustomSpeculator.class,Speculator.class);
+    jobConf.setBoolean(MRJobConfig.MAP_SPECULATIVE,true);
+  }
+  job.submit();
+  boolean succeeded=job.waitForCompletion(true);
+  Assert.assertTrue("Job status: " + job.getStatus().getFailureInfo(),succeeded);
+}
