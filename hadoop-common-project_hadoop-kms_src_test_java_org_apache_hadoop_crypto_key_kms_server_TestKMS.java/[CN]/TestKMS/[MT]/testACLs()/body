@@ -14,7 +14,7 @@
   runServer(null,null,testDir,new KMSCallable(){
     @Override public Void call() throws Exception {
       final Configuration conf=new Configuration();
-      conf.setInt(KeyProvider.DEFAULT_BITLENGTH_NAME,64);
+      conf.setInt(KeyProvider.DEFAULT_BITLENGTH_NAME,128);
       URI uri=createKMSUri(getKMSUrl());
       final KeyProvider kp=new KMSClientProvider(uri,conf);
       doAs("client",new PrivilegedExceptionAction<Void>(){
@@ -29,7 +29,7 @@ catch (          Exception ex) {
             Assert.fail(ex.toString());
           }
           try {
-            kp.createKey("k",new byte[8],new KeyProvider.Options(conf));
+            kp.createKey("k",new byte[16],new KeyProvider.Options(conf));
             Assert.fail();
           }
  catch (          AuthorizationException ex) {
@@ -47,7 +47,7 @@ catch (          Exception ex) {
             Assert.fail(ex.toString());
           }
           try {
-            kp.rollNewVersion("k",new byte[8]);
+            kp.rollNewVersion("k",new byte[16]);
             Assert.fail();
           }
  catch (          AuthorizationException ex) {
@@ -141,7 +141,7 @@ catch (          Exception ex) {
       doAs("SET_KEY_MATERIAL",new PrivilegedExceptionAction<Void>(){
         @Override public Void run() throws Exception {
           try {
-            KeyProvider.KeyVersion kv=kp.createKey("k1",new byte[8],new KeyProvider.Options(conf));
+            KeyProvider.KeyVersion kv=kp.createKey("k1",new byte[16],new KeyProvider.Options(conf));
             Assert.assertNull(kv.getMaterial());
           }
  catch (          Exception ex) {
@@ -167,7 +167,7 @@ catch (          Exception ex) {
       doAs("SET_KEY_MATERIAL",new PrivilegedExceptionAction<Void>(){
         @Override public Void run() throws Exception {
           try {
-            KeyProvider.KeyVersion kv=kp.rollNewVersion("k1",new byte[8]);
+            KeyProvider.KeyVersion kv=kp.rollNewVersion("k1",new byte[16]);
             Assert.assertNull(kv.getMaterial());
           }
  catch (          Exception ex) {
@@ -177,11 +177,39 @@ catch (          Exception ex) {
         }
       }
 );
-      doAs("GET",new PrivilegedExceptionAction<Void>(){
-        @Override public Void run() throws Exception {
+      final KeyVersion currKv=doAs("GET",new PrivilegedExceptionAction<KeyVersion>(){
+        @Override public KeyVersion run() throws Exception {
           try {
             kp.getKeyVersion("k1@0");
-            kp.getCurrentKey("k1");
+            KeyVersion kv=kp.getCurrentKey("k1");
+            return kv;
+          }
+ catch (          Exception ex) {
+            Assert.fail(ex.toString());
+          }
+          return null;
+        }
+      }
+);
+      final EncryptedKeyVersion encKv=doAs("GENERATE_EEK",new PrivilegedExceptionAction<EncryptedKeyVersion>(){
+        @Override public EncryptedKeyVersion run() throws Exception {
+          try {
+            KeyProviderCryptoExtension kpCE=KeyProviderCryptoExtension.createKeyProviderCryptoExtension(kp);
+            EncryptedKeyVersion ek1=kpCE.generateEncryptedKey(currKv.getName());
+            return ek1;
+          }
+ catch (          Exception ex) {
+            Assert.fail(ex.toString());
+          }
+          return null;
+        }
+      }
+);
+      doAs("DECRYPT_EEK",new PrivilegedExceptionAction<Void>(){
+        @Override public Void run() throws Exception {
+          try {
+            KeyProviderCryptoExtension kpCE=KeyProviderCryptoExtension.createKeyProviderCryptoExtension(kp);
+            kpCE.decryptEncryptedKey(encKv);
           }
  catch (          Exception ex) {
             Assert.fail(ex.toString());

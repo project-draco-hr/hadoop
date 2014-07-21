@@ -4,15 +4,18 @@
     return staticMapping;
   }
   CachedGroups groups=userToGroupsMap.get(user);
-  long startMs=Time.monotonicNow();
-  if (groups != null && (groups.getTimestamp() + cacheTimeout > startMs)) {
+  long startMs=timer.monotonicNow();
+  if (!hasExpired(groups,startMs)) {
     if (LOG.isDebugEnabled()) {
       LOG.debug("Returning cached groups for '" + user + "'");
+    }
+    if (groups.getGroups().isEmpty()) {
+      throw new IOException("No groups found for user " + user);
     }
     return groups.getGroups();
   }
   List<String> groupList=impl.getGroups(user);
-  long endMs=Time.monotonicNow();
+  long endMs=timer.monotonicNow();
   long deltaMs=endMs - startMs;
   UserGroupInformation.metrics.addGetGroups(deltaMs);
   if (deltaMs > warningDeltaMs) {
@@ -20,6 +23,9 @@
   }
   groups=new CachedGroups(groupList,endMs);
   if (groups.getGroups().isEmpty()) {
+    if (isNegativeCacheEnabled()) {
+      userToGroupsMap.put(user,groups);
+    }
     throw new IOException("No groups found for user " + user);
   }
   userToGroupsMap.put(user,groups);
