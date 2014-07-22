@@ -1,0 +1,27 @@
+{
+  BPOfferService bpos=getBPOSForBlock(block);
+  DatanodeRegistration bpReg=getDNRegistrationForBP(block.getBlockPoolId());
+  if (!data.isValidBlock(block)) {
+    String errStr="Can't send invalid block " + block;
+    LOG.info(errStr);
+    bpos.trySendErrorReport(DatanodeProtocol.INVALID_BLOCK,errStr);
+    return;
+  }
+  long onDiskLength=data.getLength(block);
+  if (block.getNumBytes() > onDiskLength) {
+    FsVolumeSpi volume=getFSDataset().getVolume(block);
+    bpos.reportBadBlocks(block,volume.getStorageID(),volume.getStorageType());
+    LOG.warn("Can't replicate block " + block + " because on-disk length "+ onDiskLength+ " is shorter than NameNode recorded length "+ block.getNumBytes());
+    return;
+  }
+  int numTargets=xferTargets.length;
+  if (numTargets > 0) {
+    StringBuilder xfersBuilder=new StringBuilder();
+    for (int i=0; i < numTargets; i++) {
+      xfersBuilder.append(xferTargets[i]);
+      xfersBuilder.append(" ");
+    }
+    LOG.info(bpReg + " Starting thread to transfer " + block+ " to "+ xfersBuilder);
+    new Daemon(new DataTransfer(xferTargets,xferTargetStorageTypes,block,BlockConstructionStage.PIPELINE_SETUP_CREATE,"")).start();
+  }
+}

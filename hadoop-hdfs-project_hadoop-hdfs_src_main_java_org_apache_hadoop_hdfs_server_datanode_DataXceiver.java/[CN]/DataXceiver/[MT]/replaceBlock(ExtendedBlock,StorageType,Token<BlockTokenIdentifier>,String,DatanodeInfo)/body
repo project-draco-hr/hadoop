@@ -1,0 +1,84 @@
+{
+  updateCurrentThreadName("Replacing block " + block + " from "+ delHint);
+  block.setNumBytes(dataXceiverServer.estimateBlockSize);
+  if (datanode.isBlockTokenEnabled) {
+    try {
+      datanode.blockPoolTokenSecretManager.checkAccess(blockToken,null,block,BlockTokenSecretManager.AccessMode.REPLACE);
+    }
+ catch (    InvalidToken e) {
+      LOG.warn("Invalid access token in request from " + remoteAddress + " for OP_REPLACE_BLOCK for block "+ block+ " : "+ e.getLocalizedMessage());
+      sendResponse(ERROR_ACCESS_TOKEN,"Invalid access token");
+      return;
+    }
+  }
+  if (!dataXceiverServer.balanceThrottler.acquire()) {
+    String msg="Not able to receive block " + block.getBlockId() + " from "+ peer.getRemoteAddressString()+ " because threads "+ "quota is exceeded.";
+    LOG.warn(msg);
+    sendResponse(ERROR,msg);
+    return;
+  }
+  Socket proxySock=null;
+  DataOutputStream proxyOut=null;
+  Status opStatus=SUCCESS;
+  String errMsg=null;
+  BlockReceiver blockReceiver=null;
+  DataInputStream proxyReply=null;
+  try {
+    final String dnAddr=proxySource.getXferAddr(connectToDnViaHostname);
+    if (LOG.isDebugEnabled()) {
+      LOG.debug("Connecting to datanode " + dnAddr);
+    }
+    InetSocketAddress proxyAddr=NetUtils.createSocketAddr(dnAddr);
+    proxySock=datanode.newSocket();
+    NetUtils.connect(proxySock,proxyAddr,dnConf.socketTimeout);
+    proxySock.setSoTimeout(dnConf.socketTimeout);
+    OutputStream unbufProxyOut=NetUtils.getOutputStream(proxySock,dnConf.socketWriteTimeout);
+    InputStream unbufProxyIn=NetUtils.getInputStream(proxySock);
+    DataEncryptionKeyFactory keyFactory=datanode.getDataEncryptionKeyFactoryForBlock(block);
+    IOStreamPair saslStreams=datanode.saslClient.socketSend(proxySock,unbufProxyOut,unbufProxyIn,keyFactory,blockToken,proxySource);
+    unbufProxyOut=saslStreams.out;
+    unbufProxyIn=saslStreams.in;
+    proxyOut=new DataOutputStream(new BufferedOutputStream(unbufProxyOut,HdfsConstants.SMALL_BUFFER_SIZE));
+    proxyReply=new DataInputStream(new BufferedInputStream(unbufProxyIn,HdfsConstants.IO_FILE_BUFFER_SIZE));
+    new Sender(proxyOut).copyBlock(block,blockToken);
+    BlockOpResponseProto copyResponse=BlockOpResponseProto.parseFrom(PBHelper.vintPrefixed(proxyReply));
+    if (copyResponse.getStatus() != SUCCESS) {
+      if (copyResponse.getStatus() == ERROR_ACCESS_TOKEN) {
+        throw new IOException("Copy block " + block + " from "+ proxySock.getRemoteSocketAddress()+ " failed due to access token error");
+      }
+      throw new IOException("Copy block " + block + " from "+ proxySock.getRemoteSocketAddress()+ " failed");
+    }
+    ReadOpChecksumInfoProto checksumInfo=copyResponse.getReadOpChecksumInfo();
+    DataChecksum remoteChecksum=DataTransferProtoUtil.fromProto(checksumInfo.getChecksum());
+    blockReceiver=new BlockReceiver(block,storageType,proxyReply,proxySock.getRemoteSocketAddress().toString(),proxySock.getLocalSocketAddress().toString(),null,0,0,0,"",null,datanode,remoteChecksum,CachingStrategy.newDropBehind());
+    blockReceiver.receiveBlock(null,null,null,null,dataXceiverServer.balanceThrottler,null);
+    datanode.notifyNamenodeReceivedBlock(block,delHint,blockReceiver.getStorageUuid());
+    LOG.info("Moved " + block + " from "+ peer.getRemoteAddressString()+ ", delHint="+ delHint);
+  }
+ catch (  IOException ioe) {
+    opStatus=ERROR;
+    errMsg="opReplaceBlock " + block + " received exception "+ ioe;
+    LOG.info(errMsg);
+    throw ioe;
+  }
+ finally {
+    if (opStatus == SUCCESS) {
+      try {
+        proxyReply.readChar();
+      }
+ catch (      IOException ignored) {
+      }
+    }
+    dataXceiverServer.balanceThrottler.release();
+    try {
+      sendResponse(opStatus,errMsg);
+    }
+ catch (    IOException ioe) {
+      LOG.warn("Error writing reply back to " + peer.getRemoteAddressString());
+    }
+    IOUtils.closeStream(proxyOut);
+    IOUtils.closeStream(blockReceiver);
+    IOUtils.closeStream(proxyReply);
+  }
+  datanode.metrics.addReplaceBlockOp(elapsed());
+}
