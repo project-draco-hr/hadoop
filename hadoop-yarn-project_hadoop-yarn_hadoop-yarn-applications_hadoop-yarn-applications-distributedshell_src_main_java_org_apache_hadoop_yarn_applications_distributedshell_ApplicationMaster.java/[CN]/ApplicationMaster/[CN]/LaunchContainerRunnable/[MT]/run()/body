@@ -1,7 +1,5 @@
 {
   LOG.info("Setting up container launch container for containerid=" + container.getId());
-  ContainerLaunchContext ctx=Records.newRecord(ContainerLaunchContext.class);
-  ctx.setEnvironment(shellEnv);
   Map<String,LocalResource> localResources=new HashMap<String,LocalResource>();
   if (!scriptPath.isEmpty()) {
     Path renamedScriptPath=null;
@@ -20,11 +18,9 @@
       numFailedContainers.incrementAndGet();
       return;
     }
-    LocalResource shellRsrc=Records.newRecord(LocalResource.class);
-    shellRsrc.setType(LocalResourceType.FILE);
-    shellRsrc.setVisibility(LocalResourceVisibility.APPLICATION);
+    URL yarnUrl=null;
     try {
-      shellRsrc.setResource(ConverterUtils.getYarnUrlFromURI(new URI(renamedScriptPath.toString())));
+      yarnUrl=ConverterUtils.getYarnUrlFromURI(new URI(renamedScriptPath.toString()));
     }
  catch (    URISyntaxException e) {
       LOG.error("Error when trying to use shell script path specified" + " in env, path=" + renamedScriptPath,e);
@@ -32,12 +28,10 @@
       numFailedContainers.incrementAndGet();
       return;
     }
-    shellRsrc.setTimestamp(shellScriptPathTimestamp);
-    shellRsrc.setSize(shellScriptPathLen);
+    LocalResource shellRsrc=LocalResource.newInstance(yarnUrl,LocalResourceType.FILE,LocalResourceVisibility.APPLICATION,shellScriptPathLen,shellScriptPathTimestamp);
     localResources.put(Shell.WINDOWS ? ExecBatScripStringtPath : ExecShellStringPath,shellRsrc);
     shellCommand=Shell.WINDOWS ? windows_command : linux_bash_command;
   }
-  ctx.setLocalResources(localResources);
   Vector<CharSequence> vargs=new Vector<CharSequence>(5);
   vargs.add(shellCommand);
   if (!scriptPath.isEmpty()) {
@@ -52,8 +46,7 @@
   }
   List<String> commands=new ArrayList<String>();
   commands.add(command.toString());
-  ctx.setCommands(commands);
-  ctx.setTokens(allTokens.duplicate());
+  ContainerLaunchContext ctx=ContainerLaunchContext.newInstance(localResources,shellEnv,commands,null,allTokens.duplicate(),null);
   containerListener.addContainer(container.getId(),container);
   nmClientAsync.startContainerAsync(container,ctx);
 }

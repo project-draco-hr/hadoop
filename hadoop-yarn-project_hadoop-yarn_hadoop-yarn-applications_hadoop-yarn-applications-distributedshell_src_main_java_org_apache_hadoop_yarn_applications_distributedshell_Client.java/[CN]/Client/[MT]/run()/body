@@ -34,7 +34,6 @@
   ApplicationId appId=appContext.getApplicationId();
   appContext.setKeepContainersAcrossApplicationAttempts(keepContainers);
   appContext.setApplicationName(appName);
-  ContainerLaunchContext amContainer=Records.newRecord(ContainerLaunchContext.class);
   Map<String,LocalResource> localResources=new HashMap<String,LocalResource>();
   LOG.info("Copy App Master jar from local filesystem and add to local environment");
   FileSystem fs=FileSystem.get(conf);
@@ -61,7 +60,6 @@
   if (shellArgs.length > 0) {
     addToLocalResources(fs,null,shellArgsPath,appId.toString(),localResources,StringUtils.join(shellArgs," "));
   }
-  amContainer.setLocalResources(localResources);
   LOG.info("Set the environment for the application master");
   Map<String,String> env=new HashMap<String,String>();
   env.put(DSConstants.DISTRIBUTEDSHELLSCRIPTLOCATION,hdfsShellScriptLocation);
@@ -78,7 +76,6 @@
     classPathEnv.append(System.getProperty("java.class.path"));
   }
   env.put("CLASSPATH",classPathEnv.toString());
-  amContainer.setEnvironment(env);
   Vector<CharSequence> vargs=new Vector<CharSequence>(30);
   LOG.info("Setting up app master command");
   vargs.add(Environment.JAVA_HOME.$$() + "/bin/java");
@@ -103,10 +100,8 @@
   LOG.info("Completed setting up app master command " + command.toString());
   List<String> commands=new ArrayList<String>();
   commands.add(command.toString());
-  amContainer.setCommands(commands);
-  Resource capability=Records.newRecord(Resource.class);
-  capability.setMemory(amMemory);
-  capability.setVirtualCores(amVCores);
+  ContainerLaunchContext amContainer=ContainerLaunchContext.newInstance(localResources,env,commands,null,null,null);
+  Resource capability=Resource.newInstance(amMemory,amVCores);
   appContext.setResource(capability);
   if (UserGroupInformation.isSecurityEnabled()) {
     Credentials credentials=new Credentials();
@@ -126,8 +121,7 @@
     amContainer.setTokens(fsTokens);
   }
   appContext.setAMContainerSpec(amContainer);
-  Priority pri=Records.newRecord(Priority.class);
-  pri.setPriority(amPriority);
+  Priority pri=Priority.newInstance(amPriority);
   appContext.setPriority(pri);
   appContext.setQueue(amQueue);
   LOG.info("Submitting application to ASM");
