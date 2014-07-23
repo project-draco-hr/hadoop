@@ -1,0 +1,72 @@
+{
+  if (numOfReplicas == 0 || clusterMap.getNumOfLeaves() == 0) {
+    return writer;
+  }
+  final int numOfResults=results.size();
+  final int totalReplicasExpected=numOfReplicas + numOfResults;
+  if ((writer == null || !(writer instanceof DatanodeDescriptor)) && !newBlock) {
+    writer=results.get(0).getDatanodeDescriptor();
+  }
+  final Set<Node> oldExcludedNodes=avoidStaleNodes ? new HashSet<Node>(excludedNodes) : null;
+  final List<StorageType> storageTypes=selectStorageTypes(storagePolicy,(short)totalReplicasExpected,DatanodeStorageInfo.toStorageTypes(results),unavailableStorages,newBlock);
+  StorageType curStorageType=null;
+  try {
+    if ((numOfReplicas=storageTypes.size()) == 0) {
+      throw new NotEnoughReplicasException("All required storage types are unavailable: " + " unavailableStorages=" + unavailableStorages + ", storagePolicy="+ storagePolicy);
+    }
+    if (numOfResults == 0) {
+      curStorageType=storageTypes.remove(0);
+      writer=chooseLocalStorage(writer,excludedNodes,blocksize,maxNodesPerRack,results,avoidStaleNodes,curStorageType,true).getDatanodeDescriptor();
+      if (--numOfReplicas == 0) {
+        return writer;
+      }
+    }
+    final DatanodeDescriptor dn0=results.get(0).getDatanodeDescriptor();
+    if (numOfResults <= 1) {
+      curStorageType=storageTypes.remove(0);
+      chooseRemoteRack(1,dn0,excludedNodes,blocksize,maxNodesPerRack,results,avoidStaleNodes,curStorageType);
+      if (--numOfReplicas == 0) {
+        return writer;
+      }
+    }
+    if (numOfResults <= 2) {
+      final DatanodeDescriptor dn1=results.get(1).getDatanodeDescriptor();
+      curStorageType=storageTypes.remove(0);
+      if (clusterMap.isOnSameRack(dn0,dn1)) {
+        chooseRemoteRack(1,dn0,excludedNodes,blocksize,maxNodesPerRack,results,avoidStaleNodes,curStorageType);
+      }
+ else       if (newBlock) {
+        chooseLocalRack(dn1,excludedNodes,blocksize,maxNodesPerRack,results,avoidStaleNodes,curStorageType);
+      }
+ else {
+        chooseLocalRack(writer,excludedNodes,blocksize,maxNodesPerRack,results,avoidStaleNodes,curStorageType);
+      }
+      if (--numOfReplicas == 0) {
+        return writer;
+      }
+    }
+    curStorageType=storageTypes.remove(0);
+    chooseRandom(numOfReplicas,NodeBase.ROOT,excludedNodes,blocksize,maxNodesPerRack,results,avoidStaleNodes,curStorageType);
+  }
+ catch (  NotEnoughReplicasException e) {
+    final String message="Failed to place enough replicas, still in need of " + (totalReplicasExpected - results.size()) + " to reach "+ totalReplicasExpected+ ".";
+    if (LOG.isTraceEnabled()) {
+      LOG.trace(message,e);
+    }
+ else {
+      LOG.warn(message + " " + e.getMessage());
+    }
+    if (avoidStaleNodes) {
+      for (      DatanodeStorageInfo resultStorage : results) {
+        addToExcludedNodes(resultStorage.getDatanodeDescriptor(),oldExcludedNodes);
+      }
+      numOfReplicas=totalReplicasExpected - results.size();
+      return chooseTarget(numOfReplicas,writer,oldExcludedNodes,blocksize,maxNodesPerRack,results,false,storagePolicy,unavailableStorages,newBlock);
+    }
+    if (storageTypes.size() > 0) {
+      unavailableStorages.add(curStorageType);
+      return chooseTarget(numOfReplicas,writer,excludedNodes,blocksize,maxNodesPerRack,results,false,storagePolicy,unavailableStorages,newBlock);
+    }
+  }
+  return writer;
+}
