@@ -18,14 +18,20 @@
   String historyUrl=MRWebAppUtil.getApplicationWebURLOnJHSWithScheme(getConfig(),context.getApplicationID());
   LOG.info("History url is " + historyUrl);
   FinishApplicationMasterRequest request=FinishApplicationMasterRequest.newInstance(finishState,sb.toString(),historyUrl);
-  while (true) {
-    FinishApplicationMasterResponse response=scheduler.finishApplicationMaster(request);
-    if (response.getIsUnregistered()) {
-      RunningAppContext raContext=(RunningAppContext)context;
-      raContext.markSuccessfulUnregistration();
-      break;
+  try {
+    while (true) {
+      FinishApplicationMasterResponse response=scheduler.finishApplicationMaster(request);
+      if (response.getIsUnregistered()) {
+        RunningAppContext raContext=(RunningAppContext)context;
+        raContext.markSuccessfulUnregistration();
+        break;
+      }
+      LOG.info("Waiting for application to be successfully unregistered.");
+      Thread.sleep(rmPollInterval);
     }
-    LOG.info("Waiting for application to be successfully unregistered.");
-    Thread.sleep(rmPollInterval);
+  }
+ catch (  ApplicationMasterNotRegisteredException e) {
+    register();
+    doUnregistration();
   }
 }

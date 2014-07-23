@@ -1,11 +1,22 @@
 {
-  ApplicationAttemptId applicationAttemptId=identifier.getApplicationAttemptId();
-  if (LOG.isDebugEnabled()) {
-    LOG.debug("Trying to retrieve password for " + applicationAttemptId);
+  this.readLock.lock();
+  try {
+    ApplicationAttemptId applicationAttemptId=identifier.getApplicationAttemptId();
+    if (LOG.isDebugEnabled()) {
+      LOG.debug("Trying to retrieve password for " + applicationAttemptId);
+    }
+    if (!appAttemptSet.contains(applicationAttemptId)) {
+      throw new InvalidToken("Password not found for ApplicationAttempt " + applicationAttemptId);
+    }
+    if (identifier.getKeyId() == this.currentMasterKey.getMasterKey().getKeyId()) {
+      return createPassword(identifier.getBytes(),this.currentMasterKey.getSecretKey());
+    }
+ else     if (nextMasterKey != null && identifier.getKeyId() == this.nextMasterKey.getMasterKey().getKeyId()) {
+      return createPassword(identifier.getBytes(),this.nextMasterKey.getSecretKey());
+    }
+    throw new InvalidToken("Given AMRMToken for application : " + applicationAttemptId.toString() + " seems to have been generated illegally.");
   }
-  byte[] password=this.passwords.get(applicationAttemptId);
-  if (password == null) {
-    throw new InvalidToken("Password not found for ApplicationAttempt " + applicationAttemptId);
+  finally {
+    this.readLock.unlock();
   }
-  return password;
 }

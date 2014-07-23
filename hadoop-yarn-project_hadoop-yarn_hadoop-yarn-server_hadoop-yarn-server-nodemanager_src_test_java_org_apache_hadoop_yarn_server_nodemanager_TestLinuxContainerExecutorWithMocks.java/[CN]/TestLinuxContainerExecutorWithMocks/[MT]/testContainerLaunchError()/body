@@ -8,7 +8,15 @@
   conf.set(YarnConfiguration.NM_LINUX_CONTAINER_EXECUTOR_PATH,executorPath);
   conf.set(YarnConfiguration.NM_LOCAL_DIRS,"file:///bin/echo");
   conf.set(YarnConfiguration.NM_LOG_DIRS,"file:///dev/null");
-  mockExec=new LinuxContainerExecutor();
+  mockExec=spy(new LinuxContainerExecutor());
+  doAnswer(new Answer(){
+    @Override public Object answer(    InvocationOnMock invocationOnMock) throws Throwable {
+      String diagnostics=(String)invocationOnMock.getArguments()[0];
+      assertTrue("Invalid Diagnostics message: " + diagnostics,diagnostics.contains("badcommand"));
+      return null;
+    }
+  }
+).when(mockExec).logOutput(any(String.class));
   dirsHandler=new LocalDirsHandlerService();
   dirsHandler.init(conf);
   mockExec.setConf(conf);
@@ -22,6 +30,14 @@
   HashMap<String,String> env=new HashMap<String,String>();
   when(container.getContainerId()).thenReturn(cId);
   when(container.getLaunchContext()).thenReturn(context);
+  doAnswer(new Answer(){
+    @Override public Object answer(    InvocationOnMock invocationOnMock) throws Throwable {
+      ContainerDiagnosticsUpdateEvent event=(ContainerDiagnosticsUpdateEvent)invocationOnMock.getArguments()[0];
+      assertTrue("Invalid Diagnostics message: " + event.getDiagnosticsUpdate(),event.getDiagnosticsUpdate().contains("badcommand"));
+      return null;
+    }
+  }
+).when(container).handle(any(ContainerDiagnosticsUpdateEvent.class));
   when(cId.toString()).thenReturn(containerId);
   when(context.getEnvironment()).thenReturn(env);
   Path scriptPath=new Path("file:///bin/echo");

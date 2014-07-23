@@ -1,0 +1,42 @@
+{
+  final String mediaType=mType;
+  final String contentType=cType;
+  final DelegationToken dtoken=new DelegationToken();
+  String renewer="client2";
+  dtoken.setRenewer(renewer);
+  KerberosTestUtils.doAsClient(new Callable<Void>(){
+    @Override public Void call() throws Exception {
+      ClientResponse response=resource().path("ws").path("v1").path("cluster").path("delegation-token").header(yarnTokenHeader,"random-string").accept(contentType).delete(ClientResponse.class);
+      assertEquals(Status.BAD_REQUEST,response.getClientResponseStatus());
+      return null;
+    }
+  }
+);
+  KerberosTestUtils.doAsClient(new Callable<Void>(){
+    @Override public Void call() throws Exception {
+      ClientResponse response=resource().path("ws").path("v1").path("cluster").path("delegation-token").accept(contentType).delete(ClientResponse.class);
+      assertEquals(Status.BAD_REQUEST,response.getClientResponseStatus());
+      return null;
+    }
+  }
+);
+  final DelegationToken tmpToken=KerberosTestUtils.doAsClient(new Callable<DelegationToken>(){
+    @Override public DelegationToken call() throws Exception {
+      ClientResponse response=resource().path("ws").path("v1").path("cluster").path("delegation-token").accept(contentType).entity(dtoken,mediaType).post(ClientResponse.class);
+      assertEquals(Status.OK,response.getClientResponseStatus());
+      DelegationToken tok=getDelegationTokenFromResponse(response);
+      return tok;
+    }
+  }
+);
+  KerberosTestUtils.doAs(renewer,new Callable<Void>(){
+    @Override public Void call() throws Exception {
+      ClientResponse response=resource().path("ws").path("v1").path("cluster").path("delegation-token").header(yarnTokenHeader,tmpToken.getToken()).accept(contentType).delete(ClientResponse.class);
+      assertEquals(Status.OK,response.getClientResponseStatus());
+      response=resource().path("ws").path("v1").path("cluster").path("delegation-token").header(yarnTokenHeader,tmpToken.getToken()).accept(contentType).delete(ClientResponse.class);
+      assertEquals(Status.BAD_REQUEST,response.getClientResponseStatus());
+      return null;
+    }
+  }
+);
+}
