@@ -1,0 +1,25 @@
+{
+  final Credentials credsx=new Credentials();
+  final Token<?> tokenx=mock(Token.class);
+  credsx.addToken(new Text("token"),tokenx);
+  doReturn(true).when(tokenx).isManaged();
+  doThrow(new IOException("boom")).when(tokenx).renew(any(Configuration.class));
+  final DelegationTokenRenewer dtr=createNewDelegationTokenRenewer(conf,counter);
+  RMContext mockContext=mock(RMContext.class);
+  ClientRMService mockClientRMService=mock(ClientRMService.class);
+  when(mockContext.getClientRMService()).thenReturn(mockClientRMService);
+  InetSocketAddress sockAddr=InetSocketAddress.createUnresolved("localhost",1234);
+  when(mockClientRMService.getBindAddress()).thenReturn(sockAddr);
+  dtr.setRMContext(mockContext);
+  when(mockContext.getDelegationTokenRenewer()).thenReturn(dtr);
+  dtr.init(conf);
+  dtr.start();
+  try {
+    dtr.addApplicationSync(mock(ApplicationId.class),credsx,false);
+    fail("Catch IOException on app submission");
+  }
+ catch (  IOException e) {
+    Assert.assertTrue(e.getMessage().contains(tokenx.toString()));
+    Assert.assertTrue(e.getCause().toString().contains("boom"));
+  }
+}

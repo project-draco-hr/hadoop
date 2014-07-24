@@ -2,16 +2,123 @@
   FileSystem.mkdirs(fs,path,FsPermission.createImmutable((short)0750));
   fs.setXAttr(path,name1,value1,EnumSet.of(XAttrSetFlag.CREATE));
   fs.setXAttr(path,name2,value2,EnumSet.of(XAttrSetFlag.CREATE));
-  byte[] value=fs.getXAttr(path,name3);
-  Assert.assertEquals(value,null);
-  List<String> names=Lists.newArrayList();
-  names.add(name1);
-  names.add(name2);
-  names.add(name3);
-  Map<String,byte[]> xattrs=fs.getXAttrs(path,names);
-  Assert.assertEquals(xattrs.size(),2);
-  Assert.assertArrayEquals(value1,xattrs.get(name1));
-  Assert.assertArrayEquals(value2,xattrs.get(name2));
+  try {
+    final byte[] value=fs.getXAttr(path,name3);
+    Assert.fail("expected IOException");
+  }
+ catch (  IOException e) {
+    GenericTestUtils.assertExceptionContains("At least one of the attributes provided was not found.",e);
+  }
+{
+    final List<String> names=Lists.newArrayList();
+    names.add(name1);
+    names.add(name2);
+    names.add(name3);
+    try {
+      final Map<String,byte[]> xattrs=fs.getXAttrs(path,names);
+      Assert.fail("expected IOException");
+    }
+ catch (    IOException e) {
+      GenericTestUtils.assertExceptionContains("At least one of the attributes provided was not found.",e);
+    }
+  }
   fs.removeXAttr(path,name1);
   fs.removeXAttr(path,name2);
+  try {
+    final byte[] xattr=fs.getXAttr(path,"wackynamespace.foo");
+    Assert.fail("expected IOException");
+  }
+ catch (  Exception e) {
+    GenericTestUtils.assertExceptionContains("An XAttr name must be prefixed with user/trusted/security/system, " + "followed by a '.'",e);
+  }
+  final UserGroupInformation user=UserGroupInformation.createUserForTesting("user",new String[]{"mygroup"});
+  fs.setXAttr(path,"trusted.foo","1234".getBytes());
+  try {
+    user.doAs(new PrivilegedExceptionAction<Object>(){
+      @Override public Object run() throws Exception {
+        final FileSystem userFs=dfsCluster.getFileSystem();
+        final byte[] xattr=userFs.getXAttr(path,"trusted.foo");
+        return null;
+      }
+    }
+);
+    Assert.fail("expected IOException");
+  }
+ catch (  IOException e) {
+    GenericTestUtils.assertExceptionContains("User doesn't have permission",e);
+  }
+  fs.setXAttr(path,name1,"1234".getBytes());
+  fs.setPermission(path,new FsPermission((short)0700));
+  try {
+    user.doAs(new PrivilegedExceptionAction<Object>(){
+      @Override public Object run() throws Exception {
+        final FileSystem userFs=dfsCluster.getFileSystem();
+        final byte[] xattr=userFs.getXAttr(path,name1);
+        return null;
+      }
+    }
+);
+    Assert.fail("expected IOException");
+  }
+ catch (  IOException e) {
+    GenericTestUtils.assertExceptionContains("Permission denied",e);
+  }
+  final Path childDir=new Path(path,"child" + pathCount);
+  FileSystem.mkdirs(fs,childDir,FsPermission.createImmutable((short)0700));
+  fs.setXAttr(childDir,name1,"1234".getBytes());
+  try {
+    user.doAs(new PrivilegedExceptionAction<Object>(){
+      @Override public Object run() throws Exception {
+        final FileSystem userFs=dfsCluster.getFileSystem();
+        final byte[] xattr=userFs.getXAttr(childDir,name1);
+        return null;
+      }
+    }
+);
+    Assert.fail("expected IOException");
+  }
+ catch (  IOException e) {
+    GenericTestUtils.assertExceptionContains("Permission denied",e);
+  }
+  fs.setPermission(path,new FsPermission((short)0704));
+  try {
+    user.doAs(new PrivilegedExceptionAction<Object>(){
+      @Override public Object run() throws Exception {
+        final FileSystem userFs=dfsCluster.getFileSystem();
+        final byte[] xattr=userFs.getXAttr(childDir,name1);
+        return null;
+      }
+    }
+);
+    Assert.fail("expected IOException");
+  }
+ catch (  IOException e) {
+    GenericTestUtils.assertExceptionContains("Permission denied",e);
+  }
+  fs.setPermission(path,new FsPermission((short)0701));
+  fs.setPermission(childDir,new FsPermission((short)0701));
+  try {
+    user.doAs(new PrivilegedExceptionAction<Object>(){
+      @Override public Object run() throws Exception {
+        final FileSystem userFs=dfsCluster.getFileSystem();
+        final byte[] xattr=userFs.getXAttr(childDir,name1);
+        return null;
+      }
+    }
+);
+    Assert.fail("expected IOException");
+  }
+ catch (  IOException e) {
+    GenericTestUtils.assertExceptionContains("Permission denied",e);
+  }
+  fs.setPermission(path,new FsPermission((short)0701));
+  fs.setPermission(childDir,new FsPermission((short)0704));
+  user.doAs(new PrivilegedExceptionAction<Object>(){
+    @Override public Object run() throws Exception {
+      final FileSystem userFs=dfsCluster.getFileSystem();
+      final byte[] xattr=userFs.getXAttr(childDir,name1);
+      return null;
+    }
+  }
+);
 }
