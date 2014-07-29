@@ -1,40 +1,28 @@
 {
-  if (pathComponents == null || pathComponents.length <= 3) {
+  final int nComponents=(pathComponents == null) ? 0 : pathComponents.length;
+  if (nComponents <= 2) {
     return src;
   }
-  if (!Arrays.equals(DOT_RESERVED,pathComponents[1]) || !Arrays.equals(DOT_INODES,pathComponents[2])) {
+  if (!Arrays.equals(DOT_RESERVED,pathComponents[1])) {
     return src;
   }
-  final String inodeId=DFSUtil.bytes2String(pathComponents[3]);
-  final long id;
-  try {
-    id=Long.parseLong(inodeId);
+  if (Arrays.equals(DOT_INODES,pathComponents[2])) {
+    if (nComponents > 3) {
+      return resolveDotInodesPath(src,pathComponents,fsd);
+    }
+ else {
+      return src;
+    }
   }
- catch (  NumberFormatException e) {
-    throw new FileNotFoundException("Invalid inode path: " + src);
-  }
-  if (id == INodeId.ROOT_INODE_ID && pathComponents.length == 4) {
-    return Path.SEPARATOR;
-  }
-  INode inode=fsd.getInode(id);
-  if (inode == null) {
-    throw new FileNotFoundException("File for given inode path does not exist: " + src);
-  }
-  if ((pathComponents.length > 4) && DFSUtil.bytes2String(pathComponents[4]).equals("..")) {
-    INode parent=inode.getParent();
-    if (parent == null || parent.getId() == INodeId.ROOT_INODE_ID) {
+ else   if (Arrays.equals(RAW,pathComponents[2])) {
+    if (nComponents == 3) {
       return Path.SEPARATOR;
     }
  else {
-      return parent.getFullPathName();
+      return constructRemainingPath("",pathComponents,3);
     }
   }
-  StringBuilder path=id == INodeId.ROOT_INODE_ID ? new StringBuilder() : new StringBuilder(inode.getFullPathName());
-  for (int i=4; i < pathComponents.length; i++) {
-    path.append(Path.SEPARATOR).append(DFSUtil.bytes2String(pathComponents[i]));
+ else {
+    return src;
   }
-  if (NameNode.LOG.isDebugEnabled()) {
-    NameNode.LOG.debug("Resolved path is " + path);
-  }
-  return path.toString();
 }
