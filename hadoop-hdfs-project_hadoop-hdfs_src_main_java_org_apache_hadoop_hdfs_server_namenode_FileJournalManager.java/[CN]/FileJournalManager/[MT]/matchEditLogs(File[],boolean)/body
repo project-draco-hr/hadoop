@@ -1,0 +1,43 @@
+{
+  List<EditLogFile> ret=Lists.newArrayList();
+  for (  File f : filesInStorage) {
+    String name=f.getName();
+    Matcher editsMatch=EDITS_REGEX.matcher(name);
+    if (editsMatch.matches()) {
+      try {
+        long startTxId=Long.parseLong(editsMatch.group(1));
+        long endTxId=Long.parseLong(editsMatch.group(2));
+        ret.add(new EditLogFile(f,startTxId,endTxId));
+        continue;
+      }
+ catch (      NumberFormatException nfe) {
+        LOG.error("Edits file " + f + " has improperly formatted "+ "transaction ID");
+      }
+    }
+    Matcher inProgressEditsMatch=EDITS_INPROGRESS_REGEX.matcher(name);
+    if (inProgressEditsMatch.matches()) {
+      try {
+        long startTxId=Long.parseLong(inProgressEditsMatch.group(1));
+        ret.add(new EditLogFile(f,startTxId,HdfsConstants.INVALID_TXID,true));
+        continue;
+      }
+ catch (      NumberFormatException nfe) {
+        LOG.error("In-progress edits file " + f + " has improperly "+ "formatted transaction ID");
+      }
+    }
+    if (forPurging) {
+      Matcher staleInprogressEditsMatch=EDITS_INPROGRESS_STALE_REGEX.matcher(name);
+      if (staleInprogressEditsMatch.matches()) {
+        try {
+          long startTxId=Long.valueOf(staleInprogressEditsMatch.group(1));
+          ret.add(new EditLogFile(f,startTxId,HdfsConstants.INVALID_TXID,true));
+          continue;
+        }
+ catch (        NumberFormatException nfe) {
+          LOG.error("In-progress stale edits file " + f + " has improperly "+ "formatted transaction ID");
+        }
+      }
+    }
+  }
+  return ret;
+}

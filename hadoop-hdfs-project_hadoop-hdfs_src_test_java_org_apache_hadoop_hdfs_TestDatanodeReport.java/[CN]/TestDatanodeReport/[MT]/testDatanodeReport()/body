@@ -4,13 +4,15 @@
   MiniDFSCluster cluster=new MiniDFSCluster.Builder(conf).numDataNodes(NUM_OF_DATANODES).build();
   try {
     cluster.waitActive();
-    InetSocketAddress addr=new InetSocketAddress("localhost",cluster.getNameNodePort());
-    DFSClient client=new DFSClient(addr,conf);
-    assertEquals(client.datanodeReport(DatanodeReportType.ALL).length,NUM_OF_DATANODES);
-    assertEquals(client.datanodeReport(DatanodeReportType.LIVE).length,NUM_OF_DATANODES);
-    assertEquals(client.datanodeReport(DatanodeReportType.DEAD).length,0);
-    ArrayList<DataNode> datanodes=cluster.getDataNodes();
-    datanodes.remove(datanodes.size() - 1).shutdown();
+    final String bpid=cluster.getNamesystem().getBlockPoolId();
+    final List<DataNode> datanodes=cluster.getDataNodes();
+    final DFSClient client=cluster.getFileSystem().dfs;
+    assertReports(NUM_OF_DATANODES,DatanodeReportType.ALL,client,datanodes,bpid);
+    assertReports(NUM_OF_DATANODES,DatanodeReportType.LIVE,client,datanodes,bpid);
+    assertReports(0,DatanodeReportType.DEAD,client,datanodes,bpid);
+    final DataNode last=datanodes.get(datanodes.size() - 1);
+    LOG.info("XXX shutdown datanode " + last.getDatanodeUuid());
+    last.shutdown();
     DatanodeInfo[] nodeInfo=client.datanodeReport(DatanodeReportType.DEAD);
     while (nodeInfo.length != 1) {
       try {
@@ -20,8 +22,9 @@
       }
       nodeInfo=client.datanodeReport(DatanodeReportType.DEAD);
     }
-    assertEquals(client.datanodeReport(DatanodeReportType.LIVE).length,NUM_OF_DATANODES - 1);
-    assertEquals(client.datanodeReport(DatanodeReportType.ALL).length,NUM_OF_DATANODES);
+    assertReports(NUM_OF_DATANODES,DatanodeReportType.ALL,client,datanodes,null);
+    assertReports(NUM_OF_DATANODES - 1,DatanodeReportType.LIVE,client,datanodes,null);
+    assertReports(1,DatanodeReportType.DEAD,client,datanodes,null);
     Thread.sleep(5000);
     assertGauge("ExpiredHeartbeats",1,getMetrics("FSNamesystem"));
   }

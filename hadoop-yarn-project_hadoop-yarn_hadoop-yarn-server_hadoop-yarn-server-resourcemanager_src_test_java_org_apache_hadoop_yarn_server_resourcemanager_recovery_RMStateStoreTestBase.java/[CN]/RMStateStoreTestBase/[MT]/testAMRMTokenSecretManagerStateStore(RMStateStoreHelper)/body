@@ -1,0 +1,32 @@
+{
+  System.out.println("Start testing");
+  RMStateStore store=stateStoreHelper.getRMStateStore();
+  TestDispatcher dispatcher=new TestDispatcher();
+  store.setRMDispatcher(dispatcher);
+  RMContext rmContext=mock(RMContext.class);
+  when(rmContext.getStateStore()).thenReturn(store);
+  Configuration conf=new YarnConfiguration();
+  AMRMTokenSecretManager appTokenMgr=new AMRMTokenSecretManager(conf,rmContext);
+  MasterKeyData firstMasterKeyData=appTokenMgr.createNewMasterKey();
+  AMRMTokenSecretManagerState state1=AMRMTokenSecretManagerState.newInstance(firstMasterKeyData.getMasterKey(),null);
+  rmContext.getStateStore().storeOrUpdateAMRMTokenSecretManagerState(state1,false);
+  store=stateStoreHelper.getRMStateStore();
+  store.setRMDispatcher(dispatcher);
+  RMState state=store.loadState();
+  Assert.assertNotNull(state.getAMRMTokenSecretManagerState());
+  Assert.assertEquals(firstMasterKeyData.getMasterKey(),state.getAMRMTokenSecretManagerState().getCurrentMasterKey());
+  Assert.assertNull(state.getAMRMTokenSecretManagerState().getNextMasterKey());
+  MasterKeyData secondMasterKeyData=appTokenMgr.createNewMasterKey();
+  AMRMTokenSecretManagerState state2=AMRMTokenSecretManagerState.newInstance(firstMasterKeyData.getMasterKey(),secondMasterKeyData.getMasterKey());
+  rmContext.getStateStore().storeOrUpdateAMRMTokenSecretManagerState(state2,true);
+  store=stateStoreHelper.getRMStateStore();
+  store.setRMDispatcher(dispatcher);
+  RMState state_2=store.loadState();
+  Assert.assertNotNull(state_2.getAMRMTokenSecretManagerState());
+  Assert.assertEquals(firstMasterKeyData.getMasterKey(),state_2.getAMRMTokenSecretManagerState().getCurrentMasterKey());
+  Assert.assertEquals(secondMasterKeyData.getMasterKey(),state_2.getAMRMTokenSecretManagerState().getNextMasterKey());
+  appTokenMgr.recover(state_2);
+  Assert.assertEquals(appTokenMgr.getCurrnetMasterKeyData().getSecretKey(),firstMasterKeyData.getSecretKey());
+  Assert.assertEquals(appTokenMgr.getNextMasterKeyData().getSecretKey(),secondMasterKeyData.getSecretKey());
+  store.close();
+}

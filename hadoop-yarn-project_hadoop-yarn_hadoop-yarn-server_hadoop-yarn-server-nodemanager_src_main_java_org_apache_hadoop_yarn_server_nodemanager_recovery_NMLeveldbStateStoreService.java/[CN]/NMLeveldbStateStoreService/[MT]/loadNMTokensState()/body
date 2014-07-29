@@ -1,0 +1,42 @@
+{
+  RecoveredNMTokensState state=new RecoveredNMTokensState();
+  state.applicationMasterKeys=new HashMap<ApplicationAttemptId,MasterKey>();
+  LeveldbIterator iter=null;
+  try {
+    iter=new LeveldbIterator(db);
+    iter.seek(bytes(NM_TOKENS_KEY_PREFIX));
+    while (iter.hasNext()) {
+      Entry<byte[],byte[]> entry=iter.next();
+      String fullKey=asString(entry.getKey());
+      if (!fullKey.startsWith(NM_TOKENS_KEY_PREFIX)) {
+        break;
+      }
+      String key=fullKey.substring(NM_TOKENS_KEY_PREFIX.length());
+      if (key.equals(CURRENT_MASTER_KEY_SUFFIX)) {
+        state.currentMasterKey=parseMasterKey(entry.getValue());
+      }
+ else       if (key.equals(PREV_MASTER_KEY_SUFFIX)) {
+        state.previousMasterKey=parseMasterKey(entry.getValue());
+      }
+ else       if (key.startsWith(ApplicationAttemptId.appAttemptIdStrPrefix)) {
+        ApplicationAttemptId attempt;
+        try {
+          attempt=ConverterUtils.toApplicationAttemptId(key);
+        }
+ catch (        IllegalArgumentException e) {
+          throw new IOException("Bad application master key state for " + fullKey,e);
+        }
+        state.applicationMasterKeys.put(attempt,parseMasterKey(entry.getValue()));
+      }
+    }
+  }
+ catch (  DBException e) {
+    throw new IOException(e);
+  }
+ finally {
+    if (iter != null) {
+      iter.close();
+    }
+  }
+  return state;
+}

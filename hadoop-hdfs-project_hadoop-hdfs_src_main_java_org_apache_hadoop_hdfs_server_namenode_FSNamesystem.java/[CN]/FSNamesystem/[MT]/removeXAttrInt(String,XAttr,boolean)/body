@@ -1,0 +1,30 @@
+{
+  nnConf.checkXAttrsConfigFlag();
+  HdfsFileStatus resultingStat=null;
+  FSPermissionChecker pc=getPermissionChecker();
+  XAttrPermissionFilter.checkPermissionForApi(pc,xAttr);
+  checkOperation(OperationCategory.WRITE);
+  byte[][] pathComponents=FSDirectory.getPathComponentsForReservedPath(src);
+  writeLock();
+  try {
+    checkOperation(OperationCategory.WRITE);
+    checkNameNodeSafeMode("Cannot remove XAttr entry on " + src);
+    src=FSDirectory.resolvePath(src,pathComponents,dir);
+    checkXAttrChangeAccess(src,xAttr,pc);
+    List<XAttr> xAttrs=Lists.newArrayListWithCapacity(1);
+    xAttrs.add(xAttr);
+    List<XAttr> removedXAttrs=dir.removeXAttrs(src,xAttrs);
+    if (removedXAttrs != null && !removedXAttrs.isEmpty()) {
+      getEditLog().logRemoveXAttrs(src,removedXAttrs,logRetryCache);
+    }
+ else {
+      throw new IOException("No matching attributes found for remove operation");
+    }
+    resultingStat=getAuditFileInfo(src,false);
+  }
+  finally {
+    writeUnlock();
+  }
+  getEditLog().logSync();
+  logAuditEvent(true,"removeXAttr",src,null,resultingStat);
+}
