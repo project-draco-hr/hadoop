@@ -1,4 +1,29 @@
 {
+  Configuration conf=getConfig();
+  boolean useYarnAuthenticationFilter=conf.getBoolean(YarnConfiguration.RM_WEBAPP_DELEGATION_TOKEN_AUTH_FILTER,YarnConfiguration.DEFAULT_RM_WEBAPP_DELEGATION_TOKEN_AUTH_FILTER);
+  String authPrefix="hadoop.http.authentication.";
+  String authTypeKey=authPrefix + "type";
+  String initializers=conf.get("hadoop.http.filter.initializers");
+  if (UserGroupInformation.isSecurityEnabled() && useYarnAuthenticationFilter && conf.get(authTypeKey,"").equalsIgnoreCase(KerberosAuthenticationHandler.TYPE)) {
+    LOG.info("Using RM authentication filter(kerberos/delegation-token)" + " for RM webapp authentication");
+    RMAuthenticationHandler.setSecretManager(getClientRMService().rmDTSecretManager);
+    String yarnAuthKey=authPrefix + RMAuthenticationFilter.AUTH_HANDLER_PROPERTY;
+    conf.setStrings(yarnAuthKey,RMAuthenticationHandler.class.getName());
+    initializers=initializers == null || initializers.isEmpty() ? "" : "," + initializers;
+    if (!initializers.contains(RMAuthenticationFilterInitializer.class.getName())) {
+      conf.set("hadoop.http.filter.initializers",RMAuthenticationFilterInitializer.class.getName() + initializers);
+    }
+  }
+  if (!UserGroupInformation.isSecurityEnabled()) {
+    if (initializers == null || initializers.isEmpty()) {
+      conf.set("hadoop.http.filter.initializers",RMAuthenticationFilterInitializer.class.getName());
+      conf.set(authTypeKey,"simple");
+    }
+ else     if (initializers.equals(StaticUserWebFilter.class.getName())) {
+      conf.set("hadoop.http.filter.initializers",RMAuthenticationFilterInitializer.class.getName() + "," + initializers);
+      conf.set(authTypeKey,"simple");
+    }
+  }
   Builder<ApplicationMasterService> builder=WebApps.$for("cluster",ApplicationMasterService.class,masterService,"ws").with(conf).withHttpSpnegoPrincipalKey(YarnConfiguration.RM_WEBAPP_SPNEGO_USER_NAME_KEY).withHttpSpnegoKeytabKey(YarnConfiguration.RM_WEBAPP_SPNEGO_KEYTAB_FILE_KEY).at(webAppAddress);
   String proxyHostAndPort=WebAppUtils.getProxyHostAndPort(conf);
   if (WebAppUtils.getResolvedRMWebAppURLWithoutScheme(conf).equals(proxyHostAndPort)) {
