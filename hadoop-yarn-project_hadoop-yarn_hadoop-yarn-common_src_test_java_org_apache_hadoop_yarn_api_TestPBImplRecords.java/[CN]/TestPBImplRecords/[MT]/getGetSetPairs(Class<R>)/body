@@ -1,0 +1,59 @@
+{
+  Map<String,GetSetPair> ret=new HashMap<String,GetSetPair>();
+  Method[] methods=recordClass.getDeclaredMethods();
+  for (int i=0; i < methods.length; i++) {
+    Method m=methods[i];
+    int mod=m.getModifiers();
+    if (m.getDeclaringClass().equals(recordClass) && Modifier.isPublic(mod) && (!Modifier.isStatic(mod))) {
+      String name=m.getName();
+      if (name.equals("getProto")) {
+        continue;
+      }
+      if ((name.length() > 3) && name.startsWith("get") && (m.getParameterTypes().length == 0)) {
+        String propertyName=name.substring(3);
+        Type valueType=m.getGenericReturnType();
+        GetSetPair p=ret.get(propertyName);
+        if (p == null) {
+          p=new GetSetPair();
+          p.propertyName=propertyName;
+          p.type=valueType;
+          p.getMethod=m;
+          ret.put(propertyName,p);
+        }
+ else {
+          Assert.fail("Multiple get method with same name: " + recordClass + p.propertyName);
+        }
+      }
+    }
+  }
+  for (int i=0; i < methods.length; i++) {
+    Method m=methods[i];
+    int mod=m.getModifiers();
+    if (m.getDeclaringClass().equals(recordClass) && Modifier.isPublic(mod) && (!Modifier.isStatic(mod))) {
+      String name=m.getName();
+      if (name.startsWith("set") && (m.getParameterTypes().length == 1)) {
+        String propertyName=name.substring(3);
+        Type valueType=m.getGenericParameterTypes()[0];
+        GetSetPair p=ret.get(propertyName);
+        if (p != null && p.type.equals(valueType)) {
+          p.setMethod=m;
+        }
+      }
+    }
+  }
+  Iterator<Entry<String,GetSetPair>> itr=ret.entrySet().iterator();
+  while (itr.hasNext()) {
+    Entry<String,GetSetPair> cur=itr.next();
+    GetSetPair gsp=cur.getValue();
+    if ((gsp.getMethod == null) || (gsp.setMethod == null)) {
+      LOG.info(String.format("Exclude protential property: %s\n",gsp.propertyName));
+      itr.remove();
+    }
+ else {
+      LOG.info(String.format("New property: %s type: %s",gsp.toString(),gsp.type));
+      gsp.testValue=genTypeValue(gsp.type);
+      LOG.info(String.format(" testValue: %s\n",gsp.testValue));
+    }
+  }
+  return ret;
+}
