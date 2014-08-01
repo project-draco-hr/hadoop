@@ -1,0 +1,68 @@
+{
+  if (!from.exists()) {
+    return;
+  }
+  if (!from.isDirectory()) {
+    if (from.getName().startsWith(COPY_FILE_PREFIX)) {
+      FileInputStream in=new FileInputStream(from);
+      try {
+        FileOutputStream out=new FileOutputStream(to);
+        try {
+          IOUtils.copyBytes(in,out,16 * 1024);
+          hl.linkStats.countPhysicalFileCopies++;
+        }
+  finally {
+          out.close();
+        }
+      }
+  finally {
+        in.close();
+      }
+    }
+ else {
+      HardLink.createHardLink(from,to);
+      hl.linkStats.countSingleLinks++;
+    }
+    return;
+  }
+  hl.linkStats.countDirs++;
+  String[] blockNames=from.list(new java.io.FilenameFilter(){
+    @Override public boolean accept(    File dir,    String name){
+      return name.startsWith(BLOCK_FILE_PREFIX);
+    }
+  }
+);
+  if (!upgradeToIdBasedLayout || !to.getName().startsWith(BLOCK_SUBDIR_PREFIX)) {
+    if (!to.mkdirs())     throw new IOException("Cannot create directory " + to);
+  }
+  if (blockNames.length > 0) {
+    if (upgradeToIdBasedLayout) {
+      for (      String blockName : blockNames) {
+        long blockId=Block.getBlockId(blockName);
+        File blockLocation=DatanodeUtil.idToBlockDir(blockRoot,blockId);
+        if (!blockLocation.exists()) {
+          if (!blockLocation.mkdirs()) {
+            throw new IOException("Failed to mkdirs " + blockLocation);
+          }
+        }
+        idBasedLayoutSingleLinks.add(new LinkArgs(new File(from,blockName),new File(blockLocation,blockName)));
+        hl.linkStats.countSingleLinks++;
+      }
+    }
+ else {
+      HardLink.createHardLinkMult(from,blockNames,to);
+      hl.linkStats.countMultLinks++;
+      hl.linkStats.countFilesMultLinks+=blockNames.length;
+    }
+  }
+ else {
+    hl.linkStats.countEmptyDirs++;
+  }
+  String[] otherNames=from.list(new java.io.FilenameFilter(){
+    @Override public boolean accept(    File dir,    String name){
+      return name.startsWith(BLOCK_SUBDIR_PREFIX) || name.startsWith(COPY_FILE_PREFIX);
+    }
+  }
+);
+  for (int i=0; i < otherNames.length; i++)   linkBlocksHelper(new File(from,otherNames[i]),new File(to,otherNames[i]),oldLV,hl,upgradeToIdBasedLayout,blockRoot,idBasedLayoutSingleLinks);
+}
