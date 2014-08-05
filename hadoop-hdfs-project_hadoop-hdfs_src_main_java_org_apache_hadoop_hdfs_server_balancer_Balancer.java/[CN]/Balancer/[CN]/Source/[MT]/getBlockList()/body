@@ -1,5 +1,6 @@
 {
-  BlockWithLocations[] newBlocks=nnc.namenode.getBlocks(datanode,Math.min(MAX_BLOCKS_SIZE_TO_FETCH,blocksToReceive)).getBlocks();
+  final long size=Math.min(MAX_BLOCKS_SIZE_TO_FETCH,blocksToReceive);
+  final BlockWithLocations[] newBlocks=nnc.namenode.getBlocks(getDatanode(),size).getBlocks();
   long bytesReceived=0;
   for (  BlockWithLocations blk : newBlocks) {
     bytesReceived+=blk.getBlock().getNumBytes();
@@ -14,10 +15,12 @@ synchronized (globalBlockList) {
         block.clearLocations();
       }
 synchronized (block) {
-        for (        String datanodeUuid : blk.getDatanodeUuids()) {
-          final BalancerDatanode d=datanodeMap.get(datanodeUuid);
-          if (d != null) {
-            block.addLocation(d);
+        final String[] datanodeUuids=blk.getDatanodeUuids();
+        final StorageType[] storageTypes=blk.getStorageTypes();
+        for (int i=0; i < datanodeUuids.length; i++) {
+          final BalancerDatanode.StorageGroup g=storageGroupMap.get(datanodeUuids[i],storageTypes[i]);
+          if (g != null) {
+            block.addLocation(g);
           }
         }
       }

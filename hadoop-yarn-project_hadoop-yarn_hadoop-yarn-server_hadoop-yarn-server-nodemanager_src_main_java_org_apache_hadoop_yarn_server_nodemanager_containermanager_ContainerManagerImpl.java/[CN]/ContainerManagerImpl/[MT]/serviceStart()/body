@@ -3,7 +3,7 @@
   Configuration serverConf=new Configuration(conf);
   serverConf.set(CommonConfigurationKeysPublic.HADOOP_SECURITY_AUTHENTICATION,SaslRpcServer.AuthMethod.TOKEN.toString());
   YarnRPC rpc=YarnRPC.create(conf);
-  InetSocketAddress initialAddress=conf.getSocketAddr(YarnConfiguration.NM_ADDRESS,YarnConfiguration.DEFAULT_NM_ADDRESS,YarnConfiguration.DEFAULT_NM_PORT);
+  InetSocketAddress initialAddress=conf.getSocketAddr(YarnConfiguration.NM_BIND_HOST,YarnConfiguration.NM_ADDRESS,YarnConfiguration.DEFAULT_NM_ADDRESS,YarnConfiguration.DEFAULT_NM_PORT);
   server=rpc.getServer(ContainerManagementProtocol.class,this,initialAddress,serverConf,this.context.getNMTokenSecretManager(),conf.getInt(YarnConfiguration.NM_CONTAINER_MGR_THREAD_COUNT,YarnConfiguration.DEFAULT_NM_CONTAINER_MGR_THREAD_COUNT));
   if (conf.getBoolean(CommonConfigurationKeysPublic.HADOOP_SECURITY_AUTHORIZATION,false)) {
     refreshServiceAcls(conf,new NMPolicyProvider());
@@ -11,11 +11,20 @@
   LOG.info("Blocking new container-requests as container manager rpc" + " server is still starting.");
   this.setBlockNewContainerRequests(true);
   server.start();
-  InetSocketAddress connectAddress=NetUtils.getConnectAddress(server);
+  InetSocketAddress connectAddress;
+  String bindHost=conf.get(YarnConfiguration.NM_BIND_HOST);
+  String nmAddress=conf.getTrimmed(YarnConfiguration.NM_ADDRESS);
+  if (bindHost == null || bindHost.isEmpty() || nmAddress == null || nmAddress.isEmpty()) {
+    connectAddress=NetUtils.getConnectAddress(server);
+  }
+ else {
+    connectAddress=NetUtils.getConnectAddress(new InetSocketAddress(nmAddress.split(":")[0],server.getListenerAddress().getPort()));
+  }
   NodeId nodeId=NodeId.newInstance(connectAddress.getAddress().getCanonicalHostName(),connectAddress.getPort());
   ((NodeManager.NMContext)context).setNodeId(nodeId);
   this.context.getNMTokenSecretManager().setNodeId(nodeId);
   this.context.getContainerTokenSecretManager().setNodeId(nodeId);
   LOG.info("ContainerManager started at " + connectAddress);
+  LOG.info("ContainerManager bound to " + initialAddress);
   super.serviceStart();
 }

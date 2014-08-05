@@ -1,0 +1,52 @@
+{
+  GETATTR3Response response=new GETATTR3Response(Nfs3Status.NFS3_OK);
+  if (!checkAccessPrivilege(remoteAddress,AccessPrivilege.READ_ONLY)) {
+    response.setStatus(Nfs3Status.NFS3ERR_ACCES);
+    return response;
+  }
+  DFSClient dfsClient=clientCache.getDfsClient(securityHandler.getUser());
+  if (dfsClient == null) {
+    response.setStatus(Nfs3Status.NFS3ERR_SERVERFAULT);
+    return response;
+  }
+  GETATTR3Request request=null;
+  try {
+    request=new GETATTR3Request(xdr);
+  }
+ catch (  IOException e) {
+    LOG.error("Invalid GETATTR request");
+    response.setStatus(Nfs3Status.NFS3ERR_INVAL);
+    return response;
+  }
+  FileHandle handle=request.getHandle();
+  if (LOG.isTraceEnabled()) {
+    LOG.trace("GETATTR for fileId: " + handle.getFileId());
+  }
+  Nfs3FileAttributes attrs=null;
+  try {
+    attrs=writeManager.getFileAttr(dfsClient,handle,iug);
+  }
+ catch (  RemoteException r) {
+    LOG.warn("Exception ",r);
+    IOException io=r.unwrapRemoteException();
+    if (io instanceof AuthorizationException) {
+      return new GETATTR3Response(Nfs3Status.NFS3ERR_ACCES);
+    }
+ else {
+      return new GETATTR3Response(Nfs3Status.NFS3ERR_IO);
+    }
+  }
+catch (  IOException e) {
+    LOG.info("Can't get file attribute, fileId=" + handle.getFileId(),e);
+    int status=mapErrorStatus(e);
+    response.setStatus(status);
+    return response;
+  }
+  if (attrs == null) {
+    LOG.error("Can't get path for fileId:" + handle.getFileId());
+    response.setStatus(Nfs3Status.NFS3ERR_STALE);
+    return response;
+  }
+  response.setPostOpAttr(attrs);
+  return response;
+}
