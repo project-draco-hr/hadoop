@@ -1,0 +1,29 @@
+{
+  DistributedFileSystem fileSys=(DistributedFileSystem)cluster.getFileSystem();
+  Path f=new Path("decommission.dat");
+  DFSTestUtil.createFile(fileSys,f,fileSize,fileSize,fileSize,(short)1,seed);
+  RemoteIterator<LocatedFileStatus> fileList=fileSys.listLocatedStatus(f);
+  BlockLocation[] blockLocations=fileList.next().getBlockLocations();
+  String dnName=blockLocations[0].getNames()[0];
+  FSNamesystem fsn=cluster.getNamesystem();
+  final DatanodeManager dm=fsn.getBlockManager().getDatanodeManager();
+  decommissionNode(fsn,localFileSys,dnName);
+  dm.refreshNodes(conf);
+  DataNodeProperties dataNodeProperties=cluster.stopDataNode(dnName);
+  final List<DatanodeDescriptor> dead=new ArrayList<DatanodeDescriptor>();
+  while (true) {
+    dm.fetchDatanodes(null,dead,false);
+    if (dead.size() == 1) {
+      break;
+    }
+    Thread.sleep(1000);
+  }
+  BlockManagerTestUtil.checkHeartbeat(fsn.getBlockManager());
+  BlockManagerTestUtil.checkDecommissionState(dm,dead.get(0));
+  assertTrue("the node is in decommissioned state ",!dead.get(0).isDecommissioned());
+  cluster.restartDataNode(dataNodeProperties,true);
+  cluster.waitActive();
+  writeConfigFile(localFileSys,excludeFile,null);
+  dm.refreshNodes(conf);
+  cleanupFile(fileSys,f);
+}
