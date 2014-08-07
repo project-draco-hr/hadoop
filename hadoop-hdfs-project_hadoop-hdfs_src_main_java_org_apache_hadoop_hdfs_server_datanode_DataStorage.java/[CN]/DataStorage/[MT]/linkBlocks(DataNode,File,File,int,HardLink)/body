@@ -1,0 +1,30 @@
+{
+  boolean upgradeToIdBasedLayout=false;
+  if (oldLV > DataNodeLayoutVersion.Feature.BLOCKID_BASED_LAYOUT.getInfo().getLayoutVersion() && to.getName().equals(STORAGE_DIR_FINALIZED)) {
+    upgradeToIdBasedLayout=true;
+  }
+  final List<LinkArgs> idBasedLayoutSingleLinks=Lists.newArrayList();
+  linkBlocksHelper(from,to,oldLV,hl,upgradeToIdBasedLayout,to,idBasedLayoutSingleLinks);
+  int numLinkWorkers=datanode.getConf().getInt(DFSConfigKeys.DFS_DATANODE_BLOCK_ID_LAYOUT_UPGRADE_THREADS_KEY,DFSConfigKeys.DFS_DATANODE_BLOCK_ID_LAYOUT_UPGRADE_THREADS);
+  ExecutorService linkWorkers=Executors.newFixedThreadPool(numLinkWorkers);
+  final int step=idBasedLayoutSingleLinks.size() / numLinkWorkers + 1;
+  List<Future<Void>> futures=Lists.newArrayList();
+  for (int i=0; i < idBasedLayoutSingleLinks.size(); i+=step) {
+    final int iCopy=i;
+    futures.add(linkWorkers.submit(new Callable<Void>(){
+      @Override public Void call() throws IOException {
+        int upperBound=Math.min(iCopy + step,idBasedLayoutSingleLinks.size());
+        for (int j=iCopy; j < upperBound; j++) {
+          LinkArgs cur=idBasedLayoutSingleLinks.get(j);
+          NativeIO.link(cur.src,cur.dst);
+        }
+        return null;
+      }
+    }
+));
+  }
+  linkWorkers.shutdown();
+  for (  Future<Void> f : futures) {
+    Futures.get(f,IOException.class);
+  }
+}

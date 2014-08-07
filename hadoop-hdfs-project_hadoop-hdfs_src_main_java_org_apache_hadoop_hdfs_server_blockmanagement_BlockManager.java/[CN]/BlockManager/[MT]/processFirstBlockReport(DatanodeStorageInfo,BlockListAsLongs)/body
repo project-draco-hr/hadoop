@@ -1,0 +1,38 @@
+{
+  if (report == null)   return;
+  assert(namesystem.hasWriteLock());
+  assert(storageInfo.numBlocks() == 0);
+  BlockReportIterator itBR=report.getBlockReportIterator();
+  while (itBR.hasNext()) {
+    Block iblk=itBR.next();
+    ReplicaState reportedState=itBR.getCurrentReplicaState();
+    if (shouldPostponeBlocksFromFuture && namesystem.isGenStampInFuture(iblk)) {
+      queueReportedBlock(storageInfo,iblk,reportedState,QUEUE_REASON_FUTURE_GENSTAMP);
+      continue;
+    }
+    BlockInfo storedBlock=blocksMap.getStoredBlock(iblk);
+    if (storedBlock == null)     continue;
+    BlockUCState ucState=storedBlock.getBlockUCState();
+    BlockToMarkCorrupt c=checkReplicaCorrupt(iblk,reportedState,storedBlock,ucState,storageInfo.getDatanodeDescriptor());
+    if (c != null) {
+      if (shouldPostponeBlocksFromFuture) {
+        queueReportedBlock(storageInfo,iblk,reportedState,QUEUE_REASON_CORRUPT_STATE);
+      }
+ else {
+        markBlockAsCorrupt(c,storageInfo,storageInfo.getDatanodeDescriptor());
+      }
+      continue;
+    }
+    if (isBlockUnderConstruction(storedBlock,ucState,reportedState)) {
+      ((BlockInfoUnderConstruction)storedBlock).addReplicaIfNotPresent(storageInfo,iblk,reportedState);
+      BlockInfoUnderConstruction blockUC=(BlockInfoUnderConstruction)storedBlock;
+      if (namesystem.isInSnapshot(blockUC)) {
+        int numOfReplicas=blockUC.getNumExpectedLocations();
+        namesystem.incrementSafeBlockCount(numOfReplicas);
+      }
+    }
+    if (reportedState == ReplicaState.FINALIZED) {
+      addStoredBlockImmediate(storedBlock,storageInfo);
+    }
+  }
+}
