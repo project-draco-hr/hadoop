@@ -16,14 +16,19 @@
  else   if (attributes.contains(FileAttribute.PERMISSION) && !srcFileStatus.getPermission().equals(targetFileStatus.getPermission())) {
     targetFS.setPermission(path,srcFileStatus.getPermission());
   }
-  if (attributes.contains(FileAttribute.XATTR)) {
+  final boolean preserveXAttrs=attributes.contains(FileAttribute.XATTR);
+  if (preserveXAttrs || preserveRawXattrs) {
+    final String rawNS=XAttr.NameSpace.RAW.name().toLowerCase();
     Map<String,byte[]> srcXAttrs=srcFileStatus.getXAttrs();
     Map<String,byte[]> targetXAttrs=getXAttrs(targetFS,path);
-    if (!srcXAttrs.equals(targetXAttrs)) {
+    if (srcXAttrs != null && !srcXAttrs.equals(targetXAttrs)) {
       Iterator<Entry<String,byte[]>> iter=srcXAttrs.entrySet().iterator();
       while (iter.hasNext()) {
         Entry<String,byte[]> entry=iter.next();
-        targetFS.setXAttr(path,entry.getKey(),entry.getValue());
+        final String xattrName=entry.getKey();
+        if (xattrName.startsWith(rawNS) || preserveXAttrs) {
+          targetFS.setXAttr(path,entry.getKey(),entry.getValue());
+        }
       }
     }
   }
