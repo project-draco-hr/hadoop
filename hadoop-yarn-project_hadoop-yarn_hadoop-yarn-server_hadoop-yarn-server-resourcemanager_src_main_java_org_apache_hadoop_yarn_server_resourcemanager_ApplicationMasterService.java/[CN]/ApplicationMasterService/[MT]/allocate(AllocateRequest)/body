@@ -1,5 +1,6 @@
 {
-  ApplicationAttemptId appAttemptId=authorizeRequest();
+  AMRMTokenIdentifier amrmTokenIdentifier=authorizeRequest();
+  ApplicationAttemptId appAttemptId=amrmTokenIdentifier.getApplicationAttemptId();
   this.amLivelinessMonitor.receivedPing(appAttemptId);
   AllocateResponseLock lock=responseMap.get(appAttemptId);
   if (lock == null) {
@@ -89,6 +90,12 @@ synchronized (lock) {
     allocateResponse.setAvailableResources(allocation.getResourceLimit());
     allocateResponse.setNumClusterNodes(this.rScheduler.getNumClusterNodes());
     allocateResponse.setPreemptionMessage(generatePreemptionMessage(allocation));
+    MasterKeyData nextMasterKey=this.rmContext.getAMRMTokenSecretManager().getNextMasterKeyData();
+    if (nextMasterKey != null && nextMasterKey.getMasterKey().getKeyId() != amrmTokenIdentifier.getKeyId()) {
+      Token<AMRMTokenIdentifier> amrmToken=rmContext.getAMRMTokenSecretManager().createAndGetAMRMToken(appAttemptId);
+      ((RMAppAttemptImpl)appAttempt).setAMRMToken(amrmToken);
+      allocateResponse.setAMRMToken(org.apache.hadoop.yarn.api.records.Token.newInstance(amrmToken.getIdentifier(),amrmToken.getKind().toString(),amrmToken.getPassword(),amrmToken.getService().toString()));
+    }
     lock.setAllocateResponse(allocateResponse);
     return allocateResponse;
   }
