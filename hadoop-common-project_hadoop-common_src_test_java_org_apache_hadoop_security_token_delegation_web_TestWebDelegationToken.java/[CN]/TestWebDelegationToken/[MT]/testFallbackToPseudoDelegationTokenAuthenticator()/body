@@ -1,0 +1,32 @@
+{
+  final Server jetty=createJettyServer();
+  Context context=new Context();
+  context.setContextPath("/foo");
+  jetty.setHandler(context);
+  context.addFilter(new FilterHolder(PseudoDTAFilter.class),"/*",0);
+  context.addServlet(new ServletHolder(UserServlet.class),"/bar");
+  try {
+    jetty.start();
+    final URL url=new URL(getJettyURL() + "/foo/bar");
+    UserGroupInformation ugi=UserGroupInformation.createRemoteUser("foo");
+    ugi.doAs(new PrivilegedExceptionAction<Void>(){
+      @Override public Void run() throws Exception {
+        DelegationTokenAuthenticatedURL.Token token=new DelegationTokenAuthenticatedURL.Token();
+        DelegationTokenAuthenticatedURL aUrl=new DelegationTokenAuthenticatedURL();
+        HttpURLConnection conn=aUrl.openConnection(url,token);
+        Assert.assertEquals(HttpURLConnection.HTTP_OK,conn.getResponseCode());
+        List<String> ret=IOUtils.readLines(conn.getInputStream());
+        Assert.assertEquals(1,ret.size());
+        Assert.assertEquals("foo",ret.get(0));
+        aUrl.getDelegationToken(url,token,"foo");
+        Assert.assertNotNull(token.getDelegationToken());
+        Assert.assertEquals(new Text("token-kind"),token.getDelegationToken().getKind());
+        return null;
+      }
+    }
+);
+  }
+  finally {
+    jetty.stop();
+  }
+}

@@ -1,0 +1,24 @@
+{
+  MockRM rm=new MockRM(conf){
+    @Override protected void doSecureLogin() throws IOException {
+    }
+  }
+;
+  rm.start();
+  MockNM nm=rm.registerNode("127.0.0.1:1234",8000);
+  RMApp app=rm.submitApp(200);
+  MockAM am=MockRM.launchAndRegisterAM(app,rm,nm);
+  AllocateResponse response=am.allocate(Records.newRecord(AllocateRequest.class));
+  Assert.assertNull(response.getAMRMToken());
+  rm.getRMContext().getAMRMTokenSecretManager().rollMasterKey();
+  response=am.allocate(Records.newRecord(AllocateRequest.class));
+  Assert.assertNotNull(response.getAMRMToken());
+  Token<AMRMTokenIdentifier> amrmToken=ConverterUtils.convertFromYarn(response.getAMRMToken(),new Text(response.getAMRMToken().getService()));
+  Assert.assertEquals(amrmToken.decodeIdentifier().getKeyId(),rm.getRMContext().getAMRMTokenSecretManager().getMasterKey().getMasterKey().getKeyId());
+  response=am.allocate(Records.newRecord(AllocateRequest.class));
+  Assert.assertNull(response.getAMRMToken());
+  rm.getRMContext().getAMRMTokenSecretManager().activateNextMasterKey();
+  response=am.allocate(Records.newRecord(AllocateRequest.class));
+  Assert.assertNull(response.getAMRMToken());
+  rm.stop();
+}

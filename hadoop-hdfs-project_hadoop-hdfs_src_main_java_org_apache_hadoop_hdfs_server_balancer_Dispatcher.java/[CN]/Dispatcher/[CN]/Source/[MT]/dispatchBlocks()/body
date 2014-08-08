@@ -1,0 +1,46 @@
+{
+  final long startTime=Time.monotonicNow();
+  this.blocksToReceive=2 * getScheduledSize();
+  boolean isTimeUp=false;
+  int noPendingBlockIteration=0;
+  while (!isTimeUp && getScheduledSize() > 0 && (!srcBlocks.isEmpty() || blocksToReceive > 0)) {
+    final PendingMove p=chooseNextMove();
+    if (p != null) {
+      moveExecutor.execute(new Runnable(){
+        @Override public void run(){
+          p.dispatch();
+        }
+      }
+);
+      continue;
+    }
+    removeMovedBlocks();
+    if (shouldFetchMoreBlocks()) {
+      try {
+        blocksToReceive-=getBlockList();
+        continue;
+      }
+ catch (      IOException e) {
+        LOG.warn("Exception while getting block list",e);
+        return;
+      }
+    }
+ else {
+      noPendingBlockIteration++;
+      if (noPendingBlockIteration >= MAX_NO_PENDING_MOVE_ITERATIONS) {
+        resetScheduledSize();
+      }
+    }
+    if (Time.monotonicNow() - startTime > MAX_ITERATION_TIME) {
+      isTimeUp=true;
+      continue;
+    }
+    try {
+synchronized (Dispatcher.this) {
+        Dispatcher.this.wait(1000);
+      }
+    }
+ catch (    InterruptedException ignored) {
+    }
+  }
+}
