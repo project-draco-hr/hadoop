@@ -1,8 +1,16 @@
 {
+  Path newPath=constructNewPath(path);
+  Path oldPath=constructOldPath(path);
   writeLock.lock();
   try {
     if (!changed) {
       return;
+    }
+    if (fs.exists(newPath)) {
+      renameOrFail(newPath,new Path(newPath.toString() + "_ORPHANED_" + System.currentTimeMillis()));
+    }
+    if (fs.exists(oldPath)) {
+      renameOrFail(oldPath,new Path(oldPath.toString() + "_ORPHANED_" + System.currentTimeMillis()));
     }
     for (    Map.Entry<String,Metadata> entry : cache.entrySet()) {
       try {
@@ -12,20 +20,15 @@
         throw new IOException("Can't set metadata key " + entry.getKey(),e);
       }
     }
-    FSDataOutputStream out=FileSystem.create(fs,path,permissions);
+    boolean fileExisted=backupToOld(oldPath);
     try {
-      keyStore.store(out,password);
+      writeToNew(newPath);
     }
- catch (    KeyStoreException e) {
-      throw new IOException("Can't store keystore " + this,e);
+ catch (    IOException ioe) {
+      revertFromOld(oldPath,fileExisted);
+      throw ioe;
     }
-catch (    NoSuchAlgorithmException e) {
-      throw new IOException("No such algorithm storing keystore " + this,e);
-    }
-catch (    CertificateException e) {
-      throw new IOException("Certificate exception storing keystore " + this,e);
-    }
-    out.close();
+    cleanupNewAndOld(newPath,oldPath);
     changed=false;
   }
   finally {
