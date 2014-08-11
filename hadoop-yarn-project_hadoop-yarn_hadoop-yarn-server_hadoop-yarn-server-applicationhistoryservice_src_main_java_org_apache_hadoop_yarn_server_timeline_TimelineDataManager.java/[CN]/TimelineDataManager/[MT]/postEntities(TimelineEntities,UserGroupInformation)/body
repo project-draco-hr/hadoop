@@ -1,0 +1,52 @@
+{
+  if (entities == null) {
+    return new TimelinePutResponse();
+  }
+  List<EntityIdentifier> entityIDs=new ArrayList<EntityIdentifier>();
+  TimelineEntities entitiesToPut=new TimelineEntities();
+  List<TimelinePutResponse.TimelinePutError> errors=new ArrayList<TimelinePutResponse.TimelinePutError>();
+  for (  TimelineEntity entity : entities.getEntities()) {
+    EntityIdentifier entityID=new EntityIdentifier(entity.getEntityId(),entity.getEntityType());
+    TimelineEntity existingEntity=null;
+    try {
+      existingEntity=store.getEntity(entityID.getId(),entityID.getType(),EnumSet.of(Field.PRIMARY_FILTERS));
+      if (existingEntity != null && !timelineACLsManager.checkAccess(callerUGI,existingEntity)) {
+        throw new YarnException("The timeline entity " + entityID + " was not put by "+ callerUGI+ " before");
+      }
+    }
+ catch (    Exception e) {
+      LOG.error("Skip the timeline entity: " + entityID + ", because "+ e.getMessage());
+      TimelinePutResponse.TimelinePutError error=new TimelinePutResponse.TimelinePutError();
+      error.setEntityId(entityID.getId());
+      error.setEntityType(entityID.getType());
+      error.setErrorCode(TimelinePutResponse.TimelinePutError.ACCESS_DENIED);
+      errors.add(error);
+      continue;
+    }
+    try {
+      if (existingEntity == null) {
+        injectOwnerInfo(entity,callerUGI.getShortUserName());
+      }
+    }
+ catch (    YarnException e) {
+      LOG.error("Skip the timeline entity: " + entityID + ", because "+ e.getMessage());
+      TimelinePutResponse.TimelinePutError error=new TimelinePutResponse.TimelinePutError();
+      error.setEntityId(entityID.getId());
+      error.setEntityType(entityID.getType());
+      error.setErrorCode(TimelinePutResponse.TimelinePutError.SYSTEM_FILTER_CONFLICT);
+      errors.add(error);
+      continue;
+    }
+    entityIDs.add(entityID);
+    entitiesToPut.addEntity(entity);
+    if (LOG.isDebugEnabled()) {
+      LOG.debug("Storing the entity " + entityID + ", JSON-style content: "+ TimelineUtils.dumpTimelineRecordtoJSON(entity));
+    }
+  }
+  if (LOG.isDebugEnabled()) {
+    LOG.debug("Storing entities: " + CSV_JOINER.join(entityIDs));
+  }
+  TimelinePutResponse response=store.put(entitiesToPut);
+  response.addErrors(errors);
+  return response;
+}

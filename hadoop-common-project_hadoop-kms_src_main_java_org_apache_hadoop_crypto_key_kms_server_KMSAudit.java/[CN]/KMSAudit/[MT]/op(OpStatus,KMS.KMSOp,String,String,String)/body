@@ -1,0 +1,45 @@
+{
+  if (!Strings.isNullOrEmpty(user) && !Strings.isNullOrEmpty(key) && (op != null)&& AGGREGATE_OPS_WHITELIST.contains(op)) {
+    String cacheKey=createCacheKey(user,key,op);
+    if (opStatus == OpStatus.UNAUTHORIZED) {
+      cache.invalidate(cacheKey);
+      AUDIT_LOG.info("UNAUTHORIZED[op={}, key={}, user={}] {}",op,key,user,extraMsg);
+    }
+ else {
+      try {
+        AuditEvent event=cache.get(cacheKey,new Callable<AuditEvent>(){
+          @Override public AuditEvent call() throws Exception {
+            return new AuditEvent(key,user,op,extraMsg);
+          }
+        }
+);
+        if (event.getAccessCount().incrementAndGet() == 0) {
+          event.getAccessCount().incrementAndGet();
+          logEvent(event);
+        }
+      }
+ catch (      ExecutionException ex) {
+        throw new RuntimeException(ex);
+      }
+    }
+  }
+ else {
+    List<String> kvs=new LinkedList<String>();
+    if (op != null) {
+      kvs.add("op=" + op);
+    }
+    if (!Strings.isNullOrEmpty(key)) {
+      kvs.add("key=" + key);
+    }
+    if (!Strings.isNullOrEmpty(user)) {
+      kvs.add("user=" + user);
+    }
+    if (kvs.size() == 0) {
+      AUDIT_LOG.info("{} {}",opStatus.toString(),extraMsg);
+    }
+ else {
+      String join=Joiner.on(", ").join(kvs);
+      AUDIT_LOG.info("{}[{}] {}",opStatus.toString(),join,extraMsg);
+    }
+  }
+}
