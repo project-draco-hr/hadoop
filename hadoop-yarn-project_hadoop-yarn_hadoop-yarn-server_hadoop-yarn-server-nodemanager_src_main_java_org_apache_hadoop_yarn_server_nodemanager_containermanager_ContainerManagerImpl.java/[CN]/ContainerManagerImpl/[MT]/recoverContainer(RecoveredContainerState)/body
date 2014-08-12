@@ -1,0 +1,21 @@
+{
+  StartContainerRequest req=rcs.getStartRequest();
+  ContainerLaunchContext launchContext=req.getContainerLaunchContext();
+  ContainerTokenIdentifier token=BuilderUtils.newContainerTokenIdentifier(req.getContainerToken());
+  ContainerId containerId=token.getContainerID();
+  ApplicationId appId=containerId.getApplicationAttemptId().getApplicationId();
+  LOG.info("Recovering " + containerId + " in state "+ rcs.getStatus()+ " with exit code "+ rcs.getExitCode());
+  if (context.getApplications().containsKey(appId)) {
+    Credentials credentials=parseCredentials(launchContext);
+    Container container=new ContainerImpl(getConfig(),dispatcher,context.getNMStateStore(),req.getContainerLaunchContext(),credentials,metrics,token,rcs.getStatus(),rcs.getExitCode(),rcs.getDiagnostics(),rcs.getKilled());
+    context.getContainers().put(containerId,container);
+    dispatcher.getEventHandler().handle(new ApplicationContainerInitEvent(container));
+  }
+ else {
+    if (rcs.getStatus() != RecoveredContainerStatus.COMPLETED) {
+      LOG.warn(containerId + " has no corresponding application!");
+    }
+    LOG.info("Adding " + containerId + " to recently stopped containers");
+    nodeStatusUpdater.addCompletedContainer(containerId);
+  }
+}

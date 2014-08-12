@@ -1,31 +1,15 @@
 {
-  rmNode.nodeUpdateQueue.clear();
-  rmNode.context.getDispatcher().getEventHandler().handle(new NodeRemovedSchedulerEvent(rmNode));
   RMNodeReconnectEvent reconnectEvent=(RMNodeReconnectEvent)event;
   RMNode newNode=reconnectEvent.getReconnectedNode();
   rmNode.nodeManagerVersion=newNode.getNodeManagerVersion();
-  if (rmNode.getTotalCapability().equals(newNode.getTotalCapability()) && rmNode.getHttpPort() == newNode.getHttpPort()) {
-    rmNode.getLastNodeHeartBeatResponse().setResponseId(0);
-    if (rmNode.getState() != NodeState.UNHEALTHY) {
-      rmNode.context.getDispatcher().getEventHandler().handle(new NodeAddedSchedulerEvent(rmNode));
+  rmNode.httpPort=newNode.getHttpPort();
+  rmNode.httpAddress=newNode.getHttpAddress();
+  rmNode.resourceOption=newNode.getResourceOption();
+  rmNode.getLastNodeHeartBeatResponse().setResponseId(0);
+  if (null != reconnectEvent.getRunningApplications()) {
+    for (    ApplicationId appId : reconnectEvent.getRunningApplications()) {
+      handleRunningAppOnNode(rmNode,rmNode.context,appId,rmNode.nodeId);
     }
   }
- else {
-switch (rmNode.getState()) {
-case RUNNING:
-      ClusterMetrics.getMetrics().decrNumActiveNodes();
-    break;
-case UNHEALTHY:
-  ClusterMetrics.getMetrics().decrNumUnhealthyNMs();
-break;
-}
-rmNode.context.getRMNodes().put(newNode.getNodeID(),newNode);
-rmNode.context.getDispatcher().getEventHandler().handle(new RMNodeStartedEvent(newNode.getNodeID(),null,null));
-}
-if (null != reconnectEvent.getRunningApplications()) {
-for (ApplicationId appId : reconnectEvent.getRunningApplications()) {
-handleRunningAppOnNode(rmNode,rmNode.context,appId,rmNode.nodeId);
-}
-}
-rmNode.context.getDispatcher().getEventHandler().handle(new NodesListManagerEvent(NodesListManagerEventType.NODE_USABLE,rmNode));
+  rmNode.context.getDispatcher().getEventHandler().handle(new NodesListManagerEvent(NodesListManagerEventType.NODE_USABLE,rmNode));
 }

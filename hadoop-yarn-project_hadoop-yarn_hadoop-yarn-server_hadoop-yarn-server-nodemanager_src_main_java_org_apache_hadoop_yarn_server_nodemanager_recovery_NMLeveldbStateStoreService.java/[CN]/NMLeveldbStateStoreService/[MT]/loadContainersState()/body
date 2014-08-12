@@ -1,0 +1,31 @@
+{
+  ArrayList<RecoveredContainerState> containers=new ArrayList<RecoveredContainerState>();
+  LeveldbIterator iter=null;
+  try {
+    iter=new LeveldbIterator(db);
+    iter.seek(bytes(CONTAINERS_KEY_PREFIX));
+    while (iter.hasNext()) {
+      Entry<byte[],byte[]> entry=iter.peekNext();
+      String key=asString(entry.getKey());
+      if (!key.startsWith(CONTAINERS_KEY_PREFIX)) {
+        break;
+      }
+      int idEndPos=key.indexOf('/',CONTAINERS_KEY_PREFIX.length());
+      if (idEndPos < 0) {
+        throw new IOException("Unable to determine container in key: " + key);
+      }
+      ContainerId containerId=ConverterUtils.toContainerId(key.substring(CONTAINERS_KEY_PREFIX.length(),idEndPos));
+      String keyPrefix=key.substring(0,idEndPos + 1);
+      containers.add(loadContainerState(containerId,iter,keyPrefix));
+    }
+  }
+ catch (  DBException e) {
+    throw new IOException(e);
+  }
+ finally {
+    if (iter != null) {
+      iter.close();
+    }
+  }
+  return containers;
+}
