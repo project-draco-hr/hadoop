@@ -1,0 +1,48 @@
+{
+  if (LOG.isDebugEnabled()) {
+    LOG.debug("Node offered to app: " + getName() + " reserved: "+ reserved);
+  }
+  Collection<Priority> prioritiesToTry=(reserved) ? Arrays.asList(node.getReservedContainer().getReservedPriority()) : getPriorities();
+synchronized (this) {
+    for (    Priority priority : prioritiesToTry) {
+      if (getTotalRequiredResources(priority) <= 0 || !hasContainerForNode(priority,node)) {
+        continue;
+      }
+      addSchedulingOpportunity(priority);
+      if (getLiveContainers().size() == 0 && !getUnmanagedAM()) {
+        if (!getQueue().canRunAppAM(getAMResource())) {
+          return Resources.none();
+        }
+      }
+      ResourceRequest rackLocalRequest=getResourceRequest(priority,node.getRackName());
+      ResourceRequest localRequest=getResourceRequest(priority,node.getNodeName());
+      if (localRequest != null && !localRequest.getRelaxLocality()) {
+        LOG.warn("Relax locality off is not supported on local request: " + localRequest);
+      }
+      NodeType allowedLocality;
+      if (scheduler.isContinuousSchedulingEnabled()) {
+        allowedLocality=getAllowedLocalityLevelByTime(priority,scheduler.getNodeLocalityDelayMs(),scheduler.getRackLocalityDelayMs(),scheduler.getClock().getTime());
+      }
+ else {
+        allowedLocality=getAllowedLocalityLevel(priority,scheduler.getNumClusterNodes(),scheduler.getNodeLocalityThreshold(),scheduler.getRackLocalityThreshold());
+      }
+      if (rackLocalRequest != null && rackLocalRequest.getNumContainers() != 0 && localRequest != null && localRequest.getNumContainers() != 0) {
+        return assignContainer(node,localRequest,NodeType.NODE_LOCAL,reserved);
+      }
+      if (rackLocalRequest != null && !rackLocalRequest.getRelaxLocality()) {
+        continue;
+      }
+      if (rackLocalRequest != null && rackLocalRequest.getNumContainers() != 0 && (allowedLocality.equals(NodeType.RACK_LOCAL) || allowedLocality.equals(NodeType.OFF_SWITCH))) {
+        return assignContainer(node,rackLocalRequest,NodeType.RACK_LOCAL,reserved);
+      }
+      ResourceRequest offSwitchRequest=getResourceRequest(priority,ResourceRequest.ANY);
+      if (offSwitchRequest != null && !offSwitchRequest.getRelaxLocality()) {
+        continue;
+      }
+      if (offSwitchRequest != null && offSwitchRequest.getNumContainers() != 0 && allowedLocality.equals(NodeType.OFF_SWITCH)) {
+        return assignContainer(node,offSwitchRequest,NodeType.OFF_SWITCH,reserved);
+      }
+    }
+  }
+  return Resources.none();
+}
