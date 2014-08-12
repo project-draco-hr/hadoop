@@ -4,7 +4,7 @@
   context.setContextPath("/foo");
   jetty.setHandler(context);
   context.addFilter(new FilterHolder(PseudoDTAFilter.class),"/*",0);
-  context.addServlet(new ServletHolder(UserServlet.class),"/bar");
+  context.addServlet(new ServletHolder(UGIServlet.class),"/bar");
   try {
     jetty.start();
     final URL url=new URL(getJettyURL() + "/foo/bar");
@@ -17,10 +17,12 @@
         Assert.assertEquals(HttpURLConnection.HTTP_OK,conn.getResponseCode());
         List<String> ret=IOUtils.readLines(conn.getInputStream());
         Assert.assertEquals(1,ret.size());
-        Assert.assertEquals(FOO_USER,ret.get(0));
-        aUrl.getDelegationToken(url,token,FOO_USER);
-        Assert.assertNotNull(token.getDelegationToken());
-        Assert.assertEquals(new Text("token-kind"),token.getDelegationToken().getKind());
+        Assert.assertEquals("remoteuser=" + FOO_USER + ":ugi="+ FOO_USER,ret.get(0));
+        conn=aUrl.openConnection(url,token,OK_USER);
+        Assert.assertEquals(HttpURLConnection.HTTP_OK,conn.getResponseCode());
+        ret=IOUtils.readLines(conn.getInputStream());
+        Assert.assertEquals(1,ret.size());
+        Assert.assertEquals("realugi=" + FOO_USER + ":remoteuser="+ OK_USER+ ":ugi="+ OK_USER,ret.get(0));
         return null;
       }
     }

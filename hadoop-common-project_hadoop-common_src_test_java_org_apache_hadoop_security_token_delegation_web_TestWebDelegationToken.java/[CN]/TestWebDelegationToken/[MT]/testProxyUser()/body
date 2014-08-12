@@ -13,14 +13,22 @@
       @Override public Void run() throws Exception {
         DelegationTokenAuthenticatedURL.Token token=new DelegationTokenAuthenticatedURL.Token();
         DelegationTokenAuthenticatedURL aUrl=new DelegationTokenAuthenticatedURL();
-        HttpURLConnection conn=aUrl.openConnection(url,token);
+        HttpURLConnection conn=aUrl.openConnection(url,token,OK_USER);
         Assert.assertEquals(HttpURLConnection.HTTP_OK,conn.getResponseCode());
         List<String> ret=IOUtils.readLines(conn.getInputStream());
         Assert.assertEquals(1,ret.size());
-        Assert.assertEquals(FOO_USER,ret.get(0));
+        Assert.assertEquals(OK_USER,ret.get(0));
+        conn=aUrl.openConnection(url,token,FAIL_USER);
+        Assert.assertEquals(HttpURLConnection.HTTP_FORBIDDEN,conn.getResponseCode());
         aUrl.getDelegationToken(url,token,FOO_USER);
-        Assert.assertNotNull(token.getDelegationToken());
-        Assert.assertEquals(new Text("token-kind"),token.getDelegationToken().getKind());
+        UserGroupInformation ugi=UserGroupInformation.getCurrentUser();
+        ugi.addToken(token.getDelegationToken());
+        token=new DelegationTokenAuthenticatedURL.Token();
+        conn=aUrl.openConnection(url,token,OK_USER);
+        Assert.assertEquals(HttpURLConnection.HTTP_OK,conn.getResponseCode());
+        ret=IOUtils.readLines(conn.getInputStream());
+        Assert.assertEquals(1,ret.size());
+        Assert.assertEquals(FOO_USER,ret.get(0));
         return null;
       }
     }
