@@ -1,0 +1,40 @@
+{
+  Map ret=null;
+  Map<String,String> params=new HashMap<String,String>();
+  params.put(OP_PARAM,operation.toString());
+  if (renewer != null) {
+    params.put(RENEWER_PARAM,renewer);
+  }
+  if (dToken != null) {
+    params.put(TOKEN_PARAM,dToken.encodeToUrlString());
+  }
+  String urlStr=url.toExternalForm();
+  StringBuilder sb=new StringBuilder(urlStr);
+  String separator=(urlStr.contains("?")) ? "&" : "?";
+  for (  Map.Entry<String,String> entry : params.entrySet()) {
+    sb.append(separator).append(entry.getKey()).append("=").append(URLEncoder.encode(entry.getValue(),"UTF8"));
+    separator="&";
+  }
+  url=new URL(sb.toString());
+  AuthenticatedURL aUrl=new AuthenticatedURL(this);
+  HttpURLConnection conn=aUrl.openConnection(url,token);
+  conn.setRequestMethod(operation.getHttpMethod());
+  validateResponse(conn,HttpURLConnection.HTTP_OK);
+  if (hasResponse) {
+    String contentType=conn.getHeaderField(CONTENT_TYPE);
+    contentType=(contentType != null) ? contentType.toLowerCase() : null;
+    if (contentType != null && contentType.contains(APPLICATION_JSON_MIME)) {
+      try {
+        ObjectMapper mapper=new ObjectMapper();
+        ret=mapper.readValue(conn.getInputStream(),Map.class);
+      }
+ catch (      Exception ex) {
+        throw new AuthenticationException(String.format("'%s' did not handle the '%s' delegation token operation: %s",url.getAuthority(),operation,ex.getMessage()),ex);
+      }
+    }
+ else {
+      throw new AuthenticationException(String.format("'%s' did not " + "respond with JSON to the '%s' delegation token operation",url.getAuthority(),operation));
+    }
+  }
+  return ret;
+}

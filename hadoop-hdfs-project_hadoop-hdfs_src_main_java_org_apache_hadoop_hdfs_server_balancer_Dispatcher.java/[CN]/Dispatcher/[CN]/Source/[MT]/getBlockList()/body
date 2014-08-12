@@ -1,0 +1,26 @@
+{
+  final long size=Math.min(MAX_BLOCKS_SIZE_TO_FETCH,blocksToReceive);
+  final BlocksWithLocations newBlocks=nnc.getBlocks(getDatanodeInfo(),size);
+  long bytesReceived=0;
+  for (  BlockWithLocations blk : newBlocks.getBlocks()) {
+    bytesReceived+=blk.getBlock().getNumBytes();
+synchronized (globalBlocks) {
+      final DBlock block=globalBlocks.get(blk.getBlock());
+synchronized (block) {
+        block.clearLocations();
+        final String[] datanodeUuids=blk.getDatanodeUuids();
+        final StorageType[] storageTypes=blk.getStorageTypes();
+        for (int i=0; i < datanodeUuids.length; i++) {
+          final StorageGroup g=storageGroupMap.get(datanodeUuids[i],storageTypes[i]);
+          if (g != null) {
+            block.addLocation(g);
+          }
+        }
+      }
+      if (!srcBlocks.contains(block) && isGoodBlockCandidate(block)) {
+        srcBlocks.add(block);
+      }
+    }
+  }
+  return bytesReceived;
+}

@@ -1,0 +1,45 @@
+{
+  if (LOG.isDebugEnabled()) {
+    LOG.debug("Start moving " + this);
+  }
+  Socket sock=new Socket();
+  DataOutputStream out=null;
+  DataInputStream in=null;
+  try {
+    sock.connect(NetUtils.createSocketAddr(target.getDatanodeInfo().getXferAddr()),HdfsServerConstants.READ_TIMEOUT);
+    sock.setSoTimeout(BLOCK_MOVE_READ_TIMEOUT);
+    sock.setKeepAlive(true);
+    OutputStream unbufOut=sock.getOutputStream();
+    InputStream unbufIn=sock.getInputStream();
+    ExtendedBlock eb=new ExtendedBlock(nnc.getBlockpoolID(),block.getBlock());
+    final KeyManager km=nnc.getKeyManager();
+    Token<BlockTokenIdentifier> accessToken=km.getAccessToken(eb);
+    IOStreamPair saslStreams=saslClient.socketSend(sock,unbufOut,unbufIn,km,accessToken,target.getDatanodeInfo());
+    unbufOut=saslStreams.out;
+    unbufIn=saslStreams.in;
+    out=new DataOutputStream(new BufferedOutputStream(unbufOut,HdfsConstants.IO_FILE_BUFFER_SIZE));
+    in=new DataInputStream(new BufferedInputStream(unbufIn,HdfsConstants.IO_FILE_BUFFER_SIZE));
+    sendRequest(out,eb,accessToken);
+    receiveResponse(in);
+    bytesMoved.addAndGet(block.getNumBytes());
+    LOG.info("Successfully moved " + this);
+  }
+ catch (  IOException e) {
+    LOG.warn("Failed to move " + this + ": "+ e.getMessage());
+    proxySource.activateDelay(DELAY_AFTER_ERROR);
+    target.getDDatanode().activateDelay(DELAY_AFTER_ERROR);
+  }
+ finally {
+    IOUtils.closeStream(out);
+    IOUtils.closeStream(in);
+    IOUtils.closeSocket(sock);
+    proxySource.removePendingBlock(this);
+    target.getDDatanode().removePendingBlock(this);
+synchronized (this) {
+      reset();
+    }
+synchronized (Dispatcher.this) {
+      Dispatcher.this.notifyAll();
+    }
+  }
+}

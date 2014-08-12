@@ -1,0 +1,35 @@
+{
+  RecoveredContainerState rcs=new RecoveredContainerState();
+  rcs.status=RecoveredContainerStatus.REQUESTED;
+  while (iter.hasNext()) {
+    Entry<byte[],byte[]> entry=iter.peekNext();
+    String key=asString(entry.getKey());
+    if (!key.startsWith(keyPrefix)) {
+      break;
+    }
+    iter.next();
+    String suffix=key.substring(keyPrefix.length() - 1);
+    if (suffix.equals(CONTAINER_REQUEST_KEY_SUFFIX)) {
+      rcs.startRequest=new StartContainerRequestPBImpl(StartContainerRequestProto.parseFrom(entry.getValue()));
+    }
+ else     if (suffix.equals(CONTAINER_DIAGS_KEY_SUFFIX)) {
+      rcs.diagnostics=asString(entry.getValue());
+    }
+ else     if (suffix.equals(CONTAINER_LAUNCHED_KEY_SUFFIX)) {
+      if (rcs.status == RecoveredContainerStatus.REQUESTED) {
+        rcs.status=RecoveredContainerStatus.LAUNCHED;
+      }
+    }
+ else     if (suffix.equals(CONTAINER_KILLED_KEY_SUFFIX)) {
+      rcs.killed=true;
+    }
+ else     if (suffix.equals(CONTAINER_EXIT_CODE_KEY_SUFFIX)) {
+      rcs.status=RecoveredContainerStatus.COMPLETED;
+      rcs.exitCode=Integer.parseInt(asString(entry.getValue()));
+    }
+ else {
+      throw new IOException("Unexpected container state key: " + key);
+    }
+  }
+  return rcs;
+}

@@ -1,0 +1,72 @@
+{
+  Set<String> existingStorageDirs=new HashSet<String>();
+  for (int i=0; i < getNumStorageDirs(); i++) {
+    existingStorageDirs.add(getStorageDir(i).getRoot().getAbsolutePath());
+  }
+  ArrayList<StorageState> dataDirStates=new ArrayList<StorageState>(dataDirs.size());
+  List<StorageDirectory> addedStorageDirectories=new ArrayList<StorageDirectory>();
+  for (Iterator<StorageLocation> it=dataDirs.iterator(); it.hasNext(); ) {
+    File dataDir=it.next().getFile();
+    if (existingStorageDirs.contains(dataDir.getAbsolutePath())) {
+      LOG.info("Storage directory " + dataDir + " has already been used.");
+      it.remove();
+      continue;
+    }
+    StorageDirectory sd=new StorageDirectory(dataDir);
+    StorageState curState;
+    try {
+      curState=sd.analyzeStorage(startOpt,this);
+switch (curState) {
+case NORMAL:
+        break;
+case NON_EXISTENT:
+      LOG.info("Storage directory " + dataDir + " does not exist");
+    it.remove();
+  continue;
+case NOT_FORMATTED:
+LOG.info("Storage directory " + dataDir + " is not formatted for "+ nsInfo.getBlockPoolID());
+LOG.info("Formatting ...");
+format(sd,nsInfo,datanode.getDatanodeUuid());
+break;
+default :
+sd.doRecover(curState);
+}
+}
+ catch (IOException ioe) {
+sd.unlock();
+LOG.warn("Ignoring storage directory " + dataDir + " due to an exception",ioe);
+continue;
+}
+if (isInitialize) {
+addStorageDir(sd);
+}
+addedStorageDirectories.add(sd);
+dataDirStates.add(curState);
+}
+if (dataDirs.size() == 0 || dataDirStates.size() == 0) {
+if (ignoreExistingDirs) {
+return;
+}
+throw new IOException("All specified directories are not accessible or do not exist.");
+}
+for (Iterator<StorageDirectory> it=addedStorageDirectories.iterator(); it.hasNext(); ) {
+StorageDirectory sd=it.next();
+try {
+doTransition(datanode,sd,nsInfo,startOpt);
+createStorageID(sd);
+}
+ catch (IOException e) {
+if (!isInitialize) {
+sd.unlock();
+it.remove();
+continue;
+}
+unlockAll();
+throw e;
+}
+}
+this.writeAll(addedStorageDirectories);
+if (!isInitialize) {
+this.storageDirs.addAll(addedStorageDirectories);
+}
+}

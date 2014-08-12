@@ -1,0 +1,41 @@
+{
+  DelegationTokenAuthenticator.DelegationTokenOperation op=DelegationTokenAuthenticator.DelegationTokenOperation.GETDELEGATIONTOKEN;
+  HttpServletRequest request=Mockito.mock(HttpServletRequest.class);
+  HttpServletResponse response=Mockito.mock(HttpServletResponse.class);
+  Mockito.when(request.getQueryString()).thenReturn(DelegationTokenAuthenticator.OP_PARAM + "=" + op.toString());
+  Mockito.when(request.getMethod()).thenReturn(op.getHttpMethod());
+  AuthenticationToken token=Mockito.mock(AuthenticationToken.class);
+  Mockito.when(token.getUserName()).thenReturn("user");
+  Mockito.when(response.getWriter()).thenReturn(new PrintWriter(new StringWriter()));
+  Assert.assertFalse(handler.managementOperation(token,request,response));
+  Mockito.when(request.getQueryString()).thenReturn(DelegationTokenAuthenticator.OP_PARAM + "=" + op.toString()+ "&"+ DelegationTokenAuthenticator.RENEWER_PARAM+ "="+ renewer);
+  Mockito.reset(response);
+  Mockito.reset(token);
+  Mockito.when(token.getUserName()).thenReturn("user");
+  StringWriter writer=new StringWriter();
+  PrintWriter pwriter=new PrintWriter(writer);
+  Mockito.when(response.getWriter()).thenReturn(pwriter);
+  Assert.assertFalse(handler.managementOperation(token,request,response));
+  if (renewer == null) {
+    Mockito.verify(token).getUserName();
+  }
+ else {
+    Mockito.verify(token).getUserName();
+  }
+  Mockito.verify(response).setStatus(HttpServletResponse.SC_OK);
+  Mockito.verify(response).setContentType(MediaType.APPLICATION_JSON);
+  pwriter.close();
+  String responseOutput=writer.toString();
+  String tokenLabel=DelegationTokenAuthenticator.DELEGATION_TOKEN_JSON;
+  Assert.assertTrue(responseOutput.contains(tokenLabel));
+  Assert.assertTrue(responseOutput.contains(DelegationTokenAuthenticator.DELEGATION_TOKEN_URL_STRING_JSON));
+  ObjectMapper jsonMapper=new ObjectMapper();
+  Map json=jsonMapper.readValue(responseOutput,Map.class);
+  json=(Map)json.get(tokenLabel);
+  String tokenStr;
+  tokenStr=(String)json.get(DelegationTokenAuthenticator.DELEGATION_TOKEN_URL_STRING_JSON);
+  Token<DelegationTokenIdentifier> dt=new Token<DelegationTokenIdentifier>();
+  dt.decodeFromUrlString(tokenStr);
+  handler.getTokenManager().verifyToken(dt);
+  Assert.assertEquals(expectedTokenKind,dt.getKind());
+}
