@@ -3,15 +3,28 @@
   final int bucketId=Integer.parseInt(numStr);
   int numTokens=0;
   FileStatus[] tokenStats=fs.listStatus(bucket);
+  Set<String> loadedTokens=new HashSet<String>(tokenStats.length);
   for (  FileStatus stat : tokenStats) {
     String name=stat.getPath().getName();
     if (name.startsWith(TOKEN_FILE_PREFIX)) {
-      MRDelegationTokenIdentifier token=loadToken(state,stat.getPath(),stat.getLen());
-      int tokenBucketId=getBucketId(token);
-      if (tokenBucketId != bucketId) {
-        throw new IOException("Token " + stat.getPath() + " should be in bucket "+ tokenBucketId+ ", found in bucket "+ bucketId);
-      }
+      loadTokenFromBucket(bucketId,state,stat.getPath(),stat.getLen());
+      loadedTokens.add(name);
       ++numTokens;
+    }
+ else     if (name.startsWith(UPDATE_TMP_FILE_PREFIX)) {
+      String tokenName=name.substring(UPDATE_TMP_FILE_PREFIX.length());
+      if (loadedTokens.contains(tokenName)) {
+        fs.delete(stat.getPath(),false);
+      }
+ else {
+        loadTokenFromBucket(bucketId,state,stat.getPath(),stat.getLen());
+        fs.rename(stat.getPath(),new Path(stat.getPath().getParent(),tokenName));
+        loadedTokens.add(tokenName);
+        ++numTokens;
+      }
+    }
+ else     if (name.startsWith(TMP_FILE_PREFIX)) {
+      fs.delete(stat.getPath(),false);
     }
  else {
       LOG.warn("Skipping unexpected file in history server token bucket: " + stat.getPath());
