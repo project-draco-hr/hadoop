@@ -1,0 +1,52 @@
+{
+  final File testDir=getTestDir();
+  Configuration conf=createBaseKMSConf(testDir);
+  conf.set("hadoop.kms.authentication.type","kerberos");
+  conf.set("hadoop.kms.authentication.kerberos.keytab",keytab.getAbsolutePath());
+  conf.set("hadoop.kms.authentication.kerberos.principal","HTTP/localhost");
+  conf.set("hadoop.kms.authentication.kerberos.name.rules","DEFAULT");
+  writeConf(testDir,conf);
+  runServer(null,null,testDir,new KMSCallable(){
+    @Override public Void call() throws Exception {
+      final Configuration conf=new Configuration();
+      conf.setInt(KeyProvider.DEFAULT_BITLENGTH_NAME,64);
+      final URI uri=createKMSUri(getKMSUrl());
+      final Credentials credentials=new Credentials();
+      final UserGroupInformation nonKerberosUgi=UserGroupInformation.getCurrentUser();
+      try {
+        KeyProvider kp=new KMSClientProvider(uri,conf);
+        kp.createKey("kA",new KeyProvider.Options(conf));
+      }
+ catch (      IOException ex) {
+        System.out.println(ex.getMessage());
+      }
+      doAs("client",new PrivilegedExceptionAction<Void>(){
+        @Override public Void run() throws Exception {
+          KeyProvider kp=new KMSClientProvider(uri,conf);
+          KeyProviderDelegationTokenExtension kpdte=KeyProviderDelegationTokenExtension.createKeyProviderDelegationTokenExtension(kp);
+          kpdte.addDelegationTokens("foo",credentials);
+          return null;
+        }
+      }
+);
+      nonKerberosUgi.addCredentials(credentials);
+      try {
+        KeyProvider kp=new KMSClientProvider(uri,conf);
+        kp.createKey("kA",new KeyProvider.Options(conf));
+      }
+ catch (      IOException ex) {
+        System.out.println(ex.getMessage());
+      }
+      nonKerberosUgi.doAs(new PrivilegedExceptionAction<Void>(){
+        @Override public Void run() throws Exception {
+          KeyProvider kp=new KMSClientProvider(uri,conf);
+          kp.createKey("kD",new KeyProvider.Options(conf));
+          return null;
+        }
+      }
+);
+      return null;
+    }
+  }
+);
+}
