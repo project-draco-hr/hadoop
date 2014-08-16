@@ -1,7 +1,6 @@
 {
   final MiniDFSCluster cluster=new MiniDFSCluster.Builder(conf).numDataNodes(REPLICATION).build();
   cluster.waitActive();
-  FSDirectory fsdir=cluster.getNamesystem().getFSDirectory();
   final DistributedFileSystem fs=cluster.getFileSystem();
   try {
     final Path dir=new Path("/testSetStoragePolicy");
@@ -20,9 +19,10 @@
  catch (    RemoteException e) {
       GenericTestUtils.assertExceptionContains(invalidPolicyName,e);
     }
-    INodeFile fooFileNode=fsdir.getINode4Write(fooFile.toString()).asFile();
-    INodeFile barFile1Node=fsdir.getINode4Write(barFile1.toString()).asFile();
-    INodeFile barFile2Node=fsdir.getINode4Write(barFile2.toString()).asFile();
+    HdfsFileStatus[] dirList=fs.getClient().listPaths(dir.toString(),HdfsFileStatus.EMPTY_NAME,true).getPartialListing();
+    HdfsFileStatus[] barList=fs.getClient().listPaths(barDir.toString(),HdfsFileStatus.EMPTY_NAME,true).getPartialListing();
+    checkDirectoryListing(dirList,ID_UNSPECIFIED,ID_UNSPECIFIED);
+    checkDirectoryListing(barList,ID_UNSPECIFIED,ID_UNSPECIFIED);
     final Path invalidPath=new Path("/invalidPath");
     try {
       fs.setStoragePolicy(invalidPath,"WARM");
@@ -32,30 +32,25 @@
       GenericTestUtils.assertExceptionContains(invalidPath.toString(),e);
     }
     fs.setStoragePolicy(fooFile,"COLD");
-    fs.setStoragePolicy(barFile1,"WARM");
-    fs.setStoragePolicy(barFile2,"WARM");
-    Assert.assertEquals(COLD,fooFileNode.getStoragePolicyID());
-    Assert.assertEquals(WARM,barFile1Node.getStoragePolicyID());
-    Assert.assertEquals(WARM,barFile2Node.getStoragePolicyID());
+    fs.setStoragePolicy(barDir,"WARM");
+    fs.setStoragePolicy(barFile2,"HOT");
+    dirList=fs.getClient().listPaths(dir.toString(),HdfsFileStatus.EMPTY_NAME).getPartialListing();
+    barList=fs.getClient().listPaths(barDir.toString(),HdfsFileStatus.EMPTY_NAME).getPartialListing();
+    checkDirectoryListing(dirList,WARM,COLD);
+    checkDirectoryListing(barList,WARM,HOT);
     cluster.restartNameNode(true);
-    fsdir=cluster.getNamesystem().getFSDirectory();
-    fooFileNode=fsdir.getINode4Write(fooFile.toString()).asFile();
-    Assert.assertEquals(COLD,fooFileNode.getStoragePolicyID());
-    barFile1Node=fsdir.getINode4Write(barFile1.toString()).asFile();
-    Assert.assertEquals(WARM,barFile1Node.getStoragePolicyID());
-    barFile2Node=fsdir.getINode4Write(barFile2.toString()).asFile();
-    Assert.assertEquals(WARM,barFile2Node.getStoragePolicyID());
+    dirList=fs.getClient().listPaths(dir.toString(),HdfsFileStatus.EMPTY_NAME,true).getPartialListing();
+    barList=fs.getClient().listPaths(barDir.toString(),HdfsFileStatus.EMPTY_NAME,true).getPartialListing();
+    checkDirectoryListing(dirList,WARM,COLD);
+    checkDirectoryListing(barList,WARM,HOT);
     fs.setSafeMode(SafeModeAction.SAFEMODE_ENTER);
     fs.saveNamespace();
     fs.setSafeMode(SafeModeAction.SAFEMODE_LEAVE);
     cluster.restartNameNode(true);
-    fsdir=cluster.getNamesystem().getFSDirectory();
-    fooFileNode=fsdir.getINode4Write(fooFile.toString()).asFile();
-    Assert.assertEquals(COLD,fooFileNode.getStoragePolicyID());
-    barFile1Node=fsdir.getINode4Write(barFile1.toString()).asFile();
-    Assert.assertEquals(WARM,barFile1Node.getStoragePolicyID());
-    barFile2Node=fsdir.getINode4Write(barFile2.toString()).asFile();
-    Assert.assertEquals(WARM,barFile2Node.getStoragePolicyID());
+    dirList=fs.getClient().listPaths(dir.toString(),HdfsFileStatus.EMPTY_NAME).getPartialListing();
+    barList=fs.getClient().listPaths(barDir.toString(),HdfsFileStatus.EMPTY_NAME).getPartialListing();
+    checkDirectoryListing(dirList,WARM,COLD);
+    checkDirectoryListing(barList,WARM,HOT);
   }
   finally {
     if (cluster != null) {
