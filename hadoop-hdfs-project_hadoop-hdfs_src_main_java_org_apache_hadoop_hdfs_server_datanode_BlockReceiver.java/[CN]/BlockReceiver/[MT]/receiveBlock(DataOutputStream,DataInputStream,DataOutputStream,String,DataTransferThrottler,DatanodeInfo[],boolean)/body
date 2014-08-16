@@ -1,0 +1,95 @@
+{
+  syncOnClose=datanode.getDnConf().syncOnClose;
+  boolean responderClosed=false;
+  mirrorOut=mirrOut;
+  mirrorAddr=mirrAddr;
+  throttler=throttlerArg;
+  this.replyOut=replyOut;
+  this.isReplaceBlock=isReplaceBlock;
+  try {
+    if (isClient && !isTransfer) {
+      responder=new Daemon(datanode.threadGroup,new PacketResponder(replyOut,mirrIn,downstreams));
+      responder.start();
+    }
+    while (receivePacket() >= 0) {
+    }
+    if (responder != null) {
+      ((PacketResponder)responder.getRunnable()).close();
+      responderClosed=true;
+    }
+    if (isDatanode || isTransfer) {
+      close();
+      block.setNumBytes(replicaInfo.getNumBytes());
+      if (stage == BlockConstructionStage.TRANSFER_RBW) {
+        datanode.data.convertTemporaryToRbw(block);
+      }
+ else {
+        datanode.data.finalizeBlock(block);
+      }
+      datanode.metrics.incrBlocksWritten();
+    }
+  }
+ catch (  IOException ioe) {
+    if (datanode.isRestarting()) {
+      LOG.info("Shutting down for restart (" + block + ").");
+    }
+ else {
+      LOG.info("Exception for " + block,ioe);
+      throw ioe;
+    }
+  }
+ finally {
+    Thread.interrupted();
+    if (!responderClosed) {
+      if (responder != null) {
+        if (datanode.isRestarting() && isClient && !isTransfer) {
+          File blockFile=((ReplicaInPipeline)replicaInfo).getBlockFile();
+          File restartMeta=new File(blockFile.getParent() + File.pathSeparator + "."+ blockFile.getName()+ ".restart");
+          if (restartMeta.exists() && !restartMeta.delete()) {
+            LOG.warn("Failed to delete restart meta file: " + restartMeta.getPath());
+          }
+          try {
+            FileWriter out=new FileWriter(restartMeta);
+            out.write(Long.toString(Time.now() + restartBudget));
+            out.flush();
+            out.close();
+          }
+ catch (          IOException ioe) {
+          }
+          try {
+            ((PacketResponder)responder.getRunnable()).sendOOBResponse(PipelineAck.getRestartOOBStatus());
+            Thread.sleep(1000);
+          }
+ catch (          InterruptedException ie) {
+          }
+catch (          IOException ioe) {
+            LOG.info("Error sending OOB Ack.",ioe);
+          }
+        }
+        responder.interrupt();
+      }
+      IOUtils.closeStream(this);
+      cleanupBlock();
+    }
+    if (responder != null) {
+      try {
+        responder.interrupt();
+        long joinTimeout=datanode.getDnConf().getXceiverStopTimeout();
+        joinTimeout=joinTimeout > 1 ? joinTimeout * 8 / 10 : joinTimeout;
+        responder.join(joinTimeout);
+        if (responder.isAlive()) {
+          String msg="Join on responder thread " + responder + " timed out";
+          LOG.warn(msg + "\n" + StringUtils.getStackTrace(responder));
+          throw new IOException(msg);
+        }
+      }
+ catch (      InterruptedException e) {
+        responder.interrupt();
+        if (!datanode.isRestarting()) {
+          throw new IOException("Interrupted receiveBlock");
+        }
+      }
+      responder=null;
+    }
+  }
+}

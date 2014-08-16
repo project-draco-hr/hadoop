@@ -1,10 +1,20 @@
 {
   HttpURLConnection conn;
   try {
-    AuthenticatedURL authUrl=new AuthenticatedURL(new PseudoAuthenticator(),configurator);
-    conn=authUrl.openConnection(url,new AuthenticatedURL.Token());
+    UserGroupInformation currentUgi=UserGroupInformation.getCurrentUser();
+    final String doAsUser=(loginUgi.getShortUserName().equals(currentUgi.getShortUserName())) ? null : currentUgi.getShortUserName();
+    conn=loginUgi.doAs(new PrivilegedExceptionAction<HttpURLConnection>(){
+      @Override public HttpURLConnection run() throws Exception {
+        DelegationTokenAuthenticatedURL authUrl=new DelegationTokenAuthenticatedURL(configurator);
+        return authUrl.openConnection(url,authToken,doAsUser);
+      }
+    }
+);
   }
- catch (  AuthenticationException ex) {
+ catch (  IOException ex) {
+    throw ex;
+  }
+catch (  Exception ex) {
     throw new IOException(ex);
   }
   conn.setUseCaches(false);

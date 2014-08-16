@@ -3,24 +3,47 @@
   boolean useYarnAuthenticationFilter=conf.getBoolean(YarnConfiguration.RM_WEBAPP_DELEGATION_TOKEN_AUTH_FILTER,YarnConfiguration.DEFAULT_RM_WEBAPP_DELEGATION_TOKEN_AUTH_FILTER);
   String authPrefix="hadoop.http.authentication.";
   String authTypeKey=authPrefix + "type";
-  String initializers=conf.get("hadoop.http.filter.initializers");
-  if (UserGroupInformation.isSecurityEnabled() && useYarnAuthenticationFilter && conf.get(authTypeKey,"").equalsIgnoreCase(KerberosAuthenticationHandler.TYPE)) {
-    LOG.info("Using RM authentication filter(kerberos/delegation-token)" + " for RM webapp authentication");
-    RMAuthenticationHandler.setSecretManager(getClientRMService().rmDTSecretManager);
-    String yarnAuthKey=authPrefix + RMAuthenticationFilter.AUTH_HANDLER_PROPERTY;
-    conf.setStrings(yarnAuthKey,RMAuthenticationHandler.class.getName());
-    initializers=initializers == null || initializers.isEmpty() ? "" : "," + initializers;
-    if (!initializers.contains(RMAuthenticationFilterInitializer.class.getName())) {
-      conf.set("hadoop.http.filter.initializers",RMAuthenticationFilterInitializer.class.getName() + initializers);
+  String filterInitializerConfKey="hadoop.http.filter.initializers";
+  String actualInitializers="";
+  Class<?>[] initializersClasses=conf.getClasses(filterInitializerConfKey);
+  boolean hasHadoopAuthFilterInitializer=false;
+  boolean hasRMAuthFilterInitializer=false;
+  if (initializersClasses != null) {
+    for (    Class<?> initializer : initializersClasses) {
+      if (initializer.getName().equals(AuthenticationFilterInitializer.class.getName())) {
+        hasHadoopAuthFilterInitializer=true;
+      }
+      if (initializer.getName().equals(RMAuthenticationFilterInitializer.class.getName())) {
+        hasRMAuthFilterInitializer=true;
+      }
+    }
+    if (UserGroupInformation.isSecurityEnabled() && useYarnAuthenticationFilter && hasHadoopAuthFilterInitializer&& conf.get(authTypeKey,"").equals(KerberosAuthenticationHandler.TYPE)) {
+      ArrayList<String> target=new ArrayList<String>();
+      for (      Class<?> filterInitializer : initializersClasses) {
+        if (filterInitializer.getName().equals(AuthenticationFilterInitializer.class.getName())) {
+          if (hasRMAuthFilterInitializer == false) {
+            target.add(RMAuthenticationFilterInitializer.class.getName());
+          }
+          continue;
+        }
+        target.add(filterInitializer.getName());
+      }
+      actualInitializers=StringUtils.join(",",target);
+      LOG.info("Using RM authentication filter(kerberos/delegation-token)" + " for RM webapp authentication");
+      RMAuthenticationHandler.setSecretManager(getClientRMService().rmDTSecretManager);
+      String yarnAuthKey=authPrefix + RMAuthenticationFilter.AUTH_HANDLER_PROPERTY;
+      conf.setStrings(yarnAuthKey,RMAuthenticationHandler.class.getName());
+      conf.set(filterInitializerConfKey,actualInitializers);
     }
   }
+  String initializers=conf.get(filterInitializerConfKey);
   if (!UserGroupInformation.isSecurityEnabled()) {
-    if (initializers == null || initializers.isEmpty()) {
-      conf.set("hadoop.http.filter.initializers",RMAuthenticationFilterInitializer.class.getName());
+    if (initializersClasses == null || initializersClasses.length == 0) {
+      conf.set(filterInitializerConfKey,RMAuthenticationFilterInitializer.class.getName());
       conf.set(authTypeKey,"simple");
     }
  else     if (initializers.equals(StaticUserWebFilter.class.getName())) {
-      conf.set("hadoop.http.filter.initializers",RMAuthenticationFilterInitializer.class.getName() + "," + initializers);
+      conf.set(filterInitializerConfKey,RMAuthenticationFilterInitializer.class.getName() + "," + initializers);
       conf.set(authTypeKey,"simple");
     }
   }

@@ -1,6 +1,9 @@
 {
+  Configuration conf=new Configuration();
+  conf.set("hadoop.security.authentication","kerberos");
+  UserGroupInformation.setConfiguration(conf);
   File confDir=getTestDir();
-  Configuration conf=createBaseKMSConf(confDir);
+  conf=createBaseKMSConf(confDir);
   writeConf(confDir,conf);
   runServer(null,null,confDir,new KMSCallable(){
     @Override public Void call() throws Exception {
@@ -134,6 +137,12 @@
       meta=kp.getMetadata("k5");
       Assert.assertEquals("d",meta.getDescription());
       Assert.assertEquals(attributes,meta.getAttributes());
+      KeyProviderDelegationTokenExtension kpdte=KeyProviderDelegationTokenExtension.createKeyProviderDelegationTokenExtension(kp);
+      Credentials credentials=new Credentials();
+      kpdte.addDelegationTokens("foo",credentials);
+      Assert.assertEquals(1,credentials.getAllTokens().size());
+      InetSocketAddress kmsAddr=new InetSocketAddress(getKMSUrl().getHost(),getKMSUrl().getPort());
+      Assert.assertEquals(new Text("kms-dt"),credentials.getToken(SecurityUtil.buildTokenService(kmsAddr)).getKind());
       return null;
     }
   }
