@@ -1,0 +1,38 @@
+{
+  UserGroupInformation user=HttpUserGroupInformation.get();
+  Response response;
+  path=makeAbsolute(path);
+  MDC.put(HttpFSFileSystem.OP_PARAM,op.value().name());
+switch (op.value()) {
+case APPEND:
+{
+      Boolean hasData=params.get(DataParam.NAME,DataParam.class);
+      if (!hasData) {
+        response=Response.temporaryRedirect(createUploadRedirectionURL(uriInfo,HttpFSFileSystem.Operation.APPEND)).build();
+      }
+ else {
+        FSOperations.FSAppend command=new FSOperations.FSAppend(is,path);
+        fsExecute(user,command);
+        AUDIT_LOG.info("[{}]",path);
+        response=Response.ok().type(MediaType.APPLICATION_JSON).build();
+      }
+      break;
+    }
+case CONCAT:
+{
+    System.out.println("HTTPFS SERVER CONCAT");
+    String sources=params.get(SourcesParam.NAME,SourcesParam.class);
+    FSOperations.FSConcat command=new FSOperations.FSConcat(path,sources.split(","));
+    fsExecute(user,command);
+    AUDIT_LOG.info("[{}]",path);
+    System.out.println("SENT RESPONSE");
+    response=Response.ok().build();
+    break;
+  }
+default :
+{
+  throw new IOException(MessageFormat.format("Invalid HTTP POST operation [{0}]",op.value()));
+}
+}
+return response;
+}
