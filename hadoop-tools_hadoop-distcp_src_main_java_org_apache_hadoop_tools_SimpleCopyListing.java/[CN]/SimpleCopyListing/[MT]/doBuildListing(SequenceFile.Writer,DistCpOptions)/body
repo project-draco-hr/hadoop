@@ -2,13 +2,16 @@
   try {
     for (    Path path : options.getSourcePaths()) {
       FileSystem sourceFS=path.getFileSystem(getConf());
+      final boolean preserveAcls=options.shouldPreserve(FileAttribute.ACL);
+      final boolean preserveXAttrs=options.shouldPreserve(FileAttribute.XATTR);
+      final boolean preserveRawXAttrs=options.shouldPreserveRawXattrs();
       path=makeQualified(path);
       FileStatus rootStatus=sourceFS.getFileStatus(path);
       Path sourcePathRoot=computeSourceRootPath(rootStatus,options);
       FileStatus[] sourceFiles=sourceFS.listStatus(path);
       boolean explore=(sourceFiles != null && sourceFiles.length > 0);
       if (!explore || rootStatus.isDirectory()) {
-        CopyListingFileStatus rootCopyListingStatus=DistCpUtils.toCopyListingFileStatus(sourceFS,rootStatus,options.shouldPreserve(FileAttribute.ACL),options.shouldPreserve(FileAttribute.XATTR));
+        CopyListingFileStatus rootCopyListingStatus=DistCpUtils.toCopyListingFileStatus(sourceFS,rootStatus,preserveAcls,preserveXAttrs,preserveRawXAttrs);
         writeToFileListingRoot(fileListWriter,rootCopyListingStatus,sourcePathRoot,options);
       }
       if (explore) {
@@ -16,7 +19,7 @@
           if (LOG.isDebugEnabled()) {
             LOG.debug("Recording source-path: " + sourceStatus.getPath() + " for copy.");
           }
-          CopyListingFileStatus sourceCopyListingStatus=DistCpUtils.toCopyListingFileStatus(sourceFS,sourceStatus,options.shouldPreserve(FileAttribute.ACL) && sourceStatus.isDirectory(),options.shouldPreserve(FileAttribute.XATTR) && sourceStatus.isDirectory());
+          CopyListingFileStatus sourceCopyListingStatus=DistCpUtils.toCopyListingFileStatus(sourceFS,sourceStatus,preserveAcls && sourceStatus.isDirectory(),preserveXAttrs && sourceStatus.isDirectory(),preserveRawXAttrs && sourceStatus.isDirectory());
           writeToFileListing(fileListWriter,sourceCopyListingStatus,sourcePathRoot,options);
           if (isDirectoryAndNotEmpty(sourceFS,sourceStatus)) {
             if (LOG.isDebugEnabled()) {
