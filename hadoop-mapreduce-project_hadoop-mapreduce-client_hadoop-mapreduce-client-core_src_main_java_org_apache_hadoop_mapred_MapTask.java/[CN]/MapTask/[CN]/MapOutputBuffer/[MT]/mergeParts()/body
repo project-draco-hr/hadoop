@@ -33,11 +33,12 @@
     try {
       for (int i=0; i < partitions; i++) {
         long segmentStart=finalOut.getPos();
-        Writer<K,V> writer=new Writer<K,V>(job,finalOut,keyClass,valClass,codec,null);
+        FSDataOutputStream finalPartitionOut=CryptoUtils.wrapIfNecessary(job,finalOut);
+        Writer<K,V> writer=new Writer<K,V>(job,finalPartitionOut,keyClass,valClass,codec,null);
         writer.close();
         rec.startOffset=segmentStart;
-        rec.rawLength=writer.getRawLength();
-        rec.partLength=writer.getCompressedLength();
+        rec.rawLength=writer.getRawLength() + CryptoUtils.cryptoPadding(job);
+        rec.partLength=writer.getCompressedLength() + CryptoUtils.cryptoPadding(job);
         sr.putIndex(rec,i);
       }
       sr.writeToFile(finalIndexFile,job);
@@ -66,7 +67,8 @@
       boolean sortSegments=segmentList.size() > mergeFactor;
       @SuppressWarnings("unchecked") RawKeyValueIterator kvIter=Merger.merge(job,rfs,keyClass,valClass,codec,segmentList,mergeFactor,new Path(mapId.toString()),job.getOutputKeyComparator(),reporter,sortSegments,null,spilledRecordsCounter,sortPhase.phase(),TaskType.MAP);
       long segmentStart=finalOut.getPos();
-      Writer<K,V> writer=new Writer<K,V>(job,finalOut,keyClass,valClass,codec,spilledRecordsCounter);
+      FSDataOutputStream finalPartitionOut=CryptoUtils.wrapIfNecessary(job,finalOut);
+      Writer<K,V> writer=new Writer<K,V>(job,finalPartitionOut,keyClass,valClass,codec,spilledRecordsCounter);
       if (combinerRunner == null || numSpills < minSpillsForCombine) {
         Merger.writeFile(kvIter,writer,reporter,job);
       }
@@ -77,8 +79,8 @@
       writer.close();
       sortPhase.startNextPhase();
       rec.startOffset=segmentStart;
-      rec.rawLength=writer.getRawLength();
-      rec.partLength=writer.getCompressedLength();
+      rec.rawLength=writer.getRawLength() + CryptoUtils.cryptoPadding(job);
+      rec.partLength=writer.getCompressedLength() + CryptoUtils.cryptoPadding(job);
       spillRec.putIndex(rec,parts);
     }
     spillRec.writeToFile(finalIndexFile,job);

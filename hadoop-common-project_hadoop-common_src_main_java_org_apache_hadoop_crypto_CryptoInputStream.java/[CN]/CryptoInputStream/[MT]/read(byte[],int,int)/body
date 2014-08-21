@@ -1,0 +1,55 @@
+{
+  checkStream();
+  if (b == null) {
+    throw new NullPointerException();
+  }
+ else   if (off < 0 || len < 0 || len > b.length - off) {
+    throw new IndexOutOfBoundsException();
+  }
+ else   if (len == 0) {
+    return 0;
+  }
+  final int remaining=outBuffer.remaining();
+  if (remaining > 0) {
+    int n=Math.min(len,remaining);
+    outBuffer.get(b,off,n);
+    return n;
+  }
+ else {
+    int n=0;
+    if (usingByteBufferRead == null) {
+      if (in instanceof ByteBufferReadable) {
+        try {
+          n=((ByteBufferReadable)in).read(inBuffer);
+          usingByteBufferRead=Boolean.TRUE;
+        }
+ catch (        UnsupportedOperationException e) {
+          usingByteBufferRead=Boolean.FALSE;
+        }
+      }
+ else {
+        usingByteBufferRead=Boolean.FALSE;
+      }
+      if (!usingByteBufferRead) {
+        n=readFromUnderlyingStream(inBuffer);
+      }
+    }
+ else {
+      if (usingByteBufferRead) {
+        n=((ByteBufferReadable)in).read(inBuffer);
+      }
+ else {
+        n=readFromUnderlyingStream(inBuffer);
+      }
+    }
+    if (n <= 0) {
+      return n;
+    }
+    streamOffset+=n;
+    decrypt(decryptor,inBuffer,outBuffer,padding);
+    padding=afterDecryption(decryptor,inBuffer,streamOffset,iv);
+    n=Math.min(len,outBuffer.remaining());
+    outBuffer.get(b,off,n);
+    return n;
+  }
+}
