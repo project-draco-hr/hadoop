@@ -1,0 +1,29 @@
+{
+  ReplicaInfo replicaInfo=volumeMap.get(b.getBlockPoolId(),b.getBlockId());
+  if (replicaInfo != null) {
+    throw new ReplicaAlreadyExistsException("Block " + b + " already exists in state "+ replicaInfo.getState()+ " and thus cannot be created.");
+  }
+  FsVolumeImpl v;
+  while (true) {
+    try {
+      if (allowLazyPersist) {
+        v=volumes.getNextTransientVolume(b.getNumBytes());
+      }
+ else {
+        v=volumes.getNextVolume(storageType,b.getNumBytes());
+      }
+    }
+ catch (    DiskOutOfSpaceException de) {
+      if (allowLazyPersist) {
+        allowLazyPersist=false;
+        continue;
+      }
+      throw de;
+    }
+    break;
+  }
+  File f=v.createRbwFile(b.getBlockPoolId(),b.getLocalBlock());
+  ReplicaBeingWritten newReplicaInfo=new ReplicaBeingWritten(b.getBlockId(),b.getGenerationStamp(),v,f.getParentFile());
+  volumeMap.add(b.getBlockPoolId(),newReplicaInfo);
+  return newReplicaInfo;
+}
