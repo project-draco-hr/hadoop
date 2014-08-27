@@ -1,0 +1,26 @@
+{
+  startUpCluster(REPL_FACTOR,new StorageType[]{RAM_DISK,DEFAULT},-1);
+  final String METHOD_NAME=GenericTestUtils.getMethodName();
+  Path path=new Path("/" + METHOD_NAME + ".dat");
+  makeTestFile(path,BLOCK_SIZE * 10,true);
+  LocatedBlocks locatedBlocks=ensureFileReplicasOnStorageType(path,RAM_DISK);
+  Thread.sleep(3 * LAZY_WRITER_INTERVAL_SEC * 1000);
+  final String bpid=cluster.getNamesystem().getBlockPoolId();
+  List<? extends FsVolumeSpi> volumes=cluster.getDataNodes().get(0).getFSDataset().getVolumes();
+  final Set<Long> persistedBlockIds=new HashSet<Long>();
+  for (  FsVolumeSpi v : volumes) {
+    if (v.isTransientStorage()) {
+      continue;
+    }
+    FsVolumeImpl volume=(FsVolumeImpl)v;
+    File lazyPersistDir=volume.getBlockPoolSlice(bpid).getLazypersistDir();
+    for (    LocatedBlock lb : locatedBlocks.getLocatedBlocks()) {
+      File persistedBlockFile=new File(lazyPersistDir,"blk_" + lb.getBlock().getBlockId());
+      if (persistedBlockFile.exists()) {
+        boolean added=persistedBlockIds.add(lb.getBlock().getBlockId());
+        assertThat(added,is(true));
+      }
+    }
+  }
+  assertThat(persistedBlockIds.size(),is(locatedBlocks.getLocatedBlocks().size()));
+}
