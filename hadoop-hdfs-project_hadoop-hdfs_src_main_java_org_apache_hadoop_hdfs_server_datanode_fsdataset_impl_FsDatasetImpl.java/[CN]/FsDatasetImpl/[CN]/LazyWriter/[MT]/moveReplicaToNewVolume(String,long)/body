@@ -1,0 +1,19 @@
+{
+  LOG.info("LazyWriter invoked to save blockId=" + blockId + "; bpid="+ bpid);
+  FsVolumeImpl targetVolume=null;
+  Block block=null;
+  File blockFile=null;
+synchronized (this) {
+    block=getStoredBlock(bpid,blockId);
+    blockFile=getFile(bpid,blockId);
+    if (block == null) {
+      return;
+    }
+    targetVolume=volumes.getNextVolume(StorageType.DEFAULT,block.getNumBytes());
+  }
+  LOG.info("LazyWriter starting to save blockId=" + blockId + "; bpid="+ bpid);
+  lazyWriteReplicaTracker.recordStartLazyPersist(bpid,blockId,targetVolume);
+  File savedBlockFile=targetVolume.getBlockPoolSlice(bpid).lazyPersistReplica(block,blockFile);
+  lazyWriteReplicaTracker.recordEndLazyPersist(bpid,blockId,savedBlockFile);
+  LOG.info("LazyWriter finished saving blockId=" + blockId + "; bpid="+ bpid+ " to file "+ savedBlockFile);
+}
