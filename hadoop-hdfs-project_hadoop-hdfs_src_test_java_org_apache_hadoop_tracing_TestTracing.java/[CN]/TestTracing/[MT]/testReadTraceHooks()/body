@@ -1,0 +1,42 @@
+{
+  String fileName="traceReadTest.dat";
+  Path filePath=new Path(fileName);
+  FSDataOutputStream ostream=dfs.create(filePath);
+  for (int i=0; i < 50; i++) {
+    byte[] data=RandomStringUtils.randomAlphabetic(10240).getBytes();
+    ostream.write(data);
+  }
+  ostream.close();
+  long startTime=System.currentTimeMillis();
+  TraceScope ts=Trace.startSpan("testReadTraceHooks",Sampler.ALWAYS);
+  FSDataInputStream istream=dfs.open(filePath,10240);
+  ByteBuffer buf=ByteBuffer.allocate(10240);
+  int count=0;
+  try {
+    while (istream.read(buf) > 0) {
+      count+=1;
+      buf.clear();
+      istream.seek(istream.getPos() + 5);
+    }
+  }
+ catch (  IOException ioe) {
+  }
+ finally {
+    istream.close();
+  }
+  ts.getSpan().addTimelineAnnotation("count: " + count);
+  long endTime=System.currentTimeMillis();
+  ts.close();
+  String[] expectedSpanNames={"testReadTraceHooks","org.apache.hadoop.hdfs.protocol.ClientProtocol.getBlockLocations","org.apache.hadoop.hdfs.protocol.proto.ClientNamenodeProtocolProtos.ClientNamenodeProtocol.BlockingInterface.getBlockLocations"};
+  assertSpanNamesFound(expectedSpanNames);
+  Map<String,List<Span>> map=SetSpanReceiver.SetHolder.getMap();
+  Span s=map.get("testReadTraceHooks").get(0);
+  Assert.assertNotNull(s);
+  long spanStart=s.getStartTimeMillis();
+  long spanEnd=s.getStopTimeMillis();
+  Assert.assertTrue(spanStart - startTime < 100);
+  Assert.assertTrue(spanEnd - endTime < 100);
+  for (  Span span : SetSpanReceiver.SetHolder.spans) {
+    Assert.assertEquals(ts.getSpan().getTraceId(),span.getTraceId());
+  }
+}

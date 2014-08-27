@@ -1,0 +1,26 @@
+{
+  long startTime=System.currentTimeMillis();
+  TraceScope ts=Trace.startSpan("testWriteTraceHooks",Sampler.ALWAYS);
+  Path file=new Path("traceWriteTest.dat");
+  FSDataOutputStream stream=dfs.create(file);
+  for (int i=0; i < 10; i++) {
+    byte[] data=RandomStringUtils.randomAlphabetic(102400).getBytes();
+    stream.write(data);
+  }
+  stream.hflush();
+  stream.close();
+  long endTime=System.currentTimeMillis();
+  ts.close();
+  String[] expectedSpanNames={"testWriteTraceHooks","org.apache.hadoop.hdfs.protocol.ClientProtocol.create","org.apache.hadoop.hdfs.protocol.proto.ClientNamenodeProtocolProtos.ClientNamenodeProtocol.BlockingInterface.create","org.apache.hadoop.hdfs.protocol.ClientProtocol.fsync","org.apache.hadoop.hdfs.protocol.proto.ClientNamenodeProtocolProtos.ClientNamenodeProtocol.BlockingInterface.fsync","org.apache.hadoop.hdfs.protocol.proto.ClientNamenodeProtocolProtos.ClientNamenodeProtocol.BlockingInterface.complete"};
+  assertSpanNamesFound(expectedSpanNames);
+  Map<String,List<Span>> map=SetSpanReceiver.SetHolder.getMap();
+  Span s=map.get("testWriteTraceHooks").get(0);
+  Assert.assertNotNull(s);
+  long spanStart=s.getStartTimeMillis();
+  long spanEnd=s.getStopTimeMillis();
+  Assert.assertTrue(spanStart - startTime < 100);
+  Assert.assertTrue(spanEnd - endTime < 100);
+  for (  Span span : SetSpanReceiver.SetHolder.spans) {
+    Assert.assertEquals(ts.getSpan().getTraceId(),span.getTraceId());
+  }
+}

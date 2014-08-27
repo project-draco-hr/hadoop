@@ -3,6 +3,7 @@
   SERVER.set(Server.this);
   ByteArrayOutputStream buf=new ByteArrayOutputStream(INITIAL_RESP_BUF_SIZE);
   while (running) {
+    TraceScope traceScope=null;
     try {
       final Call call=callQueue.take();
       if (LOG.isDebugEnabled()) {
@@ -18,6 +19,9 @@
       RpcErrorCodeProto detailedErr=null;
       Writable value=null;
       CurCall.set(call);
+      if (call.traceSpan != null) {
+        traceScope=Trace.continueSpan(call.traceSpan);
+      }
       try {
         if (call.connection.user == null) {
           value=call(call.rpcKind,call.connection.protocolName,call.rpcRequest,call.timestamp);
@@ -74,10 +78,22 @@ synchronized (call.connection.responseQueue) {
  catch (    InterruptedException e) {
       if (running) {
         LOG.info(Thread.currentThread().getName() + " unexpectedly interrupted",e);
+        if (Trace.isTracing()) {
+          traceScope.getSpan().addTimelineAnnotation("unexpectedly interrupted: " + StringUtils.stringifyException(e));
+        }
       }
     }
 catch (    Exception e) {
       LOG.info(Thread.currentThread().getName() + " caught an exception",e);
+      if (Trace.isTracing()) {
+        traceScope.getSpan().addTimelineAnnotation("Exception: " + StringUtils.stringifyException(e));
+      }
+    }
+ finally {
+      if (traceScope != null) {
+        traceScope.close();
+      }
+      IOUtils.cleanup(LOG,traceScope);
     }
   }
   LOG.debug(Thread.currentThread().getName() + ": exiting");
