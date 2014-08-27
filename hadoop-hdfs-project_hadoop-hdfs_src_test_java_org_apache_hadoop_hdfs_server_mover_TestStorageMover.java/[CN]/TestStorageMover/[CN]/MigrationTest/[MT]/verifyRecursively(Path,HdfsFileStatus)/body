@@ -1,0 +1,19 @@
+{
+  if (status.isDir()) {
+    Path fullPath=parent == null ? new Path("/") : status.getFullPath(parent);
+    DirectoryListing children=dfs.getClient().listPaths(fullPath.toString(),HdfsFileStatus.EMPTY_NAME,true);
+    for (    HdfsFileStatus child : children.getPartialListing()) {
+      verifyRecursively(fullPath,child);
+    }
+  }
+ else   if (!status.isSymlink()) {
+    HdfsLocatedFileStatus fileStatus=(HdfsLocatedFileStatus)status;
+    byte policyId=fileStatus.getStoragePolicy();
+    BlockStoragePolicy policy=policies.getPolicy(policyId);
+    final List<StorageType> types=policy.chooseStorageTypes(status.getReplication());
+    for (    LocatedBlock lb : fileStatus.getBlockLocations().getLocatedBlocks()) {
+      final Mover.StorageTypeDiff diff=new Mover.StorageTypeDiff(types,lb.getStorageTypes());
+      Assert.assertTrue(diff.removeOverlap());
+    }
+  }
+}
