@@ -2,7 +2,7 @@
   File files[]=FileUtil.listFiles(dir);
   for (  File file : files) {
     if (file.isDirectory()) {
-      addToReplicasMap(volumeMap,file,isFinalized);
+      addToReplicasMap(volumeMap,file,lazyWriteReplicaMap,isFinalized);
     }
     if (isFinalized && FsDatasetUtil.isUnlinkTmpFile(file)) {
       file=recoverTempUnlinkedBlock(file);
@@ -43,9 +43,18 @@
         newReplica=new ReplicaWaitingToBeRecovered(blockId,validateIntegrityAndSetLength(file,genStamp),genStamp,volume,file.getParentFile());
       }
     }
-    ReplicaInfo oldReplica=volumeMap.add(bpid,newReplica);
-    if (oldReplica != null) {
-      FsDatasetImpl.LOG.warn("Two block files with the same block id exist " + "on disk: " + oldReplica.getBlockFile() + " and "+ file);
+    ReplicaInfo oldReplica=volumeMap.get(bpid,newReplica.getBlockId());
+    if (oldReplica == null) {
+      volumeMap.add(bpid,newReplica);
+    }
+ else {
+      newReplica=resolveDuplicateReplicas(newReplica,oldReplica,volumeMap);
+    }
+    if (newReplica.getVolume().isTransientStorage()) {
+      lazyWriteReplicaMap.addReplica(bpid,blockId,newReplica.getVolume());
+    }
+ else {
+      lazyWriteReplicaMap.discardReplica(bpid,blockId,true);
     }
   }
 }

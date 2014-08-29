@@ -1,0 +1,33 @@
+{
+  File files[]=FileUtil.listFiles(source);
+  int numRecovered=0;
+  for (  File file : files) {
+    if (file.isDirectory()) {
+      numRecovered+=moveLazyPersistReplicasToFinalized(file);
+    }
+    if (Block.isMetaFilename(file.getName())) {
+      File metaFile=file;
+      File blockFile=Block.metaToBlockFile(metaFile);
+      long blockId=Block.filename2id(blockFile.getName());
+      File targetDir=DatanodeUtil.idToBlockDir(finalizedDir,blockId);
+      if (blockFile.exists()) {
+        File targetBlockFile=new File(targetDir,blockFile.getName());
+        File targetMetaFile=new File(targetDir,metaFile.getName());
+        if (!targetDir.exists() && !targetDir.mkdirs()) {
+          FsDatasetImpl.LOG.warn("Failed to move " + blockFile + " to "+ targetDir);
+          continue;
+        }
+        metaFile.renameTo(targetMetaFile);
+        blockFile.renameTo(targetBlockFile);
+        if (targetBlockFile.exists() && targetMetaFile.exists()) {
+          ++numRecovered;
+        }
+ else {
+          FsDatasetImpl.LOG.warn("Failed to move " + blockFile + " to "+ targetDir);
+        }
+      }
+    }
+  }
+  FileUtil.fullyDelete(source);
+  return numRecovered;
+}
