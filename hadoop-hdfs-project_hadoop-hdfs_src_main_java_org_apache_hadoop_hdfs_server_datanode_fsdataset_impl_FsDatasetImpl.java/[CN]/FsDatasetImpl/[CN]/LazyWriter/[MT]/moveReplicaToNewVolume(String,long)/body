@@ -1,19 +1,21 @@
 {
   LOG.info("LazyWriter invoked to save blockId=" + blockId + "; bpid="+ bpid);
-  FsVolumeImpl targetVolume=null;
-  Block block=null;
-  File blockFile=null;
+  FsVolumeImpl targetVolume;
+  ReplicaInfo replicaInfo;
 synchronized (this) {
-    block=getStoredBlock(bpid,blockId);
-    blockFile=getFile(bpid,blockId);
-    if (block == null) {
+    replicaInfo=volumeMap.get(bpid,blockId);
+    if (replicaInfo == null || !replicaInfo.getVolume().isTransientStorage()) {
       return;
     }
-    targetVolume=volumes.getNextVolume(StorageType.DEFAULT,block.getNumBytes());
+    targetVolume=volumes.getNextVolume(StorageType.DEFAULT,replicaInfo.getNumBytes());
   }
-  LOG.info("LazyWriter starting to save blockId=" + blockId + "; bpid="+ bpid);
+  if (LOG.isDebugEnabled()) {
+    LOG.debug("LazyWriter starting to save blockId=" + blockId + "; bpid="+ bpid);
+  }
   lazyWriteReplicaTracker.recordStartLazyPersist(bpid,blockId,targetVolume);
-  File savedBlockFile=targetVolume.getBlockPoolSlice(bpid).lazyPersistReplica(block,blockFile);
+  File savedBlockFile=targetVolume.getBlockPoolSlice(bpid).lazyPersistReplica(replicaInfo);
   lazyWriteReplicaTracker.recordEndLazyPersist(bpid,blockId,savedBlockFile);
-  LOG.info("LazyWriter finished saving blockId=" + blockId + "; bpid="+ bpid+ " to file "+ savedBlockFile);
+  if (LOG.isDebugEnabled()) {
+    LOG.debug("LazyWriter finished saving blockId=" + blockId + "; bpid="+ bpid+ " to file "+ savedBlockFile);
+  }
 }

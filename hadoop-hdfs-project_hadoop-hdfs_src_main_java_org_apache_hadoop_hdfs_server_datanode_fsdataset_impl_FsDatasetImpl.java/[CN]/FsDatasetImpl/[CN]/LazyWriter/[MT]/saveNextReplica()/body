@@ -1,23 +1,23 @@
 {
-  BlockIdPair blockIdPair=null;
-  int moreWorkThreshold=0;
+  LazyWriteReplicaTracker.ReplicaState replicaState=null;
+  boolean succeeded=false;
   try {
 synchronized (this) {
-      blockIdPair=blocksPendingCheckpoint.poll();
-      if (blockIdPair == null) {
-        LOG.info("LazyWriter has no blocks to persist. " + "Thread going to sleep.");
+      replicaState=lazyWriteReplicaTracker.dequeueNextReplicaToPersist();
+      if (replicaState == null) {
         return false;
       }
     }
-    moveReplicaToNewVolume(blockIdPair.bpid,blockIdPair.blockId);
+    moveReplicaToNewVolume(replicaState.bpid,replicaState.blockId);
+    succeeded=true;
   }
  catch (  IOException ioe) {
-synchronized (this) {
-      blocksPendingCheckpoint.add(blockIdPair);
-      ++moreWorkThreshold;
+    LOG.warn("Exception saving replica " + replicaState,ioe);
+  }
+ finally {
+    if (!succeeded && replicaState != null) {
+      lazyWriteReplicaTracker.reenqueueReplica(replicaState);
     }
   }
-synchronized (this) {
-    return blocksPendingCheckpoint.size() > moreWorkThreshold;
-  }
+  return succeeded;
 }
