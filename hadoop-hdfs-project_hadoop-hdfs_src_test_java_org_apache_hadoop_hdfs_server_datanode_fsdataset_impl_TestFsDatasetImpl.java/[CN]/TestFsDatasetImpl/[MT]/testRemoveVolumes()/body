@@ -1,0 +1,33 @@
+{
+  final int NUM_BLOCKS=100;
+  for (int i=0; i < NUM_BLOCKS; i++) {
+    String bpid=BLOCK_POOL_IDS[NUM_BLOCKS % BLOCK_POOL_IDS.length];
+    ExtendedBlock eb=new ExtendedBlock(bpid,i);
+    dataset.createRbw(StorageType.DEFAULT,eb);
+  }
+  final String[] dataDirs=conf.get(DFSConfigKeys.DFS_DATANODE_DATA_DIR_KEY).split(",");
+  final String volumePathToRemove=dataDirs[0];
+  List<StorageLocation> volumesToRemove=new ArrayList<StorageLocation>();
+  volumesToRemove.add(StorageLocation.parse(volumePathToRemove));
+  dataset.removeVolumes(volumesToRemove);
+  int expectedNumVolumes=dataDirs.length - 1;
+  assertEquals("The volume has been removed from the volumeList.",expectedNumVolumes,dataset.getVolumes().size());
+  assertEquals("The volume has been removed from the storageMap.",expectedNumVolumes,dataset.storageMap.size());
+  try {
+    dataset.asyncDiskService.execute(volumesToRemove.get(0).getFile(),new Runnable(){
+      @Override public void run(){
+      }
+    }
+);
+    fail("Expect RuntimeException: the volume has been removed from the " + "AsyncDiskService.");
+  }
+ catch (  RuntimeException e) {
+    GenericTestUtils.assertExceptionContains("Cannot find root",e);
+  }
+  int totalNumReplicas=0;
+  for (  String bpid : dataset.volumeMap.getBlockPoolList()) {
+    totalNumReplicas+=dataset.volumeMap.size(bpid);
+  }
+  assertEquals("The replica infos on this volume has been removed from the " + "volumeMap.",NUM_BLOCKS / NUM_INIT_VOLUMES,totalNumReplicas);
+  verify(scanner,times(BLOCK_POOL_IDS.length)).deleteBlocks(anyString(),any(Block[].class));
+}
