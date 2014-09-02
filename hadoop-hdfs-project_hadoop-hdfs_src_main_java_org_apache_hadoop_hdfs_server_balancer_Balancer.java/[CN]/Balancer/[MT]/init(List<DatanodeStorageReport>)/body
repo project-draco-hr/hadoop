@@ -1,0 +1,46 @@
+{
+  for (  DatanodeStorageReport r : reports) {
+    policy.accumulateSpaces(r);
+  }
+  policy.initAvgUtilization();
+  long overLoadedBytes=0L, underLoadedBytes=0L;
+  for (  DatanodeStorageReport r : reports) {
+    final DDatanode dn=dispatcher.newDatanode(r);
+    for (    StorageType t : StorageType.asList()) {
+      final Double utilization=policy.getUtilization(r,t);
+      if (utilization == null) {
+        continue;
+      }
+      final long capacity=getCapacity(r,t);
+      final double utilizationDiff=utilization - policy.getAvgUtilization(t);
+      final double thresholdDiff=Math.abs(utilizationDiff) - threshold;
+      final long maxSize2Move=computeMaxSize2Move(capacity,getRemaining(r,t),utilizationDiff,threshold);
+      final StorageGroup g;
+      if (utilizationDiff > 0) {
+        final Source s=dn.addSource(t,maxSize2Move,dispatcher);
+        if (thresholdDiff <= 0) {
+          aboveAvgUtilized.add(s);
+        }
+ else {
+          overLoadedBytes+=precentage2bytes(thresholdDiff,capacity);
+          overUtilized.add(s);
+        }
+        g=s;
+      }
+ else {
+        g=dn.addStorageGroup(t,maxSize2Move);
+        if (thresholdDiff <= 0) {
+          belowAvgUtilized.add(g);
+        }
+ else {
+          underLoadedBytes+=precentage2bytes(thresholdDiff,capacity);
+          underUtilized.add(g);
+        }
+      }
+      dispatcher.getStorageGroupMap().put(g);
+    }
+  }
+  logUtilizationCollections();
+  Preconditions.checkState(dispatcher.getStorageGroupMap().size() == overUtilized.size() + underUtilized.size() + aboveAvgUtilized.size()+ belowAvgUtilized.size(),"Mismatched number of storage groups");
+  return Math.max(overLoadedBytes,underLoadedBytes);
+}

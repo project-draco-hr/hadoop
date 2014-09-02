@@ -1,25 +1,29 @@
 {
+  String src=srcArg;
   nnConf.checkXAttrsConfigFlag();
   FSPermissionChecker pc=getPermissionChecker();
+  final boolean isRawPath=FSDirectory.isReservedRawName(src);
   boolean getAll=xAttrs == null || xAttrs.isEmpty();
   if (!getAll) {
     try {
-      XAttrPermissionFilter.checkPermissionForApi(pc,xAttrs);
+      XAttrPermissionFilter.checkPermissionForApi(pc,xAttrs,isRawPath);
     }
  catch (    AccessControlException e) {
-      logAuditEvent(false,"getXAttrs",src);
+      logAuditEvent(false,"getXAttrs",srcArg);
       throw e;
     }
   }
   checkOperation(OperationCategory.READ);
+  byte[][] pathComponents=FSDirectory.getPathComponentsForReservedPath(src);
   readLock();
   try {
+    src=resolvePath(src,pathComponents);
     checkOperation(OperationCategory.READ);
     if (isPermissionEnabled) {
       checkPathAccess(pc,src,FsAction.READ);
     }
     List<XAttr> all=dir.getXAttrs(src);
-    List<XAttr> filteredAll=XAttrPermissionFilter.filterXAttrsForApi(pc,all);
+    List<XAttr> filteredAll=XAttrPermissionFilter.filterXAttrsForApi(pc,all,isRawPath);
     if (getAll) {
       return filteredAll;
     }
@@ -45,7 +49,7 @@
     }
   }
  catch (  AccessControlException e) {
-    logAuditEvent(false,"getXAttrs",src);
+    logAuditEvent(false,"getXAttrs",srcArg);
     throw e;
   }
  finally {

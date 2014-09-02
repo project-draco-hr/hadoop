@@ -1,0 +1,43 @@
+{
+  dfsClient.checkOpen();
+  checkClosed();
+  int bytesPerChecksum=this.checksum.getBytesPerChecksum();
+  if (len > bytesPerChecksum) {
+    throw new IOException("writeChunk() buffer size is " + len + " is larger than supported  bytesPerChecksum "+ bytesPerChecksum);
+  }
+  if (cklen != this.checksum.getChecksumSize()) {
+    throw new IOException("writeChunk() checksum size is supposed to be " + this.checksum.getChecksumSize() + " but found to be "+ cklen);
+  }
+  if (currentPacket == null) {
+    currentPacket=new Packet(packetSize,chunksPerPacket,bytesCurBlock,currentSeqno++,this.checksum.getChecksumSize());
+    if (DFSClient.LOG.isDebugEnabled()) {
+      DFSClient.LOG.debug("DFSClient writeChunk allocating new packet seqno=" + currentPacket.seqno + ", src="+ src+ ", packetSize="+ packetSize+ ", chunksPerPacket="+ chunksPerPacket+ ", bytesCurBlock="+ bytesCurBlock);
+    }
+  }
+  currentPacket.writeChecksum(checksum,ckoff,cklen);
+  currentPacket.writeData(b,offset,len);
+  currentPacket.numChunks++;
+  bytesCurBlock+=len;
+  if (currentPacket.numChunks == currentPacket.maxChunks || bytesCurBlock == blockSize) {
+    if (DFSClient.LOG.isDebugEnabled()) {
+      DFSClient.LOG.debug("DFSClient writeChunk packet full seqno=" + currentPacket.seqno + ", src="+ src+ ", bytesCurBlock="+ bytesCurBlock+ ", blockSize="+ blockSize+ ", appendChunk="+ appendChunk);
+    }
+    waitAndQueueCurrentPacket();
+    if (appendChunk && bytesCurBlock % bytesPerChecksum == 0) {
+      appendChunk=false;
+      resetChecksumBufSize();
+    }
+    if (!appendChunk) {
+      int psize=Math.min((int)(blockSize - bytesCurBlock),dfsClient.getConf().writePacketSize);
+      computePacketChunkSize(psize,bytesPerChecksum);
+    }
+    if (bytesCurBlock == blockSize) {
+      currentPacket=new Packet(0,0,bytesCurBlock,currentSeqno++,this.checksum.getChecksumSize());
+      currentPacket.lastPacketInBlock=true;
+      currentPacket.syncBlock=shouldSyncBlock;
+      waitAndQueueCurrentPacket();
+      bytesCurBlock=0;
+      lastFlushOffset=0;
+    }
+  }
+}

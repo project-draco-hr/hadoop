@@ -1,0 +1,34 @@
+{
+  UserGroupInformation user=HttpUserGroupInformation.get();
+  KMSClientProvider.checkNotEmpty(name,"name");
+  KMSClientProvider.checkNotNull(edekOp,"eekOp");
+  Object retJSON;
+  if (edekOp.equals(KMSRESTConstants.EEK_GENERATE)) {
+    assertAccess(KMSACLs.Type.GENERATE_EEK,user,KMSOp.GENERATE_EEK,name);
+    final List<EncryptedKeyVersion> retEdeks=new LinkedList<EncryptedKeyVersion>();
+    try {
+      user.doAs(new PrivilegedExceptionAction<Void>(){
+        @Override public Void run() throws Exception {
+          for (int i=0; i < numKeys; i++) {
+            retEdeks.add(provider.generateEncryptedKey(name));
+          }
+          return null;
+        }
+      }
+);
+    }
+ catch (    Exception e) {
+      throw new IOException(e);
+    }
+    kmsAudit.ok(user,KMSOp.GENERATE_EEK,name,"");
+    retJSON=new ArrayList();
+    for (    EncryptedKeyVersion edek : retEdeks) {
+      ((ArrayList)retJSON).add(KMSServerJSONUtils.toJSON(edek));
+    }
+  }
+ else {
+    throw new IllegalArgumentException("Wrong " + KMSRESTConstants.EEK_OP + " value, it must be "+ KMSRESTConstants.EEK_GENERATE+ " or "+ KMSRESTConstants.EEK_DECRYPT);
+  }
+  KMSWebApp.getGenerateEEKCallsMeter().mark();
+  return Response.ok().type(MediaType.APPLICATION_JSON).entity(retJSON).build();
+}

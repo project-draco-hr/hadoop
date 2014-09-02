@@ -1,13 +1,15 @@
 {
   final long sleeptime=2000 * conf.getLong(DFSConfigKeys.DFS_HEARTBEAT_INTERVAL_KEY,DFSConfigKeys.DFS_HEARTBEAT_INTERVAL_DEFAULT);
-  LOG.info("namenodes = " + namenodes);
-  LOG.info("p         = " + p);
+  LOG.info("namenodes  = " + namenodes);
+  LOG.info("parameters = " + p);
   final Formatter formatter=new Formatter(System.out);
   System.out.println("Time Stamp               Iteration#  Bytes Already Moved  Bytes Left To Move  Bytes Being Moved");
   final List<NameNodeConnector> connectors=new ArrayList<NameNodeConnector>(namenodes.size());
   try {
     for (    URI uri : namenodes) {
-      connectors.add(new NameNodeConnector(uri,conf));
+      final NameNodeConnector nnc=new NameNodeConnector(Balancer.class.getSimpleName(),uri,BALANCER_ID_PATH,conf);
+      nnc.getKeyManager().startBlockKeyUpdater();
+      connectors.add(nnc);
     }
     boolean done=false;
     for (int iteration=0; !done; iteration++) {
@@ -15,13 +17,13 @@
       Collections.shuffle(connectors);
       for (      NameNodeConnector nnc : connectors) {
         final Balancer b=new Balancer(nnc,p,conf);
-        final ReturnStatus r=b.run(iteration,formatter,conf);
+        final ExitStatus r=b.run(iteration,formatter,conf);
         b.resetData(conf);
-        if (r == ReturnStatus.IN_PROGRESS) {
+        if (r == ExitStatus.IN_PROGRESS) {
           done=false;
         }
- else         if (r != ReturnStatus.SUCCESS) {
-          return r.code;
+ else         if (r != ExitStatus.SUCCESS) {
+          return r.getExitCode();
         }
       }
       if (!done) {
@@ -34,5 +36,5 @@
       nnc.close();
     }
   }
-  return ReturnStatus.SUCCESS.code;
+  return ExitStatus.SUCCESS.getExitCode();
 }

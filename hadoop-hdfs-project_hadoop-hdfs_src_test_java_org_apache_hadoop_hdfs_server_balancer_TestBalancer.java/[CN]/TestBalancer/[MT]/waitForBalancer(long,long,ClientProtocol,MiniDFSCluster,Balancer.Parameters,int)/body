@@ -1,0 +1,45 @@
+{
+  long timeout=TIMEOUT;
+  long failtime=(timeout <= 0L) ? Long.MAX_VALUE : Time.now() + timeout;
+  if (!p.nodesToBeIncluded.isEmpty()) {
+    totalCapacity=p.nodesToBeIncluded.size() * CAPACITY;
+  }
+  if (!p.nodesToBeExcluded.isEmpty()) {
+    totalCapacity-=p.nodesToBeExcluded.size() * CAPACITY;
+  }
+  final double avgUtilization=((double)totalUsedSpace) / totalCapacity;
+  boolean balanced;
+  do {
+    DatanodeInfo[] datanodeReport=client.getDatanodeReport(DatanodeReportType.ALL);
+    assertEquals(datanodeReport.length,cluster.getDataNodes().size());
+    balanced=true;
+    int actualExcludedNodeCount=0;
+    for (    DatanodeInfo datanode : datanodeReport) {
+      double nodeUtilization=((double)datanode.getDfsUsed()) / datanode.getCapacity();
+      if (Dispatcher.Util.isExcluded(p.nodesToBeExcluded,datanode)) {
+        assertTrue(nodeUtilization == 0);
+        actualExcludedNodeCount++;
+        continue;
+      }
+      if (!Dispatcher.Util.isIncluded(p.nodesToBeIncluded,datanode)) {
+        assertTrue(nodeUtilization == 0);
+        actualExcludedNodeCount++;
+        continue;
+      }
+      if (Math.abs(avgUtilization - nodeUtilization) > BALANCE_ALLOWED_VARIANCE) {
+        balanced=false;
+        if (Time.now() > failtime) {
+          throw new TimeoutException("Rebalancing expected avg utilization to become " + avgUtilization + ", but on datanode "+ datanode+ " it remains at "+ nodeUtilization+ " after more than "+ TIMEOUT+ " msec.");
+        }
+        try {
+          Thread.sleep(100);
+        }
+ catch (        InterruptedException ignored) {
+        }
+        break;
+      }
+    }
+    assertEquals(expectedExcludedNodes,actualExcludedNodeCount);
+  }
+ while (!balanced);
+}

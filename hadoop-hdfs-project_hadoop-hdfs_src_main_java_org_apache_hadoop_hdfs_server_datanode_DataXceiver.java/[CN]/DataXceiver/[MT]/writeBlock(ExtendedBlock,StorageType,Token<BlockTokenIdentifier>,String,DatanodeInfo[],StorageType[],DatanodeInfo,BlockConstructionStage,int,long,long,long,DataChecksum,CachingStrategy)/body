@@ -13,14 +13,15 @@
     LOG.debug("writeBlock receive buf size " + peer.getReceiveBufferSize() + " tcp no delay "+ peer.getTcpNoDelay());
   }
   final ExtendedBlock originalBlock=new ExtendedBlock(block);
-  block.setNumBytes(dataXceiverServer.estimateBlockSize);
+  if (block.getNumBytes() == 0) {
+    block.setNumBytes(dataXceiverServer.estimateBlockSize);
+  }
   LOG.info("Receiving " + block + " src: "+ remoteAddress+ " dest: "+ localAddress);
   final DataOutputStream replyOut=new DataOutputStream(new BufferedOutputStream(getOutputStream(),HdfsConstants.SMALL_BUFFER_SIZE));
   checkAccess(replyOut,isClient,block,blockToken,Op.WRITE_BLOCK,BlockTokenSecretManager.AccessMode.WRITE);
   DataOutputStream mirrorOut=null;
   DataInputStream mirrorIn=null;
   Socket mirrorSock=null;
-  BlockReceiver blockReceiver=null;
   String mirrorNode=null;
   String firstBadLink="";
   Status mirrorInStatus=SUCCESS;
@@ -95,7 +96,7 @@
     }
     if (blockReceiver != null) {
       String mirrorAddr=(mirrorSock == null) ? null : mirrorNode;
-      blockReceiver.receiveBlock(mirrorOut,mirrorIn,replyOut,mirrorAddr,null,targets);
+      blockReceiver.receiveBlock(mirrorOut,mirrorIn,replyOut,mirrorAddr,null,targets,false);
       if (isTransfer) {
         if (LOG.isTraceEnabled()) {
           LOG.trace("TRANSFER: send close-ack");
@@ -122,6 +123,7 @@
     IOUtils.closeStream(replyOut);
     IOUtils.closeSocket(mirrorSock);
     IOUtils.closeStream(blockReceiver);
+    blockReceiver=null;
   }
   datanode.metrics.addWriteBlockOp(elapsed());
   datanode.metrics.incrWritesFromClient(peer.isLocal());

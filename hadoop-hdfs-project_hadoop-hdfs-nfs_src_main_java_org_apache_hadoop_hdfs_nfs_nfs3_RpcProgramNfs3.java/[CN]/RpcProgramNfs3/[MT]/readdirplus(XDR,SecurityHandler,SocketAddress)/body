@@ -8,7 +8,7 @@
   }
   READDIRPLUS3Request request=null;
   try {
-    request=new READDIRPLUS3Request(xdr);
+    request=READDIRPLUS3Request.deserialize(xdr);
   }
  catch (  IOException e) {
     LOG.error("Invalid READDIRPLUS request");
@@ -37,6 +37,7 @@
   DirectoryListing dlisting=null;
   Nfs3FileAttributes postOpDirAttr=null;
   long dotdotFileId=0;
+  HdfsFileStatus dotdotStatus=null;
   try {
     String dirFileIdPath=Nfs3Utils.getFileIdPath(handle);
     dirStatus=dfsClient.getFileInfo(dirFileIdPath);
@@ -60,7 +61,7 @@
     }
     if (cookie == 0) {
       String dotdotFileIdPath=dirFileIdPath + "/..";
-      HdfsFileStatus dotdotStatus=dfsClient.getFileInfo(dotdotFileIdPath);
+      dotdotStatus=dfsClient.getFileInfo(dotdotFileIdPath);
       if (dotdotStatus == null) {
         throw new IOException("Can't get path for handle path:" + dotdotFileIdPath);
       }
@@ -83,7 +84,8 @@
   }
  catch (  IOException e) {
     LOG.warn("Exception ",e);
-    return new READDIRPLUS3Response(Nfs3Status.NFS3ERR_IO);
+    int status=mapErrorStatus(e);
+    return new READDIRPLUS3Response(status);
   }
   HdfsFileStatus[] fstatus=dlisting.getPartialListing();
   int n=(int)Math.min(fstatus.length,dirCount - 2);
@@ -92,7 +94,7 @@
   if (cookie == 0) {
     entries=new READDIRPLUS3Response.EntryPlus3[n + 2];
     entries[0]=new READDIRPLUS3Response.EntryPlus3(postOpDirAttr.getFileId(),".",0,postOpDirAttr,new FileHandle(postOpDirAttr.getFileId()));
-    entries[1]=new READDIRPLUS3Response.EntryPlus3(dotdotFileId,"..",dotdotFileId,postOpDirAttr,new FileHandle(dotdotFileId));
+    entries[1]=new READDIRPLUS3Response.EntryPlus3(dotdotFileId,"..",dotdotFileId,Nfs3Utils.getNfs3FileAttrFromFileStatus(dotdotStatus,iug),new FileHandle(dotdotFileId));
     for (int i=2; i < n + 2; i++) {
       long fileId=fstatus[i - 2].getFileId();
       FileHandle childHandle=new FileHandle(fileId);

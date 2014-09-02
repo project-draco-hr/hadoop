@@ -1,0 +1,67 @@
+{
+  LOG.info("Start testing, hasSnapshot: " + hasSnapshot);
+  final String testPaths[]={"/test-file","/testdir/testdir1/test-file"};
+  final Path rootPath=new Path("/");
+  final Configuration conf=new Configuration();
+  conf.setBoolean(DFSConfigKeys.DFS_PERMISSIONS_ENABLED_KEY,false);
+  conf.setInt(DFSConfigKeys.DFS_BLOCK_SIZE_KEY,BLOCK_SIZE);
+  FSDataOutputStream stm=null;
+  Map<DataNode,DatanodeProtocolClientSideTranslatorPB> dnMap=new HashMap<DataNode,DatanodeProtocolClientSideTranslatorPB>();
+  try {
+    cluster=new MiniDFSCluster.Builder(conf).numDataNodes(3).build();
+    cluster.waitActive();
+    DistributedFileSystem fs=cluster.getFileSystem();
+    int stId=0;
+    for (    String testPath : testPaths) {
+      LOG.info("test on " + testPath + " snapshot: "+ hasSnapshot);
+      Path fPath=new Path(testPath);
+      Path grandestNonRootParent=fPath;
+      while (!grandestNonRootParent.getParent().equals(rootPath)) {
+        grandestNonRootParent=grandestNonRootParent.getParent();
+      }
+      stm=fs.create(fPath);
+      LOG.info("test on " + testPath + " created "+ fPath);
+      AppendTestUtil.write(stm,0,BLOCK_SIZE / 2);
+      stm.hflush();
+      if (hasSnapshot) {
+        SnapshotTestHelper.createSnapshot(fs,rootPath,"st" + String.valueOf(stId));
+        ++stId;
+      }
+      NameNode nn=cluster.getNameNode();
+      ExtendedBlock blk=DFSTestUtil.getFirstBlock(fs,fPath);
+      DatanodeDescriptor expectedPrimary=DFSTestUtil.getExpectedPrimaryNode(nn,blk);
+      LOG.info("Expecting block recovery to be triggered on DN " + expectedPrimary);
+      DataNode primaryDN=cluster.getDataNode(expectedPrimary.getIpcPort());
+      DatanodeProtocolClientSideTranslatorPB nnSpy=dnMap.get(primaryDN);
+      if (nnSpy == null) {
+        nnSpy=DataNodeTestUtils.spyOnBposToNN(primaryDN,nn);
+        dnMap.put(primaryDN,nnSpy);
+      }
+      DelayAnswer delayer=new DelayAnswer(LOG);
+      Mockito.doAnswer(delayer).when(nnSpy).commitBlockSynchronization(Mockito.eq(blk),Mockito.anyInt(),Mockito.anyLong(),Mockito.eq(true),Mockito.eq(false),(DatanodeID[])Mockito.anyObject(),(String[])Mockito.anyObject());
+      fs.recoverLease(fPath);
+      LOG.info("Waiting for commitBlockSynchronization call from primary");
+      delayer.waitForCall();
+      LOG.info("Deleting recursively " + grandestNonRootParent);
+      fs.delete(grandestNonRootParent,true);
+      delayer.proceed();
+      LOG.info("Now wait for result");
+      delayer.waitForResult();
+      Throwable t=delayer.getThrown();
+      if (t != null) {
+        LOG.info("Result exception (snapshot: " + hasSnapshot + "): "+ t);
+      }
+    }
+    LOG.info("Now check we can restart");
+    cluster.restartNameNodes();
+    LOG.info("Restart finished");
+  }
+  finally {
+    if (stm != null) {
+      IOUtils.closeStream(stm);
+    }
+    if (cluster != null) {
+      cluster.shutdown();
+    }
+  }
+}

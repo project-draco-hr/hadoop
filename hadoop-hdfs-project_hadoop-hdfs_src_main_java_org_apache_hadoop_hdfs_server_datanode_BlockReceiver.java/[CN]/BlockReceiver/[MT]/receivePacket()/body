@@ -118,12 +118,18 @@
       }
     }
  catch (    IOException iex) {
-      datanode.checkDiskError();
+      datanode.checkDiskErrorAsync();
       throw iex;
     }
   }
   if (responder != null && (syncBlock || shouldVerifyChecksum())) {
     ((PacketResponder)responder.getRunnable()).enqueue(seqno,lastPacketInBlock,offsetInBlock,Status.SUCCESS);
+  }
+  if (isReplaceBlock && (Time.monotonicNow() - lastResponseTime > responseInterval)) {
+    BlockOpResponseProto.Builder response=BlockOpResponseProto.newBuilder().setStatus(Status.IN_PROGRESS);
+    response.build().writeDelimitedTo(replyOut);
+    replyOut.flush();
+    lastResponseTime=Time.monotonicNow();
   }
   if (throttler != null) {
     throttler.throttle(len);

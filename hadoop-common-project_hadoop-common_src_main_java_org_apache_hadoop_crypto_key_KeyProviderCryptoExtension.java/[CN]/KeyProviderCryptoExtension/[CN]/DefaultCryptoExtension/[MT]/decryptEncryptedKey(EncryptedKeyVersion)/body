@@ -2,11 +2,20 @@
   final String encryptionKeyVersionName=encryptedKeyVersion.getEncryptionKeyVersionName();
   final KeyVersion encryptionKey=keyProvider.getKeyVersion(encryptionKeyVersionName);
   Preconditions.checkNotNull(encryptionKey,"KeyVersion name '%s' does not exist",encryptionKeyVersionName);
-  final byte[] encryptionKeyMaterial=encryptionKey.getMaterial();
+  Preconditions.checkArgument(encryptedKeyVersion.getEncryptedKeyVersion().getVersionName().equals(KeyProviderCryptoExtension.EEK),"encryptedKey version name must be '%s', is '%s'",KeyProviderCryptoExtension.EEK,encryptedKeyVersion.getEncryptedKeyVersion().getVersionName());
   final byte[] encryptionIV=EncryptedKeyVersion.deriveIV(encryptedKeyVersion.getEncryptedKeyIv());
-  Cipher cipher=Cipher.getInstance("AES/CTR/NoPadding");
-  cipher.init(Cipher.DECRYPT_MODE,new SecretKeySpec(encryptionKeyMaterial,"AES"),new IvParameterSpec(encryptionIV));
+  CryptoCodec cc=CryptoCodec.getInstance(keyProvider.getConf());
+  Decryptor decryptor=cc.createDecryptor();
+  decryptor.init(encryptionKey.getMaterial(),encryptionIV);
   final KeyVersion encryptedKV=encryptedKeyVersion.getEncryptedKeyVersion();
-  final byte[] decryptedKey=cipher.doFinal(encryptedKV.getMaterial());
+  int keyLen=encryptedKV.getMaterial().length;
+  ByteBuffer bbIn=ByteBuffer.allocateDirect(keyLen);
+  ByteBuffer bbOut=ByteBuffer.allocateDirect(keyLen);
+  bbIn.put(encryptedKV.getMaterial());
+  bbIn.flip();
+  decryptor.decrypt(bbIn,bbOut);
+  bbOut.flip();
+  byte[] decryptedKey=new byte[keyLen];
+  bbOut.get(decryptedKey);
   return new KeyVersion(encryptionKey.getName(),EK,decryptedKey);
 }

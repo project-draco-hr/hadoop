@@ -1,25 +1,34 @@
 {
-  File blockFiles[]=FileUtil.listFiles(dir);
-  for (  File blockFile : blockFiles) {
-    if (!Block.isBlockFilename(blockFile))     continue;
-    long genStamp=FsDatasetUtil.getGenerationStampFromFile(blockFiles,blockFile);
-    long blockId=Block.filename2id(blockFile.getName());
+  File files[]=FileUtil.listFiles(dir);
+  for (  File file : files) {
+    if (file.isDirectory()) {
+      addToReplicasMap(volumeMap,file,isFinalized);
+    }
+    if (isFinalized && FsDatasetUtil.isUnlinkTmpFile(file)) {
+      file=recoverTempUnlinkedBlock(file);
+      if (file == null) {
+        continue;
+      }
+    }
+    if (!Block.isBlockFilename(file))     continue;
+    long genStamp=FsDatasetUtil.getGenerationStampFromFile(files,file);
+    long blockId=Block.filename2id(file.getName());
     ReplicaInfo newReplica=null;
     if (isFinalized) {
-      newReplica=new FinalizedReplica(blockId,blockFile.length(),genStamp,volume,blockFile.getParentFile());
+      newReplica=new FinalizedReplica(blockId,file.length(),genStamp,volume,file.getParentFile());
     }
  else {
       boolean loadRwr=true;
-      File restartMeta=new File(blockFile.getParent() + File.pathSeparator + "."+ blockFile.getName()+ ".restart");
+      File restartMeta=new File(file.getParent() + File.pathSeparator + "."+ file.getName()+ ".restart");
       Scanner sc=null;
       try {
         sc=new Scanner(restartMeta);
         if (sc.hasNextLong() && (sc.nextLong() > Time.now())) {
-          newReplica=new ReplicaBeingWritten(blockId,validateIntegrityAndSetLength(blockFile,genStamp),genStamp,volume,blockFile.getParentFile(),null);
+          newReplica=new ReplicaBeingWritten(blockId,validateIntegrityAndSetLength(file,genStamp),genStamp,volume,file.getParentFile(),null);
           loadRwr=false;
         }
         sc.close();
-        if (restartMeta.delete()) {
+        if (!restartMeta.delete()) {
           FsDatasetImpl.LOG.warn("Failed to delete restart meta file: " + restartMeta.getPath());
         }
       }
@@ -31,12 +40,12 @@
         }
       }
       if (loadRwr) {
-        newReplica=new ReplicaWaitingToBeRecovered(blockId,validateIntegrityAndSetLength(blockFile,genStamp),genStamp,volume,blockFile.getParentFile());
+        newReplica=new ReplicaWaitingToBeRecovered(blockId,validateIntegrityAndSetLength(file,genStamp),genStamp,volume,file.getParentFile());
       }
     }
     ReplicaInfo oldReplica=volumeMap.add(bpid,newReplica);
     if (oldReplica != null) {
-      FsDatasetImpl.LOG.warn("Two block files with the same block id exist " + "on disk: " + oldReplica.getBlockFile() + " and "+ blockFile);
+      FsDatasetImpl.LOG.warn("Two block files with the same block id exist " + "on disk: " + oldReplica.getBlockFile() + " and "+ file);
     }
   }
 }

@@ -1,4 +1,22 @@
 {
+  if (mappings != null && mappings.size() > 0) {
+    try {
+      String mappedQueue=getMappedQueue(user);
+      if (mappedQueue != null) {
+        if (queueName.equals(YarnConfiguration.DEFAULT_QUEUE_NAME) || overrideWithQueueMappings) {
+          LOG.info("Application " + applicationId + " user "+ user+ " mapping ["+ queueName+ "] to ["+ mappedQueue+ "] override "+ overrideWithQueueMappings);
+          queueName=mappedQueue;
+          RMApp rmApp=rmContext.getRMApps().get(applicationId);
+          rmApp.setQueue(queueName);
+        }
+      }
+    }
+ catch (    IOException ioex) {
+      String message="Failed to submit application " + applicationId + " submitted by user "+ user+ " reason: "+ ioex.getMessage();
+      this.rmContext.getDispatcher().getEventHandler().handle(new RMAppRejectedEvent(applicationId,message));
+      return;
+    }
+  }
   CSQueue queue=getQueue(queueName);
   if (queue == null) {
     String message="Application " + applicationId + " submitted by user "+ user+ " to unknown queue: "+ queueName;
@@ -18,6 +36,7 @@
     this.rmContext.getDispatcher().getEventHandler().handle(new RMAppRejectedEvent(applicationId,ace.toString()));
     return;
   }
+  queue.getMetrics().submitApp(user);
   SchedulerApplication<FiCaSchedulerApp> application=new SchedulerApplication<FiCaSchedulerApp>(queue,user);
   applications.put(applicationId,application);
   LOG.info("Accepted application " + applicationId + " from user: "+ user+ ", in queue: "+ queueName);

@@ -35,8 +35,8 @@
     DataOutputStream containerScriptOutStream=null;
     DataOutputStream tokensOutStream=null;
     Path containerWorkDir=dirsHandler.getLocalPathForWrite(ContainerLocalizer.USERCACHE + Path.SEPARATOR + user+ Path.SEPARATOR+ ContainerLocalizer.APPCACHE+ Path.SEPARATOR+ appIdStr+ Path.SEPARATOR+ containerIdStr,LocalDirAllocator.SIZE_UNKNOWN,false);
-    String pidFileSuffix=String.format(ContainerLaunch.PID_FILE_NAME_FMT,containerIdStr);
-    pidFilePath=dirsHandler.getLocalPathForWrite(ResourceLocalizationService.NM_PRIVATE_DIR + Path.SEPARATOR + pidFileSuffix);
+    String pidFileSubpath=getPidFileSubpath(appIdStr,containerIdStr);
+    pidFilePath=dirsHandler.getLocalPathForWrite(pidFileSubpath);
     List<String> localDirs=dirsHandler.getLocalDirs();
     List<String> logDirs=dirsHandler.getLogDirs();
     List<String> containerLogDirs=new ArrayList<String>();
@@ -67,6 +67,7 @@
       IOUtils.cleanup(LOG,containerScriptOutStream,tokensOutStream);
     }
     dispatcher.getEventHandler().handle(new ContainerEvent(containerID,ContainerEventType.CONTAINER_LAUNCHED));
+    context.getNMStateStore().storeContainerLaunched(containerID);
     if (!shouldLaunchContainer.compareAndSet(false,true)) {
       LOG.info("Container " + containerIdStr + " not launched as "+ "cleanup already called");
       ret=ExitCode.TERMINATED.getExitCode();
@@ -84,6 +85,12 @@
  finally {
     completed.set(true);
     exec.deactivateContainer(containerID);
+    try {
+      context.getNMStateStore().storeContainerCompleted(containerID,ret);
+    }
+ catch (    IOException e) {
+      LOG.error("Unable to set exit code for container " + containerID);
+    }
   }
   if (LOG.isDebugEnabled()) {
     LOG.debug("Container " + containerIdStr + " completed with exit code "+ ret);

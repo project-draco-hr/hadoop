@@ -24,7 +24,8 @@
     LOG.warn(FairSchedulerConfiguration.UPDATE_INTERVAL_MS + " is invalid, so using default value " + +FairSchedulerConfiguration.DEFAULT_UPDATE_INTERVAL_MS+ " ms instead");
   }
   rootMetrics=FSQueueMetrics.forQueue("root",null,true,conf);
-  this.applications=new ConcurrentHashMap<ApplicationId,SchedulerApplication<FSSchedulerApp>>();
+  fsOpDurations=FSOpDurations.getInstance(true);
+  this.applications=new ConcurrentHashMap<ApplicationId,SchedulerApplication<FSAppAttempt>>();
   this.eventLog=new FairSchedulerEventLog();
   eventLog.init(this.conf);
   allocConf=new AllocationConfiguration(conf);
@@ -34,26 +35,12 @@
  catch (  Exception e) {
     throw new IOException("Failed to start FairScheduler",e);
   }
-  updateThread=new Thread(new UpdateThread());
+  updateThread=new UpdateThread();
   updateThread.setName("FairSchedulerUpdateThread");
   updateThread.setDaemon(true);
   if (continuousSchedulingEnabled) {
-    schedulingThread=new Thread(new Runnable(){
-      @Override public void run(){
-        while (!Thread.currentThread().isInterrupted()) {
-          try {
-            continuousSchedulingAttempt();
-            Thread.sleep(getContinuousSchedulingSleepMs());
-          }
- catch (          InterruptedException e) {
-            LOG.error("Continuous scheduling thread interrupted. Exiting. ",e);
-            return;
-          }
-        }
-      }
-    }
-);
-    schedulingThread.setName("ContinuousScheduling");
+    schedulingThread=new ContinuousSchedulingThread();
+    schedulingThread.setName("FairSchedulerContinuousScheduling");
     schedulingThread.setDaemon(true);
   }
   allocsLoader.init(conf);

@@ -1,4 +1,5 @@
 {
+  super(conf);
   this.uri=uri;
   path=ProviderUtils.unnestUri(uri);
   fs=path.getFileSystem(conf);
@@ -10,6 +11,9 @@
     if (pwFile != null) {
       ClassLoader cl=Thread.currentThread().getContextClassLoader();
       URL pwdFile=cl.getResource(pwFile);
+      if (pwdFile == null) {
+        throw new IOException("Password file does not exists");
+      }
       if (pwdFile != null) {
         InputStream is=pwdFile.openStream();
         try {
@@ -25,16 +29,20 @@
     password=KEYSTORE_PASSWORD_DEFAULT;
   }
   try {
+    Path oldPath=constructOldPath(path);
+    Path newPath=constructNewPath(path);
     keyStore=KeyStore.getInstance(SCHEME_NAME);
+    FsPermission perm=null;
     if (fs.exists(path)) {
-      FileStatus s=fs.getFileStatus(path);
-      permissions=s.getPermission();
-      keyStore.load(fs.open(path),password);
+      if (fs.exists(newPath)) {
+        throw new IOException(String.format("Keystore not loaded due to some inconsistency " + "('%s' and '%s' should not exist together)!!",path,newPath));
+      }
+      perm=tryLoadFromPath(path,oldPath);
     }
  else {
-      permissions=new FsPermission("700");
-      keyStore.load(null,password);
+      perm=tryLoadIncompleteFlush(oldPath,newPath);
     }
+    permissions=perm;
   }
  catch (  KeyStoreException e) {
     throw new IOException("Can't create keystore",e);

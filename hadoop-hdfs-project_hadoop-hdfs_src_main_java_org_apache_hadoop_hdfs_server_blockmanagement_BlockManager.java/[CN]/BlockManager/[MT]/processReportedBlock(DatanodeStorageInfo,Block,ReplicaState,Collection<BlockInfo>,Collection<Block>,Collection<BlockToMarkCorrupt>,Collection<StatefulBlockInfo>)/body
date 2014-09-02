@@ -1,0 +1,40 @@
+{
+  DatanodeDescriptor dn=storageInfo.getDatanodeDescriptor();
+  if (LOG.isDebugEnabled()) {
+    LOG.debug("Reported block " + block + " on "+ dn+ " size "+ block.getNumBytes()+ " replicaState = "+ reportedState);
+  }
+  if (shouldPostponeBlocksFromFuture && namesystem.isGenStampInFuture(block)) {
+    queueReportedBlock(storageInfo,block,reportedState,QUEUE_REASON_FUTURE_GENSTAMP);
+    return null;
+  }
+  BlockInfo storedBlock=blocksMap.getStoredBlock(block);
+  if (storedBlock == null) {
+    toInvalidate.add(new Block(block));
+    return null;
+  }
+  BlockUCState ucState=storedBlock.getBlockUCState();
+  if (LOG.isDebugEnabled()) {
+    LOG.debug("In memory blockUCState = " + ucState);
+  }
+  if (invalidateBlocks.contains(dn,block)) {
+    return storedBlock;
+  }
+  BlockToMarkCorrupt c=checkReplicaCorrupt(block,reportedState,storedBlock,ucState,dn);
+  if (c != null) {
+    if (shouldPostponeBlocksFromFuture) {
+      queueReportedBlock(storageInfo,storedBlock,reportedState,QUEUE_REASON_CORRUPT_STATE);
+    }
+ else {
+      toCorrupt.add(c);
+    }
+    return storedBlock;
+  }
+  if (isBlockUnderConstruction(storedBlock,ucState,reportedState)) {
+    toUC.add(new StatefulBlockInfo((BlockInfoUnderConstruction)storedBlock,new Block(block),reportedState));
+    return storedBlock;
+  }
+  if (reportedState == ReplicaState.FINALIZED && (!storedBlock.findDatanode(dn) || corruptReplicas.isReplicaCorrupt(storedBlock,dn))) {
+    toAdd.add(storedBlock);
+  }
+  return storedBlock;
+}

@@ -1,0 +1,40 @@
+{
+  int retCode=ExitCode.LOST.getExitCode();
+  ContainerId containerId=container.getContainerId();
+  String appIdStr=ConverterUtils.toString(containerId.getApplicationAttemptId().getApplicationId());
+  String containerIdStr=ConverterUtils.toString(containerId);
+  dispatcher.getEventHandler().handle(new ContainerEvent(containerId,ContainerEventType.CONTAINER_LAUNCHED));
+  try {
+    File pidFile=locatePidFile(appIdStr,containerIdStr);
+    if (pidFile != null) {
+      String pidPathStr=pidFile.getPath();
+      pidFilePath=new Path(pidPathStr);
+      exec.activateContainer(containerId,pidFilePath);
+      retCode=exec.reacquireContainer(container.getUser(),containerId);
+    }
+ else {
+      LOG.warn("Unable to locate pid file for container " + containerIdStr);
+    }
+  }
+ catch (  IOException e) {
+    LOG.error("Unable to recover container " + containerIdStr,e);
+  }
+ finally {
+    this.completed.set(true);
+    exec.deactivateContainer(containerId);
+    try {
+      getContext().getNMStateStore().storeContainerCompleted(containerId,retCode);
+    }
+ catch (    IOException e) {
+      LOG.error("Unable to set exit code for container " + containerId);
+    }
+  }
+  if (retCode != 0) {
+    LOG.warn("Recovered container exited with a non-zero exit code " + retCode);
+    this.dispatcher.getEventHandler().handle(new ContainerExitEvent(containerId,ContainerEventType.CONTAINER_EXITED_WITH_FAILURE,retCode,"Container exited with a non-zero exit code " + retCode));
+    return retCode;
+  }
+  LOG.info("Recovered container " + containerId + " succeeded");
+  dispatcher.getEventHandler().handle(new ContainerEvent(containerId,ContainerEventType.CONTAINER_EXITED_WITH_SUCCESS));
+  return 0;
+}

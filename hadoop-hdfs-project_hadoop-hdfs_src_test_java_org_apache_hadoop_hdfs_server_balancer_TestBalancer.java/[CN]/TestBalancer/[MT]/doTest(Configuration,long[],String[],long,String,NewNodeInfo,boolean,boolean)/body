@@ -1,0 +1,74 @@
+{
+  LOG.info("capacities = " + long2String(capacities));
+  LOG.info("racks      = " + Arrays.asList(racks));
+  LOG.info("newCapacity= " + newCapacity);
+  LOG.info("newRack    = " + newRack);
+  LOG.info("useTool    = " + useTool);
+  assertEquals(capacities.length,racks.length);
+  int numOfDatanodes=capacities.length;
+  cluster=new MiniDFSCluster.Builder(conf).numDataNodes(capacities.length).racks(racks).simulatedCapacities(capacities).build();
+  try {
+    cluster.waitActive();
+    client=NameNodeProxies.createProxy(conf,cluster.getFileSystem(0).getUri(),ClientProtocol.class).getProxy();
+    long totalCapacity=sum(capacities);
+    long totalUsedSpace=totalCapacity * 3 / 10;
+    createFile(cluster,filePath,totalUsedSpace / numOfDatanodes,(short)numOfDatanodes,0);
+    if (nodes == null) {
+      cluster.startDataNodes(conf,1,true,null,new String[]{newRack},null,new long[]{newCapacity});
+      totalCapacity+=newCapacity;
+    }
+ else {
+      if (nodes.getNumberofIncludeNodes() > 0) {
+        for (        DataNode dn : cluster.getDataNodes())         nodes.getNodesToBeIncluded().add(dn.getDatanodeId().getHostName());
+      }
+      String[] newRacks=new String[nodes.getNumberofNewNodes()];
+      long[] newCapacities=new long[nodes.getNumberofNewNodes()];
+      for (int i=0; i < nodes.getNumberofNewNodes(); i++) {
+        newRacks[i]=newRack;
+        newCapacities[i]=newCapacity;
+      }
+      if (nodes.getNames() != null) {
+        cluster.startDataNodes(conf,nodes.getNumberofNewNodes(),true,null,newRacks,nodes.getNames(),newCapacities);
+        totalCapacity+=newCapacity * nodes.getNumberofNewNodes();
+      }
+ else {
+        cluster.startDataNodes(conf,nodes.getNumberofNewNodes(),true,null,newRacks,null,newCapacities);
+        totalCapacity+=newCapacity * nodes.getNumberofNewNodes();
+        if (nodes.getNumberofIncludeNodes() > 0) {
+          int totalNodes=cluster.getDataNodes().size();
+          for (int i=0; i < nodes.getNumberofIncludeNodes(); i++) {
+            nodes.getNodesToBeIncluded().add(cluster.getDataNodes().get(totalNodes - 1 - i).getDatanodeId().getXferAddr());
+          }
+        }
+        if (nodes.getNumberofExcludeNodes() > 0) {
+          int totalNodes=cluster.getDataNodes().size();
+          for (int i=0; i < nodes.getNumberofExcludeNodes(); i++) {
+            nodes.getNodesToBeExcluded().add(cluster.getDataNodes().get(totalNodes - 1 - i).getDatanodeId().getXferAddr());
+          }
+        }
+      }
+    }
+    Balancer.Parameters p=Balancer.Parameters.DEFAULT;
+    if (nodes != null) {
+      p=new Balancer.Parameters(Balancer.Parameters.DEFAULT.policy,Balancer.Parameters.DEFAULT.threshold,nodes.getNodesToBeExcluded(),nodes.getNodesToBeIncluded());
+    }
+    int expectedExcludedNodes=0;
+    if (nodes != null) {
+      if (!nodes.getNodesToBeExcluded().isEmpty()) {
+        expectedExcludedNodes=nodes.getNodesToBeExcluded().size();
+      }
+ else       if (!nodes.getNodesToBeIncluded().isEmpty()) {
+        expectedExcludedNodes=cluster.getDataNodes().size() - nodes.getNodesToBeIncluded().size();
+      }
+    }
+    if (useTool) {
+      runBalancerCli(conf,totalUsedSpace,totalCapacity,p,useFile,expectedExcludedNodes);
+    }
+ else {
+      runBalancer(conf,totalUsedSpace,totalCapacity,p,expectedExcludedNodes);
+    }
+  }
+  finally {
+    cluster.shutdown();
+  }
+}

@@ -1,0 +1,100 @@
+{
+  boolean requestContinues=true;
+  String op=ServletUtils.getParameter(request,KerberosDelegationTokenAuthenticator.OP_PARAM);
+  op=(op != null) ? op.toUpperCase() : null;
+  if (DELEGATION_TOKEN_OPS.contains(op) && !request.getMethod().equals("OPTIONS")) {
+    KerberosDelegationTokenAuthenticator.DelegationTokenOperation dtOp=KerberosDelegationTokenAuthenticator.DelegationTokenOperation.valueOf(op);
+    if (dtOp.getHttpMethod().equals(request.getMethod())) {
+      boolean doManagement;
+      if (dtOp.requiresKerberosCredentials() && token == null) {
+        token=authenticate(request,response);
+        if (token == null) {
+          requestContinues=false;
+          doManagement=false;
+        }
+ else {
+          doManagement=true;
+        }
+      }
+ else {
+        doManagement=true;
+      }
+      if (doManagement) {
+        UserGroupInformation requestUgi=(token != null) ? UserGroupInformation.createRemoteUser(token.getUserName()) : null;
+        Map map=null;
+switch (dtOp) {
+case GETDELEGATIONTOKEN:
+          if (requestUgi == null) {
+            throw new IllegalStateException("request UGI cannot be NULL");
+          }
+        String renewer=ServletUtils.getParameter(request,KerberosDelegationTokenAuthenticator.RENEWER_PARAM);
+      try {
+        Token<?> dToken=tokenManager.createToken(requestUgi,renewer);
+        map=delegationTokenToJSON(dToken);
+      }
+ catch (      IOException ex) {
+        throw new AuthenticationException(ex.toString(),ex);
+      }
+    break;
+case RENEWDELEGATIONTOKEN:
+  if (requestUgi == null) {
+    throw new IllegalStateException("request UGI cannot be NULL");
+  }
+String tokenToRenew=ServletUtils.getParameter(request,KerberosDelegationTokenAuthenticator.TOKEN_PARAM);
+if (tokenToRenew == null) {
+response.sendError(HttpServletResponse.SC_BAD_REQUEST,MessageFormat.format("Operation [{0}] requires the parameter [{1}]",dtOp,KerberosDelegationTokenAuthenticator.TOKEN_PARAM));
+requestContinues=false;
+}
+ else {
+Token<DelegationTokenIdentifier> dt=new Token<DelegationTokenIdentifier>();
+try {
+  dt.decodeFromUrlString(tokenToRenew);
+  long expirationTime=tokenManager.renewToken(dt,requestUgi.getShortUserName());
+  map=new HashMap();
+  map.put("long",expirationTime);
+}
+ catch (IOException ex) {
+  throw new AuthenticationException(ex.toString(),ex);
+}
+}
+break;
+case CANCELDELEGATIONTOKEN:
+String tokenToCancel=ServletUtils.getParameter(request,KerberosDelegationTokenAuthenticator.TOKEN_PARAM);
+if (tokenToCancel == null) {
+response.sendError(HttpServletResponse.SC_BAD_REQUEST,MessageFormat.format("Operation [{0}] requires the parameter [{1}]",dtOp,KerberosDelegationTokenAuthenticator.TOKEN_PARAM));
+requestContinues=false;
+}
+ else {
+Token<DelegationTokenIdentifier> dt=new Token<DelegationTokenIdentifier>();
+try {
+dt.decodeFromUrlString(tokenToCancel);
+tokenManager.cancelToken(dt,(requestUgi != null) ? requestUgi.getShortUserName() : null);
+}
+ catch (IOException ex) {
+response.sendError(HttpServletResponse.SC_NOT_FOUND,"Invalid delegation token, cannot cancel");
+requestContinues=false;
+}
+}
+break;
+}
+if (requestContinues) {
+response.setStatus(HttpServletResponse.SC_OK);
+if (map != null) {
+response.setContentType(MediaType.APPLICATION_JSON);
+Writer writer=response.getWriter();
+ObjectMapper jsonMapper=new ObjectMapper();
+jsonMapper.writeValue(writer,map);
+writer.write(ENTER);
+writer.flush();
+}
+requestContinues=false;
+}
+}
+}
+ else {
+response.sendError(HttpServletResponse.SC_BAD_REQUEST,MessageFormat.format("Wrong HTTP method [{0}] for operation [{1}], it should be " + "[{2}]",request.getMethod(),dtOp,dtOp.getHttpMethod()));
+requestContinues=false;
+}
+}
+return requestContinues;
+}

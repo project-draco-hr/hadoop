@@ -1,6 +1,11 @@
 {
+  Configuration conf=new Configuration();
+  if (kerberos) {
+    conf.set("hadoop.security.authentication","kerberos");
+  }
+  UserGroupInformation.setConfiguration(conf);
   File testDir=getTestDir();
-  Configuration conf=createBaseKMSConf(testDir);
+  conf=createBaseKMSConf(testDir);
   final String keystore;
   final String password;
   if (ssl) {
@@ -22,15 +27,15 @@
   writeConf(testDir,conf);
   runServer(keystore,password,testDir,new KMSCallable(){
     @Override public Void call() throws Exception {
-      Configuration conf=new Configuration();
+      final Configuration conf=new Configuration();
       URL url=getKMSUrl();
       Assert.assertEquals(keystore != null,url.getProtocol().equals("https"));
-      URI uri=createKMSUri(getKMSUrl());
-      final KeyProvider kp=new KMSClientProvider(uri,conf);
+      final URI uri=createKMSUri(getKMSUrl());
       if (kerberos) {
         for (        String user : new String[]{"client","client/host"}) {
           doAs(user,new PrivilegedExceptionAction<Void>(){
             @Override public Void run() throws Exception {
+              final KeyProvider kp=new KMSClientProvider(uri,conf);
               Assert.assertTrue(kp.getKeys().isEmpty());
               return null;
             }
@@ -39,6 +44,7 @@
         }
       }
  else {
+        KeyProvider kp=new KMSClientProvider(uri,conf);
         Assert.assertTrue(kp.getKeys().isEmpty());
       }
       return null;

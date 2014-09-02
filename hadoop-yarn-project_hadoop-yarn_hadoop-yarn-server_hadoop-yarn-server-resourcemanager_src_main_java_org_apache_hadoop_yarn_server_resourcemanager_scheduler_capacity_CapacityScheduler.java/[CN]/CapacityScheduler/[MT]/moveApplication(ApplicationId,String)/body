@@ -1,0 +1,24 @@
+{
+  FiCaSchedulerApp app=getApplicationAttempt(ApplicationAttemptId.newInstance(appId,0));
+  String sourceQueueName=app.getQueue().getQueueName();
+  LeafQueue source=getAndCheckLeafQueue(sourceQueueName);
+  LeafQueue dest=getAndCheckLeafQueue(targetQueueName);
+  String user=app.getUser();
+  try {
+    dest.submitApplication(appId,user,targetQueueName);
+  }
+ catch (  AccessControlException e) {
+    throw new YarnException(e);
+  }
+  for (  RMContainer rmContainer : app.getLiveContainers()) {
+    source.detachContainer(clusterResource,app,rmContainer);
+    dest.attachContainer(clusterResource,app,rmContainer);
+  }
+  source.finishApplicationAttempt(app,sourceQueueName);
+  source.getParent().finishApplication(appId,app.getUser());
+  app.move(dest);
+  dest.submitApplicationAttempt(app,user);
+  applications.get(appId).setQueue(dest);
+  LOG.info("App: " + app.getApplicationId() + " successfully moved from "+ sourceQueueName+ " to: "+ targetQueueName);
+  return targetQueueName;
+}

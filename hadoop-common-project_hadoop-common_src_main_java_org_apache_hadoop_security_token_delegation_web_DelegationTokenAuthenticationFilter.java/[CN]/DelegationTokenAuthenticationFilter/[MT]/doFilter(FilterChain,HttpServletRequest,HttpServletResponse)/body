@@ -1,0 +1,58 @@
+{
+  boolean requestCompleted=false;
+  UserGroupInformation ugi=null;
+  AuthenticationToken authToken=(AuthenticationToken)request.getUserPrincipal();
+  if (authToken != null && authToken != AuthenticationToken.ANONYMOUS) {
+    ugi=(UserGroupInformation)request.getAttribute(DelegationTokenAuthenticationHandler.DELEGATION_TOKEN_UGI_ATTRIBUTE);
+    if (ugi == null) {
+      String realUser=request.getUserPrincipal().getName();
+      ugi=UserGroupInformation.createRemoteUser(realUser,handlerAuthMethod);
+      String doAsUser=getDoAs(request);
+      if (doAsUser != null) {
+        ugi=UserGroupInformation.createProxyUser(doAsUser,ugi);
+        try {
+          ProxyUsers.authorize(ugi,request.getRemoteHost());
+        }
+ catch (        AuthorizationException ex) {
+          String msg=String.format("User '%s' from host '%s' not allowed to impersonate user '%s'",realUser,request.getRemoteHost(),doAsUser);
+          response.setStatus(HttpServletResponse.SC_FORBIDDEN);
+          response.setContentType(APPLICATION_JSON_MIME);
+          Map<String,String> json=new HashMap<String,String>();
+          json.put(ERROR_EXCEPTION_JSON,AuthorizationException.class.getName());
+          json.put(ERROR_MESSAGE_JSON,msg);
+          Writer writer=response.getWriter();
+          ObjectMapper jsonMapper=new ObjectMapper();
+          jsonMapper.writeValue(writer,json);
+          requestCompleted=true;
+        }
+      }
+    }
+    UGI_TL.set(ugi);
+  }
+  if (!requestCompleted) {
+    final UserGroupInformation ugiF=ugi;
+    try {
+      request=new HttpServletRequestWrapper(request){
+        @Override public String getAuthType(){
+          return (ugiF != null) ? handlerAuthMethod.toString() : null;
+        }
+        @Override public String getRemoteUser(){
+          return (ugiF != null) ? ugiF.getShortUserName() : null;
+        }
+        @Override public Principal getUserPrincipal(){
+          return (ugiF != null) ? new Principal(){
+            @Override public String getName(){
+              return ugiF.getUserName();
+            }
+          }
+ : null;
+        }
+      }
+;
+      super.doFilter(filterChain,request,response);
+    }
+  finally {
+      UGI_TL.remove();
+    }
+  }
+}

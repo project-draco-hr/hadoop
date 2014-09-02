@@ -1,0 +1,36 @@
+{
+  final Server jetty=createJettyServer();
+  Context context=new Context();
+  context.setContextPath("/foo");
+  jetty.setHandler(context);
+  context.addFilter(new FilterHolder(filterClass),"/*",0);
+  context.addServlet(new ServletHolder(UserServlet.class),"/bar");
+  try {
+    jetty.start();
+    final URL url=new URL(getJettyURL() + "/foo/bar");
+    UserGroupInformation ugi=UserGroupInformation.createRemoteUser(FOO_USER);
+    ugi.doAs(new PrivilegedExceptionAction<Void>(){
+      @Override public Void run() throws Exception {
+        DelegationTokenAuthenticatedURL.Token token=new DelegationTokenAuthenticatedURL.Token();
+        DelegationTokenAuthenticatedURL aUrl=new DelegationTokenAuthenticatedURL();
+        HttpURLConnection conn=aUrl.openConnection(url,token);
+        Assert.assertEquals(HttpURLConnection.HTTP_OK,conn.getResponseCode());
+        List<String> ret=IOUtils.readLines(conn.getInputStream());
+        Assert.assertEquals(1,ret.size());
+        Assert.assertEquals(FOO_USER,ret.get(0));
+        try {
+          aUrl.getDelegationToken(url,token,FOO_USER);
+          Assert.fail();
+        }
+ catch (        AuthenticationException ex) {
+          Assert.assertTrue(ex.getMessage().contains("delegation token operation"));
+        }
+        return null;
+      }
+    }
+);
+  }
+  finally {
+    jetty.stop();
+  }
+}

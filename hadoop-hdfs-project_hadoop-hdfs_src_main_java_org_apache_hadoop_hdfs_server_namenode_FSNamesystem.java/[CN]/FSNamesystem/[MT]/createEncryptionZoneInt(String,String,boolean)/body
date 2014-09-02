@@ -1,0 +1,24 @@
+{
+  String src=srcArg;
+  HdfsFileStatus resultingStat=null;
+  checkSuperuserPrivilege();
+  checkOperation(OperationCategory.WRITE);
+  final byte[][] pathComponents=FSDirectory.getPathComponentsForReservedPath(src);
+  writeLock();
+  try {
+    checkSuperuserPrivilege();
+    checkOperation(OperationCategory.WRITE);
+    checkNameNodeSafeMode("Cannot create encryption zone on " + src);
+    src=resolvePath(src,pathComponents);
+    final XAttr ezXAttr=dir.createEncryptionZone(src,keyName);
+    List<XAttr> xAttrs=Lists.newArrayListWithCapacity(1);
+    xAttrs.add(ezXAttr);
+    getEditLog().logSetXAttrs(src,xAttrs,logRetryCache);
+    resultingStat=getAuditFileInfo(src,false);
+  }
+  finally {
+    writeUnlock();
+  }
+  getEditLog().logSync();
+  logAuditEvent(true,"createEncryptionZone",srcArg,null,resultingStat);
+}

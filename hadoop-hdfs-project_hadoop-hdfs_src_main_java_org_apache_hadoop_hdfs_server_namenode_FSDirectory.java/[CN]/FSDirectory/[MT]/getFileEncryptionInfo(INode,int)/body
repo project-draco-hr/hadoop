@@ -1,0 +1,28 @@
+{
+  if (!inode.isFile()) {
+    return null;
+  }
+  readLock();
+  try {
+    List<XAttr> xAttrs=XAttrStorage.readINodeXAttrs(inode,snapshotId);
+    if (xAttrs == null) {
+      return null;
+    }
+    for (    XAttr x : xAttrs) {
+      if (XAttrHelper.getPrefixName(x).equals(CRYPTO_XATTR_FILE_ENCRYPTION_INFO)) {
+        try {
+          HdfsProtos.FileEncryptionInfoProto proto=HdfsProtos.FileEncryptionInfoProto.parseFrom(x.getValue());
+          FileEncryptionInfo feInfo=PBHelper.convert(proto);
+          return feInfo;
+        }
+ catch (        InvalidProtocolBufferException e) {
+          throw new IOException("Could not parse file encryption info for " + "inode " + inode,e);
+        }
+      }
+    }
+    return null;
+  }
+  finally {
+    readUnlock();
+  }
+}

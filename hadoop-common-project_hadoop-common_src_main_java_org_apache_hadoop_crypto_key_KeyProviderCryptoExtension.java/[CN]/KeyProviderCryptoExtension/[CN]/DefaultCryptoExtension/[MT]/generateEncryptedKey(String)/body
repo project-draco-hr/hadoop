@@ -1,13 +1,22 @@
 {
   KeyVersion encryptionKey=keyProvider.getCurrentKey(encryptionKeyName);
   Preconditions.checkNotNull(encryptionKey,"No KeyVersion exists for key '%s' ",encryptionKeyName);
-  Cipher cipher=Cipher.getInstance("AES/CTR/NoPadding");
-  SecureRandom random=SecureRandom.getInstance("SHA1PRNG");
+  CryptoCodec cc=CryptoCodec.getInstance(keyProvider.getConf());
   final byte[] newKey=new byte[encryptionKey.getMaterial().length];
-  random.nextBytes(newKey);
-  final byte[] iv=random.generateSeed(cipher.getBlockSize());
+  cc.generateSecureRandom(newKey);
+  final byte[] iv=new byte[cc.getCipherSuite().getAlgorithmBlockSize()];
+  cc.generateSecureRandom(iv);
   final byte[] encryptionIV=EncryptedKeyVersion.deriveIV(iv);
-  cipher.init(Cipher.ENCRYPT_MODE,new SecretKeySpec(encryptionKey.getMaterial(),"AES"),new IvParameterSpec(encryptionIV));
-  final byte[] encryptedKey=cipher.doFinal(newKey);
+  Encryptor encryptor=cc.createEncryptor();
+  encryptor.init(encryptionKey.getMaterial(),encryptionIV);
+  int keyLen=newKey.length;
+  ByteBuffer bbIn=ByteBuffer.allocateDirect(keyLen);
+  ByteBuffer bbOut=ByteBuffer.allocateDirect(keyLen);
+  bbIn.put(newKey);
+  bbIn.flip();
+  encryptor.encrypt(bbIn,bbOut);
+  bbOut.flip();
+  byte[] encryptedKey=new byte[keyLen];
+  bbOut.get(encryptedKey);
   return new EncryptedKeyVersion(encryptionKeyName,encryptionKey.getVersionName(),iv,new KeyVersion(encryptionKey.getName(),EEK,encryptedKey));
 }
