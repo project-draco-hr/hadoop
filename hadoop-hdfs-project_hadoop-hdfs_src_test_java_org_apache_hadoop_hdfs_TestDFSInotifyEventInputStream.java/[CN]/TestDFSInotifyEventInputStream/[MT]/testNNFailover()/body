@@ -1,0 +1,25 @@
+{
+  Configuration conf=new HdfsConfiguration();
+  MiniQJMHACluster cluster=new MiniQJMHACluster.Builder(conf).build();
+  try {
+    cluster.getDfsCluster().waitActive();
+    cluster.getDfsCluster().transitionToActive(0);
+    DFSClient client=((DistributedFileSystem)HATestUtil.configureFailoverFs(cluster.getDfsCluster(),conf)).dfs;
+    DFSInotifyEventInputStream eis=client.getInotifyEventStream();
+    for (int i=0; i < 10; i++) {
+      client.mkdirs("/dir" + i,null,false);
+    }
+    cluster.getDfsCluster().shutdownNameNode(0);
+    cluster.getDfsCluster().transitionToActive(1);
+    Event next=null;
+    for (int i=0; i < 10; i++) {
+      next=waitForNextEvent(eis);
+      Assert.assertTrue(next.getEventType() == Event.EventType.CREATE);
+      Assert.assertTrue(((Event.CreateEvent)next).getPath().equals("/dir" + i));
+    }
+    Assert.assertTrue(eis.poll() == null);
+  }
+  finally {
+    cluster.shutdown();
+  }
+}
