@@ -1,0 +1,55 @@
+{
+  namesystem.checkOperation(OperationCategory.READ);
+  namesystem.checkSuperuserPrivilege();
+  int maxEventsPerRPC=nn.conf.getInt(DFSConfigKeys.DFS_NAMENODE_INOTIFY_MAX_EVENTS_PER_RPC_KEY,DFSConfigKeys.DFS_NAMENODE_INOTIFY_MAX_EVENTS_PER_RPC_DEFAULT);
+  FSEditLog log=namesystem.getFSImage().getEditLog();
+  long syncTxid=log.getSyncTxId();
+  boolean readInProgress=syncTxid > 0;
+  List<Event> events=Lists.newArrayList();
+  long maxSeenTxid=-1;
+  long firstSeenTxid=-1;
+  if (syncTxid > 0 && txid > syncTxid) {
+    return new EventsList(events,firstSeenTxid,maxSeenTxid,syncTxid);
+  }
+  Collection<EditLogInputStream> streams=null;
+  try {
+    streams=log.selectInputStreams(txid,0,null,readInProgress);
+  }
+ catch (  IllegalStateException e) {
+    LOG.info("NN is transitioning from active to standby and FSEditLog " + "is closed -- could not read edits");
+    return new EventsList(events,firstSeenTxid,maxSeenTxid,syncTxid);
+  }
+  boolean breakOuter=false;
+  for (  EditLogInputStream elis : streams) {
+    try {
+      FSEditLogOp op=null;
+      while ((op=readOp(elis)) != null) {
+        if (syncTxid > 0 && op.getTransactionId() > syncTxid) {
+          breakOuter=true;
+          break;
+        }
+        Event[] eventsFromOp=InotifyFSEditLogOpTranslator.translate(op);
+        if (eventsFromOp != null) {
+          events.addAll(Arrays.asList(eventsFromOp));
+        }
+        if (op.getTransactionId() > maxSeenTxid) {
+          maxSeenTxid=op.getTransactionId();
+        }
+        if (firstSeenTxid == -1) {
+          firstSeenTxid=op.getTransactionId();
+        }
+        if (events.size() >= maxEventsPerRPC || (syncTxid > 0 && op.getTransactionId() == syncTxid)) {
+          breakOuter=true;
+          break;
+        }
+      }
+    }
+  finally {
+      elis.close();
+    }
+    if (breakOuter) {
+      break;
+    }
+  }
+  return new EventsList(events,firstSeenTxid,maxSeenTxid,syncTxid);
+}

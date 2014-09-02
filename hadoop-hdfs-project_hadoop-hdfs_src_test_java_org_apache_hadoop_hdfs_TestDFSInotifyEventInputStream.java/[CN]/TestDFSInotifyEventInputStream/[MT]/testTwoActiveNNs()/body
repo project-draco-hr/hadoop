@@ -1,0 +1,32 @@
+{
+  Configuration conf=new HdfsConfiguration();
+  MiniQJMHACluster cluster=new MiniQJMHACluster.Builder(conf).build();
+  try {
+    cluster.getDfsCluster().waitActive();
+    cluster.getDfsCluster().transitionToActive(0);
+    DFSClient client0=new DFSClient(cluster.getDfsCluster().getNameNode(0).getNameNodeAddress(),conf);
+    DFSClient client1=new DFSClient(cluster.getDfsCluster().getNameNode(1).getNameNodeAddress(),conf);
+    DFSInotifyEventInputStream eis=client0.getInotifyEventStream();
+    for (int i=0; i < 10; i++) {
+      client0.mkdirs("/dir" + i,null,false);
+    }
+    cluster.getDfsCluster().transitionToActive(1);
+    for (int i=10; i < 20; i++) {
+      client1.mkdirs("/dir" + i,null,false);
+    }
+    Event next=null;
+    for (int i=0; i < 10; i++) {
+      next=waitForNextEvent(eis);
+      Assert.assertTrue(next.getEventType() == Event.EventType.CREATE);
+      Assert.assertTrue(((Event.CreateEvent)next).getPath().equals("/dir" + i));
+    }
+    Assert.assertTrue(eis.poll() == null);
+  }
+  finally {
+    try {
+      cluster.shutdown();
+    }
+ catch (    ExitUtil.ExitException e) {
+    }
+  }
+}

@@ -1,0 +1,29 @@
+{
+  if (lastReadTxid == -1) {
+    LOG.debug("poll(): lastReadTxid is -1, reading current txid from NN");
+    lastReadTxid=namenode.getCurrentEditLogTxid();
+    return null;
+  }
+  if (!it.hasNext()) {
+    EventsList el=namenode.getEditsFromTxid(lastReadTxid + 1);
+    if (el.getLastTxid() != -1) {
+      syncTxid=el.getSyncTxid();
+      it=el.getEvents().iterator();
+      long formerLastReadTxid=lastReadTxid;
+      lastReadTxid=el.getLastTxid();
+      if (el.getFirstTxid() != formerLastReadTxid + 1) {
+        throw new MissingEventsException(formerLastReadTxid + 1,el.getFirstTxid());
+      }
+    }
+ else {
+      LOG.debug("poll(): read no edits from the NN when requesting edits " + "after txid {}",lastReadTxid);
+      return null;
+    }
+  }
+  if (it.hasNext()) {
+    return it.next();
+  }
+ else {
+    return null;
+  }
+}

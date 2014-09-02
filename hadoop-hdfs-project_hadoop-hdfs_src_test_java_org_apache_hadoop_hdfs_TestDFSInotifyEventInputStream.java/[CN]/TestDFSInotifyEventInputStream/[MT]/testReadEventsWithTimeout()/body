@@ -1,0 +1,29 @@
+{
+  Configuration conf=new HdfsConfiguration();
+  MiniQJMHACluster cluster=new MiniQJMHACluster.Builder(conf).build();
+  try {
+    cluster.getDfsCluster().waitActive();
+    cluster.getDfsCluster().transitionToActive(0);
+    final DFSClient client=new DFSClient(cluster.getDfsCluster().getNameNode(0).getNameNodeAddress(),conf);
+    DFSInotifyEventInputStream eis=client.getInotifyEventStream();
+    ScheduledExecutorService ex=Executors.newSingleThreadScheduledExecutor();
+    ex.schedule(new Runnable(){
+      @Override public void run(){
+        try {
+          client.mkdirs("/dir",null,false);
+        }
+ catch (        IOException e) {
+          LOG.error("Unable to create /dir",e);
+        }
+      }
+    }
+,1,TimeUnit.SECONDS);
+    Event next=eis.poll(5,TimeUnit.SECONDS);
+    Assert.assertTrue(next != null);
+    Assert.assertTrue(next.getEventType() == Event.EventType.CREATE);
+    Assert.assertTrue(((Event.CreateEvent)next).getPath().equals("/dir"));
+  }
+  finally {
+    cluster.shutdown();
+  }
+}
