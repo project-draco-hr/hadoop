@@ -1,0 +1,76 @@
+{
+  final Server jetty=createJettyServer();
+  Context context=new Context();
+  context.setContextPath("/foo");
+  jetty.setHandler(context);
+  context.addFilter(new FilterHolder(AFilter.class),"/*",0);
+  context.addServlet(new ServletHolder(PingServlet.class),"/bar");
+  try {
+    jetty.start();
+    final URL nonAuthURL=new URL(getJettyURL() + "/foo/bar");
+    URL authURL=new URL(getJettyURL() + "/foo/bar?authenticated=foo");
+    URL authURL2=new URL(getJettyURL() + "/foo/bar?authenticated=bar");
+    DelegationTokenAuthenticatedURL.Token token=new DelegationTokenAuthenticatedURL.Token();
+    final DelegationTokenAuthenticatedURL aUrl=new DelegationTokenAuthenticatedURL();
+    aUrl.setUseQueryStringForDelegationToken(useQS);
+    try {
+      aUrl.getDelegationToken(nonAuthURL,token,FOO_USER);
+      Assert.fail();
+    }
+ catch (    Exception ex) {
+      Assert.assertTrue(ex.getMessage().contains("401"));
+    }
+    aUrl.getDelegationToken(authURL,token,FOO_USER);
+    Assert.assertNotNull(token.getDelegationToken());
+    Assert.assertEquals(new Text("token-kind"),token.getDelegationToken().getKind());
+    aUrl.renewDelegationToken(authURL,token);
+    try {
+      aUrl.renewDelegationToken(nonAuthURL,token);
+      Assert.fail();
+    }
+ catch (    Exception ex) {
+      Assert.assertTrue(ex.getMessage().contains("401"));
+    }
+    aUrl.getDelegationToken(authURL,token,FOO_USER);
+    try {
+      aUrl.renewDelegationToken(authURL2,token);
+      Assert.fail();
+    }
+ catch (    Exception ex) {
+      Assert.assertTrue(ex.getMessage().contains("403"));
+    }
+    aUrl.getDelegationToken(authURL,token,FOO_USER);
+    aUrl.cancelDelegationToken(authURL,token);
+    aUrl.getDelegationToken(authURL,token,FOO_USER);
+    aUrl.cancelDelegationToken(nonAuthURL,token);
+    aUrl.getDelegationToken(authURL,token,FOO_USER);
+    try {
+      aUrl.renewDelegationToken(nonAuthURL,token);
+    }
+ catch (    Exception ex) {
+      Assert.assertTrue(ex.getMessage().contains("401"));
+    }
+    aUrl.getDelegationToken(authURL,token,"foo");
+    UserGroupInformation ugi=UserGroupInformation.getCurrentUser();
+    ugi.addToken(token.getDelegationToken());
+    ugi.doAs(new PrivilegedExceptionAction<Void>(){
+      @Override public Void run() throws Exception {
+        HttpURLConnection conn=aUrl.openConnection(nonAuthURL,new DelegationTokenAuthenticatedURL.Token());
+        Assert.assertEquals(HttpServletResponse.SC_OK,conn.getResponseCode());
+        if (useQS) {
+          Assert.assertNull(conn.getHeaderField("UsingHeader"));
+          Assert.assertNotNull(conn.getHeaderField("UsingQueryString"));
+        }
+ else {
+          Assert.assertNotNull(conn.getHeaderField("UsingHeader"));
+          Assert.assertNull(conn.getHeaderField("UsingQueryString"));
+        }
+        return null;
+      }
+    }
+);
+  }
+  finally {
+    jetty.stop();
+  }
+}

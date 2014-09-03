@@ -1,0 +1,55 @@
+{
+  conf.set(FairSchedulerConfiguration.ALLOCATION_FILE,ALLOC_FILE);
+  PrintWriter out=new PrintWriter(new FileWriter(ALLOC_FILE));
+  out.println("<?xml version=\"1.0\"?>");
+  out.println("<allocations>");
+  out.println("<queue name=\"queueA\">");
+  out.println("<weight>.2</weight>");
+  out.println("</queue>");
+  out.println("<queue name=\"queueB\">");
+  out.println("<weight>.8</weight>");
+  out.println("<fairSharePreemptionThreshold>.4</fairSharePreemptionThreshold>");
+  out.println("<queue name=\"queueB1\">");
+  out.println("</queue>");
+  out.println("<queue name=\"queueB2\">");
+  out.println("<fairSharePreemptionThreshold>.6</fairSharePreemptionThreshold>");
+  out.println("</queue>");
+  out.println("</queue>");
+  out.println("<defaultFairSharePreemptionThreshold>.5</defaultFairSharePreemptionThreshold>");
+  out.println("</allocations>");
+  out.close();
+  resourceManager=new MockRM(conf);
+  resourceManager.start();
+  scheduler=(FairScheduler)resourceManager.getResourceScheduler();
+  RMNode node1=MockNodes.newNodeInfo(1,Resources.createResource(10 * 1024,10),1,"127.0.0.1");
+  NodeAddedSchedulerEvent nodeEvent1=new NodeAddedSchedulerEvent(node1);
+  scheduler.handle(nodeEvent1);
+  scheduler.update();
+  createSchedulingRequest(1 * 1024,"queueA","user1",4);
+  scheduler.update();
+  NodeUpdateSchedulerEvent nodeEvent2=new NodeUpdateSchedulerEvent(node1);
+  for (int i=0; i < 4; i++) {
+    scheduler.handle(nodeEvent2);
+  }
+  QueueManager queueMgr=scheduler.getQueueManager();
+  FSLeafQueue queueA=queueMgr.getLeafQueue("queueA",false);
+  assertEquals(4 * 1024,queueA.getResourceUsage().getMemory());
+  createSchedulingRequest(1 * 1024,"queueB.queueB1","user1",3);
+  createSchedulingRequest(1 * 1024,"queueB.queueB2","user1",3);
+  scheduler.update();
+  for (int i=0; i < 4; i++) {
+    scheduler.handle(nodeEvent2);
+  }
+  FSLeafQueue queueB1=queueMgr.getLeafQueue("queueB.queueB1",false);
+  FSLeafQueue queueB2=queueMgr.getLeafQueue("queueB.queueB2",false);
+  assertEquals(2 * 1024,queueB1.getResourceUsage().getMemory());
+  assertEquals(2 * 1024,queueB2.getResourceUsage().getMemory());
+  assertFalse(queueB1.isStarvedForFairShare());
+  assertTrue(queueB2.isStarvedForFairShare());
+  scheduler.handle(nodeEvent2);
+  scheduler.handle(nodeEvent2);
+  assertEquals(3 * 1024,queueB1.getResourceUsage().getMemory());
+  assertEquals(3 * 1024,queueB2.getResourceUsage().getMemory());
+  assertFalse(queueB1.isStarvedForFairShare());
+  assertFalse(queueB2.isStarvedForFairShare());
+}

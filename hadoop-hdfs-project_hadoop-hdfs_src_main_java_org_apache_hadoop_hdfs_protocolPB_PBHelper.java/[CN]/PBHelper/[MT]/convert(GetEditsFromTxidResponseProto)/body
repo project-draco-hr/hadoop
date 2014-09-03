@@ -1,0 +1,34 @@
+{
+  List<Event> events=Lists.newArrayList();
+  for (  InotifyProtos.EventProto p : resp.getEventsList().getEventsList()) {
+switch (p.getType()) {
+case EVENT_CLOSE:
+      InotifyProtos.CloseEventProto close=InotifyProtos.CloseEventProto.parseFrom(p.getContents());
+    events.add(new Event.CloseEvent(close.getPath(),close.getFileSize(),close.getTimestamp()));
+  break;
+case EVENT_CREATE:
+InotifyProtos.CreateEventProto create=InotifyProtos.CreateEventProto.parseFrom(p.getContents());
+events.add(new Event.CreateEvent.Builder().iNodeType(createTypeConvert(create.getType())).path(create.getPath()).ctime(create.getCtime()).ownerName(create.getOwnerName()).groupName(create.getGroupName()).perms(convert(create.getPerms())).replication(create.getReplication()).symlinkTarget(create.getSymlinkTarget().isEmpty() ? null : create.getSymlinkTarget()).build());
+break;
+case EVENT_METADATA:
+InotifyProtos.MetadataUpdateEventProto meta=InotifyProtos.MetadataUpdateEventProto.parseFrom(p.getContents());
+events.add(new Event.MetadataUpdateEvent.Builder().path(meta.getPath()).metadataType(metadataUpdateTypeConvert(meta.getType())).mtime(meta.getMtime()).atime(meta.getAtime()).replication(meta.getReplication()).ownerName(meta.getOwnerName().isEmpty() ? null : meta.getOwnerName()).groupName(meta.getGroupName().isEmpty() ? null : meta.getGroupName()).perms(meta.hasPerms() ? convert(meta.getPerms()) : null).acls(meta.getAclsList().isEmpty() ? null : convertAclEntry(meta.getAclsList())).xAttrs(meta.getXAttrsList().isEmpty() ? null : convertXAttrs(meta.getXAttrsList())).xAttrsRemoved(meta.getXAttrsRemoved()).build());
+break;
+case EVENT_RENAME:
+InotifyProtos.RenameEventProto rename=InotifyProtos.RenameEventProto.parseFrom(p.getContents());
+events.add(new Event.RenameEvent(rename.getSrcPath(),rename.getDestPath(),rename.getTimestamp()));
+break;
+case EVENT_APPEND:
+InotifyProtos.AppendEventProto reopen=InotifyProtos.AppendEventProto.parseFrom(p.getContents());
+events.add(new Event.AppendEvent(reopen.getPath()));
+break;
+case EVENT_UNLINK:
+InotifyProtos.UnlinkEventProto unlink=InotifyProtos.UnlinkEventProto.parseFrom(p.getContents());
+events.add(new Event.UnlinkEvent(unlink.getPath(),unlink.getTimestamp()));
+break;
+default :
+throw new RuntimeException("Unexpected inotify event type: " + p.getType());
+}
+}
+return new EventsList(events,resp.getEventsList().getFirstTxid(),resp.getEventsList().getLastTxid(),resp.getEventsList().getSyncTxid());
+}

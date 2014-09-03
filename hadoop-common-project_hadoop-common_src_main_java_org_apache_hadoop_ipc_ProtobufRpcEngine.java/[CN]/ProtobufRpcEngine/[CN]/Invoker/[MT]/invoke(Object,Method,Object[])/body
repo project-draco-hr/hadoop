@@ -9,6 +9,10 @@
   if (args[1] == null) {
     throw new ServiceException("null param while calling Method: [" + method.getName() + "]");
   }
+  TraceScope traceScope=null;
+  if (Trace.isTracing()) {
+    traceScope=Trace.startSpan(method.getDeclaringClass().getCanonicalName() + "." + method.getName());
+  }
   RequestHeaderProto rpcRequestHeader=constructRpcRequestHeader(method);
   if (LOG.isTraceEnabled()) {
     LOG.trace(Thread.currentThread().getId() + ": Call -> " + remoteId+ ": "+ method.getName()+ " {"+ TextFormat.shortDebugString((Message)args[1])+ "}");
@@ -22,7 +26,13 @@
     if (LOG.isTraceEnabled()) {
       LOG.trace(Thread.currentThread().getId() + ": Exception <- " + remoteId+ ": "+ method.getName()+ " {"+ e+ "}");
     }
+    if (Trace.isTracing()) {
+      traceScope.getSpan().addTimelineAnnotation("Call got exception: " + e.getMessage());
+    }
     throw new ServiceException(e);
+  }
+ finally {
+    if (traceScope != null)     traceScope.close();
   }
   if (LOG.isDebugEnabled()) {
     long callTime=Time.now() - startTime;

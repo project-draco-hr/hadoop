@@ -2,18 +2,30 @@
   Preconditions.checkNotNull(url,"url");
   Preconditions.checkNotNull(token,"token");
   Map<String,String> extraParams=new HashMap<String,String>();
-  Credentials creds=UserGroupInformation.getCurrentUser().getCredentials();
-  if (!creds.getAllTokens().isEmpty()) {
-    InetSocketAddress serviceAddr=new InetSocketAddress(url.getHost(),url.getPort());
-    Text service=SecurityUtil.buildTokenService(serviceAddr);
-    org.apache.hadoop.security.token.Token<? extends TokenIdentifier> dt=creds.getToken(service);
-    if (dt != null) {
-      extraParams.put(KerberosDelegationTokenAuthenticator.DELEGATION_PARAM,dt.encodeToUrlString());
+  org.apache.hadoop.security.token.Token<? extends TokenIdentifier> dToken=null;
+  if (!token.isSet()) {
+    Credentials creds=UserGroupInformation.getCurrentUser().getCredentials();
+    if (!creds.getAllTokens().isEmpty()) {
+      InetSocketAddress serviceAddr=new InetSocketAddress(url.getHost(),url.getPort());
+      Text service=SecurityUtil.buildTokenService(serviceAddr);
+      dToken=creds.getToken(service);
+      if (dToken != null) {
+        if (useQueryStringForDelegationToken()) {
+          extraParams.put(KerberosDelegationTokenAuthenticator.DELEGATION_PARAM,dToken.encodeToUrlString());
+        }
+ else {
+          token.delegationToken=(org.apache.hadoop.security.token.Token<AbstractDelegationTokenIdentifier>)dToken;
+        }
+      }
     }
   }
   if (doAs != null) {
     extraParams.put(DO_AS,URLEncoder.encode(doAs,"UTF-8"));
   }
   url=augmentURL(url,extraParams);
-  return super.openConnection(url,token);
+  HttpURLConnection conn=super.openConnection(url,token);
+  if (!token.isSet() && !useQueryStringForDelegationToken() && dToken != null) {
+    conn.setRequestProperty(DelegationTokenAuthenticator.DELEGATION_TOKEN_HEADER,dToken.encodeToUrlString());
+  }
+  return conn;
 }
