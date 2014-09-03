@@ -12,12 +12,14 @@
   Map<String,SchedulingPolicy> queuePolicies=new HashMap<String,SchedulingPolicy>();
   Map<String,Long> minSharePreemptionTimeouts=new HashMap<String,Long>();
   Map<String,Long> fairSharePreemptionTimeouts=new HashMap<String,Long>();
+  Map<String,Float> fairSharePreemptionThresholds=new HashMap<String,Float>();
   Map<String,Map<QueueACL,AccessControlList>> queueAcls=new HashMap<String,Map<QueueACL,AccessControlList>>();
   int userMaxAppsDefault=Integer.MAX_VALUE;
   int queueMaxAppsDefault=Integer.MAX_VALUE;
   float queueMaxAMShareDefault=-1.0f;
   long defaultFairSharePreemptionTimeout=Long.MAX_VALUE;
   long defaultMinSharePreemptionTimeout=Long.MAX_VALUE;
+  float defaultFairSharePreemptionThreshold=0.5f;
   SchedulingPolicy defaultSchedPolicy=SchedulingPolicy.DEFAULT_POLICY;
   QueuePlacementPolicy newPlacementPolicy=null;
   Map<FSQueueType,Set<String>> configuredQueues=new HashMap<FSQueueType,Set<String>>();
@@ -76,6 +78,12 @@
         long val=Long.parseLong(text) * 1000L;
         defaultMinSharePreemptionTimeout=val;
       }
+ else       if ("defaultFairSharePreemptionThreshold".equals(element.getTagName())) {
+        String text=((Text)element.getFirstChild()).getData().trim();
+        float val=Float.parseFloat(text);
+        val=Math.max(Math.min(val,1.0f),0.0f);
+        defaultFairSharePreemptionThreshold=val;
+      }
  else       if ("queueMaxAppsDefault".equals(element.getTagName())) {
         String text=((Text)element.getFirstChild()).getData().trim();
         int val=Integer.parseInt(text);
@@ -107,7 +115,7 @@
       }
       parent=null;
     }
-    loadQueue(parent,element,minQueueResources,maxQueueResources,queueMaxApps,userMaxApps,queueMaxAMShares,queueWeights,queuePolicies,minSharePreemptionTimeouts,fairSharePreemptionTimeouts,queueAcls,configuredQueues);
+    loadQueue(parent,element,minQueueResources,maxQueueResources,queueMaxApps,userMaxApps,queueMaxAMShares,queueWeights,queuePolicies,minSharePreemptionTimeouts,fairSharePreemptionTimeouts,fairSharePreemptionThresholds,queueAcls,configuredQueues);
   }
   Configuration conf=getConfig();
   if (placementPolicyElement != null) {
@@ -122,7 +130,10 @@
   if (!fairSharePreemptionTimeouts.containsKey(QueueManager.ROOT_QUEUE)) {
     fairSharePreemptionTimeouts.put(QueueManager.ROOT_QUEUE,defaultFairSharePreemptionTimeout);
   }
-  AllocationConfiguration info=new AllocationConfiguration(minQueueResources,maxQueueResources,queueMaxApps,userMaxApps,queueWeights,queueMaxAMShares,userMaxAppsDefault,queueMaxAppsDefault,queueMaxAMShareDefault,queuePolicies,defaultSchedPolicy,minSharePreemptionTimeouts,fairSharePreemptionTimeouts,queueAcls,newPlacementPolicy,configuredQueues);
+  if (!fairSharePreemptionThresholds.containsKey(QueueManager.ROOT_QUEUE)) {
+    fairSharePreemptionThresholds.put(QueueManager.ROOT_QUEUE,defaultFairSharePreemptionThreshold);
+  }
+  AllocationConfiguration info=new AllocationConfiguration(minQueueResources,maxQueueResources,queueMaxApps,userMaxApps,queueWeights,queueMaxAMShares,userMaxAppsDefault,queueMaxAppsDefault,queueMaxAMShareDefault,queuePolicies,defaultSchedPolicy,minSharePreemptionTimeouts,fairSharePreemptionTimeouts,fairSharePreemptionThresholds,queueAcls,newPlacementPolicy,configuredQueues);
   lastSuccessfulReload=clock.getTime();
   lastReloadAttemptFailed=false;
   reloadListener.onReload(info);
