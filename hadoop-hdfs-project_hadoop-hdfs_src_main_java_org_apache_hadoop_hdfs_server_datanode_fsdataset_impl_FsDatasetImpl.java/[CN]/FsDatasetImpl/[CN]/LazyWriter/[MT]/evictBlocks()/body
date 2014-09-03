@@ -1,0 +1,27 @@
+{
+  int iterations=0;
+  LazyWriteReplicaTracker.ReplicaState replicaState=lazyWriteReplicaTracker.getNextCandidateForEviction();
+  while (replicaState != null && iterations++ < MAX_BLOCK_EVICTIONS_PER_ITERATION & transientFreeSpaceBelowThreshold()) {
+    if (LOG.isDebugEnabled()) {
+      LOG.info("Evicting block " + replicaState);
+    }
+    ReplicaInfo replicaInfo=getReplicaInfo(replicaState.bpid,replicaState.blockId);
+    Preconditions.checkState(replicaInfo.getVolume().isTransientStorage());
+    File blockFile=replicaInfo.getBlockFile();
+    File metaFile=replicaInfo.getMetaFile();
+    long blockFileUsed=blockFile.length();
+    long metaFileUsed=metaFile.length();
+    lazyWriteReplicaTracker.discardReplica(replicaState,false);
+    BlockPoolSlice bpSlice=replicaState.lazyPersistVolume.getBlockPoolSlice(replicaState.bpid);
+    File newBlockFile=bpSlice.activateSavedReplica(replicaInfo,replicaState.savedBlockFile);
+    ReplicaInfo newReplicaInfo=new FinalizedReplica(replicaInfo.getBlockId(),replicaInfo.getBytesOnDisk(),replicaInfo.getGenerationStamp(),replicaState.lazyPersistVolume,newBlockFile.getParentFile());
+    volumeMap.add(replicaState.bpid,newReplicaInfo);
+    if (blockFile.delete() || !blockFile.exists()) {
+      ((FsVolumeImpl)replicaInfo.getVolume()).decDfsUsed(replicaState.bpid,blockFileUsed);
+    }
+    if (metaFile.delete() || !metaFile.exists()) {
+      ((FsVolumeImpl)replicaInfo.getVolume()).decDfsUsed(replicaState.bpid,metaFileUsed);
+    }
+    replicaState=lazyWriteReplicaTracker.getNextCandidateForEviction();
+  }
+}
