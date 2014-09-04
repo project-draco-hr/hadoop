@@ -1,12 +1,12 @@
 {
-  CryptoCodec codec=null;
+  CryptoCodec encCodec=null;
   try {
-    codec=(CryptoCodec)ReflectionUtils.newInstance(conf.getClassByName(codecClass),conf);
+    encCodec=(CryptoCodec)ReflectionUtils.newInstance(conf.getClassByName(encCodecClass),conf);
   }
  catch (  ClassNotFoundException cnfe) {
     throw new IOException("Illegal crypto codec!");
   }
-  LOG.info("Created a Codec object of type: " + codecClass);
+  LOG.info("Created a Codec object of type: " + encCodecClass);
   DataOutputBuffer data=new DataOutputBuffer();
   RandomDatum.Generator generator=new RandomDatum.Generator(seed);
   for (int i=0; i < count; ++i) {
@@ -18,14 +18,22 @@
   }
   LOG.info("Generated " + count + " records");
   DataOutputBuffer encryptedDataBuffer=new DataOutputBuffer();
-  CryptoOutputStream out=new CryptoOutputStream(encryptedDataBuffer,codec,bufferSize,key,iv);
+  CryptoOutputStream out=new CryptoOutputStream(encryptedDataBuffer,encCodec,bufferSize,key,iv);
   out.write(data.getData(),0,data.getLength());
   out.flush();
   out.close();
   LOG.info("Finished encrypting data");
+  CryptoCodec decCodec=null;
+  try {
+    decCodec=(CryptoCodec)ReflectionUtils.newInstance(conf.getClassByName(decCodecClass),conf);
+  }
+ catch (  ClassNotFoundException cnfe) {
+    throw new IOException("Illegal crypto codec!");
+  }
+  LOG.info("Created a Codec object of type: " + decCodecClass);
   DataInputBuffer decryptedDataBuffer=new DataInputBuffer();
   decryptedDataBuffer.reset(encryptedDataBuffer.getData(),0,encryptedDataBuffer.getLength());
-  CryptoInputStream in=new CryptoInputStream(decryptedDataBuffer,codec,bufferSize,key,iv);
+  CryptoInputStream in=new CryptoInputStream(decryptedDataBuffer,decCodec,bufferSize,key,iv);
   DataInputStream dataIn=new DataInputStream(new BufferedInputStream(in));
   DataInputBuffer originalData=new DataInputBuffer();
   originalData.reset(data.getData(),0,data.getLength());
@@ -50,7 +58,7 @@
   }
   originalData.reset(data.getData(),0,data.getLength());
   decryptedDataBuffer.reset(encryptedDataBuffer.getData(),0,encryptedDataBuffer.getLength());
-  in=new CryptoInputStream(decryptedDataBuffer,codec,bufferSize,key,iv);
+  in=new CryptoInputStream(decryptedDataBuffer,decCodec,bufferSize,key,iv);
   originalIn=new DataInputStream(new BufferedInputStream(originalData));
   int expected;
   do {
@@ -58,6 +66,18 @@
     assertEquals("Decrypted stream read by byte does not match",expected,in.read());
   }
  while (expected != -1);
+  originalData.reset(data.getData(),0,data.getLength());
+  decryptedDataBuffer.reset(encryptedDataBuffer.getData(),0,encryptedDataBuffer.getLength());
+  in=new CryptoInputStream(new TestCryptoStreams.FakeInputStream(decryptedDataBuffer),decCodec,bufferSize,key,iv);
+  int seekPos=data.getLength() / 3;
+  in.seek(seekPos);
+  TestCryptoStreams.FakeInputStream originalInput=new TestCryptoStreams.FakeInputStream(originalData);
+  originalInput.seek(seekPos);
+  do {
+    expected=originalInput.read();
+    assertEquals("Decrypted stream read by byte does not match",expected,in.read());
+  }
+ while (expected != -1);
   LOG.info("SUCCESS! Completed checking " + count + " records");
-  testSecureRandom(codec);
+  testSecureRandom(encCodec);
 }
