@@ -1,0 +1,42 @@
+{
+  if (conn.getResponseCode() != expectedStatus) {
+    Exception toThrow;
+    InputStream es=null;
+    try {
+      es=conn.getErrorStream();
+      ObjectMapper mapper=new ObjectMapper();
+      Map json=mapper.readValue(es,Map.class);
+      json=(Map)json.get(ERROR_JSON);
+      String exClass=(String)json.get(ERROR_CLASSNAME_JSON);
+      String exMsg=(String)json.get(ERROR_MESSAGE_JSON);
+      if (exClass != null) {
+        try {
+          ClassLoader cl=HttpExceptionUtils.class.getClassLoader();
+          Class klass=cl.loadClass(exClass);
+          Constructor constr=klass.getConstructor(String.class);
+          toThrow=(Exception)constr.newInstance(exMsg);
+        }
+ catch (        Exception ex) {
+          toThrow=new IOException(String.format("HTTP status [%d], exception [%s], message [%s] ",conn.getResponseCode(),exClass,exMsg));
+        }
+      }
+ else {
+        String msg=(exMsg != null) ? exMsg : conn.getResponseMessage();
+        toThrow=new IOException(String.format("HTTP status [%d], message [%s]",conn.getResponseCode(),msg));
+      }
+    }
+ catch (    Exception ex) {
+      toThrow=new IOException(String.format("HTTP status [%d], message [%s]",conn.getResponseCode(),conn.getResponseMessage()));
+    }
+ finally {
+      if (es != null) {
+        try {
+          es.close();
+        }
+ catch (        IOException ex) {
+        }
+      }
+    }
+    throwEx(toThrow);
+  }
+}

@@ -1,24 +1,30 @@
 {
   Configuration conf=getConfig();
   String initializers=conf.get("hadoop.http.filter.initializers");
-  boolean modifiedInitialiers=false;
+  boolean modifiedInitializers=false;
   initializers=initializers == null || initializers.length() == 0 ? "" : initializers;
+  if (!initializers.contains(CrossOriginFilterInitializer.class.getName())) {
+    if (conf.getBoolean(YarnConfiguration.TIMELINE_SERVICE_HTTP_CROSS_ORIGIN_ENABLED,YarnConfiguration.TIMELINE_SERVICE_HTTP_CROSS_ORIGIN_ENABLED_DEFAULT)) {
+      initializers=CrossOriginFilterInitializer.class.getName() + "," + initializers;
+      modifiedInitializers=true;
+    }
+  }
   if (!initializers.contains(TimelineAuthenticationFilterInitializer.class.getName())) {
     initializers=TimelineAuthenticationFilterInitializer.class.getName() + "," + initializers;
-    modifiedInitialiers=true;
+    modifiedInitializers=true;
   }
   String[] parts=initializers.split(",");
   ArrayList<String> target=new ArrayList<String>();
   for (  String filterInitializer : parts) {
     filterInitializer=filterInitializer.trim();
     if (filterInitializer.equals(AuthenticationFilterInitializer.class.getName())) {
-      modifiedInitialiers=true;
+      modifiedInitializers=true;
       continue;
     }
     target.add(filterInitializer);
   }
   String actualInitializers=org.apache.commons.lang.StringUtils.join(target,",");
-  if (modifiedInitialiers) {
+  if (modifiedInitializers) {
     conf.set("hadoop.http.filter.initializers",actualInitializers);
   }
   String bindAddress=WebAppUtils.getWebAppBindURL(conf,YarnConfiguration.TIMELINE_SERVICE_BIND_HOST,WebAppUtils.getAHSWebAppURLWithoutScheme(conf));
