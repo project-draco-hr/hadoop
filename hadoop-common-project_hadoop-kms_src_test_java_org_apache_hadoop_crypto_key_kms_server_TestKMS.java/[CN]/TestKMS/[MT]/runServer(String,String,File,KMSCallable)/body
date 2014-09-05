@@ -1,29 +1,16 @@
 {
-  System.setProperty(KMSConfiguration.KMS_CONFIG_DIR,confDir.getAbsolutePath());
-  System.setProperty("log4j.configuration","log4j.properties");
-  Server jetty=createJettyServer(keystore,password);
+  MiniKMS.Builder miniKMSBuilder=new MiniKMS.Builder().setKmsConfDir(confDir).setLog4jConfFile("log4j.properties");
+  if (keystore != null) {
+    miniKMSBuilder.setSslConf(new File(keystore),password);
+  }
+  MiniKMS miniKMS=miniKMSBuilder.build();
+  miniKMS.start();
   try {
-    ClassLoader cl=Thread.currentThread().getContextClassLoader();
-    URL url=cl.getResource("webapp");
-    if (url == null) {
-      throw new RuntimeException("Could not find webapp/ dir in test classpath");
-    }
-    WebAppContext context=new WebAppContext(url.getPath(),"/kms");
-    jetty.addHandler(context);
-    jetty.start();
-    url=new URL(getJettyURL(jetty),"kms");
-    System.out.println("Test KMS running at: " + url);
-    callable.kmsUrl=url;
+    System.out.println("Test KMS running at: " + miniKMS.getKMSUrl());
+    callable.kmsUrl=miniKMS.getKMSUrl();
     callable.call();
   }
   finally {
-    if (jetty != null && jetty.isRunning()) {
-      try {
-        jetty.stop();
-      }
- catch (      Exception ex) {
-        throw new RuntimeException("Could not stop embedded Jetty, " + ex.getMessage(),ex);
-      }
-    }
+    miniKMS.stop();
   }
 }
