@@ -28,6 +28,7 @@
   boolean overwrite=flag.contains(CreateFlag.OVERWRITE);
   boolean isLazyPersist=flag.contains(CreateFlag.LAZY_PERSIST);
   waitForLoadingFSImage();
+  BlocksMapUpdateInfo toRemoveBlocks=null;
   try {
     boolean shouldContinue=true;
     int iters=0;
@@ -64,7 +65,7 @@
         checkOperation(OperationCategory.WRITE);
         checkNameNodeSafeMode("Cannot create file" + src);
         src=resolvePath(src,pathComponents);
-        startFileInternal(pc,src,permissions,holder,clientMachine,create,overwrite,createParent,replication,blockSize,isLazyPersist,suite,edek,logRetryCache);
+        toRemoveBlocks=startFileInternal(pc,src,permissions,holder,clientMachine,create,overwrite,createParent,replication,blockSize,isLazyPersist,suite,edek,logRetryCache);
         stat=dir.getFileInfo(src,false,FSDirectory.isReservedRawName(srcArg));
       }
  catch (      StandbyException se) {
@@ -85,6 +86,10 @@ catch (      RetryStartFileException e) {
   finally {
     if (!skipSync) {
       getEditLog().logSync();
+      if (toRemoveBlocks != null) {
+        removeBlocks(toRemoveBlocks);
+        toRemoveBlocks.clear();
+      }
     }
   }
   logAuditEvent(true,"create",srcArg,null,stat);
