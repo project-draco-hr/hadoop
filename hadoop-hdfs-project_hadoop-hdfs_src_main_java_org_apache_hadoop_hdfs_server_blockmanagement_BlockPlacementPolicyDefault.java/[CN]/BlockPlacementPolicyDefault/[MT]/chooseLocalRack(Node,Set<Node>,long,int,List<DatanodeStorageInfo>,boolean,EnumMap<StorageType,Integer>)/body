@@ -2,28 +2,23 @@
   if (localMachine == null) {
     return chooseRandom(NodeBase.ROOT,excludedNodes,blocksize,maxNodesPerRack,results,avoidStaleNodes,storageTypes);
   }
+  final String localRack=localMachine.getNetworkLocation();
   try {
-    return chooseRandom(localMachine.getNetworkLocation(),excludedNodes,blocksize,maxNodesPerRack,results,avoidStaleNodes,storageTypes);
+    return chooseRandom(localRack,excludedNodes,blocksize,maxNodesPerRack,results,avoidStaleNodes,storageTypes);
   }
- catch (  NotEnoughReplicasException e1) {
-    DatanodeDescriptor newLocal=null;
+ catch (  NotEnoughReplicasException e) {
     for (    DatanodeStorageInfo resultStorage : results) {
       DatanodeDescriptor nextNode=resultStorage.getDatanodeDescriptor();
       if (nextNode != localMachine) {
-        newLocal=nextNode;
-        break;
+        if (LOG.isDebugEnabled()) {
+          LOG.debug("Failed to choose from local rack (location = " + localRack + "), retry with the rack of the next replica (location = "+ nextNode.getNetworkLocation()+ ")",e);
+        }
+        return chooseFromNextRack(nextNode,excludedNodes,blocksize,maxNodesPerRack,results,avoidStaleNodes,storageTypes);
       }
     }
-    if (newLocal != null) {
-      try {
-        return chooseRandom(newLocal.getNetworkLocation(),excludedNodes,blocksize,maxNodesPerRack,results,avoidStaleNodes,storageTypes);
-      }
- catch (      NotEnoughReplicasException e2) {
-        return chooseRandom(NodeBase.ROOT,excludedNodes,blocksize,maxNodesPerRack,results,avoidStaleNodes,storageTypes);
-      }
+    if (LOG.isDebugEnabled()) {
+      LOG.debug("Failed to choose from local rack (location = " + localRack + "); the second replica is not found, retry choosing ramdomly",e);
     }
- else {
-      return chooseRandom(NodeBase.ROOT,excludedNodes,blocksize,maxNodesPerRack,results,avoidStaleNodes,storageTypes);
-    }
+    return chooseRandom(NodeBase.ROOT,excludedNodes,blocksize,maxNodesPerRack,results,avoidStaleNodes,storageTypes);
   }
 }
