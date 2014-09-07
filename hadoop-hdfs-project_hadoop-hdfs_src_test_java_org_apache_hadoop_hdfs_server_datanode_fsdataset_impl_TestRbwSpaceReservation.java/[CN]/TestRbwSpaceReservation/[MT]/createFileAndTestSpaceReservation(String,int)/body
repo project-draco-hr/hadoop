@@ -1,0 +1,31 @@
+{
+  final long configuredCapacity=fileBlockSize * 2 - 1;
+  startCluster(BLOCK_SIZE,configuredCapacity);
+  FSDataOutputStream out=null;
+  Path path=new Path("/" + fileNamePrefix + ".dat");
+  try {
+    out=fs.create(path,false,4096,(short)1,fileBlockSize);
+    byte[] buffer=new byte[rand.nextInt(fileBlockSize / 4)];
+    out.write(buffer);
+    out.hsync();
+    int bytesWritten=buffer.length;
+    assertThat(singletonVolume.getReservedForRbw(),is((long)fileBlockSize - bytesWritten));
+    out.close();
+    out=null;
+    assertThat(singletonVolume.getReservedForRbw(),is(0L));
+    out=fs.append(path);
+    out.write(buffer);
+    out.hsync();
+    bytesWritten+=buffer.length;
+    assertThat(singletonVolume.getReservedForRbw(),is((long)fileBlockSize - bytesWritten));
+    out.write(buffer);
+    out.hsync();
+    bytesWritten+=buffer.length;
+    assertThat(singletonVolume.getReservedForRbw(),is((long)fileBlockSize - bytesWritten));
+  }
+  finally {
+    if (out != null) {
+      out.close();
+    }
+  }
+}
