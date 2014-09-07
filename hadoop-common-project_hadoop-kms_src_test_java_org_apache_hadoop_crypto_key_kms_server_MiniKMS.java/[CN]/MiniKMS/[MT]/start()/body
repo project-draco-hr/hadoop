@@ -1,0 +1,37 @@
+{
+  System.setProperty(KMSConfiguration.KMS_CONFIG_DIR,kmsConfDir);
+  File aclsFile=new File(kmsConfDir,"kms-acls.xml");
+  if (!aclsFile.exists()) {
+    Configuration acls=new Configuration(false);
+    Writer writer=new FileWriter(aclsFile);
+    acls.writeXml(writer);
+    writer.close();
+  }
+  File coreFile=new File(kmsConfDir,"core-site.xml");
+  if (!coreFile.exists()) {
+    Configuration core=new Configuration();
+    Writer writer=new FileWriter(coreFile);
+    core.writeXml(writer);
+    writer.close();
+  }
+  File kmsFile=new File(kmsConfDir,"kms-site.xml");
+  if (!kmsFile.exists()) {
+    Configuration kms=new Configuration(false);
+    kms.set("hadoop.security.key.provider.path","jceks://file@" + kmsConfDir + "/kms.keystore");
+    kms.set("hadoop.kms.authentication.type","simple");
+    Writer writer=new FileWriter(kmsFile);
+    kms.writeXml(writer);
+    writer.close();
+  }
+  System.setProperty("log4j.configuration",log4jConfFile);
+  jetty=createJettyServer(keyStore,keyStorePassword);
+  ClassLoader cl=Thread.currentThread().getContextClassLoader();
+  URL url=cl.getResource("kms-webapp");
+  if (url == null) {
+    throw new RuntimeException("Could not find kms-webapp/ dir in test classpath");
+  }
+  WebAppContext context=new WebAppContext(url.getPath(),"/kms");
+  jetty.addHandler(context);
+  jetty.start();
+  kmsURL=new URL(getJettyURL(jetty),"kms");
+}
