@@ -1,9 +1,9 @@
 {
   ExtendedBlockId key=new ExtendedBlockId(blockId,bpid);
   Value prevValue=mappableBlockMap.get(key);
+  boolean deferred=false;
   if (!dataset.datanode.getShortCircuitRegistry().processBlockMunlockRequest(key)) {
-    LOG.debug("{} is anchored, and can't be uncached now.",key);
-    return;
+    deferred=true;
   }
   if (prevValue == null) {
     LOG.debug("Block with id {}, pool {} does not need to be uncached, " + "because it is not currently in the mappableBlockMap.",blockId,bpid);
@@ -16,9 +16,15 @@ case CACHING:
   mappableBlockMap.put(key,new Value(prevValue.mappableBlock,State.CACHING_CANCELLED));
 break;
 case CACHED:
-LOG.debug("Block with id {}, pool {} has been scheduled for uncaching" + ".",blockId,bpid);
 mappableBlockMap.put(key,new Value(prevValue.mappableBlock,State.UNCACHING));
-uncachingExecutor.execute(new UncachingTask(key));
+if (deferred) {
+LOG.debug("{} is anchored, and can't be uncached now.  Scheduling it " + "for uncaching in {} ",key,DurationFormatUtils.formatDurationHMS(revocationPollingMs));
+deferredUncachingExecutor.schedule(new UncachingTask(key,revocationMs),revocationPollingMs,TimeUnit.MILLISECONDS);
+}
+ else {
+LOG.debug("{} has been scheduled for immediate uncaching.",key);
+uncachingExecutor.execute(new UncachingTask(key,0));
+}
 break;
 default :
 LOG.debug("Block with id {}, pool {} does not need to be uncached, " + "because it is in state {}.",blockId,bpid,prevValue.state);
