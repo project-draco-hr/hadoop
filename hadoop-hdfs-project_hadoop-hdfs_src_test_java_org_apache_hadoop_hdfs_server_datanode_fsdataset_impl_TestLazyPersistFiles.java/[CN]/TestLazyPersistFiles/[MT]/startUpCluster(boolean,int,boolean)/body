@@ -5,18 +5,15 @@
   conf.setLong(DFS_HEARTBEAT_INTERVAL_KEY,HEARTBEAT_INTERVAL_SEC);
   conf.setInt(DFS_NAMENODE_HEARTBEAT_RECHECK_INTERVAL_KEY,HEARTBEAT_RECHECK_INTERVAL_MSEC);
   conf.setInt(DFS_DATANODE_LAZY_WRITER_INTERVAL_SEC,LAZY_WRITER_INTERVAL_SEC);
+  conf.setInt(DFS_DATANODE_RAM_DISK_LOW_WATERMARK_REPLICAS,EVICTION_LOW_WATERMARK);
   conf.setBoolean(DFS_CLIENT_READ_SHORTCIRCUIT_KEY,useSCR);
-  REPL_FACTOR=1;
-  cluster=new MiniDFSCluster.Builder(conf).numDataNodes(numDataNodes).storageTypes(storageTypes != null ? storageTypes : new StorageType[]{DEFAULT,DEFAULT}).build();
+  long[] capacities=null;
+  if (hasTransientStorage && ramDiskReplicaCapacity >= 0) {
+    long ramDiskStorageLimit=((long)ramDiskReplicaCapacity * BLOCK_SIZE) + (BLOCK_SIZE - 1);
+    capacities=new long[]{ramDiskStorageLimit,-1};
+  }
+  cluster=new MiniDFSCluster.Builder(conf).numDataNodes(REPL_FACTOR).storageCapacities(capacities).storageTypes(hasTransientStorage ? new StorageType[]{RAM_DISK,DEFAULT} : null).build();
   fs=cluster.getFileSystem();
   client=fs.getClient();
-  if (ramDiskStorageLimit >= 0) {
-    List<? extends FsVolumeSpi> volumes=cluster.getDataNodes().get(0).getFSDataset().getVolumes();
-    for (    FsVolumeSpi volume : volumes) {
-      if (volume.getStorageType() == RAM_DISK) {
-        ((FsTransientVolumeImpl)volume).setCapacityForTesting(ramDiskStorageLimit);
-      }
-    }
-  }
   LOG.info("Cluster startup complete");
 }

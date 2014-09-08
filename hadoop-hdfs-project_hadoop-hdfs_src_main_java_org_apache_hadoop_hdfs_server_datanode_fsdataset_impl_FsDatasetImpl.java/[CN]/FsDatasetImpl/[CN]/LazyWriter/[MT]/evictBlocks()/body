@@ -1,27 +1,33 @@
 {
   int iterations=0;
-  LazyWriteReplicaTracker.ReplicaState replicaState=lazyWriteReplicaTracker.getNextCandidateForEviction();
-  while (replicaState != null && iterations++ < MAX_BLOCK_EVICTIONS_PER_ITERATION & transientFreeSpaceBelowThreshold()) {
+  while (iterations++ < MAX_BLOCK_EVICTIONS_PER_ITERATION && transientFreeSpaceBelowThreshold()) {
+    LazyWriteReplicaTracker.ReplicaState replicaState=lazyWriteReplicaTracker.getNextCandidateForEviction();
     if (LOG.isDebugEnabled()) {
-      LOG.info("Evicting block " + replicaState);
+      LOG.debug("Evicting block " + replicaState);
     }
-    ReplicaInfo replicaInfo=getReplicaInfo(replicaState.bpid,replicaState.blockId);
-    Preconditions.checkState(replicaInfo.getVolume().isTransientStorage());
-    File blockFile=replicaInfo.getBlockFile();
-    File metaFile=replicaInfo.getMetaFile();
-    long blockFileUsed=blockFile.length();
-    long metaFileUsed=metaFile.length();
-    lazyWriteReplicaTracker.discardReplica(replicaState,false);
-    BlockPoolSlice bpSlice=replicaState.lazyPersistVolume.getBlockPoolSlice(replicaState.bpid);
-    File newBlockFile=bpSlice.activateSavedReplica(replicaInfo,replicaState.savedBlockFile);
-    ReplicaInfo newReplicaInfo=new FinalizedReplica(replicaInfo.getBlockId(),replicaInfo.getBytesOnDisk(),replicaInfo.getGenerationStamp(),replicaState.lazyPersistVolume,newBlockFile.getParentFile());
-    volumeMap.add(replicaState.bpid,newReplicaInfo);
+    ReplicaInfo replicaInfo, newReplicaInfo;
+    File blockFile, metaFile;
+    long blockFileUsed, metaFileUsed;
+synchronized (FsDatasetImpl.this) {
+      replicaInfo=getReplicaInfo(replicaState.bpid,replicaState.blockId);
+      Preconditions.checkState(replicaInfo.getVolume().isTransientStorage());
+      blockFile=replicaInfo.getBlockFile();
+      metaFile=replicaInfo.getMetaFile();
+      blockFileUsed=blockFile.length();
+      metaFileUsed=metaFile.length();
+      lazyWriteReplicaTracker.discardReplica(replicaState,false);
+      BlockPoolSlice bpSlice=replicaState.lazyPersistVolume.getBlockPoolSlice(replicaState.bpid);
+      File newBlockFile=bpSlice.activateSavedReplica(replicaInfo,replicaState.savedBlockFile);
+      newReplicaInfo=new FinalizedReplica(replicaInfo.getBlockId(),replicaInfo.getBytesOnDisk(),replicaInfo.getGenerationStamp(),replicaState.lazyPersistVolume,newBlockFile.getParentFile());
+      volumeMap.add(replicaState.bpid,newReplicaInfo);
+    }
+    ExtendedBlock extendedBlock=new ExtendedBlock(replicaState.bpid,newReplicaInfo);
+    datanode.notifyNamenodeReceivedBlock(extendedBlock,null,newReplicaInfo.getStorageUuid());
     if (blockFile.delete() || !blockFile.exists()) {
       ((FsVolumeImpl)replicaInfo.getVolume()).decDfsUsed(replicaState.bpid,blockFileUsed);
     }
     if (metaFile.delete() || !metaFile.exists()) {
       ((FsVolumeImpl)replicaInfo.getVolume()).decDfsUsed(replicaState.bpid,metaFileUsed);
     }
-    replicaState=lazyWriteReplicaTracker.getNextCandidateForEviction();
   }
 }
