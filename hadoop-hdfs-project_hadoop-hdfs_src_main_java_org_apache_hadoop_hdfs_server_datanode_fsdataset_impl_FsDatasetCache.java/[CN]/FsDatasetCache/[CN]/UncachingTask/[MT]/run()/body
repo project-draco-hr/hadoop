@@ -1,5 +1,9 @@
 {
   Value value;
+  if (shouldDefer()) {
+    deferredUncachingExecutor.schedule(this,revocationPollingMs,TimeUnit.MILLISECONDS);
+    return;
+  }
 synchronized (FsDatasetCache.this) {
     value=mappableBlockMap.get(key);
   }
@@ -12,5 +16,10 @@ synchronized (FsDatasetCache.this) {
   long newUsedBytes=usedBytesCount.release(value.mappableBlock.getLength());
   numBlocksCached.addAndGet(-1);
   dataset.datanode.getMetrics().incrBlocksUncached(1);
-  LOG.debug("Uncaching of {} completed. usedBytes = {}",key,newUsedBytes);
+  if (revocationTimeMs != 0) {
+    LOG.debug("Uncaching of {} completed. usedBytes = {}",key,newUsedBytes);
+  }
+ else {
+    LOG.debug("Deferred uncaching of {} completed. usedBytes = {}",key,newUsedBytes);
+  }
 }
