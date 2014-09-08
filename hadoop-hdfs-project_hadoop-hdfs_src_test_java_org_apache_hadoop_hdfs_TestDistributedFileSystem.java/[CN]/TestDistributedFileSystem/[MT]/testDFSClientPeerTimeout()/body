@@ -1,0 +1,28 @@
+{
+  final int timeout=1000;
+  final Configuration conf=new HdfsConfiguration();
+  conf.setInt(DFSConfigKeys.DFS_CLIENT_SOCKET_TIMEOUT_KEY,timeout);
+  final MiniDFSCluster cluster=new MiniDFSCluster.Builder(conf).build();
+  try {
+    cluster.waitActive();
+    DistributedFileSystem dfs=cluster.getFileSystem();
+    ServerSocket socket=new ServerSocket(0);
+    Peer peer=dfs.getClient().newConnectedPeer((InetSocketAddress)socket.getLocalSocketAddress(),null,null);
+    long start=Time.now();
+    try {
+      peer.getInputStream().read();
+      Assert.fail("should timeout");
+    }
+ catch (    SocketTimeoutException ste) {
+      long delta=Time.now() - start;
+      Assert.assertTrue("timedout too soon",delta >= timeout * 0.9);
+      Assert.assertTrue("timedout too late",delta <= timeout * 1.1);
+    }
+catch (    Throwable t) {
+      Assert.fail("wrong exception:" + t);
+    }
+  }
+  finally {
+    cluster.shutdown();
+  }
+}
