@@ -1,0 +1,74 @@
+{
+  MockRM rm=new MockRM(conf);
+  rm.start();
+  RMApp app=rm.submitApp(200,"name","user",new HashMap<ApplicationAccessType,String>(),false,"default",-1,null,"MAPREDUCE",false,keepRunningContainers);
+  MockNM nm=new MockNM("127.0.0.1:1234",10240,rm.getResourceTrackerService());
+  nm.registerNode();
+  MockAM am0=MockRM.launchAndRegisterAM(app,rm,nm);
+  int NUM_CONTAINERS=1;
+  am0.allocate("127.0.0.1",1024,NUM_CONTAINERS,new ArrayList<ContainerId>());
+  nm.nodeHeartbeat(true);
+  List<Container> containers=am0.allocate(new ArrayList<ResourceRequest>(),new ArrayList<ContainerId>()).getAllocatedContainers();
+  while (containers.size() != NUM_CONTAINERS) {
+    nm.nodeHeartbeat(true);
+    containers.addAll(am0.allocate(new ArrayList<ResourceRequest>(),new ArrayList<ContainerId>()).getAllocatedContainers());
+    Thread.sleep(200);
+  }
+  ContainerId containerId2=ContainerId.newInstance(am0.getApplicationAttemptId(),2);
+  nm.nodeHeartbeat(am0.getApplicationAttemptId(),containerId2.getId(),ContainerState.RUNNING);
+  rm.waitForState(nm,containerId2,RMContainerState.RUNNING);
+  Collection<RMContainer> rmContainers=rm.scheduler.getSchedulerAppInfo(am0.getApplicationAttemptId()).getLiveContainers();
+  ContainerId amContainerId=app.getCurrentAppAttempt().getMasterContainer().getId();
+  nm.nodeHeartbeat(am0.getApplicationAttemptId(),amContainerId.getId(),ContainerState.COMPLETE);
+  am0.waitForState(RMAppAttemptState.FAILED);
+  long memorySeconds=0;
+  long vcoreSeconds=0;
+  if (keepRunningContainers) {
+    for (    RMContainer c : rmContainers) {
+      if (c.getContainerId().equals(amContainerId)) {
+        AggregateAppResourceUsage ru=calculateContainerResourceMetrics(c);
+        memorySeconds+=ru.getMemorySeconds();
+        vcoreSeconds+=ru.getVcoreSeconds();
+      }
+ else {
+        Assert.assertTrue("After first attempt failed, remaining container " + "should still be running. ",c.getContainerState().equals(ContainerState.RUNNING));
+      }
+    }
+  }
+ else {
+    for (    RMContainer c : rmContainers) {
+      AggregateAppResourceUsage ru=calculateContainerResourceMetrics(c);
+      memorySeconds+=ru.getMemorySeconds();
+      vcoreSeconds+=ru.getVcoreSeconds();
+    }
+  }
+  rm.waitForState(app.getApplicationId(),RMAppState.ACCEPTED);
+  RMAppAttempt attempt2=app.getCurrentAppAttempt();
+  Assert.assertFalse(attempt2.getAppAttemptId().equals(am0.getApplicationAttemptId()));
+  nm.nodeHeartbeat(true);
+  MockAM am1=rm.sendAMLaunched(attempt2.getAppAttemptId());
+  am1.registerAppAttempt();
+  am1.allocate("127.0.0.1",1024,NUM_CONTAINERS,new ArrayList<ContainerId>());
+  nm.nodeHeartbeat(true);
+  containers=am1.allocate(new ArrayList<ResourceRequest>(),new ArrayList<ContainerId>()).getAllocatedContainers();
+  while (containers.size() != NUM_CONTAINERS) {
+    nm.nodeHeartbeat(true);
+    containers.addAll(am1.allocate(new ArrayList<ResourceRequest>(),new ArrayList<ContainerId>()).getAllocatedContainers());
+    Thread.sleep(200);
+  }
+  rm.waitForState(app.getApplicationId(),RMAppState.RUNNING);
+  rmContainers=rm.scheduler.getSchedulerAppInfo(attempt2.getAppAttemptId()).getLiveContainers();
+  amContainerId=app.getCurrentAppAttempt().getMasterContainer().getId();
+  nm.nodeHeartbeat(am0.getApplicationAttemptId(),amContainerId.getId(),ContainerState.COMPLETE);
+  MockRM.finishAMAndVerifyAppState(app,rm,nm,am1);
+  for (  RMContainer c : rmContainers) {
+    AggregateAppResourceUsage ru=calculateContainerResourceMetrics(c);
+    memorySeconds+=ru.getMemorySeconds();
+    vcoreSeconds+=ru.getVcoreSeconds();
+  }
+  RMAppMetrics rmAppMetrics=app.getRMAppMetrics();
+  Assert.assertEquals("Unexcpected MemorySeconds value",memorySeconds,rmAppMetrics.getMemorySeconds());
+  Assert.assertEquals("Unexpected VcoreSeconds value",vcoreSeconds,rmAppMetrics.getVcoreSeconds());
+  rm.stop();
+  return;
+}
