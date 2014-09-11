@@ -1,0 +1,53 @@
+{
+  LinuxContainerExecutor mockLCE=new MockLinuxContainerExecutor();
+  CustomCgroupsLCEResourceHandler handler=new CustomCgroupsLCEResourceHandler();
+  YarnConfiguration conf=new YarnConfiguration();
+  final int numProcessors=4;
+  ResourceCalculatorPlugin plugin=Mockito.mock(ResourceCalculatorPlugin.class);
+  Mockito.doReturn(numProcessors).when(plugin).getNumProcessors();
+  handler.setConf(conf);
+  handler.initConfig();
+  File cgroupDir=new File("target",UUID.randomUUID().toString());
+  if (!cgroupDir.mkdir()) {
+    String message="Could not create dir " + cgroupDir.getAbsolutePath();
+    throw new IOException(message);
+  }
+  File cgroupMountDir=new File(cgroupDir.getAbsolutePath(),"hadoop-yarn");
+  if (!cgroupMountDir.mkdir()) {
+    String message="Could not create dir " + cgroupMountDir.getAbsolutePath();
+    throw new IOException(message);
+  }
+  String mtabContent="none " + cgroupDir.getAbsolutePath() + " cgroup rw,relatime,cpu 0 0";
+  File mockMtab=new File("target",UUID.randomUUID().toString());
+  if (!mockMtab.exists()) {
+    if (!mockMtab.createNewFile()) {
+      String message="Could not create file " + mockMtab.getAbsolutePath();
+      throw new IOException(message);
+    }
+  }
+  FileWriter mtabWriter=new FileWriter(mockMtab.getAbsoluteFile());
+  mtabWriter.write(mtabContent);
+  mtabWriter.close();
+  mockMtab.deleteOnExit();
+  handler.setMtabFile(mockMtab.getAbsolutePath());
+  handler.init(mockLCE,plugin);
+  File periodFile=new File(cgroupMountDir,"cpu.cfs_period_us");
+  File quotaFile=new File(cgroupMountDir,"cpu.cfs_quota_us");
+  Assert.assertFalse(periodFile.exists());
+  Assert.assertFalse(quotaFile.exists());
+  conf.setInt(YarnConfiguration.NM_RESOURCE_PERCENTAGE_PHYSICAL_CPU_LIMIT,75);
+  handler.limits[0]=100 * 1000;
+  handler.limits[1]=1000 * 1000;
+  handler.init(mockLCE,plugin);
+  int period=readIntFromFile(periodFile);
+  int quota=readIntFromFile(quotaFile);
+  Assert.assertEquals(100 * 1000,period);
+  Assert.assertEquals(1000 * 1000,quota);
+  conf.setInt(YarnConfiguration.NM_RESOURCE_PERCENTAGE_PHYSICAL_CPU_LIMIT,100);
+  handler.limits[0]=100 * 1000;
+  handler.limits[1]=1000 * 1000;
+  handler.init(mockLCE,plugin);
+  quota=readIntFromFile(quotaFile);
+  Assert.assertEquals(-1,quota);
+  FileUtils.deleteQuietly(cgroupDir);
+}
