@@ -1,0 +1,34 @@
+{
+  ApplicationId appId=ApplicationId.newInstance(0,1);
+  RMApp app=createRMApp(appId);
+  metricsPublisher.appCreated(app,app.getStartTime());
+  metricsPublisher.appFinished(app,RMAppState.FINISHED,app.getFinishTime());
+  TimelineEntity entity=null;
+  do {
+    entity=store.getEntity(appId.toString(),ApplicationMetricsConstants.ENTITY_TYPE,EnumSet.allOf(Field.class));
+  }
+ while (entity == null || entity.getEvents().size() < 2);
+  Assert.assertEquals(ApplicationMetricsConstants.ENTITY_TYPE,entity.getEntityType());
+  Assert.assertEquals(app.getApplicationId().toString(),entity.getEntityId());
+  Assert.assertEquals(app.getName(),entity.getOtherInfo().get(ApplicationMetricsConstants.NAME_ENTITY_INFO));
+  Assert.assertEquals(app.getQueue(),entity.getOtherInfo().get(ApplicationMetricsConstants.QUEUE_ENTITY_INFO));
+  Assert.assertEquals(app.getUser(),entity.getOtherInfo().get(ApplicationMetricsConstants.USER_ENTITY_INFO));
+  Assert.assertEquals(app.getApplicationType(),entity.getOtherInfo().get(ApplicationMetricsConstants.TYPE_ENTITY_INFO));
+  Assert.assertEquals(app.getSubmitTime(),entity.getOtherInfo().get(ApplicationMetricsConstants.SUBMITTED_TIME_ENTITY_INFO));
+  boolean hasCreatedEvent=false;
+  boolean hasFinishedEvent=false;
+  for (  TimelineEvent event : entity.getEvents()) {
+    if (event.getEventType().equals(ApplicationMetricsConstants.CREATED_EVENT_TYPE)) {
+      hasCreatedEvent=true;
+      Assert.assertEquals(app.getStartTime(),event.getTimestamp());
+    }
+ else     if (event.getEventType().equals(ApplicationMetricsConstants.FINISHED_EVENT_TYPE)) {
+      hasFinishedEvent=true;
+      Assert.assertEquals(app.getFinishTime(),event.getTimestamp());
+      Assert.assertEquals(app.getDiagnostics().toString(),event.getEventInfo().get(ApplicationMetricsConstants.DIAGNOSTICS_INFO_EVENT_INFO));
+      Assert.assertEquals(app.getFinalApplicationStatus().toString(),event.getEventInfo().get(ApplicationMetricsConstants.FINAL_STATUS_EVENT_INFO));
+      Assert.assertEquals(YarnApplicationState.FINISHED.toString(),event.getEventInfo().get(ApplicationMetricsConstants.STATE_EVENT_INFO));
+    }
+  }
+  Assert.assertTrue(hasCreatedEvent && hasFinishedEvent);
+}
