@@ -1,14 +1,24 @@
 {
   CSQueue queue;
-  String[] childQueueNames=conf.getQueues((parent == null) ? queueName : (parent.getQueuePath() + "." + queueName));
+  String fullQueueName=(parent == null) ? queueName : (parent.getQueuePath() + "." + queueName);
+  String[] childQueueNames=conf.getQueues(fullQueueName);
+  boolean isReservableQueue=conf.isReservableQueue(fullQueueName);
   if (childQueueNames == null || childQueueNames.length == 0) {
     if (null == parent) {
       throw new IllegalStateException("Queue configuration missing child queue names for " + queueName);
     }
-    queue=new LeafQueue(csContext,queueName,parent,oldQueues.get(queueName));
-    queue=hook.hook(queue);
+    if (isReservableQueue) {
+      queue=new PlanQueue(csContext,queueName,parent,oldQueues.get(queueName));
+    }
+ else {
+      queue=new LeafQueue(csContext,queueName,parent,oldQueues.get(queueName));
+      queue=hook.hook(queue);
+    }
   }
  else {
+    if (isReservableQueue) {
+      throw new IllegalStateException("Only Leaf Queues can be reservable for " + queueName);
+    }
     ParentQueue parentQueue=new ParentQueue(csContext,queueName,parent,oldQueues.get(queueName));
     queue=hook.hook(parentQueue);
     List<CSQueue> childQueues=new ArrayList<CSQueue>();
