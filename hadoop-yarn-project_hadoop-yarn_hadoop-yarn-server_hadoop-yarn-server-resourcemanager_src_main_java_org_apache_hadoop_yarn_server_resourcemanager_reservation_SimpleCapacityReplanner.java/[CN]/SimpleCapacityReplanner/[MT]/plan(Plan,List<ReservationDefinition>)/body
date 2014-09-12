@@ -1,0 +1,20 @@
+{
+  if (contracts != null) {
+    throw new RuntimeException("SimpleCapacityReplanner cannot handle new reservation contracts");
+  }
+  ResourceCalculator resCalc=plan.getResourceCalculator();
+  Resource totCap=plan.getTotalCapacity();
+  long now=clock.getTime();
+  for (long t=now; (t < plan.getLastEndTime() && t < (now + lengthOfCheckZone)); t+=plan.getStep()) {
+    Resource excessCap=Resources.subtract(plan.getTotalCommittedResources(t),totCap);
+    if (Resources.greaterThan(resCalc,totCap,excessCap,ZERO_RESOURCE)) {
+      Set<ReservationAllocation> curReservations=new TreeSet<ReservationAllocation>(plan.getReservationsAtTime(t));
+      for (Iterator<ReservationAllocation> resIter=curReservations.iterator(); resIter.hasNext() && Resources.greaterThan(resCalc,totCap,excessCap,ZERO_RESOURCE); ) {
+        ReservationAllocation reservation=resIter.next();
+        plan.deleteReservation(reservation.getReservationId());
+        excessCap=Resources.subtract(excessCap,reservation.getResourcesAtTime(t));
+        LOG.info("Removing reservation " + reservation.getReservationId() + " to repair physical-resource constraints in the plan: "+ plan.getQueueName());
+      }
+    }
+  }
+}
