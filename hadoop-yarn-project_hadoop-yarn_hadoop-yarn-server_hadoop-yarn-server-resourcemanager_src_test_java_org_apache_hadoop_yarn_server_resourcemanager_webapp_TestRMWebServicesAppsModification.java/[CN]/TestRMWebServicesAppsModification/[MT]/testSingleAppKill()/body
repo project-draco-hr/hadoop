@@ -7,7 +7,6 @@
     for (    MediaType contentType : contentTypes) {
       RMApp app=rm.submitApp(CONTAINER_MB,"",webserviceUserName);
       amNodeManager.nodeHeartbeat(true);
-      ClientResponse response=this.constructWebResource("apps",app.getApplicationId().toString(),"state").accept(mediaType).get(ClientResponse.class);
       AppState targetState=new AppState(YarnApplicationState.KILLED.toString());
       Object entity;
       if (contentType == MediaType.APPLICATION_JSON_TYPE) {
@@ -16,17 +15,17 @@
  else {
         entity=targetState;
       }
-      response=this.constructWebResource("apps",app.getApplicationId().toString(),"state").entity(entity,contentType).accept(mediaType).put(ClientResponse.class);
+      ClientResponse response=this.constructWebResource("apps",app.getApplicationId().toString(),"state").entity(entity,contentType).accept(mediaType).put(ClientResponse.class);
       if (!isAuthenticationEnabled()) {
         assertEquals(Status.UNAUTHORIZED,response.getClientResponseStatus());
         continue;
       }
       assertEquals(Status.ACCEPTED,response.getClientResponseStatus());
-      if (mediaType == MediaType.APPLICATION_JSON) {
-        verifyAppStateJson(response,RMAppState.KILLING,RMAppState.ACCEPTED);
+      if (mediaType.equals(MediaType.APPLICATION_JSON)) {
+        verifyAppStateJson(response,RMAppState.FINAL_SAVING,RMAppState.KILLED,RMAppState.KILLING,RMAppState.ACCEPTED);
       }
  else {
-        verifyAppStateXML(response,RMAppState.KILLING,RMAppState.ACCEPTED);
+        verifyAppStateXML(response,RMAppState.FINAL_SAVING,RMAppState.KILLED,RMAppState.KILLING,RMAppState.ACCEPTED);
       }
       String locationHeaderValue=response.getHeaders().getFirst(HttpHeaders.LOCATION);
       Client c=Client.create();
@@ -43,7 +42,7 @@
         assertTrue((response.getClientResponseStatus() == Status.ACCEPTED) || (response.getClientResponseStatus() == Status.OK));
         if (response.getClientResponseStatus() == Status.OK) {
           assertEquals(RMAppState.KILLED,app.getState());
-          if (mediaType == MediaType.APPLICATION_JSON) {
+          if (mediaType.equals(MediaType.APPLICATION_JSON)) {
             verifyAppStateJson(response,RMAppState.KILLED);
           }
  else {
@@ -55,5 +54,4 @@
     }
   }
   rm.stop();
-  return;
 }

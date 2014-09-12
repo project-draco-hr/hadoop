@@ -4,6 +4,13 @@
   UserGroupInformation.setConfiguration(conf);
   File confDir=getTestDir();
   conf=createBaseKMSConf(confDir);
+  conf.set(KeyAuthorizationKeyProvider.KEY_ACL + "k1.ALL","*");
+  conf.set(KeyAuthorizationKeyProvider.KEY_ACL + "k2.MANAGEMENT","*");
+  conf.set(KeyAuthorizationKeyProvider.KEY_ACL + "k2.READ","*");
+  conf.set(KeyAuthorizationKeyProvider.KEY_ACL + "k3.ALL","*");
+  conf.set(KeyAuthorizationKeyProvider.KEY_ACL + "k4.ALL","*");
+  conf.set(KeyAuthorizationKeyProvider.KEY_ACL + "k5.ALL","*");
+  conf.set(KeyAuthorizationKeyProvider.KEY_ACL + "k6.ALL","*");
   writeConf(confDir,conf);
   runServer(null,null,confDir,new KMSCallable(){
     @Override public Void call() throws Exception {
@@ -106,10 +113,17 @@
       options=new KeyProvider.Options(conf);
       options.setCipher("AES/CTR/NoPadding");
       options.setBitLength(128);
-      kp.createKey("k2",options);
+      KeyVersion kVer2=kp.createKey("k2",options);
       KeyProvider.Metadata meta=kp.getMetadata("k2");
       Assert.assertNull(meta.getDescription());
-      Assert.assertTrue(meta.getAttributes().isEmpty());
+      Assert.assertEquals("k2",meta.getAttributes().get("key.acl.name"));
+      try {
+        kpExt=KeyProviderCryptoExtension.createKeyProviderCryptoExtension(kp);
+        kpExt.generateEncryptedKey(kVer2.getName());
+        Assert.fail("User should not be allowed to encrypt !!");
+      }
+ catch (      Exception ex) {
+      }
       options=new KeyProvider.Options(conf);
       options.setCipher("AES/CTR/NoPadding");
       options.setBitLength(128);
@@ -117,12 +131,13 @@
       kp.createKey("k3",options);
       meta=kp.getMetadata("k3");
       Assert.assertEquals("d",meta.getDescription());
-      Assert.assertTrue(meta.getAttributes().isEmpty());
+      Assert.assertEquals("k3",meta.getAttributes().get("key.acl.name"));
       Map<String,String> attributes=new HashMap<String,String>();
       attributes.put("a","A");
       options=new KeyProvider.Options(conf);
       options.setCipher("AES/CTR/NoPadding");
       options.setBitLength(128);
+      attributes.put("key.acl.name","k4");
       options.setAttributes(attributes);
       kp.createKey("k4",options);
       meta=kp.getMetadata("k4");
@@ -132,6 +147,7 @@
       options.setCipher("AES/CTR/NoPadding");
       options.setBitLength(128);
       options.setDescription("d");
+      attributes.put("key.acl.name","k5");
       options.setAttributes(attributes);
       kp.createKey("k5",options);
       meta=kp.getMetadata("k5");

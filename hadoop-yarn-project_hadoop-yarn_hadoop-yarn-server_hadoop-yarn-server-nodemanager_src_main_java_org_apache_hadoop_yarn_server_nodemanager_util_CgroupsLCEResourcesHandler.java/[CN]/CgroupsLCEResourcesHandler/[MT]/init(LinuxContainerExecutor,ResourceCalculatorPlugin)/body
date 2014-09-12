@@ -1,0 +1,21 @@
+{
+  initConfig();
+  if (cgroupMount && cgroupMountPath != null) {
+    ArrayList<String> cgroupKVs=new ArrayList<String>();
+    cgroupKVs.add(CONTROLLER_CPU + "=" + cgroupMountPath+ "/"+ CONTROLLER_CPU);
+    lce.mountCgroups(cgroupKVs,cgroupPrefix);
+  }
+  initializeControllerPaths();
+  float yarnProcessors=NodeManagerHardwareUtils.getContainersCores(plugin,conf);
+  int systemProcessors=plugin.getNumProcessors();
+  if (systemProcessors != (int)yarnProcessors) {
+    LOG.info("YARN containers restricted to " + yarnProcessors + " cores");
+    int[] limits=getOverallLimits(yarnProcessors);
+    updateCgroup(CONTROLLER_CPU,"",CPU_PERIOD_US,String.valueOf(limits[0]));
+    updateCgroup(CONTROLLER_CPU,"",CPU_QUOTA_US,String.valueOf(limits[1]));
+  }
+ else   if (cpuLimitsExist()) {
+    LOG.info("Removing CPU constraints for YARN containers.");
+    updateCgroup(CONTROLLER_CPU,"",CPU_QUOTA_US,String.valueOf(-1));
+  }
+}

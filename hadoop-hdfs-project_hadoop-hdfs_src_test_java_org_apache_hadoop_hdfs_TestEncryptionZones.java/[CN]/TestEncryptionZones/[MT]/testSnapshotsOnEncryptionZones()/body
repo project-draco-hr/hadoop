@@ -1,0 +1,30 @@
+{
+  final int len=8196;
+  final Path zoneParent=new Path("/zones");
+  final Path zone=new Path(zoneParent,"zone");
+  final Path zoneFile=new Path(zone,"zoneFile");
+  fsWrapper.mkdir(zone,FsPermission.getDirDefault(),true);
+  dfsAdmin.allowSnapshot(zoneParent);
+  dfsAdmin.createEncryptionZone(zone,TEST_KEY);
+  DFSTestUtil.createFile(fs,zoneFile,len,(short)1,0xFEED);
+  String contents=DFSTestUtil.readFile(fs,zoneFile);
+  final Path snap1=fs.createSnapshot(zoneParent);
+  final Path snap1Zone=new Path(snap1,zone.getName());
+  assertEquals("Got unexpected ez path",zone.toString(),dfsAdmin.getEncryptionZoneForPath(snap1Zone).getPath().toString());
+  fsWrapper.delete(zone,true);
+  fsWrapper.mkdir(zone,FsPermission.getDirDefault(),true);
+  final Path snap2=fs.createSnapshot(zoneParent);
+  final Path snap2Zone=new Path(snap2,zone.getName());
+  assertNull("Expected null ez path",dfsAdmin.getEncryptionZoneForPath(snap2Zone));
+  dfsAdmin.createEncryptionZone(zone,TEST_KEY);
+  final Path snap3=fs.createSnapshot(zoneParent);
+  final Path snap3Zone=new Path(snap3,zone.getName());
+  assertEquals("Got unexpected ez path",zone.toString(),dfsAdmin.getEncryptionZoneForPath(snap3Zone).getPath().toString());
+  final Path snapshottedZoneFile=new Path(snap1.toString() + "/" + zone.getName()+ "/"+ zoneFile.getName());
+  assertEquals("Contents of snapshotted file have changed unexpectedly",contents,DFSTestUtil.readFile(fs,snapshottedZoneFile));
+  fs.deleteSnapshot(zoneParent,snap2.getName());
+  assertEquals("Got unexpected ez path",zone.toString(),dfsAdmin.getEncryptionZoneForPath(snap1Zone).getPath().toString());
+  assertEquals("Got unexpected ez path",zone.toString(),dfsAdmin.getEncryptionZoneForPath(snap3Zone).getPath().toString());
+  fs.deleteSnapshot(zoneParent,snap1.getName());
+  assertEquals("Got unexpected ez path",zone.toString(),dfsAdmin.getEncryptionZoneForPath(snap3Zone).getPath().toString());
+}

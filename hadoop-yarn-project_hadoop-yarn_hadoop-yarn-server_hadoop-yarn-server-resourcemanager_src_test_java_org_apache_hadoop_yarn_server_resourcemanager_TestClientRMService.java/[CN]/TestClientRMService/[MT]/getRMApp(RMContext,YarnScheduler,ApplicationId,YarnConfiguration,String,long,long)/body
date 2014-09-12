@@ -1,0 +1,38 @@
+{
+  ApplicationSubmissionContext asContext=mock(ApplicationSubmissionContext.class);
+  when(asContext.getMaxAppAttempts()).thenReturn(1);
+  RMAppImpl app=spy(new RMAppImpl(applicationId3,rmContext,config,null,null,queueName,asContext,yarnScheduler,null,System.currentTimeMillis(),"YARN",null){
+    @Override public ApplicationReport createAndGetApplicationReport(    String clientUserName,    boolean allowAccess){
+      ApplicationReport report=super.createAndGetApplicationReport(clientUserName,allowAccess);
+      ApplicationResourceUsageReport usageReport=report.getApplicationResourceUsageReport();
+      usageReport.setMemorySeconds(memorySeconds);
+      usageReport.setVcoreSeconds(vcoreSeconds);
+      report.setApplicationResourceUsageReport(usageReport);
+      return report;
+    }
+  }
+);
+  ApplicationAttemptId attemptId=ApplicationAttemptId.newInstance(ApplicationId.newInstance(123456,1),1);
+  RMAppAttemptImpl rmAppAttemptImpl=spy(new RMAppAttemptImpl(attemptId,rmContext,yarnScheduler,null,asContext,config,false));
+  Container container=Container.newInstance(ContainerId.newInstance(attemptId,1),null,"",null,null,null);
+  RMContainerImpl containerimpl=spy(new RMContainerImpl(container,attemptId,null,"",rmContext));
+  Map<ApplicationAttemptId,RMAppAttempt> attempts=new HashMap<ApplicationAttemptId,RMAppAttempt>();
+  attempts.put(attemptId,rmAppAttemptImpl);
+  when(app.getCurrentAppAttempt()).thenReturn(rmAppAttemptImpl);
+  when(app.getAppAttempts()).thenReturn(attempts);
+  when(rmAppAttemptImpl.getMasterContainer()).thenReturn(container);
+  ResourceScheduler rs=mock(ResourceScheduler.class);
+  when(rmContext.getScheduler()).thenReturn(rs);
+  when(rmContext.getScheduler().getRMContainer(any(ContainerId.class))).thenReturn(containerimpl);
+  SchedulerAppReport sAppReport=mock(SchedulerAppReport.class);
+  when(rmContext.getScheduler().getSchedulerAppInfo(any(ApplicationAttemptId.class))).thenReturn(sAppReport);
+  List<RMContainer> rmContainers=new ArrayList<RMContainer>();
+  rmContainers.add(containerimpl);
+  when(rmContext.getScheduler().getSchedulerAppInfo(attemptId).getLiveContainers()).thenReturn(rmContainers);
+  ContainerStatus cs=mock(ContainerStatus.class);
+  when(containerimpl.getFinishedStatus()).thenReturn(cs);
+  when(containerimpl.getDiagnosticsInfo()).thenReturn("N/A");
+  when(containerimpl.getContainerExitStatus()).thenReturn(0);
+  when(containerimpl.getContainerState()).thenReturn(ContainerState.COMPLETE);
+  return app;
+}
