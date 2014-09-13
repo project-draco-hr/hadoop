@@ -1,0 +1,49 @@
+{
+  Resource totCap=Resources.multiply(capacity.getCapability(),(float)capacity.getNumContainers());
+  if (totCap.equals(ZERO_RESOURCE)) {
+    return true;
+  }
+  writeLock.lock();
+  try {
+    long startKey=reservationInterval.getStartTime();
+    long endKey=reservationInterval.getEndTime();
+    NavigableMap<Long,Resource> ticks=cumulativeCapacity.headMap(endKey,false);
+    if (ticks != null && !ticks.isEmpty()) {
+      Resource updatedCapacity=Resource.newInstance(0,0);
+      Entry<Long,Resource> lowEntry=ticks.floorEntry(startKey);
+      if (lowEntry == null) {
+        cumulativeCapacity.put(startKey,totCap);
+      }
+ else {
+        updatedCapacity=Resources.add(lowEntry.getValue(),totCap);
+        if ((startKey == lowEntry.getKey()) && (isSameAsPrevious(lowEntry.getKey(),updatedCapacity))) {
+          cumulativeCapacity.remove(lowEntry.getKey());
+        }
+ else {
+          cumulativeCapacity.put(startKey,updatedCapacity);
+        }
+      }
+      Set<Entry<Long,Resource>> overlapSet=ticks.tailMap(startKey,false).entrySet();
+      for (      Entry<Long,Resource> entry : overlapSet) {
+        updatedCapacity=Resources.add(entry.getValue(),totCap);
+        entry.setValue(updatedCapacity);
+      }
+    }
+ else {
+      cumulativeCapacity.put(startKey,totCap);
+    }
+    Resource nextTick=cumulativeCapacity.get(endKey);
+    if (nextTick != null) {
+      if (isSameAsPrevious(endKey,nextTick)) {
+        cumulativeCapacity.remove(endKey);
+      }
+    }
+ else {
+      cumulativeCapacity.put(endKey,Resources.subtract(cumulativeCapacity.floorEntry(endKey).getValue(),totCap));
+    }
+    return true;
+  }
+  finally {
+    writeLock.unlock();
+  }
+}

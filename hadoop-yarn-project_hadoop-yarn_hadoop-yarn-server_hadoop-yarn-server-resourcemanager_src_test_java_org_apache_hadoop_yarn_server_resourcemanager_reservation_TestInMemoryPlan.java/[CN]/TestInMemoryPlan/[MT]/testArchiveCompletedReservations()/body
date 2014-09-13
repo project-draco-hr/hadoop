@@ -1,0 +1,64 @@
+{
+  Plan plan=new InMemoryPlan(queueMetrics,policy,agent,totalCapacity,1L,resCalc,minAlloc,maxAlloc,planName,replanner,true);
+  ReservationId reservationID1=ReservationSystemTestUtil.getNewReservationId();
+  int[] alloc1={10,10,10,10,10,10};
+  int start=100;
+  Map<ReservationInterval,ReservationRequest> allocations1=generateAllocation(start,alloc1,false);
+  ReservationDefinition rDef1=createSimpleReservationDefinition(start,start + alloc1.length,alloc1.length,allocations1.values());
+  ReservationAllocation rAllocation=new InMemoryReservationAllocation(reservationID1,rDef1,user,planName,start,start + alloc1.length,allocations1,resCalc,minAlloc);
+  Assert.assertNull(plan.getReservationById(reservationID1));
+  try {
+    plan.addReservation(rAllocation);
+  }
+ catch (  PlanningException e) {
+    Assert.fail(e.getMessage());
+  }
+  doAssertions(plan,rAllocation);
+  for (int i=0; i < alloc1.length; i++) {
+    Assert.assertEquals(Resource.newInstance(1024 * (alloc1[i]),(alloc1[i])),plan.getTotalCommittedResources(start + i));
+    Assert.assertEquals(Resource.newInstance(1024 * (alloc1[i]),(alloc1[i])),plan.getConsumptionForUser(user,start + i));
+  }
+  ReservationId reservationID2=ReservationSystemTestUtil.getNewReservationId();
+  int[] alloc2={0,5,10,5,0};
+  Map<ReservationInterval,ReservationRequest> allocations2=generateAllocation(start,alloc2,true);
+  ReservationDefinition rDef2=createSimpleReservationDefinition(start,start + alloc2.length,alloc2.length,allocations2.values());
+  rAllocation=new InMemoryReservationAllocation(reservationID2,rDef2,user,planName,start,start + alloc2.length,allocations2,resCalc,minAlloc);
+  Assert.assertNull(plan.getReservationById(reservationID2));
+  try {
+    plan.addReservation(rAllocation);
+  }
+ catch (  PlanningException e) {
+    Assert.fail(e.getMessage());
+  }
+  Assert.assertNotNull(plan.getReservationById(reservationID2));
+  for (int i=0; i < alloc2.length; i++) {
+    Assert.assertEquals(Resource.newInstance(1024 * (alloc1[i] + alloc2[i] + i),alloc1[i] + alloc2[i] + i),plan.getTotalCommittedResources(start + i));
+    Assert.assertEquals(Resource.newInstance(1024 * (alloc1[i] + alloc2[i] + i),alloc1[i] + alloc2[i] + i),plan.getConsumptionForUser(user,start + i));
+  }
+  when(clock.getTime()).thenReturn(106L);
+  when(policy.getValidWindow()).thenReturn(1L);
+  try {
+    plan.archiveCompletedReservations(clock.getTime());
+  }
+ catch (  PlanningException e) {
+    Assert.fail(e.getMessage());
+  }
+  Assert.assertNotNull(plan.getReservationById(reservationID1));
+  Assert.assertNull(plan.getReservationById(reservationID2));
+  for (int i=0; i < alloc1.length; i++) {
+    Assert.assertEquals(Resource.newInstance(1024 * (alloc1[i]),(alloc1[i])),plan.getTotalCommittedResources(start + i));
+    Assert.assertEquals(Resource.newInstance(1024 * (alloc1[i]),(alloc1[i])),plan.getConsumptionForUser(user,start + i));
+  }
+  when(clock.getTime()).thenReturn(107L);
+  try {
+    plan.archiveCompletedReservations(clock.getTime());
+  }
+ catch (  PlanningException e) {
+    Assert.fail(e.getMessage());
+  }
+  Assert.assertNull(plan.getReservationById(reservationID1));
+  for (int i=0; i < alloc1.length; i++) {
+    Assert.assertEquals(Resource.newInstance(0,0),plan.getTotalCommittedResources(start + i));
+    Assert.assertEquals(Resource.newInstance(0,0),plan.getConsumptionForUser(user,start + i));
+  }
+}

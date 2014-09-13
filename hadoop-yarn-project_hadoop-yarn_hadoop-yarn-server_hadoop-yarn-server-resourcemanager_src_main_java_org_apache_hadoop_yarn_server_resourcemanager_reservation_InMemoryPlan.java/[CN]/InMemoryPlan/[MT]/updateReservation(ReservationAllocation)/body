@@ -1,0 +1,35 @@
+{
+  writeLock.lock();
+  boolean result=false;
+  try {
+    ReservationId resId=reservation.getReservationId();
+    ReservationAllocation currReservation=getReservationById(resId);
+    if (currReservation == null) {
+      String errMsg="The specified Reservation with ID " + resId + " does not exist in the plan";
+      LOG.error(errMsg);
+      throw new IllegalArgumentException(errMsg);
+    }
+    if (!removeReservation(currReservation)) {
+      LOG.error("Unable to replace reservation: {} from plan.",reservation.getReservationId());
+      return result;
+    }
+    try {
+      result=addReservation(reservation);
+    }
+ catch (    PlanningException e) {
+      LOG.error("Unable to update reservation: {} from plan due to {}.",reservation.getReservationId(),e.getMessage());
+    }
+    if (result) {
+      LOG.info("Sucessfully updated reservation: {} in plan.",reservation.getReservationId());
+      return result;
+    }
+ else {
+      addReservation(currReservation);
+      LOG.info("Rollbacked update reservation: {} from plan.",reservation.getReservationId());
+      return result;
+    }
+  }
+  finally {
+    writeLock.unlock();
+  }
+}

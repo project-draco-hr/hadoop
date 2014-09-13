@@ -1,0 +1,35 @@
+{
+  InMemoryReservationAllocation inMemReservation=(InMemoryReservationAllocation)reservation;
+  if (inMemReservation.getUser() == null) {
+    String errMsg="The specified Reservation with ID " + inMemReservation.getReservationId() + " is not mapped to any user";
+    LOG.error(errMsg);
+    throw new IllegalArgumentException(errMsg);
+  }
+  writeLock.lock();
+  try {
+    if (reservationTable.containsKey(inMemReservation.getReservationId())) {
+      String errMsg="The specified Reservation with ID " + inMemReservation.getReservationId() + " already exists";
+      LOG.error(errMsg);
+      throw new IllegalArgumentException(errMsg);
+    }
+    policy.validate(this,inMemReservation);
+    reservation.setAcceptanceTimestamp(clock.getTime());
+    ReservationInterval searchInterval=new ReservationInterval(inMemReservation.getStartTime(),inMemReservation.getEndTime());
+    Set<InMemoryReservationAllocation> reservations=currentReservations.get(searchInterval);
+    if (reservations == null) {
+      reservations=new HashSet<InMemoryReservationAllocation>();
+    }
+    if (!reservations.add(inMemReservation)) {
+      LOG.error("Unable to add reservation: {} to plan.",inMemReservation.getReservationId());
+      return false;
+    }
+    currentReservations.put(searchInterval,reservations);
+    reservationTable.put(inMemReservation.getReservationId(),inMemReservation);
+    incrementAllocation(inMemReservation);
+    LOG.info("Sucessfully added reservation: {} to plan.",inMemReservation.getReservationId());
+    return true;
+  }
+  finally {
+    writeLock.unlock();
+  }
+}

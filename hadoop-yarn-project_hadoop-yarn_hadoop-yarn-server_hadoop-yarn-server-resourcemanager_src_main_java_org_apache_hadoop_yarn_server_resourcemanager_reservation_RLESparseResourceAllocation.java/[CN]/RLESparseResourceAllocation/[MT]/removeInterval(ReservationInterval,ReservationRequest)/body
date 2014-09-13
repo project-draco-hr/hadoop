@@ -1,0 +1,34 @@
+{
+  Resource totCap=Resources.multiply(capacity.getCapability(),(float)capacity.getNumContainers());
+  if (totCap.equals(ZERO_RESOURCE)) {
+    return true;
+  }
+  writeLock.lock();
+  try {
+    long startKey=reservationInterval.getStartTime();
+    long endKey=reservationInterval.getEndTime();
+    NavigableMap<Long,Resource> ticks=cumulativeCapacity.headMap(endKey,false);
+    SortedMap<Long,Resource> overlapSet=ticks.tailMap(startKey);
+    if (overlapSet != null && !overlapSet.isEmpty()) {
+      Resource updatedCapacity=Resource.newInstance(0,0);
+      long currentKey=-1;
+      for (Iterator<Entry<Long,Resource>> overlapEntries=overlapSet.entrySet().iterator(); overlapEntries.hasNext(); ) {
+        Entry<Long,Resource> entry=overlapEntries.next();
+        currentKey=entry.getKey();
+        updatedCapacity=Resources.subtract(entry.getValue(),totCap);
+        cumulativeCapacity.put(currentKey,updatedCapacity);
+      }
+      Long firstKey=overlapSet.firstKey();
+      if (isSameAsPrevious(firstKey,overlapSet.get(firstKey))) {
+        cumulativeCapacity.remove(firstKey);
+      }
+      if ((currentKey != -1) && (isSameAsNext(currentKey,updatedCapacity))) {
+        cumulativeCapacity.remove(cumulativeCapacity.higherKey(currentKey));
+      }
+    }
+    return true;
+  }
+  finally {
+    writeLock.unlock();
+  }
+}
