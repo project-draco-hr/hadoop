@@ -1,0 +1,36 @@
+{
+  if (closed) {
+    return 0;
+  }
+  if (null == outputBuffer) {
+    throw new IOException("output buffer not set");
+  }
+  this.nativeWriter=new ByteBufferDataWriter(target);
+  outputBuffer.rewind();
+  int written=0;
+  boolean firstKV=true;
+  if (inputKVBufferd) {
+    written+=serializer.serializeKV(nativeWriter,tmpInputKey,tmpInputValue);
+    inputKVBufferd=false;
+    firstKV=false;
+  }
+  while (rIter.next()) {
+    inputKVBufferd=false;
+    tmpInputKey.readFields(rIter.getKey());
+    tmpInputValue.readFields(rIter.getValue());
+    serializer.updateLength(tmpInputKey,tmpInputValue);
+    final int kvSize=tmpInputKey.length + tmpInputValue.length + KV_HEADER_LENGTH;
+    if (!firstKV && nativeWriter.shortOfSpace(kvSize)) {
+      inputKVBufferd=true;
+      break;
+    }
+ else {
+      written+=serializer.serializeKV(nativeWriter,tmpInputKey,tmpInputValue);
+      firstKV=false;
+    }
+  }
+  if (nativeWriter.hasUnFlushedData()) {
+    nativeWriter.flush();
+  }
+  return written;
+}

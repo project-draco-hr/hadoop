@@ -1,0 +1,79 @@
+{
+  this.context=context;
+  this.job=context.getJobConf();
+  Platforms.init(job);
+  if (job.getNumReduceTasks() == 0) {
+    String message="There is no reducer, no need to use native output collector";
+    LOG.error(message);
+    throw new InvalidJobConfException(message);
+  }
+  Class<?> comparatorClass=job.getClass(MRJobConfig.KEY_COMPARATOR,null,RawComparator.class);
+  if (comparatorClass != null && !Platforms.define(comparatorClass)) {
+    String message="Native output collector doesn't support customized java comparator " + job.get(MRJobConfig.KEY_COMPARATOR);
+    LOG.error(message);
+    throw new InvalidJobConfException(message);
+  }
+  if (!QuickSort.class.getName().equals(job.get(Constants.MAP_SORT_CLASS))) {
+    String message="Native-Task doesn't support sort class " + job.get(Constants.MAP_SORT_CLASS);
+    LOG.error(message);
+    throw new InvalidJobConfException(message);
+  }
+  if (job.getBoolean(MRConfig.SHUFFLE_SSL_ENABLED_KEY,false) == true) {
+    String message="Native-Task doesn't support secure shuffle";
+    LOG.error(message);
+    throw new InvalidJobConfException(message);
+  }
+  final Class<?> keyCls=job.getMapOutputKeyClass();
+  try {
+    @SuppressWarnings("rawtypes") final INativeSerializer serializer=NativeSerialization.getInstance().getSerializer(keyCls);
+    if (null == serializer) {
+      String message="Key type not supported. Cannot find serializer for " + keyCls.getName();
+      LOG.error(message);
+      throw new InvalidJobConfException(message);
+    }
+ else     if (!Platforms.support(keyCls.getName(),serializer,job)) {
+      String message="Native output collector doesn't support this key, " + "this key is not comparable in native: " + keyCls.getName();
+      LOG.error(message);
+      throw new InvalidJobConfException(message);
+    }
+  }
+ catch (  final IOException e) {
+    String message="Cannot find serializer for " + keyCls.getName();
+    LOG.error(message);
+    throw new IOException(message);
+  }
+  final boolean ret=NativeRuntime.isNativeLibraryLoaded();
+  if (ret) {
+    if (job.getBoolean(MRJobConfig.MAP_OUTPUT_COMPRESS,false)) {
+      String codec=job.get(MRJobConfig.MAP_OUTPUT_COMPRESS_CODEC);
+      if (!NativeRuntime.supportsCompressionCodec(codec.getBytes(Charsets.UTF_8))) {
+        String message="Native output collector doesn't support compression codec " + codec;
+        LOG.error(message);
+        throw new InvalidJobConfException(message);
+      }
+    }
+    NativeRuntime.configure(job);
+    final long updateInterval=job.getLong(Constants.NATIVE_STATUS_UPDATE_INTERVAL,Constants.NATIVE_STATUS_UPDATE_INTERVAL_DEFVAL);
+    updater=new StatusReportChecker(context.getReporter(),updateInterval);
+    updater.start();
+  }
+ else {
+    String message="NativeRuntime cannot be loaded, please check that " + "libnativetask.so is in hadoop library dir";
+    LOG.error(message);
+    throw new InvalidJobConfException(message);
+  }
+  this.handler=null;
+  try {
+    final Class<K> oKClass=(Class<K>)job.getMapOutputKeyClass();
+    final Class<K> oVClass=(Class<K>)job.getMapOutputValueClass();
+    final TaskAttemptID id=context.getMapTask().getTaskID();
+    final TaskContext taskContext=new TaskContext(job,null,null,oKClass,oVClass,context.getReporter(),id);
+    handler=NativeCollectorOnlyHandler.create(taskContext);
+  }
+ catch (  final IOException e) {
+    String message="Native output collector cannot be loaded;";
+    LOG.error(message);
+    throw new IOException(message,e);
+  }
+  LOG.info("Native output collector can be successfully enabled!");
+}
