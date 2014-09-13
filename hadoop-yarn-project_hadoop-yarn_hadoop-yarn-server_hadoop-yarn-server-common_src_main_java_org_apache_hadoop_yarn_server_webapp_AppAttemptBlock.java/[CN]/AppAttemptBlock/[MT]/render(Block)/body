@@ -12,11 +12,23 @@
     puts("Invalid application attempt ID: " + attemptid);
     return;
   }
+  final ApplicationAttemptId appAttemptIdFinal=appAttemptId;
+  UserGroupInformation callerUGI=getCallerUGI();
   ApplicationAttemptReport appAttemptReport;
   try {
-    appAttemptReport=appContext.getApplicationAttempt(appAttemptId);
+    if (callerUGI == null) {
+      appAttemptReport=appContext.getApplicationAttempt(appAttemptId);
+    }
+ else {
+      appAttemptReport=callerUGI.doAs(new PrivilegedExceptionAction<ApplicationAttemptReport>(){
+        @Override public ApplicationAttemptReport run() throws Exception {
+          return appContext.getApplicationAttempt(appAttemptIdFinal);
+        }
+      }
+);
+    }
   }
- catch (  IOException e) {
+ catch (  Exception e) {
     String message="Failed to read the application attempt " + appAttemptId + ".";
     LOG.error(message,e);
     html.p()._(message)._();
@@ -36,9 +48,23 @@
   html._(InfoBlock.class);
   Collection<ContainerReport> containers;
   try {
-    containers=appContext.getContainers(appAttemptId).values();
+    if (callerUGI == null) {
+      containers=appContext.getContainers(appAttemptId).values();
+    }
+ else {
+      containers=callerUGI.doAs(new PrivilegedExceptionAction<Collection<ContainerReport>>(){
+        @Override public Collection<ContainerReport> run() throws Exception {
+          return appContext.getContainers(appAttemptIdFinal).values();
+        }
+      }
+);
+    }
   }
- catch (  IOException e) {
+ catch (  RuntimeException e) {
+    html.p()._("Sorry, Failed to get containers for application attempt" + attemptid + ".")._();
+    return;
+  }
+catch (  Exception e) {
     html.p()._("Sorry, Failed to get containers for application attempt" + attemptid + ".")._();
     return;
   }

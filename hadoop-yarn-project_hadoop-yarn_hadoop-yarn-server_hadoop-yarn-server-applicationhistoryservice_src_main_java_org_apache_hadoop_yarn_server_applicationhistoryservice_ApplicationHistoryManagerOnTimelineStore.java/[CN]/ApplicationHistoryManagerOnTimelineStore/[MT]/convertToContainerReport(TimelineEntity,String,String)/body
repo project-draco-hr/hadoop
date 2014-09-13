@@ -1,0 +1,58 @@
+{
+  int allocatedMem=0;
+  int allocatedVcore=0;
+  String allocatedHost=null;
+  int allocatedPort=-1;
+  int allocatedPriority=0;
+  long createdTime=0;
+  long finishedTime=0;
+  String diagnosticsInfo=null;
+  int exitStatus=ContainerExitStatus.INVALID;
+  ContainerState state=null;
+  Map<String,Object> entityInfo=entity.getOtherInfo();
+  if (entityInfo != null) {
+    if (entityInfo.containsKey(ContainerMetricsConstants.ALLOCATED_MEMORY_ENTITY_INFO)) {
+      allocatedMem=(Integer)entityInfo.get(ContainerMetricsConstants.ALLOCATED_MEMORY_ENTITY_INFO);
+    }
+    if (entityInfo.containsKey(ContainerMetricsConstants.ALLOCATED_VCORE_ENTITY_INFO)) {
+      allocatedVcore=(Integer)entityInfo.get(ContainerMetricsConstants.ALLOCATED_VCORE_ENTITY_INFO);
+    }
+    if (entityInfo.containsKey(ContainerMetricsConstants.ALLOCATED_HOST_ENTITY_INFO)) {
+      allocatedHost=entityInfo.get(ContainerMetricsConstants.ALLOCATED_HOST_ENTITY_INFO).toString();
+    }
+    if (entityInfo.containsKey(ContainerMetricsConstants.ALLOCATED_PORT_ENTITY_INFO)) {
+      allocatedPort=(Integer)entityInfo.get(ContainerMetricsConstants.ALLOCATED_PORT_ENTITY_INFO);
+    }
+    if (entityInfo.containsKey(ContainerMetricsConstants.ALLOCATED_PRIORITY_ENTITY_INFO)) {
+      allocatedPriority=(Integer)entityInfo.get(ContainerMetricsConstants.ALLOCATED_PRIORITY_ENTITY_INFO);
+    }
+  }
+  List<TimelineEvent> events=entity.getEvents();
+  if (events != null) {
+    for (    TimelineEvent event : events) {
+      if (event.getEventType().equals(ContainerMetricsConstants.CREATED_EVENT_TYPE)) {
+        createdTime=event.getTimestamp();
+      }
+ else       if (event.getEventType().equals(ContainerMetricsConstants.FINISHED_EVENT_TYPE)) {
+        finishedTime=event.getTimestamp();
+        Map<String,Object> eventInfo=event.getEventInfo();
+        if (eventInfo == null) {
+          continue;
+        }
+        if (eventInfo.containsKey(ContainerMetricsConstants.DIAGNOSTICS_INFO_EVENT_INFO)) {
+          diagnosticsInfo=eventInfo.get(ContainerMetricsConstants.DIAGNOSTICS_INFO_EVENT_INFO).toString();
+        }
+        if (eventInfo.containsKey(ContainerMetricsConstants.EXIT_STATUS_EVENT_INFO)) {
+          exitStatus=(Integer)eventInfo.get(ContainerMetricsConstants.EXIT_STATUS_EVENT_INFO);
+        }
+        if (eventInfo.containsKey(ContainerMetricsConstants.STATE_EVENT_INFO)) {
+          state=ContainerState.valueOf(eventInfo.get(ContainerMetricsConstants.STATE_EVENT_INFO).toString());
+        }
+      }
+    }
+  }
+  NodeId allocatedNode=NodeId.newInstance(allocatedHost,allocatedPort);
+  ContainerId containerId=ConverterUtils.toContainerId(entity.getEntityId());
+  String logUrl=WebAppUtils.getAggregatedLogURL(serverHttpAddress,allocatedNode.toString(),containerId.toString(),containerId.toString(),user);
+  return ContainerReport.newInstance(ConverterUtils.toContainerId(entity.getEntityId()),Resource.newInstance(allocatedMem,allocatedVcore),NodeId.newInstance(allocatedHost,allocatedPort),Priority.newInstance(allocatedPriority),createdTime,finishedTime,diagnosticsInfo,logUrl,exitStatus,state);
+}

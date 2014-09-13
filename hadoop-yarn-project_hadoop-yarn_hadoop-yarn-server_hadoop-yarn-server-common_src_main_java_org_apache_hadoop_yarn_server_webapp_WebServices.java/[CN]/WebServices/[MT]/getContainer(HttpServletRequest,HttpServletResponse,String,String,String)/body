@@ -1,13 +1,24 @@
 {
+  UserGroupInformation callerUGI=getUser(req);
   ApplicationId aid=parseApplicationId(appId);
   ApplicationAttemptId aaid=parseApplicationAttemptId(appAttemptId);
-  ContainerId cid=parseContainerId(containerId);
+  final ContainerId cid=parseContainerId(containerId);
   validateIds(aid,aaid,cid);
   ContainerReport container=null;
   try {
-    container=appContext.getContainer(cid);
+    if (callerUGI == null) {
+      container=appContext.getContainer(cid);
+    }
+ else {
+      container=callerUGI.doAs(new PrivilegedExceptionAction<ContainerReport>(){
+        @Override public ContainerReport run() throws Exception {
+          return appContext.getContainer(cid);
+        }
+      }
+);
+    }
   }
- catch (  IOException e) {
+ catch (  Exception e) {
     throw new WebApplicationException(e);
   }
   if (container == null) {

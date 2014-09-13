@@ -12,11 +12,23 @@
     puts("Invalid Application ID: " + aid);
     return;
   }
+  final ApplicationId appIDFinal=appID;
+  UserGroupInformation callerUGI=getCallerUGI();
   ApplicationReport appReport;
   try {
-    appReport=appContext.getApplication(appID);
+    if (callerUGI == null) {
+      appReport=appContext.getApplication(appID);
+    }
+ else {
+      appReport=callerUGI.doAs(new PrivilegedExceptionAction<ApplicationReport>(){
+        @Override public ApplicationReport run() throws Exception {
+          return appContext.getApplication(appIDFinal);
+        }
+      }
+);
+    }
   }
- catch (  IOException e) {
+ catch (  Exception e) {
     String message="Failed to read the application " + appID + ".";
     LOG.error(message,e);
     html.p()._(message)._();
@@ -32,9 +44,19 @@
   html._(InfoBlock.class);
   Collection<ApplicationAttemptReport> attempts;
   try {
-    attempts=appContext.getApplicationAttempts(appID).values();
+    if (callerUGI == null) {
+      attempts=appContext.getApplicationAttempts(appID).values();
+    }
+ else {
+      attempts=callerUGI.doAs(new PrivilegedExceptionAction<Collection<ApplicationAttemptReport>>(){
+        @Override public Collection<ApplicationAttemptReport> run() throws Exception {
+          return appContext.getApplicationAttempts(appIDFinal).values();
+        }
+      }
+);
+    }
   }
- catch (  IOException e) {
+ catch (  Exception e) {
     String message="Failed to read the attempts of the application " + appID + ".";
     LOG.error(message,e);
     html.p()._(message)._();
@@ -42,13 +64,23 @@
   }
   TBODY<TABLE<Hamlet>> tbody=html.table("#attempts").thead().tr().th(".id","Attempt ID").th(".started","Started").th(".node","Node").th(".logs","Logs")._()._().tbody();
   StringBuilder attemptsTableData=new StringBuilder("[\n");
-  for (  ApplicationAttemptReport appAttemptReport : attempts) {
+  for (  final ApplicationAttemptReport appAttemptReport : attempts) {
     AppAttemptInfo appAttempt=new AppAttemptInfo(appAttemptReport);
     ContainerReport containerReport;
     try {
-      containerReport=appContext.getAMContainer(appAttemptReport.getApplicationAttemptId());
+      if (callerUGI == null) {
+        containerReport=appContext.getAMContainer(appAttemptReport.getApplicationAttemptId());
+      }
+ else {
+        containerReport=callerUGI.doAs(new PrivilegedExceptionAction<ContainerReport>(){
+          @Override public ContainerReport run() throws Exception {
+            return appContext.getAMContainer(appAttemptReport.getApplicationAttemptId());
+          }
+        }
+);
+      }
     }
- catch (    IOException e) {
+ catch (    Exception e) {
       String message="Failed to read the AM container of the application attempt " + appAttemptReport.getApplicationAttemptId() + ".";
       LOG.error(message,e);
       html.p()._(message)._();

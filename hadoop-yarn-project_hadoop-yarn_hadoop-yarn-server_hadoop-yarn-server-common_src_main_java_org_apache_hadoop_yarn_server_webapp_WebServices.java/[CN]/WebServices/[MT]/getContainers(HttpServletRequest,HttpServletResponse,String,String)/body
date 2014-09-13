@@ -1,12 +1,23 @@
 {
+  UserGroupInformation callerUGI=getUser(req);
   ApplicationId aid=parseApplicationId(appId);
-  ApplicationAttemptId aaid=parseApplicationAttemptId(appAttemptId);
+  final ApplicationAttemptId aaid=parseApplicationAttemptId(appAttemptId);
   validateIds(aid,aaid,null);
   Collection<ContainerReport> containerReports=null;
   try {
-    containerReports=appContext.getContainers(aaid).values();
+    if (callerUGI == null) {
+      containerReports=appContext.getContainers(aaid).values();
+    }
+ else {
+      containerReports=callerUGI.doAs(new PrivilegedExceptionAction<Collection<ContainerReport>>(){
+        @Override public Collection<ContainerReport> run() throws Exception {
+          return appContext.getContainers(aaid).values();
+        }
+      }
+);
+    }
   }
- catch (  IOException e) {
+ catch (  Exception e) {
     throw new WebApplicationException(e);
   }
   ContainersInfo containersInfo=new ContainersInfo();

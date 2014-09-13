@@ -10,11 +10,22 @@
       reqAppStates.add(YarnApplicationState.valueOf(stateString));
     }
   }
+  UserGroupInformation callerUGI=getCallerUGI();
   Collection<ApplicationReport> appReports;
   try {
-    appReports=appContext.getAllApplications().values();
+    if (callerUGI == null) {
+      appReports=appContext.getAllApplications().values();
+    }
+ else {
+      appReports=callerUGI.doAs(new PrivilegedExceptionAction<Collection<ApplicationReport>>(){
+        @Override public Collection<ApplicationReport> run() throws Exception {
+          return appContext.getAllApplications().values();
+        }
+      }
+);
+    }
   }
- catch (  IOException e) {
+ catch (  Exception e) {
     String message="Failed to read the applications.";
     LOG.error(message,e);
     html.p()._(message)._();
@@ -26,7 +37,7 @@
       continue;
     }
     AppInfo app=new AppInfo(appReport);
-    String percent=String.format("%.1f",app.getProgress());
+    String percent=String.format("%.1f",app.getProgress() * 100.0F);
     appsTableData.append("[\"<a href='").append(url("app",app.getAppId())).append("'>").append(app.getAppId()).append("</a>\",\"").append(StringEscapeUtils.escapeJavaScript(StringEscapeUtils.escapeHtml(app.getUser()))).append("\",\"").append(StringEscapeUtils.escapeJavaScript(StringEscapeUtils.escapeHtml(app.getName()))).append("\",\"").append(StringEscapeUtils.escapeJavaScript(StringEscapeUtils.escapeHtml(app.getType()))).append("\",\"").append(StringEscapeUtils.escapeJavaScript(StringEscapeUtils.escapeHtml(app.getQueue()))).append("\",\"").append(app.getStartedTime()).append("\",\"").append(app.getFinishedTime()).append("\",\"").append(app.getAppState()).append("\",\"").append(app.getFinalAppStatus()).append("\",\"").append("<br title='").append(percent).append("'> <div class='").append(C_PROGRESSBAR).append("' title='").append(join(percent,'%')).append("'> ").append("<div class='").append(C_PROGRESSBAR_VALUE).append("' style='").append(join("width:",percent,'%')).append("'> </div> </div>").append("\",\"<a href='");
     String trackingURL=app.getTrackingUrl() == null ? "#" : app.getTrackingUrl();
     appsTableData.append(trackingURL).append("'>").append("History").append("</a>\"],\n");
