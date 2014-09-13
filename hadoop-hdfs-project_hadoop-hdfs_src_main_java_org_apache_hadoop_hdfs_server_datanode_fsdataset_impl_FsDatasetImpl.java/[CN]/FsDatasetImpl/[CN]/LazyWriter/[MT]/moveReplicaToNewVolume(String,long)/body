@@ -1,6 +1,9 @@
 {
   FsVolumeImpl targetVolume;
   ReplicaInfo replicaInfo;
+  BlockPoolSlice bpSlice;
+  File srcFile, srcMeta;
+  long genStamp;
 synchronized (FsDatasetImpl.this) {
     replicaInfo=volumeMap.get(bpid,blockId);
     if (replicaInfo == null || !replicaInfo.getVolume().isTransientStorage()) {
@@ -11,8 +14,14 @@ synchronized (FsDatasetImpl.this) {
       LOG.debug("LazyWriter starting to save blockId=" + blockId + "; bpid="+ bpid);
     }
     lazyWriteReplicaTracker.recordStartLazyPersist(bpid,blockId,targetVolume);
-    File[] savedFiles=targetVolume.getBlockPoolSlice(bpid).lazyPersistReplica(replicaInfo);
-    lazyWriteReplicaTracker.recordEndLazyPersist(bpid,blockId,savedFiles[0],savedFiles[1]);
+    bpSlice=targetVolume.getBlockPoolSlice(bpid);
+    srcMeta=replicaInfo.getMetaFile();
+    srcFile=replicaInfo.getBlockFile();
+    genStamp=replicaInfo.getGenerationStamp();
+  }
+  File[] savedFiles=bpSlice.lazyPersistReplica(blockId,genStamp,srcMeta,srcFile);
+synchronized (FsDatasetImpl.this) {
+    lazyWriteReplicaTracker.recordEndLazyPersist(bpid,blockId,savedFiles);
     if (LOG.isDebugEnabled()) {
       LOG.debug("LazyWriter finished saving blockId=" + blockId + "; bpid="+ bpid+ " to file "+ savedFiles[1]);
     }
