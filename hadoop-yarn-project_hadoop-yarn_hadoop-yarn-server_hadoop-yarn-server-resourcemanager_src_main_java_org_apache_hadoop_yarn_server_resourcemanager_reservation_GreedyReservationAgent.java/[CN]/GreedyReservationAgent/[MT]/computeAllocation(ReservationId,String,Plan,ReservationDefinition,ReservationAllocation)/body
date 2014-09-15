@@ -1,0 +1,60 @@
+{
+  LOG.info("placing the following ReservationRequest: " + contract);
+  Resource totalCapacity=plan.getTotalCapacity();
+  long earliestStart=contract.getArrival();
+  long step=plan.getStep();
+  if (earliestStart % step != 0) {
+    earliestStart=earliestStart + (step - (earliestStart % step));
+  }
+  long deadline=contract.getDeadline() - contract.getDeadline() % plan.getStep();
+  long curDeadline=deadline;
+  long oldDeadline=-1;
+  Map<ReservationInterval,ReservationRequest> allocations=new HashMap<ReservationInterval,ReservationRequest>();
+  RLESparseResourceAllocation tempAssigned=new RLESparseResourceAllocation(plan.getResourceCalculator(),plan.getMinimumAllocation());
+  List<ReservationRequest> stages=contract.getReservationRequests().getReservationResources();
+  ReservationRequestInterpreter type=contract.getReservationRequests().getInterpreter();
+  for (ListIterator<ReservationRequest> li=stages.listIterator(stages.size()); li.hasPrevious(); ) {
+    ReservationRequest currentReservationStage=li.previous();
+    validateInput(plan,currentReservationStage,totalCapacity);
+    Map<ReservationInterval,ReservationRequest> curAlloc=placeSingleStage(plan,tempAssigned,currentReservationStage,earliestStart,curDeadline,oldReservation,totalCapacity);
+    if (curAlloc == null) {
+      if (type != ReservationRequestInterpreter.R_ANY) {
+        throw new PlanningException("The GreedyAgent" + " couldn't find a valid allocation for your request");
+      }
+ else {
+        continue;
+      }
+    }
+ else {
+      allocations.putAll(curAlloc);
+      if (type == ReservationRequestInterpreter.R_ANY) {
+        break;
+      }
+      if (type == ReservationRequestInterpreter.R_ORDER || type == ReservationRequestInterpreter.R_ORDER_NO_GAP) {
+        curDeadline=findEarliestTime(curAlloc.keySet());
+        if (type == ReservationRequestInterpreter.R_ORDER_NO_GAP && oldDeadline > 0) {
+          if (oldDeadline - findLatestTime(curAlloc.keySet()) > plan.getStep()) {
+            throw new PlanningException("The GreedyAgent" + " couldn't find a valid allocation for your request");
+          }
+        }
+        oldDeadline=curDeadline;
+      }
+    }
+  }
+  if (allocations.isEmpty()) {
+    throw new PlanningException("The GreedyAgent" + " couldn't find a valid allocation for your request");
+  }
+  ReservationRequest ZERO_RES=ReservationRequest.newInstance(Resource.newInstance(0,0),0);
+  long firstStartTime=findEarliestTime(allocations.keySet());
+  if (firstStartTime > earliestStart) {
+    allocations.put(new ReservationInterval(earliestStart,firstStartTime),ZERO_RES);
+    firstStartTime=earliestStart;
+  }
+  ReservationAllocation capReservation=new InMemoryReservationAllocation(reservationId,contract,user,plan.getQueueName(),firstStartTime,findLatestTime(allocations.keySet()),allocations,plan.getResourceCalculator(),plan.getMinimumAllocation());
+  if (oldReservation != null) {
+    return plan.updateReservation(capReservation);
+  }
+ else {
+    return plan.addReservation(capReservation);
+  }
+}

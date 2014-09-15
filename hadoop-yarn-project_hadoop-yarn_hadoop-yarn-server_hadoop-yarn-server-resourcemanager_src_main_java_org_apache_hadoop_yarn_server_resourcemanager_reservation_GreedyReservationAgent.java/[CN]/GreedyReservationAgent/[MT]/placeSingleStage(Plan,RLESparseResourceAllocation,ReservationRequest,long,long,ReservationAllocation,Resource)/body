@@ -1,0 +1,49 @@
+{
+  Map<ReservationInterval,ReservationRequest> allocationRequests=new HashMap<ReservationInterval,ReservationRequest>();
+  Resource gang=Resources.multiply(rr.getCapability(),rr.getConcurrency());
+  long dur=rr.getDuration();
+  long step=plan.getStep();
+  if (dur % step != 0) {
+    dur+=(step - (dur % step));
+  }
+  int gangsToPlace=rr.getNumContainers() / rr.getConcurrency();
+  int maxGang=0;
+  while (gangsToPlace > 0 && curDeadline - dur >= earliestStart) {
+    maxGang=gangsToPlace;
+    long minPoint=curDeadline;
+    int curMaxGang=maxGang;
+    for (long t=curDeadline - plan.getStep(); t >= curDeadline - dur && maxGang > 0; t=t - plan.getStep()) {
+      Resource oldResCap=Resource.newInstance(0,0);
+      if (oldResAllocation != null) {
+        oldResCap=oldResAllocation.getResourcesAtTime(t);
+      }
+      Resource netAvailableRes=Resources.clone(totalCapacity);
+      Resources.addTo(netAvailableRes,oldResCap);
+      Resources.subtractFrom(netAvailableRes,plan.getTotalCommittedResources(t));
+      Resources.subtractFrom(netAvailableRes,tempAssigned.getCapacityAtTime(t));
+      curMaxGang=(int)Math.floor(Resources.divide(plan.getResourceCalculator(),totalCapacity,netAvailableRes,gang));
+      curMaxGang=Math.min(gangsToPlace,curMaxGang);
+      if (curMaxGang <= maxGang) {
+        maxGang=curMaxGang;
+        minPoint=t;
+      }
+    }
+    if (maxGang > 0) {
+      gangsToPlace-=maxGang;
+      ReservationInterval reservationInt=new ReservationInterval(curDeadline - dur,curDeadline);
+      ReservationRequest reservationRes=ReservationRequest.newInstance(rr.getCapability(),rr.getConcurrency() * maxGang,rr.getConcurrency(),rr.getDuration());
+      tempAssigned.addInterval(reservationInt,reservationRes);
+      allocationRequests.put(reservationInt,reservationRes);
+    }
+    curDeadline=minPoint;
+  }
+  if (gangsToPlace == 0) {
+    return allocationRequests;
+  }
+ else {
+    for (    Map.Entry<ReservationInterval,ReservationRequest> tempAllocation : allocationRequests.entrySet()) {
+      tempAssigned.removeInterval(tempAllocation.getKey(),tempAllocation.getValue());
+    }
+    return null;
+  }
+}
