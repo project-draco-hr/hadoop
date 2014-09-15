@@ -1,0 +1,45 @@
+{
+  if (closed) {
+    return;
+  }
+  backupStream.close();
+  LOG.info("OutputStream for key '" + key + "' closed. Now beginning upload");
+  LOG.info("Minimum upload part size: " + partSize + " threshold "+ partSizeThreshold);
+  try {
+    TransferManagerConfiguration transferConfiguration=new TransferManagerConfiguration();
+    transferConfiguration.setMinimumUploadPartSize(partSize);
+    transferConfiguration.setMultipartUploadThreshold(partSizeThreshold);
+    TransferManager transfers=new TransferManager(client);
+    transfers.setConfiguration(transferConfiguration);
+    final ObjectMetadata om=new ObjectMetadata();
+    if (StringUtils.isNotBlank(serverSideEncryptionAlgorithm)) {
+      om.setServerSideEncryption(serverSideEncryptionAlgorithm);
+    }
+    PutObjectRequest putObjectRequest=new PutObjectRequest(bucket,key,backupFile);
+    putObjectRequest.setCannedAcl(cannedACL);
+    putObjectRequest.setMetadata(om);
+    Upload upload=transfers.upload(putObjectRequest);
+    ProgressableProgressListener listener=new ProgressableProgressListener(upload,progress,statistics);
+    upload.addProgressListener(listener);
+    upload.waitForUploadResult();
+    long delta=upload.getProgress().getBytesTransferred() - listener.getLastBytesTransferred();
+    if (statistics != null && delta != 0) {
+      if (LOG.isDebugEnabled()) {
+        LOG.debug("S3A write delta changed after finished: " + delta + " bytes");
+      }
+      statistics.incrementBytesWritten(delta);
+    }
+    fs.finishedWrite(key);
+  }
+ catch (  InterruptedException e) {
+    throw new IOException(e);
+  }
+ finally {
+    if (!backupFile.delete()) {
+      LOG.warn("Could not delete temporary s3a file: " + backupFile);
+    }
+    super.close();
+    closed=true;
+  }
+  LOG.info("OutputStream for key '" + key + "' upload complete");
+}

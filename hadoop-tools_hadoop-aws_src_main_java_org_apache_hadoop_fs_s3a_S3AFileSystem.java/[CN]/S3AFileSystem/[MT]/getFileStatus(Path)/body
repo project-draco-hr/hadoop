@@ -1,0 +1,97 @@
+{
+  String key=pathToKey(f);
+  LOG.info("Getting path status for " + f + " ("+ key+ ")");
+  if (!key.isEmpty()) {
+    try {
+      ObjectMetadata meta=s3.getObjectMetadata(bucket,key);
+      statistics.incrementReadOps(1);
+      if (objectRepresentsDirectory(key,meta.getContentLength())) {
+        if (LOG.isDebugEnabled()) {
+          LOG.debug("Found exact file: fake directory");
+        }
+        return new S3AFileStatus(true,true,f.makeQualified(uri,workingDir));
+      }
+ else {
+        if (LOG.isDebugEnabled()) {
+          LOG.debug("Found exact file: normal file");
+        }
+        return new S3AFileStatus(meta.getContentLength(),dateToLong(meta.getLastModified()),f.makeQualified(uri,workingDir));
+      }
+    }
+ catch (    AmazonServiceException e) {
+      if (e.getStatusCode() != 404) {
+        printAmazonServiceException(e);
+        throw e;
+      }
+    }
+catch (    AmazonClientException e) {
+      printAmazonClientException(e);
+      throw e;
+    }
+    if (!key.endsWith("/")) {
+      try {
+        String newKey=key + "/";
+        ObjectMetadata meta=s3.getObjectMetadata(bucket,newKey);
+        statistics.incrementReadOps(1);
+        if (objectRepresentsDirectory(newKey,meta.getContentLength())) {
+          if (LOG.isDebugEnabled()) {
+            LOG.debug("Found file (with /): fake directory");
+          }
+          return new S3AFileStatus(true,true,f.makeQualified(uri,workingDir));
+        }
+ else {
+          LOG.warn("Found file (with /): real file? should not happen: " + key);
+          return new S3AFileStatus(meta.getContentLength(),dateToLong(meta.getLastModified()),f.makeQualified(uri,workingDir));
+        }
+      }
+ catch (      AmazonServiceException e) {
+        if (e.getStatusCode() != 404) {
+          printAmazonServiceException(e);
+          throw e;
+        }
+      }
+catch (      AmazonClientException e) {
+        printAmazonClientException(e);
+        throw e;
+      }
+    }
+  }
+  try {
+    if (!key.isEmpty() && !key.endsWith("/")) {
+      key=key + "/";
+    }
+    ListObjectsRequest request=new ListObjectsRequest();
+    request.setBucketName(bucket);
+    request.setPrefix(key);
+    request.setDelimiter("/");
+    request.setMaxKeys(1);
+    ObjectListing objects=s3.listObjects(request);
+    statistics.incrementReadOps(1);
+    if (objects.getCommonPrefixes().size() > 0 || objects.getObjectSummaries().size() > 0) {
+      if (LOG.isDebugEnabled()) {
+        LOG.debug("Found path as directory (with /): " + objects.getCommonPrefixes().size() + "/"+ objects.getObjectSummaries().size());
+        for (        S3ObjectSummary summary : objects.getObjectSummaries()) {
+          LOG.debug("Summary: " + summary.getKey() + " "+ summary.getSize());
+        }
+        for (        String prefix : objects.getCommonPrefixes()) {
+          LOG.debug("Prefix: " + prefix);
+        }
+      }
+      return new S3AFileStatus(true,false,f.makeQualified(uri,workingDir));
+    }
+  }
+ catch (  AmazonServiceException e) {
+    if (e.getStatusCode() != 404) {
+      printAmazonServiceException(e);
+      throw e;
+    }
+  }
+catch (  AmazonClientException e) {
+    printAmazonClientException(e);
+    throw e;
+  }
+  if (LOG.isDebugEnabled()) {
+    LOG.debug("Not Found: " + f);
+  }
+  throw new FileNotFoundException("No such file or directory: " + f);
+}

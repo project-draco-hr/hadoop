@@ -1,0 +1,39 @@
+{
+  if (LOG.isDebugEnabled()) {
+    LOG.debug("copyFile " + srcKey + " -> "+ dstKey);
+  }
+  TransferManagerConfiguration transferConfiguration=new TransferManagerConfiguration();
+  transferConfiguration.setMultipartCopyPartSize(partSize);
+  TransferManager transfers=new TransferManager(s3);
+  transfers.setConfiguration(transferConfiguration);
+  ObjectMetadata srcom=s3.getObjectMetadata(bucket,srcKey);
+  final ObjectMetadata dstom=srcom.clone();
+  if (StringUtils.isNotBlank(serverSideEncryptionAlgorithm)) {
+    dstom.setServerSideEncryption(serverSideEncryptionAlgorithm);
+  }
+  CopyObjectRequest copyObjectRequest=new CopyObjectRequest(bucket,srcKey,bucket,dstKey);
+  copyObjectRequest.setCannedAccessControlList(cannedACL);
+  copyObjectRequest.setNewObjectMetadata(dstom);
+  ProgressListener progressListener=new ProgressListener(){
+    public void progressChanged(    ProgressEvent progressEvent){
+switch (progressEvent.getEventCode()) {
+case ProgressEvent.PART_COMPLETED_EVENT_CODE:
+        statistics.incrementWriteOps(1);
+      break;
+  }
+}
+}
+;
+Copy copy=transfers.copy(copyObjectRequest);
+copy.addProgressListener(progressListener);
+try {
+copy.waitForCopyResult();
+statistics.incrementWriteOps(1);
+}
+ catch (InterruptedException e) {
+throw new IOException("Got interrupted, cancelling");
+}
+ finally {
+transfers.shutdownNow(false);
+}
+}
