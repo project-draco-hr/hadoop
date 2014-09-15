@@ -1,0 +1,47 @@
+{
+  String key=pathToKey(dst);
+  if (!overwrite && exists(dst)) {
+    throw new IOException(dst + " already exists");
+  }
+  LOG.info("Copying local file from " + src + " to "+ dst);
+  LocalFileSystem local=getLocal(getConf());
+  File srcfile=local.pathToFile(src);
+  TransferManagerConfiguration transferConfiguration=new TransferManagerConfiguration();
+  transferConfiguration.setMinimumUploadPartSize(partSize);
+  transferConfiguration.setMultipartUploadThreshold(partSizeThreshold);
+  TransferManager transfers=new TransferManager(s3);
+  transfers.setConfiguration(transferConfiguration);
+  final ObjectMetadata om=new ObjectMetadata();
+  if (StringUtils.isNotBlank(serverSideEncryptionAlgorithm)) {
+    om.setServerSideEncryption(serverSideEncryptionAlgorithm);
+  }
+  PutObjectRequest putObjectRequest=new PutObjectRequest(bucket,key,srcfile);
+  putObjectRequest.setCannedAcl(cannedACL);
+  putObjectRequest.setMetadata(om);
+  ProgressListener progressListener=new ProgressListener(){
+    public void progressChanged(    ProgressEvent progressEvent){
+switch (progressEvent.getEventCode()) {
+case ProgressEvent.PART_COMPLETED_EVENT_CODE:
+        statistics.incrementWriteOps(1);
+      break;
+  }
+}
+}
+;
+Upload up=transfers.upload(putObjectRequest);
+up.addProgressListener(progressListener);
+try {
+up.waitForUploadResult();
+statistics.incrementWriteOps(1);
+}
+ catch (InterruptedException e) {
+throw new IOException("Got interrupted, cancelling");
+}
+ finally {
+transfers.shutdownNow(false);
+}
+finishedWrite(key);
+if (delSrc) {
+local.delete(src,false);
+}
+}

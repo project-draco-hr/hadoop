@@ -1,0 +1,57 @@
+{
+  super.initialize(name,conf);
+  uri=URI.create(name.getScheme() + "://" + name.getAuthority());
+  workingDir=new Path("/user",System.getProperty("user.name")).makeQualified(this.uri,this.getWorkingDirectory());
+  String accessKey=conf.get(NEW_ACCESS_KEY,conf.get(OLD_ACCESS_KEY,null));
+  String secretKey=conf.get(NEW_SECRET_KEY,conf.get(OLD_SECRET_KEY,null));
+  String userInfo=name.getUserInfo();
+  if (userInfo != null) {
+    int index=userInfo.indexOf(':');
+    if (index != -1) {
+      accessKey=userInfo.substring(0,index);
+      secretKey=userInfo.substring(index + 1);
+    }
+ else {
+      accessKey=userInfo;
+    }
+  }
+  AWSCredentialsProviderChain credentials=new AWSCredentialsProviderChain(new BasicAWSCredentialsProvider(accessKey,secretKey),new InstanceProfileCredentialsProvider(),new AnonymousAWSCredentialsProvider());
+  bucket=name.getHost();
+  ClientConfiguration awsConf=new ClientConfiguration();
+  awsConf.setMaxConnections(conf.getInt(NEW_MAXIMUM_CONNECTIONS,conf.getInt(OLD_MAXIMUM_CONNECTIONS,DEFAULT_MAXIMUM_CONNECTIONS)));
+  awsConf.setProtocol(conf.getBoolean(NEW_SECURE_CONNECTIONS,conf.getBoolean(OLD_SECURE_CONNECTIONS,DEFAULT_SECURE_CONNECTIONS)) ? Protocol.HTTPS : Protocol.HTTP);
+  awsConf.setMaxErrorRetry(conf.getInt(NEW_MAX_ERROR_RETRIES,conf.getInt(OLD_MAX_ERROR_RETRIES,DEFAULT_MAX_ERROR_RETRIES)));
+  awsConf.setSocketTimeout(conf.getInt(NEW_SOCKET_TIMEOUT,conf.getInt(OLD_SOCKET_TIMEOUT,DEFAULT_SOCKET_TIMEOUT)));
+  s3=new AmazonS3Client(credentials,awsConf);
+  maxKeys=conf.getInt(NEW_MAX_PAGING_KEYS,conf.getInt(OLD_MAX_PAGING_KEYS,DEFAULT_MAX_PAGING_KEYS));
+  partSize=conf.getLong(NEW_MULTIPART_SIZE,conf.getLong(OLD_MULTIPART_SIZE,DEFAULT_MULTIPART_SIZE));
+  partSizeThreshold=conf.getInt(NEW_MIN_MULTIPART_THRESHOLD,conf.getInt(OLD_MIN_MULTIPART_THRESHOLD,DEFAULT_MIN_MULTIPART_THRESHOLD));
+  if (partSize < 5 * 1024 * 1024) {
+    LOG.error(NEW_MULTIPART_SIZE + " must be at least 5 MB");
+    partSize=5 * 1024 * 1024;
+  }
+  if (partSizeThreshold < 5 * 1024 * 1024) {
+    LOG.error(NEW_MIN_MULTIPART_THRESHOLD + " must be at least 5 MB");
+    partSizeThreshold=5 * 1024 * 1024;
+  }
+  String cannedACLName=conf.get(NEW_CANNED_ACL,conf.get(OLD_CANNED_ACL,DEFAULT_CANNED_ACL));
+  if (!cannedACLName.isEmpty()) {
+    cannedACL=CannedAccessControlList.valueOf(cannedACLName);
+  }
+ else {
+    cannedACL=null;
+  }
+  if (!s3.doesBucketExist(bucket)) {
+    throw new IOException("Bucket " + bucket + " does not exist");
+  }
+  boolean purgeExistingMultipart=conf.getBoolean(NEW_PURGE_EXISTING_MULTIPART,conf.getBoolean(OLD_PURGE_EXISTING_MULTIPART,DEFAULT_PURGE_EXISTING_MULTIPART));
+  long purgeExistingMultipartAge=conf.getLong(NEW_PURGE_EXISTING_MULTIPART_AGE,conf.getLong(OLD_PURGE_EXISTING_MULTIPART_AGE,DEFAULT_PURGE_EXISTING_MULTIPART_AGE));
+  if (purgeExistingMultipart) {
+    TransferManager transferManager=new TransferManager(s3);
+    Date purgeBefore=new Date(new Date().getTime() - purgeExistingMultipartAge * 1000);
+    transferManager.abortMultipartUploads(bucket,purgeBefore);
+    transferManager.shutdownNow(false);
+  }
+  serverSideEncryptionAlgorithm=conf.get(SERVER_SIDE_ENCRYPTION_ALGORITHM);
+  setConf(conf);
+}
