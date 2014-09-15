@@ -1,0 +1,102 @@
+{
+  LOG.info("Rename path " + src + " to "+ dst);
+  String srcKey=pathToKey(src);
+  String dstKey=pathToKey(dst);
+  if (srcKey.length() == 0 || dstKey.length() == 0) {
+    LOG.info("rename: src or dst are empty");
+    return false;
+  }
+  if (srcKey.equals(dstKey)) {
+    LOG.info("rename: src and dst refer to the same file");
+    return true;
+  }
+  S3AFileStatus srcStatus;
+  try {
+    srcStatus=getFileStatus(src);
+  }
+ catch (  FileNotFoundException e) {
+    LOG.info("rename: src not found " + src);
+    return false;
+  }
+  S3AFileStatus dstStatus=null;
+  try {
+    dstStatus=getFileStatus(dst);
+    if (srcStatus.isFile() && dstStatus.isDirectory()) {
+      LOG.info("rename: src is a file and dst is a directory");
+      return false;
+    }
+    if (srcStatus.isDirectory() && dstStatus.isFile()) {
+      LOG.info("rename: src is a directory and dst is a file");
+      return false;
+    }
+  }
+ catch (  FileNotFoundException e) {
+    Path parent=dst.getParent();
+    if (!pathToKey(parent).isEmpty()) {
+      try {
+        S3AFileStatus dstParentStatus=getFileStatus(dst.getParent());
+        if (!dstParentStatus.isDirectory()) {
+          return false;
+        }
+      }
+ catch (      FileNotFoundException e2) {
+        return false;
+      }
+    }
+  }
+  if (srcStatus.isFile()) {
+    if (LOG.isDebugEnabled()) {
+      LOG.debug("rename: renaming file " + src + " to "+ dst);
+    }
+    copyFile(srcKey,dstKey);
+    delete(src,false);
+  }
+ else {
+    if (LOG.isDebugEnabled()) {
+      LOG.debug("rename: renaming directory " + src + " to "+ dst);
+    }
+    if (!dstKey.endsWith("/")) {
+      dstKey=dstKey + "/";
+    }
+    if (!srcKey.endsWith("/")) {
+      srcKey=srcKey + "/";
+    }
+    List<DeleteObjectsRequest.KeyVersion> keysToDelete=new ArrayList<DeleteObjectsRequest.KeyVersion>();
+    if (dstStatus != null && dstStatus.isEmptyDirectory()) {
+      copyFile(srcKey,dstKey);
+      statistics.incrementWriteOps(1);
+      keysToDelete.add(new DeleteObjectsRequest.KeyVersion(srcKey));
+    }
+    ListObjectsRequest request=new ListObjectsRequest();
+    request.setBucketName(bucket);
+    request.setPrefix(srcKey);
+    request.setMaxKeys(maxKeys);
+    ObjectListing objects=s3.listObjects(request);
+    statistics.incrementReadOps(1);
+    while (true) {
+      for (      S3ObjectSummary summary : objects.getObjectSummaries()) {
+        keysToDelete.add(new DeleteObjectsRequest.KeyVersion(summary.getKey()));
+        String newDstKey=dstKey + summary.getKey().substring(srcKey.length());
+        copyFile(summary.getKey(),newDstKey);
+      }
+      if (objects.isTruncated()) {
+        objects=s3.listNextBatchOfObjects(objects);
+        statistics.incrementReadOps(1);
+      }
+ else {
+        break;
+      }
+    }
+    if (!keysToDelete.isEmpty()) {
+      DeleteObjectsRequest deleteRequest=new DeleteObjectsRequest(bucket);
+      deleteRequest.setKeys(keysToDelete);
+      s3.deleteObjects(deleteRequest);
+      statistics.incrementWriteOps(1);
+    }
+  }
+  if (src.getParent() != dst.getParent()) {
+    deleteUnnecessaryFakeDirectories(dst.getParent());
+    createFakeDirectoryIfNecessary(src.getParent());
+  }
+  return true;
+}

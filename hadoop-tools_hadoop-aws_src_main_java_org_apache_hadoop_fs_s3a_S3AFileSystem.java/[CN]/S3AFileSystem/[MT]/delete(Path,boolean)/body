@@ -1,0 +1,77 @@
+{
+  LOG.info("Delete path " + f + " - recursive "+ recursive);
+  S3AFileStatus status;
+  try {
+    status=getFileStatus(f);
+  }
+ catch (  FileNotFoundException e) {
+    if (LOG.isDebugEnabled()) {
+      LOG.debug("Couldn't delete " + f + " - does not exist");
+    }
+    return false;
+  }
+  String key=pathToKey(f);
+  if (status.isDirectory()) {
+    if (LOG.isDebugEnabled()) {
+      LOG.debug("delete: Path is a directory");
+    }
+    if (!recursive && !status.isEmptyDirectory()) {
+      throw new IOException("Path is a folder: " + f + " and it is not an empty directory");
+    }
+    if (!key.endsWith("/")) {
+      key=key + "/";
+    }
+    if (key.equals("/")) {
+      LOG.info("s3a cannot delete the root directory");
+      return false;
+    }
+    if (status.isEmptyDirectory()) {
+      if (LOG.isDebugEnabled()) {
+        LOG.debug("Deleting fake empty directory");
+      }
+      s3.deleteObject(bucket,key);
+      statistics.incrementWriteOps(1);
+    }
+ else {
+      if (LOG.isDebugEnabled()) {
+        LOG.debug("Getting objects for directory prefix " + key + " to delete");
+      }
+      ListObjectsRequest request=new ListObjectsRequest();
+      request.setBucketName(bucket);
+      request.setPrefix(key);
+      request.setMaxKeys(maxKeys);
+      List<DeleteObjectsRequest.KeyVersion> keys=new ArrayList<DeleteObjectsRequest.KeyVersion>();
+      ObjectListing objects=s3.listObjects(request);
+      statistics.incrementReadOps(1);
+      while (true) {
+        for (        S3ObjectSummary summary : objects.getObjectSummaries()) {
+          keys.add(new DeleteObjectsRequest.KeyVersion(summary.getKey()));
+          if (LOG.isDebugEnabled()) {
+            LOG.debug("Got object to delete " + summary.getKey());
+          }
+        }
+        DeleteObjectsRequest deleteRequest=new DeleteObjectsRequest(bucket);
+        deleteRequest.setKeys(keys);
+        s3.deleteObjects(deleteRequest);
+        statistics.incrementWriteOps(1);
+        keys.clear();
+        if (objects.isTruncated()) {
+          objects=s3.listNextBatchOfObjects(objects);
+          statistics.incrementReadOps(1);
+        }
+ else {
+          break;
+        }
+      }
+    }
+  }
+ else {
+    if (LOG.isDebugEnabled()) {
+      LOG.debug("delete: Path is a file");
+    }
+    s3.deleteObject(bucket,key);
+    statistics.incrementWriteOps(1);
+  }
+  createFakeDirectoryIfNecessary(f.getParent());
+  return true;
+}
