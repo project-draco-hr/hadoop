@@ -1,0 +1,102 @@
+{
+  plan=new InMemoryPlan(scheduler.getRootQueueMetrics(),policy,mAgent,scheduler.getClusterResource(),1L,res,scheduler.getMinimumResourceCapability(),maxAlloc,"dedicated",null,isMove);
+  long ts=System.currentTimeMillis();
+  ReservationId r1=ReservationId.newInstance(ts,1);
+  int[] f1={10,10,10,10,10};
+  assertTrue(plan.toString(),plan.addReservation(new InMemoryReservationAllocation(r1,null,"u3","dedicated",0,0 + f1.length,ReservationSystemTestUtil.generateAllocation(0L,1L,f1),res,minAlloc)));
+  ReservationId r2=ReservationId.newInstance(ts,2);
+  assertTrue(plan.toString(),plan.addReservation(new InMemoryReservationAllocation(r2,null,"u3","dedicated",3,3 + f1.length,ReservationSystemTestUtil.generateAllocation(3L,1L,f1),res,minAlloc)));
+  ReservationId r3=ReservationId.newInstance(ts,3);
+  int[] f2={0,10,20,10,0};
+  assertTrue(plan.toString(),plan.addReservation(new InMemoryReservationAllocation(r3,null,"u4","dedicated",10,10 + f2.length,ReservationSystemTestUtil.generateAllocation(10L,1L,f2),res,minAlloc)));
+  CapacitySchedulerPlanFollower planFollower=new CapacitySchedulerPlanFollower();
+  planFollower.init(mClock,scheduler,Collections.singletonList(plan));
+  when(mClock.getTime()).thenReturn(0L);
+  planFollower.run();
+  CSQueue defQ=scheduler.getQueue("dedicated" + PlanQueue.DEFAULT_QUEUE_SUFFIX);
+  CSQueue q=scheduler.getQueue(r1.toString());
+  assertNotNull(q);
+  String user_0="test-user";
+  ApplicationId appId=ApplicationId.newInstance(0,1);
+  ApplicationAttemptId appAttemptId_0=ApplicationAttemptId.newInstance(appId,0);
+  AppAddedSchedulerEvent addAppEvent=new AppAddedSchedulerEvent(appId,q.getQueueName(),user_0);
+  scheduler.handle(addAppEvent);
+  AppAttemptAddedSchedulerEvent appAttemptAddedEvent=new AppAttemptAddedSchedulerEvent(appAttemptId_0,false);
+  scheduler.handle(appAttemptAddedEvent);
+  Assert.assertEquals(0,defQ.getNumApplications());
+  Assert.assertEquals(0.1,q.getCapacity(),0.01);
+  Assert.assertEquals(0.1,q.getMaximumCapacity(),1.0);
+  Assert.assertEquals(1,q.getNumApplications());
+  CSQueue q2=scheduler.getQueue(r2.toString());
+  assertNull(q2);
+  CSQueue q3=scheduler.getQueue(r3.toString());
+  assertNull(q3);
+  when(mClock.getTime()).thenReturn(3L);
+  planFollower.run();
+  Assert.assertEquals(0,defQ.getNumApplications());
+  q=scheduler.getQueue(r1.toString());
+  assertNotNull(q);
+  Assert.assertEquals(0.1,q.getCapacity(),0.01);
+  Assert.assertEquals(0.1,q.getMaximumCapacity(),1.0);
+  Assert.assertEquals(1,q.getNumApplications());
+  q2=scheduler.getQueue(r2.toString());
+  assertNotNull(q2);
+  Assert.assertEquals(0.1,q.getCapacity(),0.01);
+  Assert.assertEquals(0.1,q.getMaximumCapacity(),1.0);
+  q3=scheduler.getQueue(r3.toString());
+  assertNull(q3);
+  when(mClock.getTime()).thenReturn(10L);
+  planFollower.run();
+  q=scheduler.getQueue(r1.toString());
+  if (isMove) {
+    Assert.assertEquals(1,defQ.getNumApplications());
+    assertNull(q);
+  }
+ else {
+    Assert.assertEquals(0,defQ.getNumApplications());
+    assertNotNull(q);
+    AppAttemptRemovedSchedulerEvent appAttemptRemovedEvent=new AppAttemptRemovedSchedulerEvent(appAttemptId_0,RMAppAttemptState.KILLED,false);
+    scheduler.handle(appAttemptRemovedEvent);
+  }
+  q2=scheduler.getQueue(r2.toString());
+  assertNull(q2);
+  q3=scheduler.getQueue(r3.toString());
+  assertNotNull(q3);
+  Assert.assertEquals(0,q3.getCapacity(),0.01);
+  Assert.assertEquals(1.0,q3.getMaximumCapacity(),1.0);
+  when(mClock.getTime()).thenReturn(11L);
+  planFollower.run();
+  if (isMove) {
+    Assert.assertEquals(1,defQ.getNumApplications());
+  }
+ else {
+    Assert.assertEquals(0,defQ.getNumApplications());
+  }
+  q=scheduler.getQueue(r1.toString());
+  assertNull(q);
+  q2=scheduler.getQueue(r2.toString());
+  assertNull(q2);
+  q3=scheduler.getQueue(r3.toString());
+  assertNotNull(q3);
+  Assert.assertEquals(0.1,q3.getCapacity(),0.01);
+  Assert.assertEquals(0.1,q3.getMaximumCapacity(),1.0);
+  when(mClock.getTime()).thenReturn(12L);
+  planFollower.run();
+  q=scheduler.getQueue(r1.toString());
+  assertNull(q);
+  q2=scheduler.getQueue(r2.toString());
+  assertNull(q2);
+  q3=scheduler.getQueue(r3.toString());
+  assertNotNull(q3);
+  Assert.assertEquals(0.2,q3.getCapacity(),0.01);
+  Assert.assertEquals(0.2,q3.getMaximumCapacity(),1.0);
+  when(mClock.getTime()).thenReturn(16L);
+  planFollower.run();
+  q=scheduler.getQueue(r1.toString());
+  assertNull(q);
+  q2=scheduler.getQueue(r2.toString());
+  assertNull(q2);
+  q3=scheduler.getQueue(r3.toString());
+  assertNull(q3);
+  assertTrue(defQ.getCapacity() > 0.9);
+}
