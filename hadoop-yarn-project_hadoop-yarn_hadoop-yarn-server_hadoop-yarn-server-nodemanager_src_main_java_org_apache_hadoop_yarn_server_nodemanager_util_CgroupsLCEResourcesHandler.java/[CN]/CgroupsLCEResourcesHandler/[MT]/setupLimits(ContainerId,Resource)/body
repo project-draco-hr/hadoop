@@ -1,8 +1,18 @@
 {
   String containerName=containerId.toString();
   if (isCpuWeightEnabled()) {
+    int containerVCores=containerResource.getVirtualCores();
     createCgroup(CONTROLLER_CPU,containerName);
-    int cpuShares=CPU_DEFAULT_WEIGHT * containerResource.getVirtualCores();
+    int cpuShares=CPU_DEFAULT_WEIGHT * containerVCores;
     updateCgroup(CONTROLLER_CPU,containerName,"shares",String.valueOf(cpuShares));
+    if (strictResourceUsageMode) {
+      int nodeVCores=conf.getInt(YarnConfiguration.NM_VCORES,YarnConfiguration.DEFAULT_NM_VCORES);
+      if (nodeVCores != containerVCores) {
+        float containerCPU=(containerVCores * yarnProcessors) / (float)nodeVCores;
+        int[] limits=getOverallLimits(containerCPU);
+        updateCgroup(CONTROLLER_CPU,containerName,CPU_PERIOD_US,String.valueOf(limits[0]));
+        updateCgroup(CONTROLLER_CPU,containerName,CPU_QUOTA_US,String.valueOf(limits[1]));
+      }
+    }
   }
 }

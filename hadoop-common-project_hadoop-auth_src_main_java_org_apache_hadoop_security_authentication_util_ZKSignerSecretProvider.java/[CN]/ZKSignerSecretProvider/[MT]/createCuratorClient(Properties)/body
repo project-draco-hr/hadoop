@@ -1,0 +1,20 @@
+{
+  String connectionString=config.getProperty(ZOOKEEPER_CONNECTION_STRING,"localhost:2181");
+  RetryPolicy retryPolicy=new ExponentialBackoffRetry(1000,3);
+  ACLProvider aclProvider;
+  String authType=config.getProperty(ZOOKEEPER_AUTH_TYPE,"none");
+  if (authType.equals("sasl")) {
+    LOG.info("Connecting to ZooKeeper with SASL/Kerberos" + "and using 'sasl' ACLs");
+    String principal=setJaasConfiguration(config);
+    System.setProperty(ZooKeeperSaslClient.LOGIN_CONTEXT_NAME_KEY,JAAS_LOGIN_ENTRY_NAME);
+    System.setProperty("zookeeper.authProvider.1","org.apache.zookeeper.server.auth.SASLAuthenticationProvider");
+    aclProvider=new SASLOwnerACLProvider(principal);
+  }
+ else {
+    LOG.info("Connecting to ZooKeeper without authentication");
+    aclProvider=new DefaultACLProvider();
+  }
+  CuratorFramework cf=CuratorFrameworkFactory.builder().connectString(connectionString).retryPolicy(retryPolicy).aclProvider(aclProvider).build();
+  cf.start();
+  return cf;
+}

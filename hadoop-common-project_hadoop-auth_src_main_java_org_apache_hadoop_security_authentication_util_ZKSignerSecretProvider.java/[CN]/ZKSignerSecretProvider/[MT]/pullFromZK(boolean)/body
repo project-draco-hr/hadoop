@@ -1,0 +1,32 @@
+{
+  try {
+    Stat stat=new Stat();
+    byte[] bytes=client.getData().storingStatIn(stat).forPath(path);
+    ByteBuffer bb=ByteBuffer.wrap(bytes);
+    int dataVersion=bb.getInt();
+    if (dataVersion > DATA_VERSION) {
+      throw new IllegalStateException("Cannot load data from ZooKeeper; it" + "was written with a newer version");
+    }
+    int nextSecretLength=bb.getInt();
+    byte[] nextSecret=new byte[nextSecretLength];
+    bb.get(nextSecret);
+    this.nextSecret=nextSecret;
+    zkVersion=stat.getVersion();
+    if (isInit) {
+      int currentSecretLength=bb.getInt();
+      byte[] currentSecret=new byte[currentSecretLength];
+      bb.get(currentSecret);
+      int previousSecretLength=bb.getInt();
+      byte[] previousSecret=null;
+      if (previousSecretLength > 0) {
+        previousSecret=new byte[previousSecretLength];
+        bb.get(previousSecret);
+      }
+      super.initSecrets(currentSecret,previousSecret);
+      nextRolloverDate=bb.getLong();
+    }
+  }
+ catch (  Exception ex) {
+    LOG.error("An unexpected exception occurred while pulling data from" + "ZooKeeper",ex);
+  }
+}

@@ -8,7 +8,7 @@
   Mockito.when(config.getInitParameter(AuthenticationFilter.SIGNATURE_SECRET)).thenReturn("secret");
   Mockito.when(config.getInitParameterNames()).thenReturn(new Vector<String>(Arrays.asList(AuthenticationFilter.AUTH_TYPE,AuthenticationFilter.AUTH_TOKEN_VALIDITY,AuthenticationFilter.SIGNATURE_SECRET,"management.operation" + ".return","expired.token")).elements());
   ServletContext context=Mockito.mock(ServletContext.class);
-  Mockito.when(context.getAttribute(AuthenticationFilter.SIGNATURE_PROVIDER_ATTRIBUTE)).thenReturn(null);
+  Mockito.when(context.getAttribute(AuthenticationFilter.SIGNER_SECRET_PROVIDER_ATTRIBUTE)).thenReturn(null);
   Mockito.when(config.getServletContext()).thenReturn(context);
   if (withDomainPath) {
     Mockito.when(config.getInitParameter(AuthenticationFilter.COOKIE_DOMAIN)).thenReturn(".foo.com");
@@ -44,7 +44,11 @@
       Assert.assertNotNull("cookie missing",v);
       Assert.assertTrue(v.contains("u=") && v.contains("p=") && v.contains("t=")&& v.contains("e=")&& v.contains("s="));
       Mockito.verify(chain).doFilter(Mockito.any(ServletRequest.class),Mockito.any(ServletResponse.class));
-      Signer signer=new Signer(new StringSignerSecretProvider("secret"));
+      StringSignerSecretProvider secretProvider=new StringSignerSecretProvider();
+      Properties secretProviderProps=new Properties();
+      secretProviderProps.setProperty(AuthenticationFilter.SIGNATURE_SECRET,"secret");
+      secretProvider.init(secretProviderProps,null,TOKEN_VALIDITY_SEC);
+      Signer signer=new Signer(secretProvider);
       String value=signer.verifyAndExtract(v);
       AuthenticationToken token=AuthenticationToken.parse(value);
       assertThat(token.getExpires(),not(0L));
