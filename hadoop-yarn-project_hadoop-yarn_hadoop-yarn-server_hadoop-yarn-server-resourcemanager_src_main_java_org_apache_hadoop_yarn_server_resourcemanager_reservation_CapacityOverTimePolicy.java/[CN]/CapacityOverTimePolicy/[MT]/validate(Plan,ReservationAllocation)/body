@@ -1,0 +1,43 @@
+{
+  ReservationAllocation oldReservation=plan.getReservationById(reservation.getReservationId());
+  if (oldReservation != null && !oldReservation.getUser().equals(reservation.getUser())) {
+    throw new MismatchedUserException("Updating an existing reservation with mismatched user:" + oldReservation.getUser() + " != "+ reservation.getUser());
+  }
+  long startTime=reservation.getStartTime();
+  long endTime=reservation.getEndTime();
+  long step=plan.getStep();
+  Resource planTotalCapacity=plan.getTotalCapacity();
+  Resource maxAvgRes=Resources.multiply(planTotalCapacity,maxAvg);
+  Resource maxInsRes=Resources.multiply(planTotalCapacity,maxInst);
+  IntegralResource runningTot=new IntegralResource(0L,0L);
+  IntegralResource maxAllowed=new IntegralResource(maxAvgRes);
+  maxAllowed.multiplyBy(validWindow / step);
+  for (long t=startTime - validWindow; t < endTime + validWindow; t+=step) {
+    Resource currExistingAllocTot=plan.getTotalCommittedResources(t);
+    Resource currExistingAllocForUser=plan.getConsumptionForUser(reservation.getUser(),t);
+    Resource currNewAlloc=reservation.getResourcesAtTime(t);
+    Resource currOldAlloc=Resources.none();
+    if (oldReservation != null) {
+      currOldAlloc=oldReservation.getResourcesAtTime(t);
+    }
+    Resource inst=Resources.subtract(Resources.add(currExistingAllocTot,currNewAlloc),currOldAlloc);
+    if (Resources.greaterThan(plan.getResourceCalculator(),planTotalCapacity,inst,planTotalCapacity)) {
+      throw new ResourceOverCommitException(" Resources at time " + t + " would be overcommitted ("+ inst+ " over "+ plan.getTotalCapacity()+ ") by accepting reservation: "+ reservation.getReservationId());
+    }
+    if (Resources.greaterThan(plan.getResourceCalculator(),planTotalCapacity,Resources.subtract(Resources.add(currExistingAllocForUser,currNewAlloc),currOldAlloc),maxInsRes)) {
+      throw new PlanningQuotaException("Instantaneous quota capacity " + maxInst + " would be passed at time "+ t+ " by accepting reservation: "+ reservation.getReservationId());
+    }
+    runningTot.add(currExistingAllocForUser);
+    runningTot.add(currNewAlloc);
+    runningTot.subtract(currOldAlloc);
+    if (t > startTime) {
+      Resource pastOldAlloc=plan.getConsumptionForUser(reservation.getUser(),t - validWindow);
+      Resource pastNewAlloc=reservation.getResourcesAtTime(t - validWindow);
+      runningTot.subtract(pastOldAlloc);
+      runningTot.subtract(pastNewAlloc);
+    }
+    if (maxAllowed.compareTo(runningTot) < 0) {
+      throw new PlanningQuotaException("Integral (avg over time) quota capacity " + maxAvg + " over a window of "+ validWindow / 1000 + " seconds, " + " would be passed at time " + t + "(" + new Date(t) + ") by accepting reservation: " + reservation.getReservationId());
+    }
+  }
+}
