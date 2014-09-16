@@ -1,0 +1,34 @@
+{
+  Object curatorClientObj=servletContext.getAttribute(ZOOKEEPER_SIGNER_SECRET_PROVIDER_CURATOR_CLIENT_ATTRIBUTE);
+  if (curatorClientObj != null && curatorClientObj instanceof CuratorFramework) {
+    client=(CuratorFramework)curatorClientObj;
+  }
+ else {
+    client=createCuratorClient(config);
+  }
+  this.tokenValidity=tokenValidity;
+  shouldDisconnect=Boolean.parseBoolean(config.getProperty(DISCONNECT_FROM_ZOOKEEPER_ON_SHUTDOWN,"true"));
+  path=config.getProperty(ZOOKEEPER_PATH);
+  if (path == null) {
+    throw new IllegalArgumentException(ZOOKEEPER_PATH + " must be specified");
+  }
+  try {
+    nextRolloverDate=System.currentTimeMillis() + tokenValidity;
+    client.create().creatingParentsIfNeeded().forPath(path,generateZKData(generateRandomSecret(),generateRandomSecret(),null));
+    zkVersion=0;
+    LOG.info("Creating secret znode");
+  }
+ catch (  KeeperException.NodeExistsException nee) {
+    LOG.info("The secret znode already exists, retrieving data");
+  }
+  pullFromZK(true);
+  long initialDelay=nextRolloverDate - System.currentTimeMillis();
+  if (initialDelay < 1l) {
+    int i=1;
+    while (initialDelay < 1l) {
+      initialDelay=nextRolloverDate + tokenValidity * i - System.currentTimeMillis();
+      i++;
+    }
+  }
+  super.startScheduler(initialDelay,tokenValidity);
+}

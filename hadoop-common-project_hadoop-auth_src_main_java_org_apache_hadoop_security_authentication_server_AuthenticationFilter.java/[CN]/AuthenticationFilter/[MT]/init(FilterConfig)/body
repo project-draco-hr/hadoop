@@ -31,37 +31,20 @@ catch (  IllegalAccessException ex) {
     throw new ServletException(ex);
   }
   validity=Long.parseLong(config.getProperty(AUTH_TOKEN_VALIDITY,"36000")) * 1000;
-  secretProvider=(SignerSecretProvider)filterConfig.getServletContext().getAttribute(SIGNATURE_PROVIDER_ATTRIBUTE);
+  secretProvider=(SignerSecretProvider)filterConfig.getServletContext().getAttribute(SIGNER_SECRET_PROVIDER_ATTRIBUTE);
   if (secretProvider == null) {
-    String signerSecretProviderClassName=config.getProperty(configPrefix + SIGNER_SECRET_PROVIDER_CLASS,null);
-    if (signerSecretProviderClassName == null) {
-      String signatureSecret=config.getProperty(configPrefix + SIGNATURE_SECRET,null);
-      if (signatureSecret != null) {
-        secretProvider=new StringSignerSecretProvider(signatureSecret);
-      }
- else {
-        secretProvider=new RandomSignerSecretProvider();
-        randomSecret=true;
-      }
+    Class<? extends SignerSecretProvider> providerClass=getProviderClass(config);
+    try {
+      secretProvider=providerClass.newInstance();
     }
- else {
-      try {
-        Class<?> klass=Thread.currentThread().getContextClassLoader().loadClass(signerSecretProviderClassName);
-        secretProvider=(SignerSecretProvider)klass.newInstance();
-        customSecretProvider=true;
-      }
- catch (      ClassNotFoundException ex) {
-        throw new ServletException(ex);
-      }
-catch (      InstantiationException ex) {
-        throw new ServletException(ex);
-      }
-catch (      IllegalAccessException ex) {
-        throw new ServletException(ex);
-      }
+ catch (    InstantiationException ex) {
+      throw new ServletException(ex);
+    }
+catch (    IllegalAccessException ex) {
+      throw new ServletException(ex);
     }
     try {
-      secretProvider.init(config,validity);
+      secretProvider.init(config,filterConfig.getServletContext(),validity);
     }
  catch (    Exception ex) {
       throw new ServletException(ex);
