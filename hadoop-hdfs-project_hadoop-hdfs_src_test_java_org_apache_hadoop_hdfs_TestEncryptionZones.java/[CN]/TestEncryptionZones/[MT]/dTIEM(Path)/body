@@ -1,0 +1,40 @@
+{
+  final HdfsAdmin dfsAdmin=new HdfsAdmin(FileSystem.getDefaultUri(conf),conf);
+  final Path baseFile=new Path(prefix,"base");
+  fsWrapper.createFile(baseFile);
+  FileStatus stat=fsWrapper.getFileStatus(baseFile);
+  assertFalse("Expected isEncrypted to return false for " + baseFile,stat.isEncrypted());
+  final Path zone=new Path(prefix,"zone");
+  fsWrapper.mkdir(zone,FsPermission.getDirDefault(),true);
+  dfsAdmin.createEncryptionZone(zone,TEST_KEY);
+  final Path encFile=new Path(zone,"encfile");
+  fsWrapper.createFile(encFile);
+  stat=fsWrapper.getFileStatus(encFile);
+  assertTrue("Expected isEncrypted to return true for enc file" + encFile,stat.isEncrypted());
+  stat=fsWrapper.getFileStatus(zone);
+  assertTrue("Expected isEncrypted to return true for ezroot",stat.isEncrypted());
+  final Path zoneSubdir=new Path(zone,"subdir");
+  fsWrapper.mkdir(zoneSubdir,FsPermission.getDirDefault(),true);
+  stat=fsWrapper.getFileStatus(zoneSubdir);
+  assertTrue("Expected isEncrypted to return true for ez subdir " + zoneSubdir,stat.isEncrypted());
+  final Path nonEzDirPath=new Path(prefix,"nonzone");
+  fsWrapper.mkdir(nonEzDirPath,FsPermission.getDirDefault(),true);
+  stat=fsWrapper.getFileStatus(nonEzDirPath);
+  assertFalse("Expected isEncrypted to return false for directory " + nonEzDirPath,stat.isEncrypted());
+  FileStatus[] statuses=fsWrapper.listStatus(zone);
+  for (  FileStatus s : statuses) {
+    assertTrue("Expected isEncrypted to return true for ez stat " + zone,s.isEncrypted());
+  }
+  statuses=fsWrapper.listStatus(encFile);
+  for (  FileStatus s : statuses) {
+    assertTrue("Expected isEncrypted to return true for ez file stat " + encFile,s.isEncrypted());
+  }
+  statuses=fsWrapper.listStatus(nonEzDirPath);
+  for (  FileStatus s : statuses) {
+    assertFalse("Expected isEncrypted to return false for nonez stat " + nonEzDirPath,s.isEncrypted());
+  }
+  statuses=fsWrapper.listStatus(baseFile);
+  for (  FileStatus s : statuses) {
+    assertFalse("Expected isEncrypted to return false for non ez stat " + baseFile,s.isEncrypted());
+  }
+}
