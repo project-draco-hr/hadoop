@@ -3,11 +3,12 @@
   RMApp app=createRMApp(appId);
   metricsPublisher.appCreated(app,app.getStartTime());
   metricsPublisher.appFinished(app,RMAppState.FINISHED,app.getFinishTime());
+  metricsPublisher.appACLsUpdated(app,"uers1,user2",4L);
   TimelineEntity entity=null;
   do {
     entity=store.getEntity(appId.toString(),ApplicationMetricsConstants.ENTITY_TYPE,EnumSet.allOf(Field.class));
   }
- while (entity == null || entity.getEvents().size() < 2);
+ while (entity == null || entity.getEvents().size() < 3);
   Assert.assertEquals(ApplicationMetricsConstants.ENTITY_TYPE,entity.getEntityType());
   Assert.assertEquals(app.getApplicationId().toString(),entity.getEntityId());
   Assert.assertEquals(app.getName(),entity.getOtherInfo().get(ApplicationMetricsConstants.NAME_ENTITY_INFO));
@@ -15,8 +16,10 @@
   Assert.assertEquals(app.getUser(),entity.getOtherInfo().get(ApplicationMetricsConstants.USER_ENTITY_INFO));
   Assert.assertEquals(app.getApplicationType(),entity.getOtherInfo().get(ApplicationMetricsConstants.TYPE_ENTITY_INFO));
   Assert.assertEquals(app.getSubmitTime(),entity.getOtherInfo().get(ApplicationMetricsConstants.SUBMITTED_TIME_ENTITY_INFO));
+  Assert.assertEquals("uers1,user2",entity.getOtherInfo().get(ApplicationMetricsConstants.APP_VIEW_ACLS_ENTITY_INFO));
   boolean hasCreatedEvent=false;
   boolean hasFinishedEvent=false;
+  boolean hasACLsUpdatedEvent=false;
   for (  TimelineEvent event : entity.getEvents()) {
     if (event.getEventType().equals(ApplicationMetricsConstants.CREATED_EVENT_TYPE)) {
       hasCreatedEvent=true;
@@ -29,6 +32,10 @@
       Assert.assertEquals(app.getFinalApplicationStatus().toString(),event.getEventInfo().get(ApplicationMetricsConstants.FINAL_STATUS_EVENT_INFO));
       Assert.assertEquals(YarnApplicationState.FINISHED.toString(),event.getEventInfo().get(ApplicationMetricsConstants.STATE_EVENT_INFO));
     }
+ else     if (event.getEventType().equals(ApplicationMetricsConstants.ACLS_UPDATED_EVENT_TYPE)) {
+      hasACLsUpdatedEvent=true;
+      Assert.assertEquals(4L,event.getTimestamp());
+    }
   }
-  Assert.assertTrue(hasCreatedEvent && hasFinishedEvent);
+  Assert.assertTrue(hasCreatedEvent && hasFinishedEvent && hasACLsUpdatedEvent);
 }
