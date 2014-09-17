@@ -21,12 +21,7 @@
   if (kerberos) {
     conf.set("hadoop.kms.authentication.type","kerberos");
     conf.set("hadoop.kms.authentication.kerberos.keytab",keytab.getAbsolutePath());
-    if (multipleServerPrincipals) {
-      conf.set("hadoop.kms.authentication.kerberos.principal","*");
-    }
- else {
-      conf.set("hadoop.kms.authentication.kerberos.principal","HTTP/localhost");
-    }
+    conf.set("hadoop.kms.authentication.kerberos.principal","HTTP/localhost");
     conf.set("hadoop.kms.authentication.kerberos.name.rules","DEFAULT");
   }
   writeConf(testDir,conf);
@@ -35,32 +30,13 @@
       final Configuration conf=new Configuration();
       URL url=getKMSUrl();
       Assert.assertEquals(keystore != null,url.getProtocol().equals("https"));
+      final URI uri=createKMSUri(getKMSUrl());
       if (kerberos) {
         for (        String user : new String[]{"client","client/host"}) {
           doAs(user,new PrivilegedExceptionAction<Void>(){
             @Override public Void run() throws Exception {
-              URI uri=createKMSUri(getKMSUrl());
-              KeyProvider kp=new KMSClientProvider(uri,conf);
+              final KeyProvider kp=new KMSClientProvider(uri,conf);
               Assert.assertTrue(kp.getKeys().isEmpty());
-              if (!ssl) {
-                String url=getKMSUrl().toString();
-                url=url.replace("localhost","127.0.0.1");
-                uri=createKMSUri(new URL(url));
-                if (multipleServerPrincipals) {
-                  kp=new KMSClientProvider(uri,conf);
-                  Assert.assertTrue(kp.getKeys().isEmpty());
-                }
- else {
-                  kp=new KMSClientProvider(uri,conf);
-                  try {
-                    kp.getKeys().isEmpty();
-                    Assert.fail();
-                  }
- catch (                  IOException ex) {
-                    Assert.assertEquals(AuthenticationException.class,ex.getCause().getClass());
-                  }
-                }
-              }
               return null;
             }
           }
@@ -68,7 +44,6 @@
         }
       }
  else {
-        URI uri=createKMSUri(getKMSUrl());
         KeyProvider kp=new KMSClientProvider(uri,conf);
         Assert.assertTrue(kp.getKeys().isEmpty());
       }
