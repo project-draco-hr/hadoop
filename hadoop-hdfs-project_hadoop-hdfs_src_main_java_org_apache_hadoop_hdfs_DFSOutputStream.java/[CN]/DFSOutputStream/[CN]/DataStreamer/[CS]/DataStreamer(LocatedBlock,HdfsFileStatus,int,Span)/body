@@ -1,0 +1,28 @@
+{
+  isAppend=true;
+  stage=BlockConstructionStage.PIPELINE_SETUP_APPEND;
+  traceSpan=span;
+  block=lastBlock.getBlock();
+  bytesSent=block.getNumBytes();
+  accessToken=lastBlock.getBlockToken();
+  long usedInLastBlock=stat.getLen() % blockSize;
+  int freeInLastBlock=(int)(blockSize - usedInLastBlock);
+  int usedInCksum=(int)(stat.getLen() % bytesPerChecksum);
+  int freeInCksum=bytesPerChecksum - usedInCksum;
+  if (freeInLastBlock == blockSize) {
+    throw new IOException("The last block for file " + src + " is full.");
+  }
+  if (usedInCksum > 0 && freeInCksum > 0) {
+    computePacketChunkSize(0,freeInCksum);
+    setChecksumBufSize(freeInCksum);
+    appendChunk=true;
+  }
+ else {
+    computePacketChunkSize(Math.min(dfsClient.getConf().writePacketSize,freeInLastBlock),bytesPerChecksum);
+  }
+  setPipeline(lastBlock);
+  errorIndex=-1;
+  if (nodes.length < 1) {
+    throw new IOException("Unable to retrieve blocks locations " + " for last block " + block + "of file "+ src);
+  }
+}

@@ -1,0 +1,88 @@
+{
+  long rolloverFrequency=15 * 1000;
+  long seedA=System.currentTimeMillis();
+  Random rand=new Random(seedA);
+  byte[] secretA2=Long.toString(rand.nextLong()).getBytes();
+  byte[] secretA1=Long.toString(rand.nextLong()).getBytes();
+  long seedB=System.currentTimeMillis() + rand.nextLong();
+  rand=new Random(seedB);
+  byte[] secretB2=Long.toString(rand.nextLong()).getBytes();
+  byte[] secretB1=Long.toString(rand.nextLong()).getBytes();
+  long seedC=System.currentTimeMillis() + rand.nextLong();
+  rand=new Random(seedC);
+  byte[] secretC2=Long.toString(rand.nextLong()).getBytes();
+  byte[] secretC1=Long.toString(rand.nextLong()).getBytes();
+  ZKSignerSecretProvider secretProviderA=new ZKSignerSecretProvider(seedA);
+  ZKSignerSecretProvider secretProviderB=new ZKSignerSecretProvider(seedB);
+  ZKSignerSecretProvider secretProviderC=new ZKSignerSecretProvider(seedC);
+  Properties config=new Properties();
+  config.setProperty(ZKSignerSecretProvider.ZOOKEEPER_CONNECTION_STRING,zkServer.getConnectString());
+  config.setProperty(ZKSignerSecretProvider.ZOOKEEPER_PATH,"/secret");
+  try {
+    secretProviderA.init(config,getDummyServletContext(),rolloverFrequency);
+    secretProviderB.init(config,getDummyServletContext(),rolloverFrequency);
+    secretProviderC.init(config,getDummyServletContext(),rolloverFrequency);
+    byte[] currentSecretA=secretProviderA.getCurrentSecret();
+    byte[][] allSecretsA=secretProviderA.getAllSecrets();
+    byte[] currentSecretB=secretProviderB.getCurrentSecret();
+    byte[][] allSecretsB=secretProviderB.getAllSecrets();
+    byte[] currentSecretC=secretProviderC.getCurrentSecret();
+    byte[][] allSecretsC=secretProviderC.getAllSecrets();
+    Assert.assertArrayEquals(currentSecretA,currentSecretB);
+    Assert.assertArrayEquals(currentSecretB,currentSecretC);
+    Assert.assertEquals(2,allSecretsA.length);
+    Assert.assertEquals(2,allSecretsB.length);
+    Assert.assertEquals(2,allSecretsC.length);
+    Assert.assertArrayEquals(allSecretsA[0],allSecretsB[0]);
+    Assert.assertArrayEquals(allSecretsB[0],allSecretsC[0]);
+    Assert.assertNull(allSecretsA[1]);
+    Assert.assertNull(allSecretsB[1]);
+    Assert.assertNull(allSecretsC[1]);
+    char secretChosen='z';
+    if (Arrays.equals(secretA1,currentSecretA)) {
+      Assert.assertArrayEquals(secretA1,allSecretsA[0]);
+      secretChosen='A';
+    }
+ else     if (Arrays.equals(secretB1,currentSecretB)) {
+      Assert.assertArrayEquals(secretB1,allSecretsA[0]);
+      secretChosen='B';
+    }
+ else     if (Arrays.equals(secretC1,currentSecretC)) {
+      Assert.assertArrayEquals(secretC1,allSecretsA[0]);
+      secretChosen='C';
+    }
+ else {
+      Assert.fail("It appears that they all agreed on the same secret, but " + "not one of the secrets they were supposed to");
+    }
+    Thread.sleep((rolloverFrequency + 2000));
+    currentSecretA=secretProviderA.getCurrentSecret();
+    allSecretsA=secretProviderA.getAllSecrets();
+    currentSecretB=secretProviderB.getCurrentSecret();
+    allSecretsB=secretProviderB.getAllSecrets();
+    currentSecretC=secretProviderC.getCurrentSecret();
+    allSecretsC=secretProviderC.getAllSecrets();
+    Assert.assertArrayEquals(currentSecretA,currentSecretB);
+    Assert.assertArrayEquals(currentSecretB,currentSecretC);
+    Assert.assertEquals(2,allSecretsA.length);
+    Assert.assertEquals(2,allSecretsB.length);
+    Assert.assertEquals(2,allSecretsC.length);
+    Assert.assertArrayEquals(allSecretsA[0],allSecretsB[0]);
+    Assert.assertArrayEquals(allSecretsB[0],allSecretsC[0]);
+    Assert.assertArrayEquals(allSecretsA[1],allSecretsB[1]);
+    Assert.assertArrayEquals(allSecretsB[1],allSecretsC[1]);
+    if (secretChosen == 'A') {
+      Assert.assertArrayEquals(secretA2,currentSecretA);
+    }
+ else     if (secretChosen == 'B') {
+      Assert.assertArrayEquals(secretB2,currentSecretA);
+    }
+ else     if (secretChosen == 'C') {
+      Assert.assertArrayEquals(secretC2,currentSecretA);
+    }
+  }
+  finally {
+    secretProviderC.destroy();
+    secretProviderB.destroy();
+    secretProviderA.destroy();
+  }
+}
