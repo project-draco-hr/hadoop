@@ -1,0 +1,47 @@
+{
+  String message="";
+  if (contract == null) {
+    message="Missing reservation definition." + " Please try again by specifying a reservation definition.";
+    RMAuditLogger.logFailure("UNKNOWN",auditConstant,"validate reservation input definition","ClientRMService",message);
+    throw RPCUtil.getRemoteException(message);
+  }
+  if (contract.getDeadline() <= clock.getTime()) {
+    message="The specified deadline: " + contract.getDeadline() + " is the past. Please try again with deadline in the future.";
+    RMAuditLogger.logFailure("UNKNOWN",auditConstant,"validate reservation input definition","ClientRMService",message);
+    throw RPCUtil.getRemoteException(message);
+  }
+  ReservationRequests resReqs=contract.getReservationRequests();
+  if (resReqs == null) {
+    message="No resources have been specified to reserve." + "Please try again by specifying the resources to reserve.";
+    RMAuditLogger.logFailure("UNKNOWN",auditConstant,"validate reservation input definition","ClientRMService",message);
+    throw RPCUtil.getRemoteException(message);
+  }
+  List<ReservationRequest> resReq=resReqs.getReservationResources();
+  if (resReq == null || resReq.isEmpty()) {
+    message="No resources have been specified to reserve." + " Please try again by specifying the resources to reserve.";
+    RMAuditLogger.logFailure("UNKNOWN",auditConstant,"validate reservation input definition","ClientRMService",message);
+    throw RPCUtil.getRemoteException(message);
+  }
+  long minDuration=0;
+  Resource maxGangSize=Resource.newInstance(0,0);
+  ReservationRequestInterpreter type=contract.getReservationRequests().getInterpreter();
+  for (  ReservationRequest rr : resReq) {
+    if (type == ReservationRequestInterpreter.R_ALL || type == ReservationRequestInterpreter.R_ANY) {
+      minDuration=Math.max(minDuration,rr.getDuration());
+    }
+ else {
+      minDuration+=rr.getDuration();
+    }
+    maxGangSize=Resources.max(plan.getResourceCalculator(),plan.getTotalCapacity(),maxGangSize,Resources.multiply(rr.getCapability(),rr.getConcurrency()));
+  }
+  if (contract.getDeadline() - contract.getArrival() < minDuration && type != ReservationRequestInterpreter.R_ANY) {
+    message="The time difference (" + (contract.getDeadline() - contract.getArrival()) + ") between arrival ("+ contract.getArrival()+ ") "+ "and deadline ("+ contract.getDeadline()+ ") must "+ " be greater or equal to the minimum resource duration ("+ minDuration+ ")";
+    RMAuditLogger.logFailure("UNKNOWN",auditConstant,"validate reservation input definition","ClientRMService",message);
+    throw RPCUtil.getRemoteException(message);
+  }
+  if (Resources.greaterThan(plan.getResourceCalculator(),plan.getTotalCapacity(),maxGangSize,plan.getTotalCapacity()) && type != ReservationRequestInterpreter.R_ANY) {
+    message="The size of the largest gang in the reservation refinition (" + maxGangSize + ") exceed the capacity available ("+ plan.getTotalCapacity()+ " )";
+    RMAuditLogger.logFailure("UNKNOWN",auditConstant,"validate reservation input definition","ClientRMService",message);
+    throw RPCUtil.getRemoteException(message);
+  }
+}

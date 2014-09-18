@@ -1,0 +1,22 @@
+{
+  checkReservationSytem(AuditConstants.SUBMIT_RESERVATION_REQUEST);
+  ReservationSubmissionResponse response=recordFactory.newRecordInstance(ReservationSubmissionResponse.class);
+  ReservationId reservationId=reservationSystem.getNewReservationId();
+  Plan plan=rValidator.validateReservationSubmissionRequest(reservationSystem,request,reservationId);
+  String queueName=request.getQueue();
+  String user=checkReservationACLs(queueName,AuditConstants.SUBMIT_RESERVATION_REQUEST);
+  try {
+    boolean result=plan.getReservationAgent().createReservation(reservationId,user,plan,request.getReservationDefinition());
+    if (result) {
+      reservationSystem.setQueueForReservation(reservationId,queueName);
+      refreshScheduler(queueName,request.getReservationDefinition(),reservationId.toString());
+      response.setReservationId(reservationId);
+    }
+  }
+ catch (  PlanningException e) {
+    RMAuditLogger.logFailure(user,AuditConstants.SUBMIT_RESERVATION_REQUEST,e.getMessage(),"ClientRMService","Unable to create the reservation: " + reservationId);
+    throw RPCUtil.getRemoteException(e);
+  }
+  RMAuditLogger.logSuccess(user,AuditConstants.SUBMIT_RESERVATION_REQUEST,"ClientRMService: " + reservationId);
+  return response;
+}

@@ -1,0 +1,22 @@
+{
+  checkReservationSytem(AuditConstants.UPDATE_RESERVATION_REQUEST);
+  ReservationUpdateResponse response=recordFactory.newRecordInstance(ReservationUpdateResponse.class);
+  Plan plan=rValidator.validateReservationUpdateRequest(reservationSystem,request);
+  ReservationId reservationId=request.getReservationId();
+  String queueName=reservationSystem.getQueueForReservation(reservationId);
+  String user=checkReservationACLs(queueName,AuditConstants.UPDATE_RESERVATION_REQUEST);
+  try {
+    boolean result=plan.getReservationAgent().updateReservation(reservationId,user,plan,request.getReservationDefinition());
+    if (!result) {
+      String errMsg="Unable to update reservation: " + reservationId;
+      RMAuditLogger.logFailure(user,AuditConstants.UPDATE_RESERVATION_REQUEST,errMsg,"ClientRMService",errMsg);
+      throw RPCUtil.getRemoteException(errMsg);
+    }
+  }
+ catch (  PlanningException e) {
+    RMAuditLogger.logFailure(user,AuditConstants.UPDATE_RESERVATION_REQUEST,e.getMessage(),"ClientRMService","Unable to update the reservation: " + reservationId);
+    throw RPCUtil.getRemoteException(e);
+  }
+  RMAuditLogger.logSuccess(user,AuditConstants.UPDATE_RESERVATION_REQUEST,"ClientRMService: " + reservationId);
+  return response;
+}

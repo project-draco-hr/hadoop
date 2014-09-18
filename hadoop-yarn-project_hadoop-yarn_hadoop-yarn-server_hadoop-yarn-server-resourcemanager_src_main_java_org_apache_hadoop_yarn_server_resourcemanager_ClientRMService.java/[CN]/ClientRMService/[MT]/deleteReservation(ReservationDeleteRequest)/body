@@ -1,0 +1,22 @@
+{
+  checkReservationSytem(AuditConstants.DELETE_RESERVATION_REQUEST);
+  ReservationDeleteResponse response=recordFactory.newRecordInstance(ReservationDeleteResponse.class);
+  Plan plan=rValidator.validateReservationDeleteRequest(reservationSystem,request);
+  ReservationId reservationId=request.getReservationId();
+  String queueName=reservationSystem.getQueueForReservation(reservationId);
+  String user=checkReservationACLs(queueName,AuditConstants.DELETE_RESERVATION_REQUEST);
+  try {
+    boolean result=plan.getReservationAgent().deleteReservation(reservationId,user,plan);
+    if (!result) {
+      String errMsg="Could not delete reservation: " + reservationId;
+      RMAuditLogger.logFailure(user,AuditConstants.DELETE_RESERVATION_REQUEST,errMsg,"ClientRMService",errMsg);
+      throw RPCUtil.getRemoteException(errMsg);
+    }
+  }
+ catch (  PlanningException e) {
+    RMAuditLogger.logFailure(user,AuditConstants.DELETE_RESERVATION_REQUEST,e.getMessage(),"ClientRMService","Unable to delete the reservation: " + reservationId);
+    throw RPCUtil.getRemoteException(e);
+  }
+  RMAuditLogger.logSuccess(user,AuditConstants.DELETE_RESERVATION_REQUEST,"ClientRMService: " + reservationId);
+  return response;
+}

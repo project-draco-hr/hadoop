@@ -1,0 +1,67 @@
+{
+  CapacitySchedulerConfiguration conf=new CapacitySchedulerConfiguration();
+  ReservationSystemTestUtil.setupQueueConfiguration(conf);
+  conf.setClass(YarnConfiguration.RM_SCHEDULER,CapacityScheduler.class,ResourceScheduler.class);
+  conf.setBoolean(YarnConfiguration.RM_RESERVATION_SYSTEM_ENABLE,true);
+  MiniYARNCluster cluster=new MiniYARNCluster("testReservationAPIs",2,1,1);
+  YarnClient client=null;
+  try {
+    cluster.init(conf);
+    cluster.start();
+    final Configuration yarnConf=cluster.getConfig();
+    client=YarnClient.createYarnClient();
+    client.init(yarnConf);
+    client.start();
+    Clock clock=new UTCClock();
+    long arrival=clock.getTime();
+    long duration=60000;
+    long deadline=(long)(arrival + 1.05 * duration);
+    ReservationSubmissionRequest sRequest=createSimpleReservationRequest(4,arrival,deadline,duration);
+    ReservationSubmissionResponse sResponse=null;
+    try {
+      sResponse=client.submitReservation(sRequest);
+    }
+ catch (    Exception e) {
+      Assert.fail(e.getMessage());
+    }
+    Assert.assertNotNull(sResponse);
+    ReservationId reservationID=sResponse.getReservationId();
+    Assert.assertNotNull(reservationID);
+    System.out.println("Submit reservation response: " + reservationID);
+    ReservationDefinition rDef=sRequest.getReservationDefinition();
+    ReservationRequest rr=rDef.getReservationRequests().getReservationResources().get(0);
+    rr.setNumContainers(5);
+    arrival=clock.getTime();
+    duration=30000;
+    deadline=(long)(arrival + 1.05 * duration);
+    rr.setDuration(duration);
+    rDef.setArrival(arrival);
+    rDef.setDeadline(deadline);
+    ReservationUpdateRequest uRequest=ReservationUpdateRequest.newInstance(rDef,reservationID);
+    ReservationUpdateResponse uResponse=null;
+    try {
+      uResponse=client.updateReservation(uRequest);
+    }
+ catch (    Exception e) {
+      Assert.fail(e.getMessage());
+    }
+    Assert.assertNotNull(sResponse);
+    System.out.println("Update reservation response: " + uResponse);
+    ReservationDeleteRequest dRequest=ReservationDeleteRequest.newInstance(reservationID);
+    ReservationDeleteResponse dResponse=null;
+    try {
+      dResponse=client.deleteReservation(dRequest);
+    }
+ catch (    Exception e) {
+      Assert.fail(e.getMessage());
+    }
+    Assert.assertNotNull(sResponse);
+    System.out.println("Delete reservation response: " + dResponse);
+  }
+  finally {
+    if (client != null) {
+      client.stop();
+    }
+    cluster.stop();
+  }
+}
