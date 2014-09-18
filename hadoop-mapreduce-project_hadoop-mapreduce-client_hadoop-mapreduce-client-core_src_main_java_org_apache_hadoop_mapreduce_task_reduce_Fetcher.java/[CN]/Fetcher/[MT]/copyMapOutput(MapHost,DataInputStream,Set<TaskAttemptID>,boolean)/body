@@ -4,7 +4,7 @@
   long decompressedLength=-1;
   long compressedLength=-1;
   try {
-    long startTime=System.currentTimeMillis();
+    long startTime=Time.monotonicNow();
     int forReduce=-1;
     try {
       ShuffleHeader header=new ShuffleHeader();
@@ -49,16 +49,20 @@
       LOG.warn("Failed to shuffle for fetcher#" + id,e);
       throw new IOException(e);
     }
-    long endTime=System.currentTimeMillis();
+    long endTime=Time.monotonicNow();
+    retryStartTime=0;
     scheduler.copySucceeded(mapId,host,compressedLength,endTime - startTime,mapOutput);
     remaining.remove(mapId);
     metrics.successFetch();
     return null;
   }
  catch (  IOException ioe) {
+    if (canRetry) {
+      checkTimeoutOrRetry(host,ioe);
+    }
     ioErrs.increment(1);
     if (mapId == null || mapOutput == null) {
-      LOG.info("fetcher#" + id + " failed to read map header"+ mapId+ " decomp: "+ decompressedLength+ ", "+ compressedLength,ioe);
+      LOG.warn("fetcher#" + id + " failed to read map header"+ mapId+ " decomp: "+ decompressedLength+ ", "+ compressedLength,ioe);
       if (mapId == null) {
         return remaining.toArray(new TaskAttemptID[remaining.size()]);
       }
