@@ -1,0 +1,23 @@
+{
+  startDFSCluster(1,1);
+  DataNode dn=cluster.getDataNodes().get(0);
+  Configuration conf=dn.getConf();
+  String oldPaths=conf.get(DFS_DATANODE_DATA_DIR_KEY);
+  List<StorageLocation> oldLocations=new ArrayList<StorageLocation>();
+  for (  String path : oldPaths.split(",")) {
+    oldLocations.add(StorageLocation.parse(path));
+  }
+  assertFalse(oldLocations.isEmpty());
+  String newPaths="/foo/path1,/foo/path2";
+  conf.set(DFS_DATANODE_DATA_DIR_KEY,newPaths);
+  DataNode.ChangedVolumes changedVolumes=dn.parseChangedVolumes();
+  List<StorageLocation> newVolumes=changedVolumes.newLocations;
+  assertEquals(2,newVolumes.size());
+  assertEquals("/foo/path1",newVolumes.get(0).getFile().getAbsolutePath());
+  assertEquals("/foo/path2",newVolumes.get(1).getFile().getAbsolutePath());
+  List<StorageLocation> removedVolumes=changedVolumes.deactivateLocations;
+  assertEquals(oldLocations.size(),removedVolumes.size());
+  for (int i=0; i < removedVolumes.size(); i++) {
+    assertEquals(oldLocations.get(i).getFile(),removedVolumes.get(i).getFile());
+  }
+}

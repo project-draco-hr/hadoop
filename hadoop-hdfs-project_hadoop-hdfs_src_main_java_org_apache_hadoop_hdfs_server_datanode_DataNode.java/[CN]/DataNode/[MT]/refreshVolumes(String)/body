@@ -1,0 +1,46 @@
+{
+  Configuration conf=getConf();
+  String oldVolumes=conf.get(DFS_DATANODE_DATA_DIR_KEY);
+  conf.set(DFS_DATANODE_DATA_DIR_KEY,newVolumes);
+  List<StorageLocation> locations=getStorageLocations(conf);
+  final int numOldDataDirs=dataDirs.size();
+  dataDirs=locations;
+  ChangedVolumes changedVolumes=parseChangedVolumes();
+  try {
+    if (numOldDataDirs + changedVolumes.newLocations.size() - changedVolumes.deactivateLocations.size() <= 0) {
+      throw new IOException("Attempt to remove all volumes.");
+    }
+    if (!changedVolumes.newLocations.isEmpty()) {
+      LOG.info("Adding new volumes: " + Joiner.on(",").join(changedVolumes.newLocations));
+      for (      BPOfferService bpos : blockPoolManager.getAllNamenodeThreads()) {
+        NamespaceInfo nsInfo=bpos.getNamespaceInfo();
+        LOG.info("Loading volumes for namesapce: " + nsInfo.getNamespaceID());
+        storage.addStorageLocations(this,nsInfo,changedVolumes.newLocations,StartupOption.HOTSWAP);
+      }
+      List<String> bpids=Lists.newArrayList();
+      for (      BPOfferService bpos : blockPoolManager.getAllNamenodeThreads()) {
+        bpids.add(bpos.getBlockPoolId());
+      }
+      List<StorageLocation> succeedVolumes=data.addVolumes(changedVolumes.newLocations,bpids);
+      if (succeedVolumes.size() < changedVolumes.newLocations.size()) {
+        List<StorageLocation> failedVolumes=Lists.newArrayList();
+        for (        StorageLocation location : changedVolumes.newLocations) {
+          if (!succeedVolumes.contains(location)) {
+            failedVolumes.add(location);
+          }
+        }
+        storage.removeVolumes(failedVolumes);
+        data.removeVolumes(failedVolumes);
+      }
+    }
+    if (!changedVolumes.deactivateLocations.isEmpty()) {
+      LOG.info("Deactivating volumes: " + Joiner.on(",").join(changedVolumes.deactivateLocations));
+      data.removeVolumes(changedVolumes.deactivateLocations);
+      storage.removeVolumes(changedVolumes.deactivateLocations);
+    }
+  }
+ catch (  IOException e) {
+    LOG.warn("There is IOException when refreshing volumes! " + "Recover configurations: " + DFS_DATANODE_DATA_DIR_KEY + " = "+ oldVolumes,e);
+    throw e;
+  }
+}
