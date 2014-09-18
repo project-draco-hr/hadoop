@@ -1,0 +1,43 @@
+{
+  String srcs=normalizePath(src);
+  final boolean isRawPath=isReservedRawName(src);
+  readLock();
+  try {
+    if (srcs.endsWith(HdfsConstants.SEPARATOR_DOT_SNAPSHOT_DIR)) {
+      return getSnapshotsListing(srcs,startAfter);
+    }
+    final INodesInPath inodesInPath=getLastINodeInPath(srcs);
+    final int snapshot=inodesInPath.getPathSnapshotId();
+    final INode targetNode=inodesInPath.getLastINode();
+    if (targetNode == null)     return null;
+    byte parentStoragePolicy=isSuperUser ? targetNode.getStoragePolicyID() : BlockStoragePolicy.ID_UNSPECIFIED;
+    if (!targetNode.isDirectory()) {
+      return new DirectoryListing(new HdfsFileStatus[]{createFileStatus(HdfsFileStatus.EMPTY_NAME,targetNode,needLocation,parentStoragePolicy,snapshot,isRawPath)},0);
+    }
+    final INodeDirectory dirInode=targetNode.asDirectory();
+    final ReadOnlyList<INode> contents=dirInode.getChildrenList(snapshot);
+    int startChild=INodeDirectory.nextChild(contents,startAfter);
+    int totalNumChildren=contents.size();
+    int numOfListing=Math.min(totalNumChildren - startChild,this.lsLimit);
+    int locationBudget=this.lsLimit;
+    int listingCnt=0;
+    HdfsFileStatus listing[]=new HdfsFileStatus[numOfListing];
+    for (int i=0; i < numOfListing && locationBudget > 0; i++) {
+      INode cur=contents.get(startChild + i);
+      byte curPolicy=isSuperUser && !cur.isSymlink() ? cur.getLocalStoragePolicyID() : BlockStoragePolicy.ID_UNSPECIFIED;
+      listing[i]=createFileStatus(cur.getLocalNameBytes(),cur,needLocation,getStoragePolicyID(curPolicy,parentStoragePolicy),snapshot,isRawPath);
+      listingCnt++;
+      if (needLocation) {
+        LocatedBlocks blks=((HdfsLocatedFileStatus)listing[i]).getBlockLocations();
+        locationBudget-=(blks == null) ? 0 : blks.locatedBlockCount() * listing[i].getReplication();
+      }
+    }
+    if (listingCnt < numOfListing) {
+      listing=Arrays.copyOf(listing,listingCnt);
+    }
+    return new DirectoryListing(listing,totalNumChildren - startChild - listingCnt);
+  }
+  finally {
+    readUnlock();
+  }
+}
