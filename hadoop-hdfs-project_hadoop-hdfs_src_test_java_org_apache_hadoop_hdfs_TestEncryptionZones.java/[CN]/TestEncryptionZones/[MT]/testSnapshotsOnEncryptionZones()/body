@@ -1,4 +1,6 @@
 {
+  final String TEST_KEY2="testkey2";
+  DFSTestUtil.createKey(TEST_KEY2,cluster,conf);
   final int len=8196;
   final Path zoneParent=new Path("/zones");
   final Path zone=new Path(zoneParent,"zone");
@@ -16,10 +18,27 @@
   final Path snap2=fs.createSnapshot(zoneParent);
   final Path snap2Zone=new Path(snap2,zone.getName());
   assertNull("Expected null ez path",dfsAdmin.getEncryptionZoneForPath(snap2Zone));
-  dfsAdmin.createEncryptionZone(zone,TEST_KEY);
+  dfsAdmin.createEncryptionZone(zone,TEST_KEY2);
   final Path snap3=fs.createSnapshot(zoneParent);
   final Path snap3Zone=new Path(snap3,zone.getName());
-  assertEquals("Got unexpected ez path",zone.toString(),dfsAdmin.getEncryptionZoneForPath(snap3Zone).getPath().toString());
+  EncryptionZone ezSnap3=dfsAdmin.getEncryptionZoneForPath(snap3Zone);
+  assertEquals("Got unexpected ez path",zone.toString(),ezSnap3.getPath().toString());
+  assertEquals("Unexpected ez key",TEST_KEY2,ezSnap3.getKeyName());
+  EncryptionZone ezSnap1=dfsAdmin.getEncryptionZoneForPath(snap1Zone);
+  assertEquals("Got unexpected ez path",zone.toString(),ezSnap1.getPath().toString());
+  assertEquals("Unexpected ez key",TEST_KEY,ezSnap1.getKeyName());
+  ArrayList<EncryptionZone> listZones=Lists.newArrayList();
+  RemoteIterator<EncryptionZone> it=dfsAdmin.listEncryptionZones();
+  while (it.hasNext()) {
+    listZones.add(it.next());
+  }
+  for (  EncryptionZone z : listZones) {
+    System.out.println(z);
+  }
+  assertEquals("Did not expect additional encryption zones!",1,listZones.size());
+  EncryptionZone listZone=listZones.get(0);
+  assertEquals("Got unexpected ez path",zone.toString(),listZone.getPath().toString());
+  assertEquals("Unexpected ez key",TEST_KEY2,listZone.getKeyName());
   final Path snapshottedZoneFile=new Path(snap1.toString() + "/" + zone.getName()+ "/"+ zoneFile.getName());
   assertEquals("Contents of snapshotted file have changed unexpectedly",contents,DFSTestUtil.readFile(fs,snapshottedZoneFile));
   fs.deleteSnapshot(zoneParent,snap2.getName());
