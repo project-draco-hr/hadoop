@@ -1,4 +1,5 @@
 {
+  retryStartTime=0;
   List<TaskAttemptID> maps=scheduler.getMapsForHost(host);
   if (maps.size() == 0) {
     return;
@@ -8,39 +9,13 @@
   }
   Set<TaskAttemptID> remaining=new HashSet<TaskAttemptID>(maps);
   DataInputStream input=null;
+  URL url=getMapOutputURL(host,maps);
   try {
-    URL url=getMapOutputURL(host,maps);
-    openConnection(url);
+    setupConnectionsWithRetry(host,remaining,url);
     if (stopped) {
       abortConnect(host,remaining);
       return;
     }
-    String msgToEncode=SecureShuffleUtils.buildMsgFrom(url);
-    String encHash=SecureShuffleUtils.hashFromString(msgToEncode,shuffleSecretKey);
-    connection.addRequestProperty(SecureShuffleUtils.HTTP_HEADER_URL_HASH,encHash);
-    connection.setReadTimeout(readTimeout);
-    connection.addRequestProperty(ShuffleHeader.HTTP_HEADER_NAME,ShuffleHeader.DEFAULT_HTTP_HEADER_NAME);
-    connection.addRequestProperty(ShuffleHeader.HTTP_HEADER_VERSION,ShuffleHeader.DEFAULT_HTTP_HEADER_VERSION);
-    connect(connection,connectionTimeout);
-    if (stopped) {
-      abortConnect(host,remaining);
-      return;
-    }
-    input=new DataInputStream(connection.getInputStream());
-    int rc=connection.getResponseCode();
-    if (rc != HttpURLConnection.HTTP_OK) {
-      throw new IOException("Got invalid response code " + rc + " from "+ url+ ": "+ connection.getResponseMessage());
-    }
-    if (!ShuffleHeader.DEFAULT_HTTP_HEADER_NAME.equals(connection.getHeaderField(ShuffleHeader.HTTP_HEADER_NAME)) || !ShuffleHeader.DEFAULT_HTTP_HEADER_VERSION.equals(connection.getHeaderField(ShuffleHeader.HTTP_HEADER_VERSION))) {
-      throw new IOException("Incompatible shuffle response version");
-    }
-    String replyHash=connection.getHeaderField(SecureShuffleUtils.HTTP_HEADER_REPLY_URL_HASH);
-    if (replyHash == null) {
-      throw new IOException("security validation of TT Map output failed");
-    }
-    LOG.debug("url=" + msgToEncode + ";encHash="+ encHash+ ";replyHash="+ replyHash);
-    SecureShuffleUtils.verifyReply(replyHash,encHash,shuffleSecretKey);
-    LOG.info("for url=" + msgToEncode + " sent hash and received reply");
   }
  catch (  IOException ie) {
     boolean connectExcpt=ie instanceof ConnectException;
@@ -55,10 +30,23 @@
     }
     return;
   }
+  input=new DataInputStream(connection.getInputStream());
   try {
     TaskAttemptID[] failedTasks=null;
     while (!remaining.isEmpty() && failedTasks == null) {
-      failedTasks=copyMapOutput(host,input,remaining);
+      try {
+        failedTasks=copyMapOutput(host,input,remaining,fetchRetryEnabled);
+      }
+ catch (      IOException e) {
+        connection.disconnect();
+        url=getMapOutputURL(host,remaining);
+        setupConnectionsWithRetry(host,remaining,url);
+        if (stopped) {
+          abortConnect(host,remaining);
+          return;
+        }
+        input=new DataInputStream(connection.getInputStream());
+      }
     }
     if (failedTasks != null && failedTasks.length > 0) {
       LOG.warn("copyMapOutput failed for tasks " + Arrays.toString(failedTasks));
