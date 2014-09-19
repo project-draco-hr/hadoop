@@ -1,7 +1,13 @@
 {
   ReplicaInfo replicaInfo=volumeMap.get(b.getBlockPoolId(),b.getBlockId());
   if (replicaInfo != null) {
-    throw new ReplicaAlreadyExistsException("Block " + b + " already exists in state "+ replicaInfo.getState()+ " and thus cannot be created.");
+    if (replicaInfo.getGenerationStamp() < b.getGenerationStamp() && replicaInfo instanceof ReplicaInPipeline) {
+      ((ReplicaInPipeline)replicaInfo).stopWriter(datanode.getDnConf().getXceiverStopTimeout());
+      invalidate(b.getBlockPoolId(),new Block[]{replicaInfo});
+    }
+ else {
+      throw new ReplicaAlreadyExistsException("Block " + b + " already exists in state "+ replicaInfo.getState()+ " and thus cannot be created.");
+    }
   }
   FsVolumeImpl v=volumes.getNextVolume(storageType,b.getNumBytes());
   File f=v.createTmpFile(b.getBlockPoolId(),b.getLocalBlock());
