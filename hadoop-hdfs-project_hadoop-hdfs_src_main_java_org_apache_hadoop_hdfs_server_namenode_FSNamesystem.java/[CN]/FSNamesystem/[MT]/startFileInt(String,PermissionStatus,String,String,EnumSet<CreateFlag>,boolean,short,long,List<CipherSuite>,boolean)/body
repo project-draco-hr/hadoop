@@ -27,62 +27,42 @@
   boolean create=flag.contains(CreateFlag.CREATE);
   boolean overwrite=flag.contains(CreateFlag.OVERWRITE);
   waitForLoadingFSImage();
-  BlocksMapUpdateInfo toRemoveBlocks=null;
+  CipherSuite suite=null;
+  String ezKeyName=null;
+  readLock();
   try {
-    boolean shouldContinue=true;
-    int iters=0;
-    while (shouldContinue) {
-      skipSync=false;
-      if (iters >= 10) {
-        throw new IOException("Too many retries because of encryption zone " + "operations, something might be broken!");
+    src=resolvePath(src,pathComponents);
+    INodesInPath iip=dir.getINodesInPath4Write(src);
+    if (dir.isInAnEZ(iip)) {
+      suite=chooseCipherSuite(iip,cipherSuites);
+      if (suite != null) {
+        Preconditions.checkArgument(!suite.equals(CipherSuite.UNKNOWN),"Chose an UNKNOWN CipherSuite!");
       }
-      shouldContinue=false;
-      iters++;
-      CipherSuite suite=null;
-      String ezKeyName=null;
-      readLock();
-      try {
-        src=resolvePath(src,pathComponents);
-        INodesInPath iip=dir.getINodesInPath4Write(src);
-        if (dir.isInAnEZ(iip)) {
-          suite=chooseCipherSuite(iip,cipherSuites);
-          if (suite != null) {
-            Preconditions.checkArgument(!suite.equals(CipherSuite.UNKNOWN),"Chose an UNKNOWN CipherSuite!");
-          }
-          ezKeyName=dir.getKeyName(iip);
-          Preconditions.checkState(ezKeyName != null);
-        }
-      }
-  finally {
-        readUnlock();
-      }
-      Preconditions.checkState((suite == null && ezKeyName == null) || (suite != null && ezKeyName != null),"Both suite and ezKeyName should both be null or not null");
-      EncryptedKeyVersion edek=generateEncryptedDataEncryptionKey(ezKeyName);
-      EncryptionFaultInjector.getInstance().startFileAfterGenerateKey();
-      writeLock();
-      try {
-        checkOperation(OperationCategory.WRITE);
-        checkNameNodeSafeMode("Cannot create file" + src);
-        src=resolvePath(src,pathComponents);
-        toRemoveBlocks=startFileInternal(pc,src,permissions,holder,clientMachine,create,overwrite,createParent,replication,blockSize,suite,edek,logRetryCache);
-        stat=dir.getFileInfo(src,false,FSDirectory.isReservedRawName(srcArg),false);
-      }
- catch (      StandbyException se) {
-        skipSync=true;
-        throw se;
-      }
-catch (      RetryStartFileException e) {
-        shouldContinue=true;
-        if (LOG.isTraceEnabled()) {
-          LOG.trace("Preconditions failed, retrying creation of " + "FileEncryptionInfo",e);
-        }
-      }
- finally {
-        writeUnlock();
-      }
+      ezKeyName=dir.getKeyName(iip);
+      Preconditions.checkState(ezKeyName != null);
     }
   }
   finally {
+    readUnlock();
+  }
+  Preconditions.checkState((suite == null && ezKeyName == null) || (suite != null && ezKeyName != null),"Both suite and ezKeyName should both be null or not null");
+  EncryptedKeyVersion edek=generateEncryptedDataEncryptionKey(ezKeyName);
+  EncryptionFaultInjector.getInstance().startFileAfterGenerateKey();
+  BlocksMapUpdateInfo toRemoveBlocks=null;
+  writeLock();
+  try {
+    checkOperation(OperationCategory.WRITE);
+    checkNameNodeSafeMode("Cannot create file" + src);
+    src=resolvePath(src,pathComponents);
+    toRemoveBlocks=startFileInternal(pc,src,permissions,holder,clientMachine,create,overwrite,createParent,replication,blockSize,suite,edek,logRetryCache);
+    stat=dir.getFileInfo(src,false,FSDirectory.isReservedRawName(srcArg),false);
+  }
+ catch (  StandbyException se) {
+    skipSync=true;
+    throw se;
+  }
+ finally {
+    writeUnlock();
     if (!skipSync) {
       getEditLog().logSync();
       if (toRemoveBlocks != null) {
