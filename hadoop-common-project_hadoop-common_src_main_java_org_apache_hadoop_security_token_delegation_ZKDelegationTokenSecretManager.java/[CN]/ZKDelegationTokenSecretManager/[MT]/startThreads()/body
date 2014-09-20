@@ -1,0 +1,81 @@
+{
+  if (!isExternalClient) {
+    try {
+      zkClient.start();
+    }
+ catch (    Exception e) {
+      throw new IOException("Could not start Curator Framework",e);
+    }
+  }
+  try {
+    seqCounter=new SharedCount(zkClient,ZK_DTSM_SEQNUM_ROOT,0);
+    if (seqCounter != null) {
+      seqCounter.start();
+    }
+  }
+ catch (  Exception e) {
+    throw new IOException("Could not start Sequence Counter",e);
+  }
+  try {
+    createPersistentNode(ZK_DTSM_MASTER_KEY_ROOT);
+    createPersistentNode(ZK_DTSM_TOKENS_ROOT);
+  }
+ catch (  Exception e) {
+    throw new RuntimeException("Could not create ZK paths");
+  }
+  try {
+    keyCache=new PathChildrenCache(zkClient,ZK_DTSM_MASTER_KEY_ROOT,true);
+    if (keyCache != null) {
+      keyCache.start(StartMode.POST_INITIALIZED_EVENT);
+      keyCache.getListenable().addListener(new PathChildrenCacheListener(){
+        @Override public void childEvent(        CuratorFramework client,        PathChildrenCacheEvent event) throws Exception {
+switch (event.getType()) {
+case CHILD_ADDED:
+            processKeyAddOrUpdate(event.getData().getData());
+          break;
+case CHILD_UPDATED:
+        processKeyAddOrUpdate(event.getData().getData());
+      break;
+case CHILD_REMOVED:
+    processKeyRemoved(event.getData().getPath());
+  break;
+default :
+break;
+}
+}
+}
+,listenerThreadPool);
+}
+}
+ catch (Exception e) {
+throw new IOException("Could not start PathChildrenCache for keys",e);
+}
+try {
+tokenCache=new PathChildrenCache(zkClient,ZK_DTSM_TOKENS_ROOT,true);
+if (tokenCache != null) {
+tokenCache.start(StartMode.POST_INITIALIZED_EVENT);
+tokenCache.getListenable().addListener(new PathChildrenCacheListener(){
+@Override public void childEvent(CuratorFramework client,PathChildrenCacheEvent event) throws Exception {
+switch (event.getType()) {
+case CHILD_ADDED:
+processTokenAddOrUpdate(event.getData().getData());
+break;
+case CHILD_UPDATED:
+processTokenAddOrUpdate(event.getData().getData());
+break;
+case CHILD_REMOVED:
+processTokenRemoved(event.getData().getData());
+break;
+default :
+break;
+}
+}
+}
+,listenerThreadPool);
+}
+}
+ catch (Exception e) {
+throw new IOException("Could not start PathChildrenCache for tokens",e);
+}
+super.startThreads();
+}
