@@ -1,0 +1,86 @@
+{
+  if (socket != null || shouldCloseConnection.get()) {
+    return;
+  }
+  try {
+    if (LOG.isDebugEnabled()) {
+      LOG.debug("Connecting to " + server);
+    }
+    if (Trace.isTracing()) {
+      Trace.addTimelineAnnotation("IPC client connecting to " + server);
+    }
+    short numRetries=0;
+    Random rand=null;
+    while (true) {
+      setupConnection();
+      InputStream inStream=NetUtils.getInputStream(socket);
+      OutputStream outStream=NetUtils.getOutputStream(socket);
+      writeConnectionHeader(outStream);
+      if (authProtocol == AuthProtocol.SASL) {
+        final InputStream in2=inStream;
+        final OutputStream out2=outStream;
+        UserGroupInformation ticket=remoteId.getTicket();
+        if (ticket.getRealUser() != null) {
+          ticket=ticket.getRealUser();
+        }
+        try {
+          authMethod=ticket.doAs(new PrivilegedExceptionAction<AuthMethod>(){
+            @Override public AuthMethod run() throws IOException, InterruptedException {
+              return setupSaslConnection(in2,out2);
+            }
+          }
+);
+        }
+ catch (        Exception ex) {
+          authMethod=saslRpcClient.getAuthMethod();
+          if (rand == null) {
+            rand=new Random();
+          }
+          handleSaslConnectionFailure(numRetries++,maxRetriesOnSasl,ex,rand,ticket);
+          continue;
+        }
+        if (authMethod != AuthMethod.SIMPLE) {
+          inStream=saslRpcClient.getInputStream(inStream);
+          outStream=saslRpcClient.getOutputStream(outStream);
+          remoteId.saslQop=(String)saslRpcClient.getNegotiatedProperty(Sasl.QOP);
+          LOG.debug("Negotiated QOP is :" + remoteId.saslQop);
+          if (fallbackToSimpleAuth != null) {
+            fallbackToSimpleAuth.set(false);
+          }
+        }
+ else         if (UserGroupInformation.isSecurityEnabled()) {
+          if (!fallbackAllowed) {
+            throw new IOException("Server asks us to fall back to SIMPLE " + "auth, but this client is configured to only allow secure " + "connections.");
+          }
+          if (fallbackToSimpleAuth != null) {
+            fallbackToSimpleAuth.set(true);
+          }
+        }
+      }
+      if (doPing) {
+        inStream=new PingInputStream(inStream);
+      }
+      this.in=new DataInputStream(new BufferedInputStream(inStream));
+      if (!(outStream instanceof BufferedOutputStream)) {
+        outStream=new BufferedOutputStream(outStream);
+      }
+      this.out=new DataOutputStream(outStream);
+      writeConnectionContext(remoteId,authMethod);
+      touch();
+      if (Trace.isTracing()) {
+        Trace.addTimelineAnnotation("IPC client connected to " + server);
+      }
+      start();
+      return;
+    }
+  }
+ catch (  Throwable t) {
+    if (t instanceof IOException) {
+      markClosed((IOException)t);
+    }
+ else {
+      markClosed(new IOException("Couldn't set up IO streams",t));
+    }
+    close();
+  }
+}
