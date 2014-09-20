@@ -1,7 +1,7 @@
 {
   int iterations=0;
   while (iterations++ < MAX_BLOCK_EVICTIONS_PER_ITERATION && transientFreeSpaceBelowThreshold()) {
-    LazyWriteReplicaTracker.ReplicaState replicaState=lazyWriteReplicaTracker.getNextCandidateForEviction();
+    RamDiskReplica replicaState=ramDiskReplicaTracker.getNextCandidateForEviction();
     if (replicaState == null) {
       break;
     }
@@ -11,25 +11,26 @@
     ReplicaInfo replicaInfo, newReplicaInfo;
     File blockFile, metaFile;
     long blockFileUsed, metaFileUsed;
+    final String bpid=replicaState.getBlockPoolId();
 synchronized (FsDatasetImpl.this) {
-      replicaInfo=getReplicaInfo(replicaState.bpid,replicaState.blockId);
+      replicaInfo=getReplicaInfo(replicaState.getBlockPoolId(),replicaState.getBlockId());
       Preconditions.checkState(replicaInfo.getVolume().isTransientStorage());
       blockFile=replicaInfo.getBlockFile();
       metaFile=replicaInfo.getMetaFile();
       blockFileUsed=blockFile.length();
       metaFileUsed=metaFile.length();
-      lazyWriteReplicaTracker.discardReplica(replicaState,false);
-      BlockPoolSlice bpSlice=replicaState.lazyPersistVolume.getBlockPoolSlice(replicaState.bpid);
-      File newBlockFile=bpSlice.activateSavedReplica(replicaInfo,replicaState.savedBlockFile);
-      newReplicaInfo=new FinalizedReplica(replicaInfo.getBlockId(),replicaInfo.getBytesOnDisk(),replicaInfo.getGenerationStamp(),replicaState.lazyPersistVolume,newBlockFile.getParentFile());
-      volumeMap.add(replicaState.bpid,newReplicaInfo);
+      ramDiskReplicaTracker.discardReplica(replicaState,false);
+      BlockPoolSlice bpSlice=replicaState.getLazyPersistVolume().getBlockPoolSlice(bpid);
+      File newBlockFile=bpSlice.activateSavedReplica(replicaInfo,replicaState.getSavedMetaFile(),replicaState.getSavedBlockFile());
+      newReplicaInfo=new FinalizedReplica(replicaInfo.getBlockId(),replicaInfo.getBytesOnDisk(),replicaInfo.getGenerationStamp(),replicaState.getLazyPersistVolume(),newBlockFile.getParentFile());
+      volumeMap.add(bpid,newReplicaInfo);
     }
-    ExtendedBlock extendedBlock=new ExtendedBlock(replicaState.bpid,newReplicaInfo);
+    ExtendedBlock extendedBlock=new ExtendedBlock(bpid,newReplicaInfo);
     datanode.notifyNamenodeReceivedBlock(extendedBlock,null,newReplicaInfo.getStorageUuid());
     if (blockFile.delete() || !blockFile.exists()) {
-      ((FsVolumeImpl)replicaInfo.getVolume()).decDfsUsed(replicaState.bpid,blockFileUsed);
+      ((FsVolumeImpl)replicaInfo.getVolume()).decDfsUsed(bpid,blockFileUsed);
       if (metaFile.delete() || !metaFile.exists()) {
-        ((FsVolumeImpl)replicaInfo.getVolume()).decDfsUsed(replicaState.bpid,metaFileUsed);
+        ((FsVolumeImpl)replicaInfo.getVolume()).decDfsUsed(bpid,metaFileUsed);
       }
     }
   }

@@ -1,0 +1,60 @@
+{
+  File files[]=FileUtil.listFiles(dir);
+  for (  File file : files) {
+    if (file.isDirectory()) {
+      addToReplicasMap(volumeMap,file,lazyWriteReplicaMap,isFinalized);
+    }
+    if (isFinalized && FsDatasetUtil.isUnlinkTmpFile(file)) {
+      file=recoverTempUnlinkedBlock(file);
+      if (file == null) {
+        continue;
+      }
+    }
+    if (!Block.isBlockFilename(file))     continue;
+    long genStamp=FsDatasetUtil.getGenerationStampFromFile(files,file);
+    long blockId=Block.filename2id(file.getName());
+    ReplicaInfo newReplica=null;
+    if (isFinalized) {
+      newReplica=new FinalizedReplica(blockId,file.length(),genStamp,volume,file.getParentFile());
+    }
+ else {
+      boolean loadRwr=true;
+      File restartMeta=new File(file.getParent() + File.pathSeparator + "."+ file.getName()+ ".restart");
+      Scanner sc=null;
+      try {
+        sc=new Scanner(restartMeta);
+        if (sc.hasNextLong() && (sc.nextLong() > Time.now())) {
+          newReplica=new ReplicaBeingWritten(blockId,validateIntegrityAndSetLength(file,genStamp),genStamp,volume,file.getParentFile(),null,0);
+          loadRwr=false;
+        }
+        sc.close();
+        if (!restartMeta.delete()) {
+          FsDatasetImpl.LOG.warn("Failed to delete restart meta file: " + restartMeta.getPath());
+        }
+      }
+ catch (      FileNotFoundException fnfe) {
+      }
+ finally {
+        if (sc != null) {
+          sc.close();
+        }
+      }
+      if (loadRwr) {
+        newReplica=new ReplicaWaitingToBeRecovered(blockId,validateIntegrityAndSetLength(file,genStamp),genStamp,volume,file.getParentFile());
+      }
+    }
+    ReplicaInfo oldReplica=volumeMap.get(bpid,newReplica.getBlockId());
+    if (oldReplica == null) {
+      volumeMap.add(bpid,newReplica);
+    }
+ else {
+      newReplica=resolveDuplicateReplicas(newReplica,oldReplica,volumeMap);
+    }
+    if (newReplica.getVolume().isTransientStorage()) {
+      lazyWriteReplicaMap.addReplica(bpid,blockId,(FsVolumeImpl)newReplica.getVolume());
+    }
+ else {
+      lazyWriteReplicaMap.discardReplica(bpid,blockId,false);
+    }
+  }
+}

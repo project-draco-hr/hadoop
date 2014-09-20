@@ -21,7 +21,7 @@ synchronized (this) {
           blockScanner.deleteBlock(bpid,new Block(blockId));
         }
         if (vol.isTransientStorage()) {
-          lazyWriteReplicaTracker.discardReplica(bpid,blockId,true);
+          ramDiskReplicaTracker.discardReplica(bpid,blockId,true);
         }
         LOG.warn("Removed block " + blockId + " from memory with missing block file on the disk");
         if (diskMetaFile != null && diskMetaFile.exists() && diskMetaFile.delete()) {
@@ -34,11 +34,13 @@ synchronized (this) {
       ReplicaInfo diskBlockInfo=new FinalizedReplica(blockId,diskFile.length(),diskGS,vol,diskFile.getParentFile());
       volumeMap.add(bpid,diskBlockInfo);
       final DataBlockScanner blockScanner=datanode.getBlockScanner();
-      if (blockScanner != null) {
-        blockScanner.addBlock(new ExtendedBlock(bpid,diskBlockInfo));
+      if (!vol.isTransientStorage()) {
+        if (blockScanner != null) {
+          blockScanner.addBlock(new ExtendedBlock(bpid,diskBlockInfo));
+        }
       }
-      if (vol.isTransientStorage()) {
-        lazyWriteReplicaTracker.addReplica(bpid,blockId,(FsVolumeImpl)vol);
+ else {
+        ramDiskReplicaTracker.addReplica(bpid,blockId,(FsVolumeImpl)vol);
       }
       LOG.warn("Added missing block to memory " + diskBlockInfo);
       return;
