@@ -1,0 +1,19 @@
+{
+  RPC.setProtocolEngine(conf,ClientNamenodeProtocolPB.class,ProtobufRpcEngine.class);
+  final RetryPolicy defaultPolicy=RetryUtils.getDefaultRetryPolicy(conf,DFSConfigKeys.DFS_CLIENT_RETRY_POLICY_ENABLED_KEY,DFSConfigKeys.DFS_CLIENT_RETRY_POLICY_ENABLED_DEFAULT,DFSConfigKeys.DFS_CLIENT_RETRY_POLICY_SPEC_KEY,DFSConfigKeys.DFS_CLIENT_RETRY_POLICY_SPEC_DEFAULT,SafeModeException.class);
+  final long version=RPC.getProtocolVersion(ClientNamenodeProtocolPB.class);
+  ClientNamenodeProtocolPB proxy=RPC.getProtocolProxy(ClientNamenodeProtocolPB.class,version,address,ugi,conf,NetUtils.getDefaultSocketFactory(conf),org.apache.hadoop.ipc.Client.getTimeout(conf),defaultPolicy,fallbackToSimpleAuth).getProxy();
+  if (withRetries) {
+    RetryPolicy createPolicy=RetryPolicies.retryUpToMaximumCountWithFixedSleep(5,HdfsConstants.LEASE_SOFTLIMIT_PERIOD,TimeUnit.MILLISECONDS);
+    Map<Class<? extends Exception>,RetryPolicy> remoteExceptionToPolicyMap=new HashMap<Class<? extends Exception>,RetryPolicy>();
+    remoteExceptionToPolicyMap.put(AlreadyBeingCreatedException.class,createPolicy);
+    RetryPolicy methodPolicy=RetryPolicies.retryByRemoteException(defaultPolicy,remoteExceptionToPolicyMap);
+    Map<String,RetryPolicy> methodNameToPolicyMap=new HashMap<String,RetryPolicy>();
+    methodNameToPolicyMap.put("create",methodPolicy);
+    ClientProtocol translatorProxy=new ClientNamenodeProtocolTranslatorPB(proxy);
+    return (ClientProtocol)RetryProxy.create(ClientProtocol.class,new DefaultFailoverProxyProvider<ClientProtocol>(ClientProtocol.class,translatorProxy),methodNameToPolicyMap,defaultPolicy);
+  }
+ else {
+    return new ClientNamenodeProtocolTranslatorPB(proxy);
+  }
+}

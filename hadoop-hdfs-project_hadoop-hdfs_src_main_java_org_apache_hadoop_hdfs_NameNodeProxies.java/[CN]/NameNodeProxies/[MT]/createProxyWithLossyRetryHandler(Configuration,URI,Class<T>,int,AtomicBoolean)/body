@@ -1,0 +1,24 @@
+{
+  Preconditions.checkArgument(numResponseToDrop > 0);
+  AbstractNNFailoverProxyProvider<T> failoverProxyProvider=createFailoverProxyProvider(config,nameNodeUri,xface,true,fallbackToSimpleAuth);
+  if (failoverProxyProvider != null) {
+    int delay=config.getInt(DFS_CLIENT_FAILOVER_SLEEPTIME_BASE_KEY,DFS_CLIENT_FAILOVER_SLEEPTIME_BASE_DEFAULT);
+    int maxCap=config.getInt(DFS_CLIENT_FAILOVER_SLEEPTIME_MAX_KEY,DFS_CLIENT_FAILOVER_SLEEPTIME_MAX_DEFAULT);
+    int maxFailoverAttempts=config.getInt(DFS_CLIENT_FAILOVER_MAX_ATTEMPTS_KEY,DFS_CLIENT_FAILOVER_MAX_ATTEMPTS_DEFAULT);
+    int maxRetryAttempts=config.getInt(DFS_CLIENT_RETRY_MAX_ATTEMPTS_KEY,DFS_CLIENT_RETRY_MAX_ATTEMPTS_DEFAULT);
+    InvocationHandler dummyHandler=new LossyRetryInvocationHandler<T>(numResponseToDrop,failoverProxyProvider,RetryPolicies.failoverOnNetworkException(RetryPolicies.TRY_ONCE_THEN_FAIL,maxFailoverAttempts,Math.max(numResponseToDrop + 1,maxRetryAttempts),delay,maxCap));
+    T proxy=(T)Proxy.newProxyInstance(failoverProxyProvider.getInterface().getClassLoader(),new Class[]{xface},dummyHandler);
+    Text dtService;
+    if (failoverProxyProvider.useLogicalURI()) {
+      dtService=HAUtil.buildTokenServiceForLogicalUri(nameNodeUri,HdfsConstants.HDFS_URI_SCHEME);
+    }
+ else {
+      dtService=SecurityUtil.buildTokenService(NameNode.getAddress(nameNodeUri));
+    }
+    return new ProxyAndInfo<T>(proxy,dtService,NameNode.getAddress(nameNodeUri));
+  }
+ else {
+    LOG.warn("Currently creating proxy using " + "LossyRetryInvocationHandler requires NN HA setup");
+    return null;
+  }
+}

@@ -1,0 +1,38 @@
+{
+  super(conf.getLong(DelegationTokenManager.UPDATE_INTERVAL,DelegationTokenManager.UPDATE_INTERVAL_DEFAULT) * 1000,conf.getLong(DelegationTokenManager.MAX_LIFETIME,DelegationTokenManager.MAX_LIFETIME_DEFAULT) * 1000,conf.getLong(DelegationTokenManager.RENEW_INTERVAL,DelegationTokenManager.RENEW_INTERVAL_DEFAULT * 1000),conf.getLong(DelegationTokenManager.REMOVAL_SCAN_INTERVAL,DelegationTokenManager.REMOVAL_SCAN_INTERVAL_DEFAULT) * 1000);
+  if (CURATOR_TL.get() != null) {
+    zkClient=CURATOR_TL.get();
+    isExternalClient=true;
+  }
+ else {
+    String connString=conf.get(ZK_DTSM_ZK_CONNECTION_STRING);
+    Preconditions.checkNotNull(connString,"Zookeeper connection string cannot be null");
+    String authType=conf.get(ZK_DTSM_ZK_AUTH_TYPE);
+    Preconditions.checkNotNull(authType,"Zookeeper authType cannot be null !!");
+    Preconditions.checkArgument(authType.equals("sasl") || authType.equals("none"),"Zookeeper authType must be one of [none, sasl]");
+    Builder builder=null;
+    try {
+      ACLProvider aclProvider=null;
+      if (authType.equals("sasl")) {
+        LOG.info("Connecting to ZooKeeper with SASL/Kerberos" + "and using 'sasl' ACLs");
+        String principal=setJaasConfiguration(conf);
+        System.setProperty(ZooKeeperSaslClient.LOGIN_CONTEXT_NAME_KEY,JAAS_LOGIN_ENTRY_NAME);
+        System.setProperty("zookeeper.authProvider.1","org.apache.zookeeper.server.auth.SASLAuthenticationProvider");
+        aclProvider=new SASLOwnerACLProvider(principal);
+      }
+ else {
+        LOG.info("Connecting to ZooKeeper without authentication");
+        aclProvider=new DefaultACLProvider();
+      }
+      int sessionT=conf.getInt(ZK_DTSM_ZK_SESSION_TIMEOUT,ZK_DTSM_ZK_SESSION_TIMEOUT_DEFAULT);
+      int numRetries=conf.getInt(ZK_DTSM_ZK_NUM_RETRIES,ZK_DTSM_ZK_NUM_RETRIES_DEFAULT);
+      builder=CuratorFrameworkFactory.builder().aclProvider(aclProvider).namespace(conf.get(ZK_DTSM_ZNODE_WORKING_PATH,ZK_DTSM_ZNODE_WORKING_PATH_DEAFULT) + "/" + ZK_DTSM_NAMESPACE).sessionTimeoutMs(sessionT).connectionTimeoutMs(conf.getInt(ZK_DTSM_ZK_CONNECTION_TIMEOUT,ZK_DTSM_ZK_CONNECTION_TIMEOUT_DEFAULT)).retryPolicy(new RetryNTimes(numRetries,sessionT / numRetries));
+    }
+ catch (    Exception ex) {
+      throw new RuntimeException("Could not Load ZK acls or auth");
+    }
+    zkClient=builder.ensembleProvider(new FixedEnsembleProvider(connString)).build();
+    isExternalClient=false;
+  }
+  listenerThreadPool=Executors.newFixedThreadPool(2);
+}

@@ -1,0 +1,42 @@
+{
+  final Call call=createCall(rpcKind,rpcRequest);
+  Connection connection=getConnection(remoteId,call,serviceClass,fallbackToSimpleAuth);
+  try {
+    connection.sendRpcRequest(call);
+  }
+ catch (  RejectedExecutionException e) {
+    throw new IOException("connection has been closed",e);
+  }
+catch (  InterruptedException e) {
+    Thread.currentThread().interrupt();
+    LOG.warn("interrupted waiting to send rpc request to server",e);
+    throw new IOException(e);
+  }
+  boolean interrupted=false;
+synchronized (call) {
+    while (!call.done) {
+      try {
+        call.wait();
+      }
+ catch (      InterruptedException ie) {
+        interrupted=true;
+      }
+    }
+    if (interrupted) {
+      Thread.currentThread().interrupt();
+    }
+    if (call.error != null) {
+      if (call.error instanceof RemoteException) {
+        call.error.fillInStackTrace();
+        throw call.error;
+      }
+ else {
+        InetSocketAddress address=connection.getRemoteAddress();
+        throw NetUtils.wrapException(address.getHostName(),address.getPort(),NetUtils.getHostname(),0,call.error);
+      }
+    }
+ else {
+      return call.getRpcResponse();
+    }
+  }
+}
