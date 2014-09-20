@@ -2,45 +2,23 @@
   LOG.info("testNoSpaceArchive");
   final PathPolicyMap pathPolicyMap=new PathPolicyMap(0);
   final NamespaceScheme nsScheme=pathPolicyMap.newNamespaceScheme();
-  final long diskCapacity=100 * BLOCK_SIZE;
-  final long archiveCapacity=(6 + HdfsConstants.MIN_BLOCKS_FOR_WRITE) * BLOCK_SIZE;
-  final long[][] capacities=genCapacities(NUM_DATANODES,1,1,diskCapacity,archiveCapacity);
-  final ClusterScheme clusterScheme=new ClusterScheme(DEFAULT_CONF,NUM_DATANODES,REPL,genStorageTypes(NUM_DATANODES,1,1),capacities);
+  final ClusterScheme clusterScheme=new ClusterScheme(DEFAULT_CONF,NUM_DATANODES,REPL,genStorageTypes(NUM_DATANODES),null);
   final MigrationTest test=new MigrationTest(clusterScheme,nsScheme);
   try {
     test.runBasicTest(false);
     final short replication=3;
-{
-      int coldFileCount=0;
-      try {
-        for (; ; coldFileCount++) {
-          final Path p=new Path(pathPolicyMap.cold,"file" + coldFileCount);
-          DFSTestUtil.createFile(test.dfs,p,BLOCK_SIZE,replication,0L);
-          waitForAllReplicas(replication,p,test.dfs);
-        }
-      }
- catch (      IOException e) {
-        LOG.info("Expected: coldFileCount=" + coldFileCount,e);
-      }
-      Assert.assertTrue(coldFileCount >= 1);
+    for (int i=0; i < 2; i++) {
+      final Path p=new Path(pathPolicyMap.cold,"file" + i);
+      DFSTestUtil.createFile(test.dfs,p,BLOCK_SIZE,replication,0L);
+      waitForAllReplicas(replication,p,test.dfs);
     }
-{
-      int coldFileCount_r1=0;
-      try {
-        for (; ; coldFileCount_r1++) {
-          final Path p=new Path(pathPolicyMap.cold,"file_r1_" + coldFileCount_r1);
-          DFSTestUtil.createFile(test.dfs,p,BLOCK_SIZE,(short)1,0L);
-          waitForAllReplicas(1,p,test.dfs);
-        }
-      }
- catch (      IOException e) {
-        LOG.info("Expected: coldFileCount_r1=" + coldFileCount_r1,e);
-      }
+    for (    DataNode dn : test.cluster.getDataNodes()) {
+      setVolumeFull(dn,StorageType.ARCHIVE);
+      DataNodeTestUtils.triggerHeartbeat(dn);
     }
 {
       final Path file0=new Path(pathPolicyMap.cold,"file0");
       final Replication r=test.getReplication(file0);
-      LOG.info("XXX " + file0 + ": replication="+ r);
       Assert.assertEquals(0,r.disk);
       final short newReplication=(short)5;
       test.dfs.setReplication(file0,newReplication);
