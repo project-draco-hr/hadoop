@@ -5,15 +5,22 @@
   runApplicationAttempt(amContainer,"host",8042,"oldtrackingurl",false);
   ContainerStatus cs1=ContainerStatus.newInstance(amContainer.getId(),ContainerState.COMPLETE,"some error",123);
   ApplicationAttemptId appAttemptId=applicationAttempt.getAppAttemptId();
-  applicationAttempt.handle(new RMAppAttemptContainerFinishedEvent(appAttemptId,cs1));
+  NodeId anyNodeId=NodeId.newInstance("host",1234);
+  applicationAttempt.handle(new RMAppAttemptContainerFinishedEvent(appAttemptId,cs1,anyNodeId));
   assertEquals(YarnApplicationAttemptState.RUNNING,applicationAttempt.createApplicationAttemptState());
   sendAttemptUpdateSavedEvent(applicationAttempt);
   assertEquals(RMAppAttemptState.FAILED,applicationAttempt.getAppAttemptState());
   assertTrue(transferStateFromPreviousAttempt);
   verifyApplicationAttemptFinished(RMAppAttemptState.FAILED);
-  assertEquals(0,applicationAttempt.getJustFinishedContainers().size());
-  ContainerStatus cs2=ContainerStatus.newInstance(ContainerId.newInstance(appAttemptId,2),ContainerState.COMPLETE,"",0);
-  applicationAttempt.handle(new RMAppAttemptContainerFinishedEvent(appAttemptId,cs2));
   assertEquals(1,applicationAttempt.getJustFinishedContainers().size());
-  assertEquals(cs2.getContainerId(),applicationAttempt.getJustFinishedContainers().get(0).getContainerId());
+  ContainerStatus cs2=ContainerStatus.newInstance(ContainerId.newInstance(appAttemptId,2),ContainerState.COMPLETE,"",0);
+  applicationAttempt.handle(new RMAppAttemptContainerFinishedEvent(appAttemptId,cs2,anyNodeId));
+  assertEquals(2,applicationAttempt.getJustFinishedContainers().size());
+  boolean found=false;
+  for (  ContainerStatus containerStatus : applicationAttempt.getJustFinishedContainers()) {
+    if (cs2.getContainerId().equals(containerStatus.getContainerId())) {
+      found=true;
+    }
+  }
+  assertTrue(found);
 }
