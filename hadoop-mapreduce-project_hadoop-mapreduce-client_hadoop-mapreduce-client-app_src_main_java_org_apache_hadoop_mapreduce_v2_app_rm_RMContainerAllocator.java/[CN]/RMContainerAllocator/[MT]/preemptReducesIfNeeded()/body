@@ -1,11 +1,11 @@
 {
-  if (reduceResourceRequest == 0) {
+  if (reduceResourceRequest.equals(Resources.none())) {
     return;
   }
   if (scheduledRequests.maps.size() > 0) {
-    int memLimit=getMemLimit();
-    int availableMemForMap=memLimit - ((assignedRequests.reduces.size() - assignedRequests.preemptionWaitingReduces.size()) * reduceResourceRequest);
-    if (availableMemForMap < mapResourceRequest) {
+    Resource resourceLimit=getResourceLimit();
+    Resource availableResourceForMap=Resources.subtract(resourceLimit,Resources.multiply(reduceResourceRequest,assignedRequests.reduces.size() - assignedRequests.preemptionWaitingReduces.size()));
+    if (ResourceCalculatorUtils.computeAvailableContainers(availableResourceForMap,mapResourceRequest,getSchedulerResourceTypes()) <= 0) {
       LOG.info("Ramping down all scheduled reduces:" + scheduledRequests.reduces.size());
       for (      ContainerRequest req : scheduledRequests.reduces.values()) {
         pendingReduces.add(req);
@@ -13,10 +13,10 @@
       scheduledRequests.reduces.clear();
       int hangingMapRequests=getNumOfHangingRequests(scheduledRequests.maps);
       if (hangingMapRequests > 0) {
-        int premeptionLimit=Math.max(mapResourceRequest,(int)(maxReducePreemptionLimit * memLimit));
-        int preemptMem=Math.min(hangingMapRequests * mapResourceRequest,premeptionLimit);
-        int toPreempt=(int)Math.ceil((float)preemptMem / reduceResourceRequest);
-        toPreempt=Math.min(toPreempt,assignedRequests.reduces.size());
+        int preemptionReduceNumForOneMap=ResourceCalculatorUtils.divideAndCeilContainers(mapResourceRequest,reduceResourceRequest,getSchedulerResourceTypes());
+        int preemptionReduceNumForPreemptionLimit=ResourceCalculatorUtils.divideAndCeilContainers(Resources.multiply(resourceLimit,maxReducePreemptionLimit),reduceResourceRequest,getSchedulerResourceTypes());
+        int preemptionReduceNumForAllMaps=ResourceCalculatorUtils.divideAndCeilContainers(Resources.multiply(mapResourceRequest,hangingMapRequests),reduceResourceRequest,getSchedulerResourceTypes());
+        int toPreempt=Math.min(Math.max(preemptionReduceNumForOneMap,preemptionReduceNumForPreemptionLimit),preemptionReduceNumForAllMaps);
         LOG.info("Going to preempt " + toPreempt + " due to lack of space for maps");
         assignedRequests.preemptReduce(toPreempt);
       }

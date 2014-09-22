@@ -3,35 +3,37 @@
   if (event.getType() == ContainerAllocator.EventType.CONTAINER_REQ) {
     ContainerRequestEvent reqEvent=(ContainerRequestEvent)event;
     JobId jobId=getJob().getID();
-    int supportedMaxContainerCapability=getMaxContainerCapability().getMemory();
+    Resource supportedMaxContainerCapability=getMaxContainerCapability();
     if (reqEvent.getAttemptID().getTaskId().getTaskType().equals(TaskType.MAP)) {
-      if (mapResourceRequest == 0) {
-        mapResourceRequest=reqEvent.getCapability().getMemory();
-        eventHandler.handle(new JobHistoryEvent(jobId,new NormalizedResourceEvent(org.apache.hadoop.mapreduce.TaskType.MAP,mapResourceRequest)));
+      if (mapResourceRequest.equals(Resources.none())) {
+        mapResourceRequest=reqEvent.getCapability();
+        eventHandler.handle(new JobHistoryEvent(jobId,new NormalizedResourceEvent(org.apache.hadoop.mapreduce.TaskType.MAP,mapResourceRequest.getMemory())));
         LOG.info("mapResourceRequest:" + mapResourceRequest);
-        if (mapResourceRequest > supportedMaxContainerCapability) {
+        if (mapResourceRequest.getMemory() > supportedMaxContainerCapability.getMemory() || mapResourceRequest.getVirtualCores() > supportedMaxContainerCapability.getVirtualCores()) {
           String diagMsg="MAP capability required is more than the supported " + "max container capability in the cluster. Killing the Job. mapResourceRequest: " + mapResourceRequest + " maxContainerCapability:"+ supportedMaxContainerCapability;
           LOG.info(diagMsg);
           eventHandler.handle(new JobDiagnosticsUpdateEvent(jobId,diagMsg));
           eventHandler.handle(new JobEvent(jobId,JobEventType.JOB_KILL));
         }
       }
-      reqEvent.getCapability().setMemory(mapResourceRequest);
+      reqEvent.getCapability().setMemory(mapResourceRequest.getMemory());
+      reqEvent.getCapability().setVirtualCores(mapResourceRequest.getVirtualCores());
       scheduledRequests.addMap(reqEvent);
     }
  else {
-      if (reduceResourceRequest == 0) {
-        reduceResourceRequest=reqEvent.getCapability().getMemory();
-        eventHandler.handle(new JobHistoryEvent(jobId,new NormalizedResourceEvent(org.apache.hadoop.mapreduce.TaskType.REDUCE,reduceResourceRequest)));
+      if (reduceResourceRequest.equals(Resources.none())) {
+        reduceResourceRequest=reqEvent.getCapability();
+        eventHandler.handle(new JobHistoryEvent(jobId,new NormalizedResourceEvent(org.apache.hadoop.mapreduce.TaskType.REDUCE,reduceResourceRequest.getMemory())));
         LOG.info("reduceResourceRequest:" + reduceResourceRequest);
-        if (reduceResourceRequest > supportedMaxContainerCapability) {
+        if (reduceResourceRequest.getMemory() > supportedMaxContainerCapability.getMemory() || reduceResourceRequest.getVirtualCores() > supportedMaxContainerCapability.getVirtualCores()) {
           String diagMsg="REDUCE capability required is more than the " + "supported max container capability in the cluster. Killing the " + "Job. reduceResourceRequest: " + reduceResourceRequest + " maxContainerCapability:"+ supportedMaxContainerCapability;
           LOG.info(diagMsg);
           eventHandler.handle(new JobDiagnosticsUpdateEvent(jobId,diagMsg));
           eventHandler.handle(new JobEvent(jobId,JobEventType.JOB_KILL));
         }
       }
-      reqEvent.getCapability().setMemory(reduceResourceRequest);
+      reqEvent.getCapability().setMemory(reduceResourceRequest.getMemory());
+      reqEvent.getCapability().setVirtualCores(reduceResourceRequest.getVirtualCores());
       if (reqEvent.getEarlierAttemptFailed()) {
         pendingReduces.addFirst(new ContainerRequest(reqEvent,PRIORITY_REDUCE));
       }
