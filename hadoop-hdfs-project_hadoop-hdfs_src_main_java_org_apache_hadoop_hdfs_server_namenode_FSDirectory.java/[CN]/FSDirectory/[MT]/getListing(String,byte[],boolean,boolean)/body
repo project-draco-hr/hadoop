@@ -6,13 +6,14 @@
     if (srcs.endsWith(HdfsConstants.SEPARATOR_DOT_SNAPSHOT_DIR)) {
       return getSnapshotsListing(srcs,startAfter);
     }
-    final INodesInPath inodesInPath=getLastINodeInPath(srcs);
+    final INodesInPath inodesInPath=getINodesInPath(srcs,true);
+    final INode[] inodes=inodesInPath.getINodes();
     final int snapshot=inodesInPath.getPathSnapshotId();
-    final INode targetNode=inodesInPath.getLastINode();
+    final INode targetNode=inodes[inodes.length - 1];
     if (targetNode == null)     return null;
     byte parentStoragePolicy=isSuperUser ? targetNode.getStoragePolicyID() : BlockStoragePolicy.ID_UNSPECIFIED;
     if (!targetNode.isDirectory()) {
-      return new DirectoryListing(new HdfsFileStatus[]{createFileStatus(HdfsFileStatus.EMPTY_NAME,targetNode,needLocation,parentStoragePolicy,snapshot,isRawPath)},0);
+      return new DirectoryListing(new HdfsFileStatus[]{createFileStatus(HdfsFileStatus.EMPTY_NAME,targetNode,needLocation,parentStoragePolicy,snapshot,isRawPath,inodesInPath)},0);
     }
     final INodeDirectory dirInode=targetNode.asDirectory();
     final ReadOnlyList<INode> contents=dirInode.getChildrenList(snapshot);
@@ -25,7 +26,7 @@
     for (int i=0; i < numOfListing && locationBudget > 0; i++) {
       INode cur=contents.get(startChild + i);
       byte curPolicy=isSuperUser && !cur.isSymlink() ? cur.getLocalStoragePolicyID() : BlockStoragePolicy.ID_UNSPECIFIED;
-      listing[i]=createFileStatus(cur.getLocalNameBytes(),cur,needLocation,getStoragePolicyID(curPolicy,parentStoragePolicy),snapshot,isRawPath);
+      listing[i]=createFileStatus(cur.getLocalNameBytes(),cur,needLocation,getStoragePolicyID(curPolicy,parentStoragePolicy),snapshot,isRawPath,inodesInPath);
       listingCnt++;
       if (needLocation) {
         LocatedBlocks blks=((HdfsLocatedFileStatus)listing[i]).getBlockLocations();
