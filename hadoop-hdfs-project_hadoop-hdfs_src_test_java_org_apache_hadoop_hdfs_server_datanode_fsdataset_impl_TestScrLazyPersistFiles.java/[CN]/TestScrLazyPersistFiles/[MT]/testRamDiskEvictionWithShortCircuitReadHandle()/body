@@ -1,0 +1,26 @@
+{
+  startUpCluster(REPL_FACTOR,new StorageType[]{RAM_DISK,DEFAULT},(6 * BLOCK_SIZE - 1),true);
+  final String METHOD_NAME=GenericTestUtils.getMethodName();
+  Path path1=new Path("/" + METHOD_NAME + ".01.dat");
+  Path path2=new Path("/" + METHOD_NAME + ".02.dat");
+  final int SEED=0xFADED;
+  makeRandomTestFile(path1,BLOCK_SIZE,true,SEED);
+  ensureFileReplicasOnStorageType(path1,RAM_DISK);
+  Thread.sleep(3 * LAZY_WRITER_INTERVAL_SEC * 1000);
+  FSDataInputStream fis=fs.open(path1);
+  try {
+    byte[] buf=new byte[BUFFER_LENGTH];
+    fis.read(0,buf,0,BUFFER_LENGTH);
+    makeTestFile(path2,BLOCK_SIZE * 2,true);
+    ensureFileReplicasOnStorageType(path2,RAM_DISK);
+    fis.read(fis.getPos(),buf,0,BUFFER_LENGTH);
+    HdfsDataInputStream dfsis=(HdfsDataInputStream)fis;
+    Assert.assertEquals(2 * BUFFER_LENGTH,dfsis.getReadStatistics().getTotalBytesRead());
+    Assert.assertEquals(2 * BUFFER_LENGTH,dfsis.getReadStatistics().getTotalShortCircuitBytesRead());
+  }
+  finally {
+    IOUtils.closeQuietly(fis);
+  }
+  triggerBlockReport();
+  ensureFileReplicasOnStorageType(path1,DEFAULT);
+}
