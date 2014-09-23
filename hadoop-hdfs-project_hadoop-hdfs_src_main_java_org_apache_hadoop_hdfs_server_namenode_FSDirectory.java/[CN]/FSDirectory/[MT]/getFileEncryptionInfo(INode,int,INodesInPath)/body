@@ -1,0 +1,37 @@
+{
+  if (!inode.isFile()) {
+    return null;
+  }
+  readLock();
+  try {
+    if (iip == null) {
+      iip=getINodesInPath(inode.getFullPathName(),true);
+    }
+    EncryptionZone encryptionZone=getEZForPath(iip);
+    if (encryptionZone == null || encryptionZone.equals(EncryptionZoneManager.NULL_EZ)) {
+      return null;
+    }
+ else     if (encryptionZone.getPath() == null || encryptionZone.getPath().isEmpty()) {
+      if (NameNode.LOG.isDebugEnabled()) {
+        NameNode.LOG.debug("Encryption zone " + encryptionZone.getPath() + " does not have a valid path.");
+      }
+    }
+    CipherSuite suite=encryptionZone.getSuite();
+    String keyName=encryptionZone.getKeyName();
+    XAttr fileXAttr=unprotectedGetXAttrByName(inode,snapshotId,CRYPTO_XATTR_FILE_ENCRYPTION_INFO);
+    if (fileXAttr == null) {
+      NameNode.LOG.warn("Could not find encryption XAttr for file " + inode.getFullPathName() + " in encryption zone "+ encryptionZone.getPath());
+      return null;
+    }
+    try {
+      HdfsProtos.PerFileEncryptionInfoProto fileProto=HdfsProtos.PerFileEncryptionInfoProto.parseFrom(fileXAttr.getValue());
+      return PBHelper.convert(fileProto,suite,keyName);
+    }
+ catch (    InvalidProtocolBufferException e) {
+      throw new IOException("Could not parse file encryption info for " + "inode " + inode,e);
+    }
+  }
+  finally {
+    readUnlock();
+  }
+}

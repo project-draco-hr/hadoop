@@ -1,9 +1,31 @@
 {
   this.writeLock.lock();
   try {
-    List<ContainerStatus> returnList=new ArrayList<ContainerStatus>(this.justFinishedContainers.size());
-    returnList.addAll(this.justFinishedContainers);
-    this.justFinishedContainers.clear();
+    List<ContainerStatus> returnList=new ArrayList<ContainerStatus>();
+    for (    NodeId nodeId : finishedContainersSentToAM.keySet()) {
+      List<ContainerStatus> currentSentContainers=finishedContainersSentToAM.put(nodeId,new ArrayList<ContainerStatus>());
+      List<ContainerId> containerIdList=new ArrayList<ContainerId>(currentSentContainers.size());
+      for (      ContainerStatus containerStatus : currentSentContainers) {
+        containerIdList.add(containerStatus.getContainerId());
+      }
+      eventHandler.handle(new RMNodeFinishedContainersPulledByAMEvent(nodeId,containerIdList));
+    }
+    boolean keepContainersAcressAttempts=this.submissionContext.getKeepContainersAcrossApplicationAttempts();
+    for (    NodeId nodeId : justFinishedContainers.keySet()) {
+      List<ContainerStatus> finishedContainers=justFinishedContainers.put(nodeId,new ArrayList<ContainerStatus>());
+      if (keepContainersAcressAttempts) {
+        returnList.addAll(finishedContainers);
+      }
+ else {
+        for (        ContainerStatus containerStatus : finishedContainers) {
+          if (containerStatus.getContainerId().getApplicationAttemptId().equals(this.getAppAttemptId())) {
+            returnList.add(containerStatus);
+          }
+        }
+      }
+      finishedContainersSentToAM.putIfAbsent(nodeId,new ArrayList<ContainerStatus>());
+      finishedContainersSentToAM.get(nodeId).addAll(finishedContainers);
+    }
     return returnList;
   }
   finally {
