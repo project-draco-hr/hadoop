@@ -1,0 +1,69 @@
+{
+  File jsonFile=new File(path);
+  if (!jsonFile.exists()) {
+    LOG.error("File [" + jsonFile.getAbsolutePath() + "] doesn't exist");
+    return;
+  }
+  ObjectMapper mapper=new ObjectMapper();
+  YarnJacksonJaxbJsonProvider.configObjectMapper(mapper);
+  TimelineEntities entities=null;
+  TimelineDomains domains=null;
+  try {
+    if (type.equals(ENTITY_DATA_TYPE)) {
+      entities=mapper.readValue(jsonFile,TimelineEntities.class);
+    }
+ else     if (type.equals(DOMAIN_DATA_TYPE)) {
+      domains=mapper.readValue(jsonFile,TimelineDomains.class);
+    }
+  }
+ catch (  Exception e) {
+    LOG.error("Error when reading  " + e.getMessage());
+    e.printStackTrace(System.err);
+    return;
+  }
+  Configuration conf=new YarnConfiguration();
+  TimelineClient client=TimelineClient.createTimelineClient();
+  client.init(conf);
+  client.start();
+  try {
+    if (UserGroupInformation.isSecurityEnabled() && conf.getBoolean(YarnConfiguration.TIMELINE_SERVICE_ENABLED,false)) {
+      Token<TimelineDelegationTokenIdentifier> token=client.getDelegationToken(UserGroupInformation.getCurrentUser().getUserName());
+      UserGroupInformation.getCurrentUser().addToken(token);
+    }
+    if (type.equals(ENTITY_DATA_TYPE)) {
+      TimelinePutResponse response=client.putEntities(entities.getEntities().toArray(new TimelineEntity[entities.getEntities().size()]));
+      if (response.getErrors().size() == 0) {
+        LOG.info("Timeline entities are successfully put");
+      }
+ else {
+        for (        TimelinePutResponse.TimelinePutError error : response.getErrors()) {
+          LOG.error("TimelineEntity [" + error.getEntityType() + ":"+ error.getEntityId()+ "] is not successfully put. Error code: "+ error.getErrorCode());
+        }
+      }
+    }
+ else     if (type.equals(DOMAIN_DATA_TYPE)) {
+      boolean hasError=false;
+      for (      TimelineDomain domain : domains.getDomains()) {
+        try {
+          client.putDomain(domain);
+        }
+ catch (        Exception e) {
+          LOG.error("Error when putting domain " + domain.getId(),e);
+          hasError=true;
+        }
+      }
+      if (!hasError) {
+        LOG.info("Timeline domains are successfully put");
+      }
+    }
+  }
+ catch (  RuntimeException e) {
+    LOG.error("Error when putting the timeline data",e);
+  }
+catch (  Exception e) {
+    LOG.error("Error when putting the timeline data",e);
+  }
+ finally {
+    client.stop();
+  }
+}

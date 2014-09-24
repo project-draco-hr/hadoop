@@ -1,0 +1,64 @@
+{
+  WriteBatch writeBatch=null;
+  try {
+    writeBatch=db.createWriteBatch();
+    if (domain.getId() == null || domain.getId().length() == 0) {
+      throw new IllegalArgumentException("Domain doesn't have an ID");
+    }
+    if (domain.getOwner() == null || domain.getOwner().length() == 0) {
+      throw new IllegalArgumentException("Domain doesn't have an owner.");
+    }
+    byte[] domainEntryKey=createDomainEntryKey(domain.getId(),DESCRIPTION_COLUMN);
+    byte[] ownerLookupEntryKey=createOwnerLookupKey(domain.getOwner(),domain.getId(),DESCRIPTION_COLUMN);
+    if (domain.getDescription() != null) {
+      writeBatch.put(domainEntryKey,domain.getDescription().getBytes());
+      writeBatch.put(ownerLookupEntryKey,domain.getDescription().getBytes());
+    }
+ else {
+      writeBatch.put(domainEntryKey,EMPTY_BYTES);
+      writeBatch.put(ownerLookupEntryKey,EMPTY_BYTES);
+    }
+    domainEntryKey=createDomainEntryKey(domain.getId(),OWNER_COLUMN);
+    ownerLookupEntryKey=createOwnerLookupKey(domain.getOwner(),domain.getId(),OWNER_COLUMN);
+    writeBatch.put(domainEntryKey,domain.getOwner().getBytes());
+    writeBatch.put(ownerLookupEntryKey,domain.getOwner().getBytes());
+    domainEntryKey=createDomainEntryKey(domain.getId(),READER_COLUMN);
+    ownerLookupEntryKey=createOwnerLookupKey(domain.getOwner(),domain.getId(),READER_COLUMN);
+    if (domain.getReaders() != null && domain.getReaders().length() > 0) {
+      writeBatch.put(domainEntryKey,domain.getReaders().getBytes());
+      writeBatch.put(ownerLookupEntryKey,domain.getReaders().getBytes());
+    }
+ else {
+      writeBatch.put(domainEntryKey,EMPTY_BYTES);
+      writeBatch.put(ownerLookupEntryKey,EMPTY_BYTES);
+    }
+    domainEntryKey=createDomainEntryKey(domain.getId(),WRITER_COLUMN);
+    ownerLookupEntryKey=createOwnerLookupKey(domain.getOwner(),domain.getId(),WRITER_COLUMN);
+    if (domain.getWriters() != null && domain.getWriters().length() > 0) {
+      writeBatch.put(domainEntryKey,domain.getWriters().getBytes());
+      writeBatch.put(ownerLookupEntryKey,domain.getWriters().getBytes());
+    }
+ else {
+      writeBatch.put(domainEntryKey,EMPTY_BYTES);
+      writeBatch.put(ownerLookupEntryKey,EMPTY_BYTES);
+    }
+    domainEntryKey=createDomainEntryKey(domain.getId(),TIMESTAMP_COLUMN);
+    ownerLookupEntryKey=createOwnerLookupKey(domain.getOwner(),domain.getId(),TIMESTAMP_COLUMN);
+    long currentTimestamp=System.currentTimeMillis();
+    byte[] timestamps=db.get(domainEntryKey);
+    if (timestamps == null) {
+      timestamps=new byte[16];
+      writeReverseOrderedLong(currentTimestamp,timestamps,0);
+      writeReverseOrderedLong(currentTimestamp,timestamps,8);
+    }
+ else {
+      writeReverseOrderedLong(currentTimestamp,timestamps,8);
+    }
+    writeBatch.put(domainEntryKey,timestamps);
+    writeBatch.put(ownerLookupEntryKey,timestamps);
+    db.write(writeBatch);
+  }
+  finally {
+    IOUtils.cleanup(LOG,writeBatch);
+  }
+}
