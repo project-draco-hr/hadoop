@@ -1,0 +1,29 @@
+{
+  LOG.info("Starting reconfiguration task.");
+  Configuration oldConf=this.parent.getConf();
+  Configuration newConf=new Configuration();
+  Collection<PropertyChange> changes=this.parent.getChangedProperties(newConf,oldConf);
+  Map<PropertyChange,Optional<String>> results=Maps.newHashMap();
+  for (  PropertyChange change : changes) {
+    String errorMessage=null;
+    if (!this.parent.isPropertyReconfigurable(change.prop)) {
+      errorMessage="Property " + change.prop + " is not reconfigurable";
+      LOG.info(errorMessage);
+      results.put(change,Optional.of(errorMessage));
+      continue;
+    }
+    LOG.info("Change property: " + change.prop + " from \""+ ((change.oldVal == null) ? "<default>" : change.oldVal)+ "\" to \""+ ((change.newVal == null) ? "<default>" : change.newVal)+ "\".");
+    try {
+      this.parent.reconfigurePropertyImpl(change.prop,change.newVal);
+    }
+ catch (    ReconfigurationException e) {
+      errorMessage=e.toString();
+    }
+    results.put(change,Optional.fromNullable(errorMessage));
+  }
+synchronized (this.parent.reconfigLock) {
+    this.parent.endTime=Time.monotonicNow();
+    this.parent.status=Collections.unmodifiableMap(results);
+    this.parent.reconfigThread=null;
+  }
+}
