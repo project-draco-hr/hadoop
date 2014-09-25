@@ -11,19 +11,31 @@
       long blockId=Block.filename2id(blockFile.getName());
       File targetDir=DatanodeUtil.idToBlockDir(finalizedDir,blockId);
       if (blockFile.exists()) {
-        File targetBlockFile=new File(targetDir,blockFile.getName());
-        File targetMetaFile=new File(targetDir,metaFile.getName());
         if (!targetDir.exists() && !targetDir.mkdirs()) {
-          FsDatasetImpl.LOG.warn("Failed to move " + blockFile + " to "+ targetDir);
+          LOG.warn("Failed to mkdirs " + targetDir);
           continue;
         }
-        metaFile.renameTo(targetMetaFile);
-        blockFile.renameTo(targetBlockFile);
+        final File targetMetaFile=new File(targetDir,metaFile.getName());
+        try {
+          NativeIO.renameTo(metaFile,targetMetaFile);
+        }
+ catch (        IOException e) {
+          LOG.warn("Failed to move meta file from " + metaFile + " to "+ targetMetaFile,e);
+          continue;
+        }
+        final File targetBlockFile=new File(targetDir,blockFile.getName());
+        try {
+          NativeIO.renameTo(blockFile,targetBlockFile);
+        }
+ catch (        IOException e) {
+          LOG.warn("Failed to move block file from " + blockFile + " to "+ targetBlockFile,e);
+          continue;
+        }
         if (targetBlockFile.exists() && targetMetaFile.exists()) {
           ++numRecovered;
         }
  else {
-          FsDatasetImpl.LOG.warn("Failed to move " + blockFile + " to "+ targetDir);
+          LOG.warn("Failed to move " + blockFile + " to "+ targetDir);
         }
       }
     }
