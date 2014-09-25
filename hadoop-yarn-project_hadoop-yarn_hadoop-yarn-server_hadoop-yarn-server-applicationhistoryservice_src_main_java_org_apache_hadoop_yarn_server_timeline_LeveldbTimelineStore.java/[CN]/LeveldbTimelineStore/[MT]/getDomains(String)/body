@@ -1,0 +1,38 @@
+{
+  DBIterator iterator=null;
+  try {
+    byte[] prefix=KeyBuilder.newInstance().add(OWNER_LOOKUP_PREFIX).add(owner).getBytesForLookup();
+    List<TimelineDomain> domains=new ArrayList<TimelineDomain>();
+    for (iterator=db.iterator(), iterator.seek(prefix); iterator.hasNext(); ) {
+      byte[] key=iterator.peekNext().getKey();
+      if (!prefixMatches(prefix,prefix.length,key)) {
+        break;
+      }
+      KeyParser kp=new KeyParser(key,prefix.length);
+      String domainId=kp.getNextString();
+      byte[] prefixExt=KeyBuilder.newInstance().add(OWNER_LOOKUP_PREFIX).add(owner).add(domainId).getBytesForLookup();
+      TimelineDomain domainToReturn=getTimelineDomain(iterator,domainId,prefixExt);
+      if (domainToReturn != null) {
+        domains.add(domainToReturn);
+      }
+    }
+    Collections.sort(domains,new Comparator<TimelineDomain>(){
+      @Override public int compare(      TimelineDomain domain1,      TimelineDomain domain2){
+        int result=domain2.getCreatedTime().compareTo(domain1.getCreatedTime());
+        if (result == 0) {
+          return domain2.getModifiedTime().compareTo(domain1.getModifiedTime());
+        }
+ else {
+          return result;
+        }
+      }
+    }
+);
+    TimelineDomains domainsToReturn=new TimelineDomains();
+    domainsToReturn.addDomains(domains);
+    return domainsToReturn;
+  }
+  finally {
+    IOUtils.cleanup(LOG,iterator);
+  }
+}
