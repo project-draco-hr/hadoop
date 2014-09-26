@@ -12,6 +12,7 @@
     cluster.transitionToActive(0);
     fs=HATestUtil.configureFailoverFs(cluster,conf);
     assertTrue(fs.mkdirs(new Path("/foo1")));
+    final long cidBeforeUpgrade=getCommittedTxnIdValue(qjCluster);
     cluster.shutdownNameNode(1);
     cluster.getNameNodeInfos()[0].setStartOpt(StartupOption.UPGRADE);
     cluster.restartNameNode(0,false);
@@ -19,6 +20,8 @@
     checkNnPreviousDirExistence(cluster,1,false);
     checkJnPreviousDirExistence(qjCluster,true);
     assertTrue(fs.mkdirs(new Path("/foo2")));
+    final long cidDuringUpgrade=getCommittedTxnIdValue(qjCluster);
+    assertTrue(cidDuringUpgrade > cidBeforeUpgrade);
     int rc=BootstrapStandby.run(new String[]{"-force"},cluster.getConfiguration(1));
     assertEquals(0,rc);
     cluster.restartNameNode(1);
@@ -30,6 +33,9 @@
     cluster.shutdown();
     conf.setStrings(DFSConfigKeys.DFS_NAMENODE_NAME_DIR_KEY,Joiner.on(",").join(nn1NameDirs));
     NameNode.doRollback(conf,false);
+    final long cidAfterRollback=getCommittedTxnIdValue(qjCluster);
+    assertTrue(cidBeforeUpgrade < cidAfterRollback);
+    assertTrue(cidDuringUpgrade > cidAfterRollback);
     checkNnPreviousDirExistence(cluster,0,false);
     checkJnPreviousDirExistence(qjCluster,false);
   }
