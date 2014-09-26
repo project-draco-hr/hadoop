@@ -1,11 +1,11 @@
 {
   Configuration conf=getConf();
-  String oldVolumes=conf.get(DFS_DATANODE_DATA_DIR_KEY);
   conf.set(DFS_DATANODE_DATA_DIR_KEY,newVolumes);
   List<StorageLocation> locations=getStorageLocations(conf);
   final int numOldDataDirs=dataDirs.size();
   dataDirs=locations;
   ChangedVolumes changedVolumes=parseChangedVolumes();
+  StringBuilder errorMessageBuilder=new StringBuilder();
   try {
     if (numOldDataDirs + changedVolumes.newLocations.size() - changedVolumes.deactivateLocations.size() <= 0) {
       throw new IOException("Attempt to remove all volumes.");
@@ -26,8 +26,14 @@
         List<StorageLocation> failedVolumes=Lists.newArrayList();
         for (        StorageLocation location : changedVolumes.newLocations) {
           if (!succeedVolumes.contains(location)) {
+            errorMessageBuilder.append("FAILED TO ADD:");
             failedVolumes.add(location);
           }
+ else {
+            errorMessageBuilder.append("ADDED:");
+          }
+          errorMessageBuilder.append(location);
+          errorMessageBuilder.append("\n");
         }
         storage.removeVolumes(failedVolumes);
         data.removeVolumes(failedVolumes);
@@ -38,9 +44,12 @@
       data.removeVolumes(changedVolumes.deactivateLocations);
       storage.removeVolumes(changedVolumes.deactivateLocations);
     }
+    if (errorMessageBuilder.length() > 0) {
+      throw new IOException(errorMessageBuilder.toString());
+    }
   }
  catch (  IOException e) {
-    LOG.warn("There is IOException when refreshing volumes! " + "Recover configurations: " + DFS_DATANODE_DATA_DIR_KEY + " = "+ oldVolumes,e);
+    LOG.warn("There is IOException when refresh volumes! ",e);
     throw e;
   }
 }
