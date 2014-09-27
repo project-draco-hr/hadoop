@@ -11,6 +11,15 @@
   NodeId nodeId=nm.getNMContext().getNodeId();
   Assert.assertEquals(nmTokenSecretManagerInNM.getCurrentKey().getKeyId(),nmTokenSecretManagerInRM.getCurrentKey().getKeyId());
   RMContainerTokenSecretManager containerTokenSecretManager=yarnCluster.getResourceManager().getRMContext().getContainerTokenSecretManager();
+  Resource r=Resource.newInstance(1230,2);
+  Token containerToken=containerTokenSecretManager.createContainerToken(cId,nodeId,user,r,Priority.newInstance(0),0);
+  ContainerTokenIdentifier containerTokenIdentifier=getContainerTokenIdentifierFromToken(containerToken);
+  ContainerTokenIdentifierForTest newVersionTokenIdentifier=new ContainerTokenIdentifierForTest(containerTokenIdentifier,"message");
+  byte[] password=containerTokenSecretManager.createPassword(newVersionTokenIdentifier);
+  Token newContainerToken=BuilderUtils.newContainerToken(nodeId,password,newVersionTokenIdentifier);
+  Token nmToken=nmTokenSecretManagerInRM.createNMToken(appAttemptId,nodeId,user);
+  YarnRPC rpc=YarnRPC.create(conf);
+  Assert.assertTrue(testStartContainer(rpc,appAttemptId,nodeId,newContainerToken,nmToken,false).isEmpty());
   RMContainerTokenSecretManager tamperedContainerTokenSecretManager=new RMContainerTokenSecretManager(conf);
   tamperedContainerTokenSecretManager.rollMasterKey();
   do {
@@ -18,12 +27,10 @@
     tamperedContainerTokenSecretManager.activateNextMasterKey();
   }
  while (containerTokenSecretManager.getCurrentKey().getKeyId() == tamperedContainerTokenSecretManager.getCurrentKey().getKeyId());
-  Resource r=Resource.newInstance(1230,2);
-  Token containerToken=tamperedContainerTokenSecretManager.createContainerToken(cId,nodeId,user,r,Priority.newInstance(0),0);
-  Token nmToken=nmTokenSecretManagerInRM.createNMToken(appAttemptId,nodeId,user);
-  YarnRPC rpc=YarnRPC.create(conf);
+  ContainerId cId2=ContainerId.newInstance(appAttemptId,1);
+  Token containerToken2=tamperedContainerTokenSecretManager.createContainerToken(cId2,nodeId,user,r,Priority.newInstance(0),0);
   StringBuilder sb=new StringBuilder("Given Container ");
-  sb.append(cId);
+  sb.append(cId2);
   sb.append(" seems to have an illegally generated token.");
-  Assert.assertTrue(testStartContainer(rpc,appAttemptId,nodeId,containerToken,nmToken,true).contains(sb.toString()));
+  Assert.assertTrue(testStartContainer(rpc,appAttemptId,nodeId,containerToken2,nmToken,true).contains(sb.toString()));
 }

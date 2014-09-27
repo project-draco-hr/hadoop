@@ -25,6 +25,18 @@
     Assert.assertEquals(amrmToken_2.decodeIdentifier().getKeyId(),amrmTokenSecretManager.getMasterKey().getMasterKey().getKeyId());
     Assert.assertNotEquals(amrmToken_1,amrmToken_2);
     amClient.allocate(0.1f);
+    UserGroupInformation testUser1=UserGroupInformation.createRemoteUser("testUser1");
+    AMRMTokenIdentifierForTest newVersionTokenIdentifier=new AMRMTokenIdentifierForTest(amrmToken_2.decodeIdentifier(),"message");
+    Assert.assertEquals("Message is changed after set to newVersionTokenIdentifier","message",newVersionTokenIdentifier.getMessage());
+    org.apache.hadoop.security.token.Token<AMRMTokenIdentifier> newVersionToken=new org.apache.hadoop.security.token.Token<AMRMTokenIdentifier>(newVersionTokenIdentifier.getBytes(),amrmTokenSecretManager.retrievePassword(newVersionTokenIdentifier),newVersionTokenIdentifier.getKind(),new Text());
+    SecurityUtil.setTokenService(newVersionToken,yarnCluster.getResourceManager().getApplicationMasterService().getBindAddress());
+    testUser1.addToken(newVersionToken);
+    testUser1.doAs(new PrivilegedAction<ApplicationMasterProtocol>(){
+      @Override public ApplicationMasterProtocol run(){
+        return (ApplicationMasterProtocol)YarnRPC.create(conf).getProxy(ApplicationMasterProtocol.class,yarnCluster.getResourceManager().getApplicationMasterService().getBindAddress(),conf);
+      }
+    }
+).allocate(Records.newRecord(AllocateRequest.class));
     while (true) {
       if (amrmToken_2.decodeIdentifier().getKeyId() != amrmTokenSecretManager.getCurrnetMasterKeyData().getMasterKey().getKeyId()) {
         if (amrmTokenSecretManager.getNextMasterKeyData() == null) {
@@ -42,10 +54,10 @@
       }
     }
     try {
-      UserGroupInformation testUser=UserGroupInformation.createRemoteUser("testUser");
+      UserGroupInformation testUser2=UserGroupInformation.createRemoteUser("testUser2");
       SecurityUtil.setTokenService(amrmToken_2,yarnCluster.getResourceManager().getApplicationMasterService().getBindAddress());
-      testUser.addToken(amrmToken_2);
-      testUser.doAs(new PrivilegedAction<ApplicationMasterProtocol>(){
+      testUser2.addToken(amrmToken_2);
+      testUser2.doAs(new PrivilegedAction<ApplicationMasterProtocol>(){
         @Override public ApplicationMasterProtocol run(){
           return (ApplicationMasterProtocol)YarnRPC.create(conf).getProxy(ApplicationMasterProtocol.class,yarnCluster.getResourceManager().getApplicationMasterService().getBindAddress(),conf);
         }
