@@ -6,6 +6,31 @@
   file.delete();
   conf.set(KeyProviderFactory.KEY_PROVIDER_PATH,ourUrl);
   checkSpecificProvider(conf,ourUrl);
+  conf.set(KeyProviderFactory.KEY_PROVIDER_PATH,ourUrl.replace(JavaKeyStoreProvider.SCHEME_NAME,FailureInjectingJavaKeyStoreProvider.SCHEME_NAME));
+  KeyProvider provider=KeyProviderFactory.getProviders(conf).get(0);
+  FailureInjectingJavaKeyStoreProvider fProvider=(FailureInjectingJavaKeyStoreProvider)provider;
+  fProvider.setWriteFail(true);
+  provider.createKey("key5",new byte[]{1},KeyProvider.options(conf).setBitLength(8));
+  assertNotNull(provider.getCurrentKey("key5"));
+  try {
+    provider.flush();
+    Assert.fail("Should not succeed");
+  }
+ catch (  Exception e) {
+  }
+  Assert.assertNull(provider.getCurrentKey("key5"));
+  fProvider.setWriteFail(false);
+  fProvider.setBackupFail(true);
+  provider.createKey("key6",new byte[]{1},KeyProvider.options(conf).setBitLength(8));
+  assertNotNull(provider.getCurrentKey("key6"));
+  try {
+    provider.flush();
+    Assert.fail("Should not succeed");
+  }
+ catch (  Exception e) {
+  }
+  Assert.assertNull(provider.getCurrentKey("key6"));
+  conf.set(KeyProviderFactory.KEY_PROVIDER_PATH,ourUrl.replace(FailureInjectingJavaKeyStoreProvider.SCHEME_NAME,JavaKeyStoreProvider.SCHEME_NAME));
   Path path=ProviderUtils.unnestUri(new URI(ourUrl));
   FileSystem fs=path.getFileSystem(conf);
   FileStatus s=fs.getFileStatus(path);
@@ -16,7 +41,7 @@
   file.delete();
   file.createNewFile();
   assertTrue(oldFile.exists());
-  KeyProvider provider=KeyProviderFactory.getProviders(conf).get(0);
+  provider=KeyProviderFactory.getProviders(conf).get(0);
   assertTrue(file.exists());
   assertTrue(oldFile + "should be deleted",!oldFile.exists());
   verifyAfterReload(file,provider);
