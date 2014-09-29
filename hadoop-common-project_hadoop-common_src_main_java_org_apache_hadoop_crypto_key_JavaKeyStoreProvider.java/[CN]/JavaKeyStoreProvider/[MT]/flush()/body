@@ -1,6 +1,7 @@
 {
   Path newPath=constructNewPath(path);
   Path oldPath=constructOldPath(path);
+  Path resetPath=path;
   writeLock.lock();
   try {
     if (!changed) {
@@ -21,17 +22,25 @@
       }
     }
     boolean fileExisted=backupToOld(oldPath);
+    if (fileExisted) {
+      resetPath=oldPath;
+    }
     try {
       writeToNew(newPath);
     }
  catch (    IOException ioe) {
       revertFromOld(oldPath,fileExisted);
+      resetPath=path;
       throw ioe;
     }
     cleanupNewAndOld(newPath,oldPath);
     changed=false;
   }
-  finally {
+ catch (  IOException ioe) {
+    resetKeyStoreState(resetPath);
+    throw ioe;
+  }
+ finally {
     writeLock.unlock();
   }
 }
