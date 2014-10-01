@@ -1,0 +1,62 @@
+{
+  Configuration conf=new Configuration();
+  conf.set("hadoop.security.authentication","kerberos");
+  UserGroupInformation.setConfiguration(conf);
+  final File testDir=getTestDir();
+  conf=createBaseKMSConf(testDir);
+  conf.set("hadoop.kms.authentication.kerberos.keytab",keytab.getAbsolutePath());
+  conf.set("hadoop.kms.authentication.kerberos.principal","HTTP/localhost");
+  conf.set("hadoop.kms.authentication.kerberos.name.rules","DEFAULT");
+  for (  KMSACLs.Type type : KMSACLs.Type.values()) {
+    conf.set(type.getAclConfigKey(),type.toString());
+  }
+  conf.set(KMSACLs.Type.CREATE.getAclConfigKey(),KMSACLs.Type.CREATE.toString() + ",SET_KEY_MATERIAL");
+  conf.set(KMSACLs.Type.ROLLOVER.getAclConfigKey(),KMSACLs.Type.ROLLOVER.toString() + ",SET_KEY_MATERIAL");
+  conf.set(KeyAuthorizationKeyProvider.KEY_ACL + "k0.ALL","*");
+  conf.set(KeyAuthorizationKeyProvider.KEY_ACL + "k1.ALL","*");
+  conf.set(KeyAuthorizationKeyProvider.KEY_ACL + "k2.ALL","*");
+  conf.set(KeyAuthorizationKeyProvider.KEY_ACL + "k3.ALL","*");
+  writeConf(testDir,conf);
+  KMSCallable<KeyProvider> c=new KMSCallable<KeyProvider>(){
+    @Override public KeyProvider call() throws Exception {
+      final Configuration conf=new Configuration();
+      conf.setInt(KeyProvider.DEFAULT_BITLENGTH_NAME,128);
+      final URI uri=createKMSUri(getKMSUrl());
+      final KeyProvider kp=doAs("SET_KEY_MATERIAL",new PrivilegedExceptionAction<KeyProvider>(){
+        @Override public KeyProvider run() throws Exception {
+          KMSClientProvider kp=new KMSClientProvider(uri,conf);
+          kp.createKey("k1",new byte[16],new KeyProvider.Options(conf));
+          return kp;
+        }
+      }
+);
+      return kp;
+    }
+  }
+;
+  final KeyProvider retKp=runServer(null,null,testDir,c);
+  runServer(c.getKMSUrl().getPort(),null,null,testDir,new KMSCallable<Void>(){
+    @Override public Void call() throws Exception {
+      final Configuration conf=new Configuration();
+      conf.setInt(KeyProvider.DEFAULT_BITLENGTH_NAME,128);
+      doAs("SET_KEY_MATERIAL",new PrivilegedExceptionAction<Void>(){
+        @Override public Void run() throws Exception {
+          try {
+            retKp.createKey("k2",new byte[16],new KeyProvider.Options(conf));
+            Assert.fail("Should fail first time !!");
+          }
+ catch (          IOException e) {
+            String message=e.getMessage();
+            Assert.assertTrue("Should be a 403 error : " + message,message.contains("403"));
+          }
+          retKp.createKey("k2",new byte[16],new KeyProvider.Options(conf));
+          retKp.createKey("k3",new byte[16],new KeyProvider.Options(conf));
+          return null;
+        }
+      }
+);
+      return null;
+    }
+  }
+);
+}
