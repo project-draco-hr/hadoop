@@ -7,6 +7,10 @@
   FsImageProto.FileSummary summary=FSImageUtil.loadSummary(file);
   FileInputStream fin=null;
   try {
+    ImmutableList<Long> refIdList=null;
+    String[] stringTable=null;
+    byte[][] inodes=null;
+    Map<Long,long[]> dirmap=null;
     fin=new FileInputStream(file.getFD());
     ArrayList<FsImageProto.FileSummary.Section> sections=Lists.newArrayList(summary.getSectionsList());
     Collections.sort(sections,new Comparator<FsImageProto.FileSummary.Section>(){
@@ -28,26 +32,27 @@
     for (    FsImageProto.FileSummary.Section s : sections) {
       fin.getChannel().position(s.getOffset());
       InputStream is=FSImageUtil.wrapInputStreamForCompression(conf,summary.getCodec(),new BufferedInputStream(new LimitInputStream(fin,s.getLength())));
+      LOG.debug("Loading section " + s.getName() + " length: "+ s.getLength());
 switch (FSImageFormatProtobuf.SectionName.fromString(s.getName())) {
 case STRING_TABLE:
-        loadStringTable(is);
+        stringTable=loadStringTable(is);
       break;
 case INODE:
-    loadINodeSection(is);
+    inodes=loadINodeSection(is);
   break;
 case INODE_REFERENCE:
-loadINodeReferenceSection(is);
+refIdList=loadINodeReferenceSection(is);
 break;
 case INODE_DIR:
-loadINodeDirectorySection(is);
+dirmap=loadINodeDirectorySection(is,refIdList);
 break;
 default :
 break;
 }
 }
+return new FSImageLoader(stringTable,inodes,dirmap);
 }
   finally {
 IOUtils.cleanup(null,fin);
 }
-return new FSImageLoader();
 }
