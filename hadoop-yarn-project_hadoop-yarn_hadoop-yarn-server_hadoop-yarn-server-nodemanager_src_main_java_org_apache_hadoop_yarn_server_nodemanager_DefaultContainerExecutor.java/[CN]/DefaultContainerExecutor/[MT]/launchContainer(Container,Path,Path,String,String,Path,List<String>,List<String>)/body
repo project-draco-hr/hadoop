@@ -9,16 +9,16 @@
     Path appCacheDir=new Path(userdir,ContainerLocalizer.APPCACHE);
     Path appDir=new Path(appCacheDir,appIdStr);
     Path containerDir=new Path(appDir,containerIdStr);
-    createDir(containerDir,dirPerm,true);
+    createDir(containerDir,dirPerm,true,userName);
   }
-  createContainerLogDirs(appIdStr,containerIdStr,logDirs);
+  createContainerLogDirs(appIdStr,containerIdStr,logDirs,userName);
   Path tmpDir=new Path(containerWorkDir,YarnConfiguration.DEFAULT_CONTAINER_TEMP_DIR);
-  createDir(tmpDir,dirPerm,false);
+  createDir(tmpDir,dirPerm,false,userName);
   Path launchDst=new Path(containerWorkDir,ContainerLaunch.CONTAINER_SCRIPT);
-  lfs.util().copy(nmPrivateContainerScriptPath,launchDst);
+  copyFile(nmPrivateContainerScriptPath,launchDst,userName);
   Path tokenDst=new Path(containerWorkDir,ContainerLaunch.FINAL_CONTAINER_TOKENS_FILE);
-  lfs.util().copy(nmPrivateTokensPath,tokenDst);
-  LocalWrapperScriptBuilder sb=Shell.WINDOWS ? new WindowsLocalWrapperScriptBuilder(containerIdStr,containerWorkDir) : new UnixLocalWrapperScriptBuilder(containerWorkDir);
+  copyFile(nmPrivateTokensPath,tokenDst,userName);
+  LocalWrapperScriptBuilder sb=getLocalWrapperScriptBuilder(containerIdStr,containerWorkDir);
   if (Shell.WINDOWS && sb.getWrapperScriptPath().toString().length() > WIN_MAX_PATH) {
     throw new IOException(String.format("Cannot launch container using script at path %s, because it exceeds " + "the maximum supported path length of %d characters.  Consider " + "configuring shorter directories in %s.",sb.getWrapperScriptPath(),WIN_MAX_PATH,YarnConfiguration.NM_LOCAL_DIRS));
   }
@@ -32,9 +32,9 @@
   }
   ShellCommandExecutor shExec=null;
   try {
-    lfs.setPermission(launchDst,ContainerExecutor.TASK_LAUNCH_SCRIPT_PERMISSION);
-    lfs.setPermission(sb.getWrapperScriptPath(),ContainerExecutor.TASK_LAUNCH_SCRIPT_PERMISSION);
-    String[] command=getRunCommand(sb.getWrapperScriptPath().toString(),containerIdStr,this.getConf());
+    setScriptExecutable(launchDst,userName);
+    setScriptExecutable(sb.getWrapperScriptPath(),userName);
+    String[] command=getRunCommand(sb.getWrapperScriptPath().toString(),containerIdStr,userName,pidFile,this.getConf());
     LOG.info("launchContainer: " + Arrays.toString(command));
     shExec=new ShellCommandExecutor(command,new File(containerWorkDir.toUri().getPath()),container.getLaunchContext().getEnvironment());
     if (isContainerActive(containerId)) {
