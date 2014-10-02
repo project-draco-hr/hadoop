@@ -1,0 +1,27 @@
+{
+  if (LOG.isDebugEnabled()) {
+    LOG.debug("Verifying the access of " + (callerUGI == null ? null : callerUGI.getShortUserName()) + " on the timeline entity "+ new EntityIdentifier(entity.getEntityId(),entity.getEntityType()));
+  }
+  if (!adminAclsManager.areACLsEnabled()) {
+    return true;
+  }
+  AccessControlListExt aclExt=aclExts.get(entity.getDomainId());
+  if (aclExt == null) {
+    aclExt=loadDomainFromTimelineStore(entity.getDomainId());
+  }
+  if (aclExt == null) {
+    throw new YarnException("Domain information of the timeline entity " + new EntityIdentifier(entity.getEntityId(),entity.getEntityType()) + " doesn't exist.");
+  }
+  String owner=aclExt.owner;
+  AccessControlList domainACL=aclExt.acls.get(applicationAccessType);
+  if (domainACL == null) {
+    if (LOG.isDebugEnabled()) {
+      LOG.debug("ACL not found for access-type " + applicationAccessType + " for domain "+ entity.getDomainId()+ " owned by "+ owner+ ". Using default ["+ YarnConfiguration.DEFAULT_YARN_APP_ACL+ "]");
+    }
+    domainACL=new AccessControlList(YarnConfiguration.DEFAULT_YARN_APP_ACL);
+  }
+  if (callerUGI != null && (adminAclsManager.isAdmin(callerUGI) || callerUGI.getShortUserName().equals(owner) || domainACL.isUserAllowed(callerUGI))) {
+    return true;
+  }
+  return false;
+}

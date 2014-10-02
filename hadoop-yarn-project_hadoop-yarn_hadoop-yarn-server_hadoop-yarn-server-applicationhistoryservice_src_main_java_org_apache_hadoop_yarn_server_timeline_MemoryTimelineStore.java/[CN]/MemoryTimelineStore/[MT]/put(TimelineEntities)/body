@@ -8,6 +8,15 @@
       existingEntity.setEntityId(entity.getEntityId());
       existingEntity.setEntityType(entity.getEntityType());
       existingEntity.setStartTime(entity.getStartTime());
+      if (entity.getDomainId() == null || entity.getDomainId().length() == 0) {
+        TimelinePutError error=new TimelinePutError();
+        error.setEntityId(entityId.getId());
+        error.setEntityType(entityId.getType());
+        error.setErrorCode(TimelinePutError.NO_DOMAIN);
+        response.addError(error);
+        continue;
+      }
+      existingEntity.setDomainId(entity.getDomainId());
       entities.put(entityId,existingEntity);
       entityInsertTimes.put(entityId,System.currentTimeMillis());
     }
@@ -70,7 +79,16 @@
         EntityIdentifier relatedEntityId=new EntityIdentifier(idStr,partRelatedEntities.getKey());
         TimelineEntity relatedEntity=entities.get(relatedEntityId);
         if (relatedEntity != null) {
-          relatedEntity.addRelatedEntity(existingEntity.getEntityType(),existingEntity.getEntityId());
+          if (relatedEntity.getDomainId().equals(existingEntity.getDomainId())) {
+            relatedEntity.addRelatedEntity(existingEntity.getEntityType(),existingEntity.getEntityId());
+          }
+ else {
+            TimelinePutError error=new TimelinePutError();
+            error.setEntityType(existingEntity.getEntityType());
+            error.setEntityId(existingEntity.getEntityId());
+            error.setErrorCode(TimelinePutError.FORBIDDEN_RELATION);
+            response.addError(error);
+          }
         }
  else {
           relatedEntity=new TimelineEntity();
@@ -78,6 +96,7 @@
           relatedEntity.setEntityType(relatedEntityId.getType());
           relatedEntity.setStartTime(existingEntity.getStartTime());
           relatedEntity.addRelatedEntity(existingEntity.getEntityType(),existingEntity.getEntityId());
+          relatedEntity.setDomainId(existingEntity.getDomainId());
           entities.put(relatedEntityId,relatedEntity);
           entityInsertTimes.put(relatedEntityId,System.currentTimeMillis());
         }

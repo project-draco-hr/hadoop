@@ -7,11 +7,17 @@
   List<TimelinePutResponse.TimelinePutError> errors=new ArrayList<TimelinePutResponse.TimelinePutError>();
   for (  TimelineEntity entity : entities.getEntities()) {
     EntityIdentifier entityID=new EntityIdentifier(entity.getEntityId(),entity.getEntityType());
+    if (entity.getDomainId() == null || entity.getDomainId().length() == 0) {
+      entity.setDomainId(DEFAULT_DOMAIN_ID);
+    }
     TimelineEntity existingEntity=null;
     try {
       existingEntity=store.getEntity(entityID.getId(),entityID.getType(),EnumSet.of(Field.PRIMARY_FILTERS));
-      if (existingEntity != null && !timelineACLsManager.checkAccess(callerUGI,existingEntity)) {
-        throw new YarnException("The timeline entity " + entityID + " was not put by "+ callerUGI+ " before");
+      if (existingEntity != null && !existingEntity.getDomainId().equals(entity.getDomainId())) {
+        throw new YarnException("The domain of the timeline entity " + entityID + " is not allowed to be changed.");
+      }
+      if (!timelineACLsManager.checkAccess(callerUGI,ApplicationAccessType.MODIFY_APP,entity)) {
+        throw new YarnException(callerUGI + " is not allowed to put the timeline entity " + entityID+ " into the domain "+ entity.getDomainId()+ ".");
       }
     }
  catch (    Exception e) {

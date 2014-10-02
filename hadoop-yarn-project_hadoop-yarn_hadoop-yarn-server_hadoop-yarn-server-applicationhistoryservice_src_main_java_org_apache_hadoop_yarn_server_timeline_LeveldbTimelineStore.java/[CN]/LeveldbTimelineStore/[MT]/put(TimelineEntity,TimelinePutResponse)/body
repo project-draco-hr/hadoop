@@ -4,6 +4,7 @@
   WriteBatch writeBatch=null;
   List<EntityIdentifier> relatedEntitiesWithoutStartTimes=new ArrayList<EntityIdentifier>();
   byte[] revStartTime=null;
+  Map<String,Set<Object>> primaryFilters=null;
   try {
     writeBatch=db.createWriteBatch();
     List<TimelineEvent> events=entity.getEvents();
@@ -17,7 +18,7 @@
       return;
     }
     revStartTime=writeReverseOrderedLong(startAndInsertTime.startTime);
-    Map<String,Set<Object>> primaryFilters=entity.getPrimaryFilters();
+    primaryFilters=entity.getPrimaryFilters();
     byte[] markerKey=createEntityMarkerKey(entity.getEntityId(),entity.getEntityType(),revStartTime);
     byte[] markerValue=writeReverseOrderedLong(startAndInsertTime.insertTime);
     writeBatch.put(markerKey,markerValue);
@@ -43,6 +44,18 @@
             relatedEntitiesWithoutStartTimes.add(new EntityIdentifier(relatedEntityId,relatedEntityType));
             continue;
           }
+ else {
+            byte[] domainIdBytes=db.get(createDomainIdKey(relatedEntityId,relatedEntityType,relatedEntityStartTime));
+            String domainId=new String(domainIdBytes);
+            if (!domainId.equals(entity.getDomainId())) {
+              TimelinePutError error=new TimelinePutError();
+              error.setEntityId(entity.getEntityId());
+              error.setEntityType(entity.getEntityType());
+              error.setErrorCode(TimelinePutError.FORBIDDEN_RELATION);
+              response.addError(error);
+              continue;
+            }
+          }
           key=createRelatedEntityKey(relatedEntityId,relatedEntityType,relatedEntityStartTime,entity.getEntityId(),entity.getEntityType());
           writeBatch.put(key,EMPTY_BYTES);
         }
@@ -65,6 +78,19 @@
         writeBatch.put(key,value);
         writePrimaryFilterEntries(writeBatch,primaryFilters,key,value);
       }
+    }
+    byte[] key=createDomainIdKey(entity.getEntityId(),entity.getEntityType(),revStartTime);
+    if (entity.getDomainId() == null || entity.getDomainId().length() == 0) {
+      TimelinePutError error=new TimelinePutError();
+      error.setEntityId(entity.getEntityId());
+      error.setEntityType(entity.getEntityType());
+      error.setErrorCode(TimelinePutError.NO_DOMAIN);
+      response.addError(error);
+      return;
+    }
+ else {
+      writeBatch.put(key,entity.getDomainId().getBytes());
+      writePrimaryFilterEntries(writeBatch,primaryFilters,key,entity.getDomainId().getBytes());
     }
     db.write(writeBatch);
   }
@@ -90,6 +116,8 @@
         throw new IOException("Error setting start time for related entity");
       }
       byte[] relatedEntityStartTime=writeReverseOrderedLong(relatedEntityStartAndInsertTime.startTime);
+      byte[] key=createDomainIdKey(relatedEntity.getId(),relatedEntity.getType(),relatedEntityStartTime);
+      db.put(key,entity.getDomainId().getBytes());
       db.put(createRelatedEntityKey(relatedEntity.getId(),relatedEntity.getType(),relatedEntityStartTime,entity.getEntityId(),entity.getEntityType()),EMPTY_BYTES);
       db.put(createEntityMarkerKey(relatedEntity.getId(),relatedEntity.getType(),relatedEntityStartTime),writeReverseOrderedLong(relatedEntityStartAndInsertTime.insertTime));
     }
