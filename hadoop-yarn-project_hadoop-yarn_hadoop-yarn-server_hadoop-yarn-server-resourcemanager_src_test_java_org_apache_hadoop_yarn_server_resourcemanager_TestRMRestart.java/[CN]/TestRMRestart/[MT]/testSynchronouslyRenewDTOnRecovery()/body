@@ -3,7 +3,7 @@
   conf.set(CommonConfigurationKeysPublic.HADOOP_SECURITY_AUTHENTICATION,"kerberos");
   MemoryRMStateStore memStore=new MemoryRMStateStore();
   memStore.init(conf);
-  MockRM rm1=new MockRM(conf,memStore);
+  MockRM rm1=createMockRM(conf,memStore);
   rm1.start();
   final MockNM nm1=new MockNM("127.0.0.1:1234",15120,rm1.getResourceTrackerService());
   nm1.registerNode();
@@ -23,12 +23,17 @@
     }
   }
 ;
-  rm2.start();
-  RMApp loadedApp0=rm2.getRMContext().getRMApps().get(app0.getApplicationId());
-  int timeoutSecs=0;
-  while (loadedApp0.getAppAttempts().size() != 2 && timeoutSecs++ < 40) {
-    Thread.sleep(200);
+  try {
+    rm2.start();
+    RMApp loadedApp0=rm2.getRMContext().getRMApps().get(app0.getApplicationId());
+    int timeoutSecs=0;
+    while (loadedApp0.getAppAttempts().size() != 2 && timeoutSecs++ < 40) {
+      Thread.sleep(200);
+    }
+    MockAM am1=MockRM.launchAndRegisterAM(loadedApp0,rm2,nm1);
+    MockRM.finishAMAndVerifyAppState(loadedApp0,rm2,nm1,am1);
   }
-  MockAM am1=MockRM.launchAndRegisterAM(loadedApp0,rm2,nm1);
-  MockRM.finishAMAndVerifyAppState(loadedApp0,rm2,nm1,am1);
+  finally {
+    rm2.stop();
+  }
 }
