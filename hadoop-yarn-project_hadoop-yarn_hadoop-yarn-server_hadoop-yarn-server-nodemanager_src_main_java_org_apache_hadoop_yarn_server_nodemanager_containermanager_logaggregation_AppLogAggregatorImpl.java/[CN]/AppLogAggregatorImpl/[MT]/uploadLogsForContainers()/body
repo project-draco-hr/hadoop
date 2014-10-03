@@ -1,0 +1,71 @@
+{
+  if (this.logAggregationDisabled) {
+    return;
+  }
+  Set<ContainerId> pendingContainerInThisCycle=new HashSet<ContainerId>();
+  this.pendingContainers.drainTo(pendingContainerInThisCycle);
+  Set<ContainerId> finishedContainers=new HashSet<ContainerId>(pendingContainerInThisCycle);
+  if (this.context.getApplications().get(this.appId) != null) {
+    for (    ContainerId container : this.context.getApplications().get(this.appId).getContainers().keySet()) {
+      if (shouldUploadLogs(container,true)) {
+        pendingContainerInThisCycle.add(container);
+      }
+    }
+  }
+  LogWriter writer=null;
+  try {
+    try {
+      writer=new LogWriter(this.conf,this.remoteNodeTmpLogFileForApp,this.userUgi);
+      writer.writeApplicationACLs(appAcls);
+      writer.writeApplicationOwner(this.userUgi.getShortUserName());
+    }
+ catch (    IOException e1) {
+      LOG.error("Cannot create writer for app " + this.applicationId + ". Skip log upload this time. ");
+      return;
+    }
+    boolean uploadedLogsInThisCycle=false;
+    for (    ContainerId container : pendingContainerInThisCycle) {
+      ContainerLogAggregator aggregator=null;
+      if (containerLogAggregators.containsKey(container)) {
+        aggregator=containerLogAggregators.get(container);
+      }
+ else {
+        aggregator=new ContainerLogAggregator(container);
+        containerLogAggregators.put(container,aggregator);
+      }
+      Set<Path> uploadedFilePathsInThisCycle=aggregator.doContainerLogAggregation(writer);
+      if (uploadedFilePathsInThisCycle.size() > 0) {
+        uploadedLogsInThisCycle=true;
+      }
+      this.delService.delete(this.userUgi.getShortUserName(),null,uploadedFilePathsInThisCycle.toArray(new Path[uploadedFilePathsInThisCycle.size()]));
+      if (finishedContainers.contains(container)) {
+        containerLogAggregators.remove(container);
+      }
+    }
+    if (writer != null) {
+      writer.close();
+    }
+    final Path renamedPath=logAggregationContext == null || logAggregationContext.getRollingIntervalSeconds() <= 0 ? remoteNodeLogFileForApp : new Path(remoteNodeLogFileForApp.getParent(),remoteNodeLogFileForApp.getName() + "_" + System.currentTimeMillis());
+    final boolean rename=uploadedLogsInThisCycle;
+    try {
+      userUgi.doAs(new PrivilegedExceptionAction<Object>(){
+        @Override public Object run() throws Exception {
+          FileSystem remoteFS=FileSystem.get(conf);
+          if (remoteFS.exists(remoteNodeTmpLogFileForApp) && rename) {
+            remoteFS.rename(remoteNodeTmpLogFileForApp,renamedPath);
+          }
+          return null;
+        }
+      }
+);
+    }
+ catch (    Exception e) {
+      LOG.error("Failed to move temporary log file to final location: [" + remoteNodeTmpLogFileForApp + "] to ["+ renamedPath+ "]",e);
+    }
+  }
+  finally {
+    if (writer != null) {
+      writer.close();
+    }
+  }
+}

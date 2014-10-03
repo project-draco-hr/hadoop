@@ -1,9 +1,17 @@
 {
-  ContainerId containerId;
   while (!this.appFinishing.get() && !this.aborted.get()) {
 synchronized (this) {
       try {
-        wait(THREAD_SLEEP_TIME);
+        if (this.logAggregationContext != null && this.logAggregationContext.getRollingIntervalSeconds() > 0) {
+          wait(this.logAggregationContext.getRollingIntervalSeconds() * 1000);
+          if (this.appFinishing.get() || this.aborted.get()) {
+            break;
+          }
+          uploadLogsForContainers();
+        }
+ else {
+          wait(THREAD_SLEEP_TIME);
+        }
       }
  catch (      InterruptedException e) {
         LOG.warn("PendingContainers queue is interrupted");
@@ -14,9 +22,7 @@ synchronized (this) {
   if (this.aborted.get()) {
     return;
   }
-  while ((containerId=this.pendingContainers.poll()) != null) {
-    uploadLogsForContainer(containerId);
-  }
+  uploadLogsForContainers();
   List<String> rootLogDirs=dirsHandler.getLogDirs();
   Path[] localAppLogDirs=new Path[rootLogDirs.size()];
   int index=0;
@@ -25,23 +31,6 @@ synchronized (this) {
     index++;
   }
   this.delService.delete(this.userUgi.getShortUserName(),null,localAppLogDirs);
-  if (this.writer != null) {
-    this.writer.close();
-    LOG.info("Finished aggregate log-file for app " + this.applicationId);
-  }
-  try {
-    userUgi.doAs(new PrivilegedExceptionAction<Object>(){
-      @Override public Object run() throws Exception {
-        FileSystem remoteFS=FileSystem.get(conf);
-        remoteFS.rename(remoteNodeTmpLogFileForApp,remoteNodeLogFileForApp);
-        return null;
-      }
-    }
-);
-  }
- catch (  Exception e) {
-    LOG.error("Failed to move temporary log file to final location: [" + remoteNodeTmpLogFileForApp + "] to ["+ remoteNodeLogFileForApp+ "]",e);
-  }
   this.dispatcher.getEventHandler().handle(new ApplicationEvent(this.appId,ApplicationEventType.APPLICATION_LOG_HANDLING_FINISHED));
   this.appAggregationFinished.set(true);
 }
