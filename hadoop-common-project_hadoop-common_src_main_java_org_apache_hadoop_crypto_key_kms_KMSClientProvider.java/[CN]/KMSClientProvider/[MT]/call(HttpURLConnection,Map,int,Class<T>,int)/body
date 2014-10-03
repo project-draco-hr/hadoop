@@ -1,0 +1,53 @@
+{
+  T ret=null;
+  try {
+    if (jsonOutput != null) {
+      writeJson(jsonOutput,conn.getOutputStream());
+    }
+  }
+ catch (  IOException ex) {
+    conn.getInputStream().close();
+    throw ex;
+  }
+  if ((conn.getResponseCode() == HttpURLConnection.HTTP_FORBIDDEN && conn.getResponseMessage().equals(ANONYMOUS_REQUESTS_DISALLOWED)) || conn.getResponseCode() == HttpURLConnection.HTTP_UNAUTHORIZED) {
+    KMSClientProvider.this.authToken=new DelegationTokenAuthenticatedURL.Token();
+    KMSClientProvider.this.loginUgi=UserGroupInformation.getCurrentUser();
+    if (authRetryCount > 0) {
+      String contentType=conn.getRequestProperty(CONTENT_TYPE);
+      String requestMethod=conn.getRequestMethod();
+      URL url=conn.getURL();
+      conn=createConnection(url,requestMethod);
+      conn.setRequestProperty(CONTENT_TYPE,contentType);
+      return call(conn,jsonOutput,expectedResponse,klass,authRetryCount - 1);
+    }
+  }
+  try {
+    AuthenticatedURL.extractToken(conn,authToken);
+  }
+ catch (  AuthenticationException e) {
+  }
+ finally {
+    KMSClientProvider.this.loginUgi=UserGroupInformation.getCurrentUser();
+  }
+  HttpExceptionUtils.validateResponse(conn,expectedResponse);
+  if (APPLICATION_JSON_MIME.equalsIgnoreCase(conn.getContentType()) && klass != null) {
+    ObjectMapper mapper=new ObjectMapper();
+    InputStream is=null;
+    try {
+      is=conn.getInputStream();
+      ret=mapper.readValue(is,klass);
+    }
+ catch (    IOException ex) {
+      if (is != null) {
+        is.close();
+      }
+      throw ex;
+    }
+ finally {
+      if (is != null) {
+        is.close();
+      }
+    }
+  }
+  return ret;
+}
