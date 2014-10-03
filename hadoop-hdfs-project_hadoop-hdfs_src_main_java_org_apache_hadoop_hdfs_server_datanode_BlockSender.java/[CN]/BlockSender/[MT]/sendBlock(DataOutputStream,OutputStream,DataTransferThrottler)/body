@@ -1,56 +1,9 @@
 {
-  if (out == null) {
-    throw new IOException("out stream is null");
-  }
-  initialOffset=offset;
-  long totalRead=0;
-  OutputStream streamForSendChunks=out;
-  lastCacheDropOffset=initialOffset;
-  if (isLongRead() && blockInFd != null) {
-    NativeIO.POSIX.getCacheManipulator().posixFadviseIfPossible(block.getBlockName(),blockInFd,0,0,NativeIO.POSIX.POSIX_FADV_SEQUENTIAL);
-  }
-  manageOsCache();
-  final long startTime=ClientTraceLog.isDebugEnabled() ? System.nanoTime() : 0;
+  TraceScope scope=Trace.startSpan("sendBlock_" + block.getBlockId(),Sampler.NEVER);
   try {
-    int maxChunksPerPacket;
-    int pktBufSize=PacketHeader.PKT_MAX_HEADER_LEN;
-    boolean transferTo=transferToAllowed && !verifyChecksum && baseStream instanceof SocketOutputStream&& blockIn instanceof FileInputStream;
-    if (transferTo) {
-      FileChannel fileChannel=((FileInputStream)blockIn).getChannel();
-      blockInPosition=fileChannel.position();
-      streamForSendChunks=baseStream;
-      maxChunksPerPacket=numberOfChunks(TRANSFERTO_BUFFER_SIZE);
-      pktBufSize+=checksumSize * maxChunksPerPacket;
-    }
- else {
-      maxChunksPerPacket=Math.max(1,numberOfChunks(HdfsConstants.IO_FILE_BUFFER_SIZE));
-      pktBufSize+=(chunkSize + checksumSize) * maxChunksPerPacket;
-    }
-    ByteBuffer pktBuf=ByteBuffer.allocate(pktBufSize);
-    while (endOffset > offset && !Thread.currentThread().isInterrupted()) {
-      manageOsCache();
-      long len=sendPacket(pktBuf,maxChunksPerPacket,streamForSendChunks,transferTo,throttler);
-      offset+=len;
-      totalRead+=len + (numberOfChunks(len) * checksumSize);
-      seqno++;
-    }
-    if (!Thread.currentThread().isInterrupted()) {
-      try {
-        sendPacket(pktBuf,maxChunksPerPacket,streamForSendChunks,transferTo,throttler);
-        out.flush();
-      }
- catch (      IOException e) {
-        throw ioeToSocketException(e);
-      }
-      sentEntireByteRange=true;
-    }
+    return doSendBlock(out,baseStream,throttler);
   }
   finally {
-    if ((clientTraceFmt != null) && ClientTraceLog.isDebugEnabled()) {
-      final long endTime=System.nanoTime();
-      ClientTraceLog.debug(String.format(clientTraceFmt,totalRead,initialOffset,endTime - startTime));
-    }
-    close();
+    scope.close();
   }
-  return totalRead;
 }
