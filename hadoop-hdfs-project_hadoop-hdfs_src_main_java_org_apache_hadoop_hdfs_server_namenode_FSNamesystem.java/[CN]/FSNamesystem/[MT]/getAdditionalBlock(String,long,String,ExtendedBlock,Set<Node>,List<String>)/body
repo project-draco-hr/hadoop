@@ -2,7 +2,8 @@
   final long blockSize;
   final int replication;
   final byte storagePolicyID;
-  DatanodeDescriptor clientNode=null;
+  Node clientNode=null;
+  String clientMachine=null;
   if (NameNode.stateChangeLog.isDebugEnabled()) {
     NameNode.stateChangeLog.debug("BLOCK* NameSystem.getAdditionalBlock: " + src + " inodeId "+ fileId+ " for "+ clientName);
   }
@@ -23,12 +24,16 @@
       throw new IOException("File has reached the limit on maximum number of" + " blocks (" + DFSConfigKeys.DFS_NAMENODE_MAX_BLOCKS_PER_FILE_KEY + "): "+ pendingFile.getBlocks().length+ " >= "+ maxBlocksPerFile);
     }
     blockSize=pendingFile.getPreferredBlockSize();
-    clientNode=blockManager.getDatanodeManager().getDatanodeByHost(pendingFile.getFileUnderConstructionFeature().getClientMachine());
+    clientMachine=pendingFile.getFileUnderConstructionFeature().getClientMachine();
+    clientNode=blockManager.getDatanodeManager().getDatanodeByHost(clientMachine);
     replication=pendingFile.getFileReplication();
     storagePolicyID=pendingFile.getStoragePolicyID();
   }
   finally {
     readUnlock();
+  }
+  if (clientNode == null) {
+    clientNode=getClientNode(clientMachine);
   }
   final DatanodeStorageInfo targets[]=getBlockManager().chooseTarget4NewBlock(src,replication,clientNode,excludedNodes,blockSize,favoredNodes,storagePolicyID);
   Block newBlock=null;
