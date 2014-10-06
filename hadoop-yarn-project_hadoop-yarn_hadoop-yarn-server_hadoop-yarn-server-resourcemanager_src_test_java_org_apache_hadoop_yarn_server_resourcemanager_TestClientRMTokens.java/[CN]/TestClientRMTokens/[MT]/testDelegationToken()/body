@@ -97,6 +97,30 @@ catch (    YarnException e) {
     }
 catch (    YarnException e) {
     }
+    if (clientRMWithDT != null) {
+      RPC.stopProxy(clientRMWithDT);
+      clientRMWithDT=null;
+    }
+    token=getDelegationToken(loggedInUser,clientRMService,loggedInUser.getShortUserName());
+    byte[] tokenIdentifierContent=token.getIdentifier().array();
+    RMDelegationTokenIdentifier tokenIdentifier=new RMDelegationTokenIdentifier();
+    DataInputBuffer dib=new DataInputBuffer();
+    dib.reset(tokenIdentifierContent,tokenIdentifierContent.length);
+    tokenIdentifier.readFields(dib);
+    RMDelegationTokenIdentifierForTest newVersionTokenIdentifier=new RMDelegationTokenIdentifierForTest(tokenIdentifier,"message");
+    Token<RMDelegationTokenIdentifier> newRMDTtoken=new Token<RMDelegationTokenIdentifier>(newVersionTokenIdentifier,rmDtSecretManager);
+    org.apache.hadoop.yarn.api.records.Token newToken=BuilderUtils.newDelegationToken(newRMDTtoken.getIdentifier(),newRMDTtoken.getKind().toString(),newRMDTtoken.getPassword(),newRMDTtoken.getService().toString());
+    clientRMWithDT=getClientRMProtocolWithDT(newToken,clientRMService.getBindAddress(),"loginuser3",conf);
+    request=Records.newRecord(GetNewApplicationRequest.class);
+    try {
+      clientRMWithDT.getNewApplication(request);
+    }
+ catch (    IOException e) {
+      fail("Unexpected exception" + e);
+    }
+catch (    YarnException e) {
+      fail("Unexpected exception" + e);
+    }
   }
   finally {
     rmDtSecretManager.stopThreads();
