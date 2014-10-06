@@ -1,14 +1,19 @@
 {
   String user=application.getUser();
-  Resource userLimit=computeUserLimit(application,clusterResource,required);
+  User queueUser=getUser(user);
+  Resource userLimit=computeUserLimit(application,clusterResource,required,queueUser);
   float absoluteMaxAvailCapacity=CSQueueUtils.getAbsoluteMaxAvailCapacity(resourceCalculator,clusterResource,this);
   Resource queueMaxCap=Resources.multiplyAndNormalizeDown(resourceCalculator,clusterResource,absoluteMaxAvailCapacity,minimumAllocation);
-  Resource userConsumed=getUser(user).getConsumedResources();
-  Resource headroom=Resources.subtract(Resources.min(resourceCalculator,clusterResource,userLimit,queueMaxCap),userConsumed);
-  if (LOG.isDebugEnabled()) {
-    LOG.debug("Headroom calculation for user " + user + ": "+ " userLimit="+ userLimit+ " queueMaxCap="+ queueMaxCap+ " consumed="+ userConsumed+ " headroom="+ headroom);
+synchronized (queueHeadroomInfo) {
+    queueHeadroomInfo.setQueueMaxCap(queueMaxCap);
+    queueHeadroomInfo.setClusterResource(clusterResource);
   }
-  application.setHeadroom(headroom);
+  Resource headroom=getHeadroom(queueUser,queueMaxCap,clusterResource,userLimit);
+  if (LOG.isDebugEnabled()) {
+    LOG.debug("Headroom calculation for user " + user + ": "+ " userLimit="+ userLimit+ " queueMaxCap="+ queueMaxCap+ " consumed="+ queueUser.getConsumedResources()+ " headroom="+ headroom);
+  }
+  CapacityHeadroomProvider headroomProvider=new CapacityHeadroomProvider(queueUser,this,application,required,queueHeadroomInfo);
+  application.setHeadroomProvider(headroomProvider);
   metrics.setAvailableResourcesToUser(user,headroom);
   return userLimit;
 }
