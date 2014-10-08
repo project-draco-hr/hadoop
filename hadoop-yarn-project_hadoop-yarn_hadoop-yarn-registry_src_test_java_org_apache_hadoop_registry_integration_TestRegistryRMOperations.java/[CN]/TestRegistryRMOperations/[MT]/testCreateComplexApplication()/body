@@ -1,0 +1,64 @@
+{
+  String appId="application_1408631738011_0001";
+  String cid="container_1408631738011_0001_01_";
+  String cid1=cid + "000001";
+  String cid2=cid + "000002";
+  String appPath=USERPATH + "tomcat";
+  ServiceRecord webapp=createRecord(appId,PersistencePolicies.APPLICATION,"tomcat-based web application",null);
+  webapp.addExternalEndpoint(restEndpoint("www",new URI("http","//loadbalancer/",null)));
+  ServiceRecord comp1=createRecord(cid1,PersistencePolicies.CONTAINER,null,null);
+  comp1.addExternalEndpoint(restEndpoint("www",new URI("http","//rack4server3:43572",null)));
+  comp1.addInternalEndpoint(inetAddrEndpoint("jmx","JMX","rack4server3",43573));
+  ServiceRecord comp2=createRecord(cid2,PersistencePolicies.CONTAINER,null,null);
+  comp2.addExternalEndpoint(restEndpoint("www",new URI("http","//rack1server28:35881",null)));
+  comp2.addInternalEndpoint(inetAddrEndpoint("jmx","JMX","rack1server28",35882));
+  operations.mknode(USERPATH,false);
+  operations.bind(appPath,webapp,BindFlags.OVERWRITE);
+  String componentsPath=appPath + RegistryConstants.SUBPATH_COMPONENTS;
+  operations.mknode(componentsPath,false);
+  String dns1=RegistryPathUtils.encodeYarnID(cid1);
+  String dns1path=componentsPath + dns1;
+  operations.bind(dns1path,comp1,BindFlags.CREATE);
+  String dns2=RegistryPathUtils.encodeYarnID(cid2);
+  String dns2path=componentsPath + dns2;
+  operations.bind(dns2path,comp2,BindFlags.CREATE);
+  ZKPathDumper pathDumper=registry.dumpPath(false);
+  LOG.info(pathDumper.toString());
+  logRecord("tomcat",webapp);
+  logRecord(dns1,comp1);
+  logRecord(dns2,comp2);
+  ServiceRecord dns1resolved=operations.resolve(dns1path);
+  assertEquals("Persistence policies on resolved entry",PersistencePolicies.CONTAINER,dns1resolved.get(YarnRegistryAttributes.YARN_PERSISTENCE,""));
+  Map<String,RegistryPathStatus> children=RegistryUtils.statChildren(operations,componentsPath);
+  assertEquals(2,children.size());
+  Collection<RegistryPathStatus> componentStats=children.values();
+  Map<String,ServiceRecord> records=RegistryUtils.extractServiceRecords(operations,componentsPath,componentStats);
+  assertEquals(2,records.size());
+  ServiceRecord retrieved1=records.get(dns1path);
+  logRecord(retrieved1.get(YarnRegistryAttributes.YARN_ID,""),retrieved1);
+  assertMatches(dns1resolved,retrieved1);
+  assertEquals(PersistencePolicies.CONTAINER,retrieved1.get(YarnRegistryAttributes.YARN_PERSISTENCE,""));
+  operations.mknode(componentsPath + "subdir",false);
+  Map<String,RegistryPathStatus> childrenUpdated=RegistryUtils.statChildren(operations,componentsPath);
+  assertEquals(3,childrenUpdated.size());
+  Map<String,ServiceRecord> recordsUpdated=RegistryUtils.extractServiceRecords(operations,componentsPath,childrenUpdated);
+  assertEquals(2,recordsUpdated.size());
+  assertEquals(0,purge("/",cid2,PersistencePolicies.APPLICATION,RegistryAdminService.PurgePolicy.FailOnChildren));
+  assertEquals(1,purge("/",cid2,PersistencePolicies.CONTAINER,RegistryAdminService.PurgePolicy.FailOnChildren));
+  assertPathNotFound(dns2path);
+  assertPathExists(dns1path);
+  assertEquals(0,purge("/",appId,PersistencePolicies.APPLICATION,RegistryAdminService.PurgePolicy.SkipOnChildren));
+  assertPathExists(appPath);
+  assertPathExists(dns1path);
+  try {
+    int p=purge("/",appId,PersistencePolicies.APPLICATION,RegistryAdminService.PurgePolicy.FailOnChildren);
+    fail("expected a failure, got a purge count of " + p);
+  }
+ catch (  PathIsNotEmptyDirectoryException expected) {
+  }
+  assertPathExists(appPath);
+  assertPathExists(dns1path);
+  assertEquals(1,purge("/",appId,PersistencePolicies.APPLICATION,RegistryAdminService.PurgePolicy.PurgeAll));
+  assertPathNotFound(appPath);
+  assertPathNotFound(dns1path);
+}

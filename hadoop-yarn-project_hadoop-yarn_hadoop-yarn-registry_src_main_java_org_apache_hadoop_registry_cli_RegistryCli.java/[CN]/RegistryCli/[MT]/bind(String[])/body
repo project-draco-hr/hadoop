@@ -1,0 +1,103 @@
+{
+  Option rest=OptionBuilder.withArgName("rest").hasArg().withDescription("rest Option").create("rest");
+  Option webui=OptionBuilder.withArgName("webui").hasArg().withDescription("webui Option").create("webui");
+  Option inet=OptionBuilder.withArgName("inet").withDescription("inet Option").create("inet");
+  Option port=OptionBuilder.withArgName("port").hasArg().withDescription("port to listen on [9999]").create("p");
+  Option host=OptionBuilder.withArgName("host").hasArg().withDescription("host name").create("h");
+  Option apiOpt=OptionBuilder.withArgName("api").hasArg().withDescription("api").create("api");
+  Options inetOption=new Options();
+  inetOption.addOption(inet);
+  inetOption.addOption(port);
+  inetOption.addOption(host);
+  inetOption.addOption(apiOpt);
+  Options webuiOpt=new Options();
+  webuiOpt.addOption(webui);
+  webuiOpt.addOption(apiOpt);
+  Options restOpt=new Options();
+  restOpt.addOption(rest);
+  restOpt.addOption(apiOpt);
+  CommandLineParser parser=new GnuParser();
+  ServiceRecord sr=new ServiceRecord();
+  CommandLine line=null;
+  if (args.length <= 1) {
+    return usageError("Invalid syntax ",BIND_USAGE);
+  }
+  if (args[1].equals("-inet")) {
+    int portNum;
+    String hostName;
+    String api;
+    try {
+      line=parser.parse(inetOption,args);
+    }
+ catch (    ParseException exp) {
+      return usageError("Invalid syntax " + exp.getMessage(),BIND_USAGE);
+    }
+    if (line.hasOption("inet") && line.hasOption("p") && line.hasOption("h")&& line.hasOption("api")) {
+      portNum=Integer.parseInt(line.getOptionValue("p"));
+      hostName=line.getOptionValue("h");
+      api=line.getOptionValue("api");
+      sr.addExternalEndpoint(inetAddrEndpoint(api,ProtocolTypes.PROTOCOL_HADOOP_IPC,hostName,portNum));
+    }
+ else {
+      return usageError("Missing options: must have host, port and api",BIND_USAGE);
+    }
+  }
+ else   if (args[1].equals("-webui")) {
+    try {
+      line=parser.parse(webuiOpt,args);
+    }
+ catch (    ParseException exp) {
+      return usageError("Invalid syntax " + exp.getMessage(),BIND_USAGE);
+    }
+    if (line.hasOption("webui") && line.hasOption("api")) {
+      URI theUri=null;
+      try {
+        theUri=new URI(line.getOptionValue("webui"));
+      }
+ catch (      URISyntaxException e) {
+        return usageError("Invalid URI: " + e.getMessage(),BIND_USAGE);
+      }
+      sr.addExternalEndpoint(webEndpoint(line.getOptionValue("api"),theUri));
+    }
+ else {
+      return usageError("Missing options: must have value for uri and api",BIND_USAGE);
+    }
+  }
+ else   if (args[1].equals("-rest")) {
+    try {
+      line=parser.parse(restOpt,args);
+    }
+ catch (    ParseException exp) {
+      return usageError("Invalid syntax " + exp.getMessage(),BIND_USAGE);
+    }
+    if (line.hasOption("rest") && line.hasOption("api")) {
+      URI theUri=null;
+      try {
+        theUri=new URI(line.getOptionValue("rest"));
+      }
+ catch (      URISyntaxException e) {
+        return usageError("Invalid URI: " + e.getMessage(),BIND_USAGE);
+      }
+      sr.addExternalEndpoint(restEndpoint(line.getOptionValue("api"),theUri));
+    }
+ else {
+      return usageError("Missing options: must have value for uri and api",BIND_USAGE);
+    }
+  }
+ else {
+    return usageError("Invalid syntax",BIND_USAGE);
+  }
+  @SuppressWarnings("unchecked") List<String> argsList=line.getArgList();
+  if (argsList.size() != 2) {
+    return usageError("bind requires exactly one path argument",BIND_USAGE);
+  }
+  if (!validatePath(argsList.get(1)))   return -1;
+  try {
+    registry.bind(argsList.get(1),sr,BindFlags.OVERWRITE);
+    return 0;
+  }
+ catch (  Exception e) {
+    syserr.println(analyzeException("bind",e,argsList));
+  }
+  return -1;
+}

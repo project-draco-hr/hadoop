@@ -1,0 +1,62 @@
+{
+  secureRegistry=getConfig().getBoolean(KEY_REGISTRY_SECURE,DEFAULT_REGISTRY_SECURE);
+  systemACLs.clear();
+  if (secureRegistry) {
+    addSystemACL(ALL_READ_ACCESS);
+    kerberosRealm=getConfig().get(KEY_REGISTRY_KERBEROS_REALM,getDefaultRealmInJVM());
+    String system=getOrFail(KEY_REGISTRY_SYSTEM_ACCOUNTS,DEFAULT_REGISTRY_SYSTEM_ACCOUNTS);
+    systemACLs.addAll(buildACLs(system,kerberosRealm,ZooDefs.Perms.ALL));
+    String user=getConfig().get(KEY_REGISTRY_USER_ACCOUNTS,DEFAULT_REGISTRY_USER_ACCOUNTS);
+    List<ACL> userACLs=buildACLs(user,kerberosRealm,ZooDefs.Perms.ALL);
+    ACL self;
+    if (UserGroupInformation.isSecurityEnabled()) {
+      self=createSaslACLFromCurrentUser(ZooDefs.Perms.ALL);
+      if (self != null) {
+        userACLs.add(self);
+      }
+    }
+switch (access) {
+case sasl:
+      if (!UserGroupInformation.isSecurityEnabled()) {
+        throw new IOException("Kerberos required for secure registry access");
+      }
+    UserGroupInformation currentUser=UserGroupInformation.getCurrentUser();
+  jaasClientContext=getOrFail(KEY_REGISTRY_CLIENT_JAAS_CONTEXT,DEFAULT_REGISTRY_CLIENT_JAAS_CONTEXT);
+jaasClientIdentity=currentUser.getShortUserName();
+if (LOG.isDebugEnabled()) {
+LOG.debug("Auth is SASL user=\"{}\" JAAS context=\"{}\"",jaasClientIdentity,jaasClientContext);
+}
+break;
+case digest:
+String id=getOrFail(KEY_REGISTRY_CLIENT_AUTHENTICATION_ID,"");
+String pass=getOrFail(KEY_REGISTRY_CLIENT_AUTHENTICATION_PASSWORD,"");
+if (userACLs.isEmpty()) {
+throw new ServiceStateException(E_NO_USER_DETERMINED_FOR_ACLS);
+}
+digest(id,pass);
+ACL acl=new ACL(ZooDefs.Perms.ALL,toDigestId(id,pass));
+userACLs.add(acl);
+digestAuthUser=id;
+digestAuthPassword=pass;
+String authPair=id + ":" + pass;
+digestAuthData=authPair.getBytes("UTF-8");
+if (LOG.isDebugEnabled()) {
+LOG.debug("Auth is Digest ACL: {}",aclToString(acl));
+}
+break;
+case anon:
+if (LOG.isDebugEnabled()) {
+LOG.debug("Auth is anonymous");
+}
+userACLs=new ArrayList<ACL>(0);
+break;
+}
+systemACLs.addAll(userACLs);
+}
+ else {
+if (LOG.isDebugEnabled()) {
+LOG.debug("Registry has no security");
+}
+systemACLs.addAll(WorldReadWriteACL);
+}
+}

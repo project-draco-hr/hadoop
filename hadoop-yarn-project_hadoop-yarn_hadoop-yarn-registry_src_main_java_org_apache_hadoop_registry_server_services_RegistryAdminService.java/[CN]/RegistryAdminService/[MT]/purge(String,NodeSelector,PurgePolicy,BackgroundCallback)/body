@@ -1,0 +1,67 @@
+{
+  boolean toDelete=false;
+  Map<String,RegistryPathStatus> childEntries;
+  Collection<RegistryPathStatus> entries;
+  try {
+    childEntries=RegistryUtils.statChildren(this,path);
+    entries=childEntries.values();
+  }
+ catch (  PathNotFoundException e) {
+    return 0;
+  }
+  try {
+    RegistryPathStatus registryPathStatus=stat(path);
+    ServiceRecord serviceRecord=resolve(path);
+    toDelete=selector.shouldSelect(path,registryPathStatus,serviceRecord);
+  }
+ catch (  EOFException ignored) {
+  }
+catch (  InvalidRecordException ignored) {
+  }
+catch (  NoRecordException ignored) {
+  }
+catch (  PathNotFoundException e) {
+    return 0;
+  }
+  if (toDelete && !entries.isEmpty()) {
+    if (LOG.isDebugEnabled()) {
+      LOG.debug("Match on record @ {} with children ",path);
+    }
+switch (purgePolicy) {
+case SkipOnChildren:
+      if (LOG.isDebugEnabled()) {
+        LOG.debug("Skipping deletion");
+      }
+    toDelete=false;
+  break;
+case PurgeAll:
+if (LOG.isDebugEnabled()) {
+  LOG.debug("Scheduling for deletion with children");
+}
+toDelete=true;
+entries=new ArrayList<RegistryPathStatus>(0);
+break;
+case FailOnChildren:
+if (LOG.isDebugEnabled()) {
+LOG.debug("Failing deletion operation");
+}
+throw new PathIsNotEmptyDirectoryException(path);
+}
+}
+int deleteOps=0;
+if (toDelete) {
+try {
+zkDelete(path,true,callback);
+}
+ catch (PathNotFoundException e) {
+return deleteOps;
+}
+deleteOps++;
+}
+for (RegistryPathStatus status : entries) {
+String childname=status.path;
+String childpath=RegistryPathUtils.join(path,childname);
+deleteOps+=purge(childpath,selector,purgePolicy,callback);
+}
+return deleteOps;
+}

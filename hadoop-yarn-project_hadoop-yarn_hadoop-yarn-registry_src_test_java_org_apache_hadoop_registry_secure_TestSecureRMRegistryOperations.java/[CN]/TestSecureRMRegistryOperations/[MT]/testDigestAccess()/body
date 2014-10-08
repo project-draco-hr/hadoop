@@ -1,0 +1,32 @@
+{
+  RMRegistryOperationsService registryAdmin=startRMRegistryOperations();
+  String id="username";
+  String pass="password";
+  registryAdmin.addWriteAccessor(id,pass);
+  List<ACL> clientAcls=registryAdmin.getClientAcls();
+  LOG.info("Client ACLS=\n{}",RegistrySecurity.aclsToString(clientAcls));
+  String base="/digested";
+  registryAdmin.mknode(base,false);
+  List<ACL> baseACLs=registryAdmin.zkGetACLS(base);
+  String aclset=RegistrySecurity.aclsToString(baseACLs);
+  LOG.info("Base ACLs=\n{}",aclset);
+  ACL found=null;
+  for (  ACL acl : baseACLs) {
+    if (ZookeeperConfigOptions.SCHEME_DIGEST.equals(acl.getId().getScheme())) {
+      found=acl;
+      break;
+    }
+  }
+  assertNotNull("Did not find digest entry in ACLs " + aclset,found);
+  zkClientConf.set(KEY_REGISTRY_USER_ACCOUNTS,"sasl:somebody@EXAMPLE.COM, sasl:other");
+  RegistryOperations operations=RegistryOperationsFactory.createAuthenticatedInstance(zkClientConf,id,pass);
+  addToTeardown(operations);
+  operations.start();
+  RegistryOperationsClient operationsClient=(RegistryOperationsClient)operations;
+  List<ACL> digestClientACLs=operationsClient.getClientAcls();
+  LOG.info("digest client ACLs=\n{}",RegistrySecurity.aclsToString(digestClientACLs));
+  operations.stat(base);
+  operations.mknode(base + "/subdir",false);
+  ZKPathDumper pathDumper=registryAdmin.dumpPath(true);
+  LOG.info(pathDumper.toString());
+}
