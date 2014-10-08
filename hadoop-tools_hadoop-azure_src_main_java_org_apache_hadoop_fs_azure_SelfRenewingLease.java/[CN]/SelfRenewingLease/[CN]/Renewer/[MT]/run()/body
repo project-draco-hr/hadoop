@@ -1,0 +1,26 @@
+{
+  LOG.debug("Starting lease keep-alive thread.");
+  AccessCondition accessCondition=AccessCondition.generateEmptyCondition();
+  accessCondition.setLeaseID(leaseID);
+  while (!leaseFreed) {
+    try {
+      Thread.sleep(LEASE_RENEWAL_PERIOD);
+    }
+ catch (    InterruptedException e) {
+      LOG.debug("Keep-alive thread for lease " + leaseID + " interrupted.");
+      Thread.currentThread().interrupt();
+    }
+    try {
+      if (!leaseFreed) {
+        blobWrapper.getBlob().renewLease(accessCondition);
+        LOG.info("Renewed lease " + leaseID + " on "+ getCloudBlob().getUri());
+      }
+    }
+ catch (    StorageException e) {
+      if (!leaseFreed) {
+        leaseFreed=true;
+        LOG.warn("Attempt to renew lease " + leaseID + " on "+ getCloudBlob().getUri()+ " failed, but lease not yet freed. Reason: "+ e.getMessage());
+      }
+    }
+  }
+}

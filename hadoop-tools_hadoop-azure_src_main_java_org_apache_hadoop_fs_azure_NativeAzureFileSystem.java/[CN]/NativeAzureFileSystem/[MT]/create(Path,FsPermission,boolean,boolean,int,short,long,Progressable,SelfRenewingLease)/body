@@ -1,0 +1,50 @@
+{
+  if (LOG.isDebugEnabled()) {
+    LOG.debug("Creating file: " + f.toString());
+  }
+  if (containsColon(f)) {
+    throw new IOException("Cannot create file " + f + " through WASB that has colons in the name");
+  }
+  Path absolutePath=makeAbsolute(f);
+  String key=pathToKey(absolutePath);
+  FileMetadata existingMetadata=store.retrieveMetadata(key);
+  if (existingMetadata != null) {
+    if (existingMetadata.isDir()) {
+      throw new IOException("Cannot create file " + f + "; already exists as a directory.");
+    }
+    if (!overwrite) {
+      throw new IOException("File already exists:" + f);
+    }
+  }
+  Path parentFolder=absolutePath.getParent();
+  if (parentFolder != null && parentFolder.getParent() != null) {
+    String parentKey=pathToKey(parentFolder);
+    FileMetadata parentMetadata=store.retrieveMetadata(parentKey);
+    if (parentMetadata != null && parentMetadata.isDir() && parentMetadata.getBlobMaterialization() == BlobMaterialization.Explicit) {
+      store.updateFolderLastModifiedTime(parentKey,parentFolderLease);
+    }
+ else {
+      Path firstExisting=parentFolder.getParent();
+      FileMetadata metadata=store.retrieveMetadata(pathToKey(firstExisting));
+      while (metadata == null) {
+        firstExisting=firstExisting.getParent();
+        metadata=store.retrieveMetadata(pathToKey(firstExisting));
+      }
+      mkdirs(parentFolder,metadata.getPermissionStatus().getPermission(),true);
+    }
+  }
+  FsPermission masked=applyUMask(permission,UMaskApplyMode.NewFile);
+  PermissionStatus permissionStatus=createPermissionStatus(masked);
+  OutputStream bufOutStream;
+  if (store.isPageBlobKey(key)) {
+    bufOutStream=store.storefile(key,permissionStatus);
+  }
+ else {
+    String keyEncoded=encodeKey(key);
+    store.storeEmptyLinkFile(key,keyEncoded,permissionStatus);
+    bufOutStream=new NativeAzureFsOutputStream(store.storefile(keyEncoded,permissionStatus),key,keyEncoded);
+  }
+  FSDataOutputStream fsOut=new FSDataOutputStream(bufOutStream,statistics);
+  instrumentation.fileCreated();
+  return fsOut;
+}

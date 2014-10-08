@@ -1,0 +1,50 @@
+{
+  Path parent=f.getParent();
+  SelfRenewingLease lease=null;
+  if (store.isAtomicRenameKey(pathToKey(f))) {
+    try {
+      lease=acquireLease(parent);
+    }
+ catch (    AzureException e) {
+      String errorCode="";
+      try {
+        StorageException e2=(StorageException)e.getCause();
+        errorCode=e2.getErrorCode();
+      }
+ catch (      Exception e3) {
+      }
+      if (errorCode.equals("BlobNotFound")) {
+        throw new FileNotFoundException("Cannot create file " + f.getName() + " because parent folder does not exist.");
+      }
+      LOG.warn("Got unexpected exception trying to get lease on " + pathToKey(parent) + ". "+ e.getMessage());
+      throw e;
+    }
+  }
+  if (!exists(parent)) {
+    try {
+      lease.free();
+    }
+ catch (    Exception e) {
+      LOG.warn("Unable to free lease because: " + e.getMessage());
+    }
+    throw new FileNotFoundException("Cannot create file " + f.getName() + " because parent folder does not exist.");
+  }
+  FSDataOutputStream out=null;
+  try {
+    out=create(f,permission,overwrite,false,bufferSize,replication,blockSize,progress,lease);
+  }
+  finally {
+    try {
+      if (lease != null) {
+        lease.free();
+      }
+    }
+ catch (    Exception e) {
+      IOUtils.cleanup(LOG,out);
+      String msg="Unable to free lease on " + parent.toUri();
+      LOG.error(msg);
+      throw new IOException(msg,e);
+    }
+  }
+  return out;
+}

@@ -1,0 +1,42 @@
+{
+  if (lastError != null) {
+    return;
+  }
+  if (dataPayload.length == 0) {
+    return;
+  }
+  final int totalDataBytes=dataPayload.length + previousLastPageDataWritten.length;
+  final int numberOfPages=(totalDataBytes / PAGE_DATA_SIZE) + (totalDataBytes % PAGE_DATA_SIZE == 0 ? 0 : 1);
+  byte[] rawPayload=new byte[numberOfPages * PAGE_SIZE];
+  int currentLastPageDataSize=-1;
+  for (int page=0; page < numberOfPages; page++) {
+    int dataOffset=page * PAGE_DATA_SIZE;
+    int rawOffset=page * PAGE_SIZE;
+    final short currentPageDataSize=(short)Math.min(PAGE_DATA_SIZE,totalDataBytes - dataOffset);
+    currentLastPageDataSize=currentPageDataSize;
+    final byte[] header=fromShort(currentPageDataSize);
+    System.arraycopy(header,0,rawPayload,rawOffset,header.length);
+    rawOffset+=header.length;
+    int bytesToCopyFromDataPayload=currentPageDataSize;
+    if (dataOffset < previousLastPageDataWritten.length) {
+      final int bytesToCopyFromLastPage=Math.min(currentPageDataSize,previousLastPageDataWritten.length - dataOffset);
+      System.arraycopy(previousLastPageDataWritten,dataOffset,rawPayload,rawOffset,bytesToCopyFromLastPage);
+      bytesToCopyFromDataPayload-=bytesToCopyFromLastPage;
+      rawOffset+=bytesToCopyFromLastPage;
+      dataOffset+=bytesToCopyFromLastPage;
+    }
+    if (dataOffset >= previousLastPageDataWritten.length) {
+      System.arraycopy(dataPayload,dataOffset - previousLastPageDataWritten.length,rawPayload,rawOffset,bytesToCopyFromDataPayload);
+    }
+  }
+  writePayloadToServer(rawPayload);
+  currentBlobOffset+=rawPayload.length;
+  if (currentLastPageDataSize < PAGE_DATA_SIZE) {
+    final int startOffset=(numberOfPages - 1) * PAGE_SIZE + PAGE_HEADER_SIZE;
+    previousLastPageDataWritten=Arrays.copyOfRange(rawPayload,startOffset,startOffset + currentLastPageDataSize);
+    currentBlobOffset-=PAGE_SIZE;
+  }
+ else {
+    previousLastPageDataWritten=new byte[0];
+  }
+}

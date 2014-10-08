@@ -1,4 +1,5 @@
 {
+  FolderRenamePending renamePending=null;
   if (LOG.isDebugEnabled()) {
     LOG.debug("Moving " + src + " to "+ dst);
   }
@@ -9,49 +10,13 @@
   if (srcKey.length() == 0) {
     return false;
   }
-  FileMetadata srcMetadata=store.retrieveMetadata(srcKey);
-  if (srcMetadata == null) {
-    if (LOG.isDebugEnabled()) {
-      LOG.debug("Source " + src + " doesn't exist, failing the rename.");
-    }
-    return false;
-  }
   Path absoluteDst=makeAbsolute(dst);
   String dstKey=pathToKey(absoluteDst);
   FileMetadata dstMetadata=store.retrieveMetadata(dstKey);
-  if (srcMetadata.isDir()) {
-    if (srcKey.equals(dstKey)) {
-      if (LOG.isDebugEnabled()) {
-        LOG.debug("Renaming directory to itself is disallowed. path=" + src);
-      }
-      return false;
-    }
-    if (dstKey.startsWith(srcKey + PATH_DELIMITER)) {
-      if (LOG.isDebugEnabled()) {
-        LOG.debug("Renaming directory to itself is disallowed. src=" + src + " dest="+ dst);
-      }
-      return false;
-    }
-  }
-  if (!srcMetadata.isDir()) {
-    if (srcKey.equals(dstKey)) {
-      if (LOG.isDebugEnabled()) {
-        LOG.debug("Renaming file to itself. This is allowed and is treated as no-op. path=" + src);
-      }
-      return true;
-    }
-  }
   if (dstMetadata != null && dstMetadata.isDir()) {
     dstKey=pathToKey(makeAbsolute(new Path(dst,src.getName())));
-    dstMetadata=null;
     if (LOG.isDebugEnabled()) {
       LOG.debug("Destination " + dst + " is a directory, adjusted the destination to be "+ dstKey);
-    }
-    if (srcKey.equals(dstKey)) {
-      if (LOG.isDebugEnabled()) {
-        LOG.debug("Renaming directory to itself is disallowed. path=" + src);
-      }
-      return false;
     }
   }
  else   if (dstMetadata != null) {
@@ -75,49 +40,30 @@
       return false;
     }
   }
-  if (!srcMetadata.isDir()) {
+  FileMetadata srcMetadata=store.retrieveMetadata(srcKey);
+  if (srcMetadata == null) {
+    if (LOG.isDebugEnabled()) {
+      LOG.debug("Source " + src + " doesn't exist, failing the rename.");
+    }
+    return false;
+  }
+ else   if (!srcMetadata.isDir()) {
     if (LOG.isDebugEnabled()) {
       LOG.debug("Source " + src + " found as a file, renaming.");
     }
     store.rename(srcKey,dstKey);
   }
  else {
-    String priorLastKey=null;
-    do {
-      PartialListing listing=store.listAll(srcKey,AZURE_LIST_ALL,AZURE_UNBOUNDED_DEPTH,priorLastKey);
-      for (      FileMetadata file : listing.getFiles()) {
-        if (file.getBlobMaterialization() == BlobMaterialization.Explicit) {
-          String srcName=file.getKey();
-          String suffix=srcName.substring(srcKey.length());
-          String dstName=dstKey + suffix;
-          store.rename(srcName,dstName);
-        }
-      }
-      priorLastKey=listing.getPriorLastKey();
+    renamePending=prepareAtomicFolderRename(srcKey,dstKey);
+    renamePending.execute();
+    if (LOG.isDebugEnabled()) {
+      LOG.debug("Renamed " + src + " to "+ dst+ " successfully.");
     }
- while (priorLastKey != null);
-    if (srcMetadata.getBlobMaterialization() == BlobMaterialization.Explicit) {
-      store.rename(srcKey,dstKey);
-    }
+    renamePending.cleanup();
+    return true;
   }
-  Path srcParent=makeAbsolute(keyToPath(srcKey)).getParent();
-  if (srcParent != null && srcParent.getParent() != null) {
-    String srcParentKey=pathToKey(srcParent);
-    FileMetadata srcParentMetadata=store.retrieveMetadata(srcParentKey);
-    if (srcParentMetadata.isDir() && srcParentMetadata.getBlobMaterialization() == BlobMaterialization.Implicit) {
-      store.storeEmptyFolder(srcParentKey,createPermissionStatus(FsPermission.getDefault()));
-    }
-    store.updateFolderLastModifiedTime(srcParentKey);
-  }
-  Path destParent=makeAbsolute(keyToPath(dstKey)).getParent();
-  if (destParent != null && destParent.getParent() != null) {
-    String dstParentKey=pathToKey(destParent);
-    FileMetadata dstParentMetadata=store.retrieveMetadata(dstParentKey);
-    if (dstParentMetadata.isDir() && dstParentMetadata.getBlobMaterialization() == BlobMaterialization.Implicit) {
-      store.storeEmptyFolder(dstParentKey,createPermissionStatus(FsPermission.getDefault()));
-    }
-    store.updateFolderLastModifiedTime(dstParentKey);
-  }
+  updateParentFolderLastModifiedTime(srcKey);
+  updateParentFolderLastModifiedTime(dstKey);
   if (LOG.isDebugEnabled()) {
     LOG.debug("Renamed " + src + " to "+ dst+ " successfully.");
   }

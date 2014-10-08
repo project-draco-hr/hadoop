@@ -1,0 +1,47 @@
+{
+  final int NUM_WRITES=numWrites;
+  final int RECORD_LENGTH=recordLength;
+  final int SYNC_INTERVAL=syncInterval;
+  final long MINIMUM_EXPECTED_TIME=20;
+  LOG.info("Writing " + NUM_WRITES * RECORD_LENGTH + " bytes to " + PATH.getName());
+  FSDataOutputStream output=fs.create(PATH);
+  int writesSinceHFlush=0;
+  try {
+    output.flush();
+    output.hflush();
+    for (int i=0; i < NUM_WRITES; i++) {
+      output.write(randomData,i * RECORD_LENGTH,RECORD_LENGTH);
+      writesSinceHFlush++;
+      output.flush();
+      if ((i % SYNC_INTERVAL) == 0) {
+        long start=Time.monotonicNow();
+        output.hflush();
+        writesSinceHFlush=0;
+        long end=Time.monotonicNow();
+        LOG.debug("hflush duration = " + (end - start) + " msec.");
+        assertTrue(String.format("hflush duration of %d, less than minimum expected of %d",end - start,MINIMUM_EXPECTED_TIME),end - start >= MINIMUM_EXPECTED_TIME);
+      }
+    }
+  }
+  finally {
+    long start=Time.monotonicNow();
+    output.close();
+    long end=Time.monotonicNow();
+    LOG.debug("close duration = " + (end - start) + " msec.");
+    if (writesSinceHFlush > 0) {
+      assertTrue(String.format("close duration with >= 1 pending write is %d, less than minimum expected of %d",end - start,MINIMUM_EXPECTED_TIME),end - start >= MINIMUM_EXPECTED_TIME);
+    }
+  }
+  FSDataInputStream stream=fs.open(PATH);
+  int SIZE=NUM_WRITES * RECORD_LENGTH;
+  byte[] b=new byte[SIZE];
+  try {
+    stream.seek(0);
+    stream.read(b,0,SIZE);
+    verifyReadRandomData(b,SIZE,0,SIZE);
+  }
+  finally {
+    stream.close();
+  }
+  fs.delete(PATH,false);
+}

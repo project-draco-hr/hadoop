@@ -1,0 +1,34 @@
+{
+  if (LOG.isDebugEnabled()) {
+    LOG.debug("Moving " + srcKey + " to "+ dstKey);
+  }
+  if (acquireLease && existingLease != null) {
+    throw new IOException("Cannot acquire new lease if one already exists.");
+  }
+  try {
+    if (null == storageInteractionLayer) {
+      final String errMsg=String.format("Storage session expected for URI '%s' but does not exist.",sessionUri);
+      throw new AssertionError(errMsg);
+    }
+    checkContainer(ContainerAccessType.ReadThenWrite);
+    CloudBlobWrapper srcBlob=getBlobReference(srcKey);
+    if (!srcBlob.exists(getInstrumentedContext())) {
+      throw new AzureException("Source blob " + srcKey + " does not exist.");
+    }
+    SelfRenewingLease lease=null;
+    if (acquireLease) {
+      lease=srcBlob.acquireLease();
+    }
+ else     if (existingLease != null) {
+      lease=existingLease;
+    }
+    CloudBlobWrapper dstBlob=getBlobReference(dstKey);
+    URI srcUri=new URI(srcBlob.getUri().toASCIIString());
+    dstBlob.startCopyFromBlob(srcUri,getInstrumentedContext());
+    waitForCopyToComplete(dstBlob,getInstrumentedContext());
+    safeDelete(srcBlob,lease);
+  }
+ catch (  Exception e) {
+    throw new AzureException(e);
+  }
+}

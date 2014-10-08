@@ -1,0 +1,75 @@
+{
+  if (LOG.isDebugEnabled()) {
+    LOG.debug("Deleting file: " + f.toString());
+  }
+  Path absolutePath=makeAbsolute(f);
+  String key=pathToKey(absolutePath);
+  FileMetadata metaFile=store.retrieveMetadata(key);
+  if (null == metaFile) {
+    return false;
+  }
+  if (!metaFile.isDir()) {
+    Path parentPath=absolutePath.getParent();
+    if (parentPath.getParent() != null) {
+      String parentKey=pathToKey(parentPath);
+      FileMetadata parentMetadata=store.retrieveMetadata(parentKey);
+      if (!parentMetadata.isDir()) {
+        throw new AzureException("File " + f + " has a parent directory "+ parentPath+ " which is also a file. Can't resolve.");
+      }
+      if (parentMetadata.getBlobMaterialization() == BlobMaterialization.Implicit) {
+        if (LOG.isDebugEnabled()) {
+          LOG.debug("Found an implicit parent directory while trying to" + " delete the file " + f + ". Creating the directory blob for"+ " it in "+ parentKey+ ".");
+        }
+        store.storeEmptyFolder(parentKey,createPermissionStatus(FsPermission.getDefault()));
+      }
+ else {
+        if (!skipParentFolderLastModifidedTimeUpdate) {
+          store.updateFolderLastModifiedTime(parentKey,null);
+        }
+      }
+    }
+    store.delete(key);
+    instrumentation.fileDeleted();
+  }
+ else {
+    Path parentPath=absolutePath.getParent();
+    if (parentPath.getParent() != null) {
+      String parentKey=pathToKey(parentPath);
+      FileMetadata parentMetadata=store.retrieveMetadata(parentKey);
+      if (parentMetadata.getBlobMaterialization() == BlobMaterialization.Implicit) {
+        if (LOG.isDebugEnabled()) {
+          LOG.debug("Found an implicit parent directory while trying to" + " delete the directory " + f + ". Creating the directory blob for"+ " it in "+ parentKey+ ".");
+        }
+        store.storeEmptyFolder(parentKey,createPermissionStatus(FsPermission.getDefault()));
+      }
+    }
+    String priorLastKey=null;
+    PartialListing listing=store.listAll(key,AZURE_LIST_ALL,1,priorLastKey);
+    FileMetadata[] contents=listing.getFiles();
+    if (!recursive && contents.length > 0) {
+      throw new IOException("Non-recursive delete of non-empty directory " + f.toString());
+    }
+    for (    FileMetadata p : contents) {
+      String suffix=p.getKey().substring(p.getKey().lastIndexOf(PATH_DELIMITER));
+      if (!p.isDir()) {
+        store.delete(key + suffix);
+        instrumentation.fileDeleted();
+      }
+ else {
+        if (!delete(new Path(f.toString() + suffix),true)) {
+          return false;
+        }
+      }
+    }
+    store.delete(key);
+    Path parent=absolutePath.getParent();
+    if (parent != null && parent.getParent() != null) {
+      String parentKey=pathToKey(parent);
+      if (!skipParentFolderLastModifidedTimeUpdate) {
+        store.updateFolderLastModifiedTime(parentKey,null);
+      }
+    }
+    instrumentation.directoryDeleted();
+  }
+  return true;
+}

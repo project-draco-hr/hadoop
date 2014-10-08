@@ -1,0 +1,29 @@
+{
+  this.leaseFreed=false;
+  this.blobWrapper=blobWrapper;
+  CloudBlob blob=blobWrapper.getBlob();
+  while (leaseID == null) {
+    try {
+      leaseID=blob.acquireLease(LEASE_TIMEOUT,null);
+    }
+ catch (    StorageException e) {
+      if (!e.getErrorCode().equals("LeaseAlreadyPresent")) {
+        LOG.info("Caught exception when trying to get lease on blob " + blobWrapper.getUri().toString() + ". "+ e.getMessage());
+        throw e;
+      }
+    }
+    if (leaseID == null) {
+      try {
+        Thread.sleep(LEASE_ACQUIRE_RETRY_INTERVAL);
+      }
+ catch (      InterruptedException e) {
+        Thread.currentThread().interrupt();
+      }
+    }
+  }
+  renewer=new Thread(new Renewer());
+  renewer.setDaemon(true);
+  renewer.setName("AzureLeaseRenewer-" + threadNumber++);
+  renewer.start();
+  LOG.debug("Acquired lease " + leaseID + " on "+ blob.getUri()+ " managed by thread "+ renewer.getName());
+}

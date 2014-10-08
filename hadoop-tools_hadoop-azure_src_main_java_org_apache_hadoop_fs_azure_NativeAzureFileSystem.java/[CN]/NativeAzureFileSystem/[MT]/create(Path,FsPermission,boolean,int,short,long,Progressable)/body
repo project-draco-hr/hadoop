@@ -1,38 +1,3 @@
 {
-  if (LOG.isDebugEnabled()) {
-    LOG.debug("Creating file: " + f.toString());
-  }
-  if (containsColon(f)) {
-    throw new IOException("Cannot create file " + f + " through WASB that has colons in the name");
-  }
-  Path absolutePath=makeAbsolute(f);
-  String key=pathToKey(absolutePath);
-  FileMetadata existingMetadata=store.retrieveMetadata(key);
-  if (existingMetadata != null) {
-    if (existingMetadata.isDir()) {
-      throw new IOException("Cannot create file " + f + "; already exists as a directory.");
-    }
-    if (!overwrite) {
-      throw new IOException("File already exists:" + f);
-    }
-  }
-  Path parentFolder=absolutePath.getParent();
-  if (parentFolder != null && parentFolder.getParent() != null) {
-    String parentKey=pathToKey(parentFolder);
-    FileMetadata parentMetadata=store.retrieveMetadata(parentKey);
-    if (parentMetadata != null && parentMetadata.isDir() && parentMetadata.getBlobMaterialization() == BlobMaterialization.Explicit) {
-      store.updateFolderLastModifiedTime(parentKey);
-    }
- else {
-      mkdirs(parentFolder,permission);
-    }
-  }
-  String keyEncoded=encodeKey(key);
-  FsPermission masked=applyUMask(permission,UMaskApplyMode.NewFile);
-  PermissionStatus permissionStatus=createPermissionStatus(masked);
-  store.storeEmptyLinkFile(key,keyEncoded,permissionStatus);
-  OutputStream bufOutStream=new NativeAzureFsOutputStream(store.storefile(keyEncoded,permissionStatus),key,keyEncoded);
-  FSDataOutputStream fsOut=new FSDataOutputStream(bufOutStream,statistics);
-  instrumentation.fileCreated();
-  return fsOut;
+  return create(f,permission,overwrite,true,bufferSize,replication,blockSize,progress,(SelfRenewingLease)null);
 }

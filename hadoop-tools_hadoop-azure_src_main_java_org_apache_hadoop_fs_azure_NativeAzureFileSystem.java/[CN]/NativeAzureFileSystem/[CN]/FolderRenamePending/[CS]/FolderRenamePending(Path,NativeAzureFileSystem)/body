@@ -1,0 +1,60 @@
+{
+  this.fs=fs;
+  Path f=redoFile;
+  FSDataInputStream input=fs.open(f);
+  byte[] bytes=new byte[MAX_RENAME_PENDING_FILE_SIZE];
+  int l=input.read(bytes);
+  if (l < 0) {
+    throw new IOException("Error reading pending rename file contents -- no data available");
+  }
+  if (l == MAX_RENAME_PENDING_FILE_SIZE) {
+    throw new IOException("Error reading pending rename file contents -- " + "maximum file size exceeded");
+  }
+  String contents=new String(bytes,0,l);
+  ObjectMapper objMapper=new ObjectMapper();
+  objMapper.configure(JsonParser.Feature.ALLOW_UNQUOTED_FIELD_NAMES,true);
+  JsonNode json=null;
+  try {
+    json=objMapper.readValue(contents,JsonNode.class);
+    this.committed=true;
+  }
+ catch (  JsonMappingException e) {
+    this.committed=false;
+  }
+catch (  JsonParseException e) {
+    this.committed=false;
+  }
+catch (  IOException e) {
+    this.committed=false;
+  }
+  if (!this.committed) {
+    LOG.error("Deleting corruped rename pending file " + redoFile + "\n"+ contents);
+    fs.delete(redoFile,false);
+    return;
+  }
+  ArrayList<String> fileStrList=new ArrayList<String>();
+  JsonNode oldFolderName=json.get("OldFolderName");
+  JsonNode newFolderName=json.get("NewFolderName");
+  if (oldFolderName == null || newFolderName == null) {
+    this.committed=false;
+  }
+ else {
+    this.srcKey=oldFolderName.getTextValue();
+    this.dstKey=newFolderName.getTextValue();
+    if (this.srcKey == null || this.dstKey == null) {
+      this.committed=false;
+    }
+ else {
+      JsonNode fileList=json.get("FileList");
+      if (fileList == null) {
+        this.committed=false;
+      }
+ else {
+        for (int i=0; i < fileList.size(); i++) {
+          fileStrList.add(fileList.get(i).getTextValue());
+        }
+      }
+    }
+  }
+  this.fileStrings=fileStrList;
+}

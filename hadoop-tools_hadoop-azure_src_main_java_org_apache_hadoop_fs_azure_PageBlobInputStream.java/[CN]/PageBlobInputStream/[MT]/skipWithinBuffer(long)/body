@@ -1,0 +1,26 @@
+{
+  if (!dataAvailableInBuffer()) {
+    return 0;
+  }
+  long skipped=0;
+  skipped=skipWithinCurrentPage(n);
+  if (skipped > n) {
+    throw new AssertionError(String.format("Bug in skipWithinCurrentPage: it skipped over %d bytes when asked" + " to skip %d bytes.",skipped,n));
+  }
+  n-=skipped;
+  if (n == 0 || !dataAvailableInBuffer()) {
+    return skipped;
+  }
+  int currentPageIndex=currentOffsetInBuffer / PAGE_SIZE;
+  int numberOfPagesInBuffer=currentBuffer.length / PAGE_SIZE;
+  int wholePagesRemaining=numberOfPagesInBuffer - currentPageIndex - 1;
+  if (n < (PAGE_DATA_SIZE * wholePagesRemaining)) {
+    advancePagesInBuffer((int)(n / PAGE_DATA_SIZE));
+    currentOffsetInBuffer+=n % PAGE_DATA_SIZE;
+    return n + skipped;
+  }
+  advancePagesInBuffer(wholePagesRemaining);
+  skipped+=wholePagesRemaining * PAGE_DATA_SIZE;
+  n-=wholePagesRemaining * PAGE_DATA_SIZE;
+  return skipWithinCurrentPage(n) + skipped;
+}

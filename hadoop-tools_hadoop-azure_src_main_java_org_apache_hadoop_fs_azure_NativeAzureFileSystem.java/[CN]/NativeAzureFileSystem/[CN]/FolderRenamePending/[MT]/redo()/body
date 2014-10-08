@@ -1,0 +1,44 @@
+{
+  if (!committed) {
+    return;
+  }
+  SelfRenewingLease lease=null;
+  boolean sourceFolderGone=false;
+  try {
+    lease=fs.leaseSourceFolder(srcKey);
+  }
+ catch (  AzureException e) {
+    String errorCode="";
+    try {
+      StorageException se=(StorageException)e.getCause();
+      errorCode=se.getErrorCode();
+    }
+ catch (    Exception e2) {
+      ;
+    }
+    if (errorCode.equals("BlobNotFound")) {
+      sourceFolderGone=true;
+    }
+ else {
+      throw new IOException("Unexpected error when trying to lease source folder name during " + "folder rename redo",e);
+    }
+  }
+  if (!sourceFolderGone) {
+    Path dst=fullPath(dstKey);
+    if (!fs.exists(dst)) {
+      fs.mkdirs(dst);
+    }
+    for (    String fileName : fileStrings) {
+      finishSingleFileRename(fileName);
+    }
+    try {
+      fs.getStoreInterface().delete(srcKey,lease);
+    }
+ catch (    Exception e) {
+      LOG.info("Unable to delete source folder during folder rename redo. " + "If the source folder is already gone, this is not an error " + "condition. Continuing with redo.",e);
+    }
+    fs.updateParentFolderLastModifiedTime(srcKey);
+    fs.updateParentFolderLastModifiedTime(dstKey);
+  }
+  fs.delete(getRenamePendingFilePath(),false);
+}

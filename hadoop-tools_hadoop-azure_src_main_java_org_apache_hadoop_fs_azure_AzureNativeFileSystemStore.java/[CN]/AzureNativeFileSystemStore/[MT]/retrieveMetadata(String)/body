@@ -13,7 +13,7 @@
     if (key.equals("/")) {
       return new FileMetadata(key,0,defaultPermissionNoBlobMetadata(),BlobMaterialization.Implicit);
     }
-    CloudBlockBlobWrapper blob=getBlobReference(key);
+    CloudBlobWrapper blob=getBlobReference(key);
     if (null != blob && blob.exists(getInstrumentedContext())) {
       if (LOG.isDebugEnabled()) {
         LOG.debug("Found " + key + " as an explicit blob. Checking if it's a file or folder.");
@@ -30,14 +30,14 @@
         if (LOG.isDebugEnabled()) {
           LOG.debug(key + " is a normal blob.");
         }
-        return new FileMetadata(key,properties.getLength(),properties.getLastModified().getTime(),getPermissionStatus(blob));
+        return new FileMetadata(key,getDataLength(blob,properties),properties.getLastModified().getTime(),getPermissionStatus(blob));
       }
     }
     Iterable<ListBlobItem> objects=listRootBlobs(key,true,EnumSet.of(BlobListingDetails.METADATA),null,getInstrumentedContext());
     for (    ListBlobItem blobItem : objects) {
-      if (blobItem instanceof CloudBlockBlobWrapper) {
+      if (blobItem instanceof CloudBlockBlobWrapper || blobItem instanceof CloudPageBlobWrapper) {
         LOG.debug("Found blob as a directory-using this file under it to infer its properties " + blobItem.getUri());
-        blob=(CloudBlockBlobWrapper)blobItem;
+        blob=(CloudBlobWrapper)blobItem;
         BlobProperties properties=blob.getProperties();
         return new FileMetadata(key,properties.getLastModified().getTime(),getPermissionStatus(blob),BlobMaterialization.Implicit);
       }

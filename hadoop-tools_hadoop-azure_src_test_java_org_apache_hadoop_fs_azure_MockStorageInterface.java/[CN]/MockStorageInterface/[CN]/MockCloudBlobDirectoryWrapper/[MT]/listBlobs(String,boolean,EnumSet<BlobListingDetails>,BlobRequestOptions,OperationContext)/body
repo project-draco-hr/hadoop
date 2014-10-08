@@ -1,12 +1,29 @@
 {
   ArrayList<ListBlobItem> ret=new ArrayList<ListBlobItem>();
-  String fullPrefix=prefix == null ? uri.toString() : new URI(uri.getScheme(),uri.getAuthority(),uri.getPath() + prefix,uri.getQuery(),uri.getFragment()).toString();
+  URI searchUri=null;
+  if (prefix == null) {
+    searchUri=uri;
+  }
+ else {
+    try {
+      searchUri=UriBuilder.fromUri(uri).path(prefix).build();
+    }
+ catch (    UriBuilderException e) {
+      throw new AssertionError("Failed to encode path: " + prefix);
+    }
+  }
+  String fullPrefix=convertUriToDecodedString(searchUri);
   boolean includeMetadata=listingDetails.contains(BlobListingDetails.METADATA);
   HashSet<String> addedDirectories=new HashSet<String>();
   for (  InMemoryBlockBlobStore.ListBlobEntry current : backingStore.listBlobs(fullPrefix,includeMetadata)) {
     int indexOfSlash=current.getKey().indexOf('/',fullPrefix.length());
     if (useFlatBlobListing || indexOfSlash < 0) {
-      ret.add(new MockCloudBlockBlobWrapper(new URI(current.getKey()),current.getMetadata(),current.getContentLength()));
+      if (current.isPageBlob()) {
+        ret.add(new MockCloudPageBlobWrapper(convertKeyToEncodedUri(current.getKey()),current.getMetadata(),current.getContentLength()));
+      }
+ else {
+        ret.add(new MockCloudBlockBlobWrapper(convertKeyToEncodedUri(current.getKey()),current.getMetadata(),current.getContentLength()));
+      }
     }
  else {
       String directoryName=current.getKey().substring(0,indexOfSlash);
