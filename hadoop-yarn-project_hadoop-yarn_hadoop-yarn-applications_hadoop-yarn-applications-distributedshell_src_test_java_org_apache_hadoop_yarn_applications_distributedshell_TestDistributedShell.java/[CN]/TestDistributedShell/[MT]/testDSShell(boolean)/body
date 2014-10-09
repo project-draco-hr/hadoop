@@ -1,5 +1,11 @@
 {
   String[] args={"--jar",APPMASTER_JAR,"--num_containers","2","--shell_command",Shell.WINDOWS ? "dir" : "ls","--master_memory","512","--master_vcores","2","--container_memory","128","--container_vcores","1"};
+  if (haveDomain) {
+    String[] domainArgs={"--domain","TEST_DOMAIN","--view_acls","reader_user reader_group","--modify_acls","writer_user writer_group","--create"};
+    List<String> argsList=new ArrayList<String>(Arrays.asList(args));
+    argsList.addAll(Arrays.asList(domainArgs));
+    args=argsList.toArray(new String[argsList.size()]);
+  }
   LOG.info("Initializing DS Client");
   final Client client=new Client(new Configuration(yarnCluster.getConfig()));
   boolean initSuccess=client.init(args);
@@ -47,13 +53,32 @@
   t.join();
   LOG.info("Client run completed. Result=" + result);
   Assert.assertTrue(result.get());
+  TimelineDomain domain=null;
+  if (haveDomain) {
+    domain=yarnCluster.getApplicationHistoryServer().getTimelineStore().getDomain("TEST_DOMAIN");
+    Assert.assertNotNull(domain);
+    Assert.assertEquals("reader_user reader_group",domain.getReaders());
+    Assert.assertEquals("writer_user writer_group",domain.getWriters());
+  }
   TimelineEntities entitiesAttempts=yarnCluster.getApplicationHistoryServer().getTimelineStore().getEntities(ApplicationMaster.DSEntity.DS_APP_ATTEMPT.toString(),null,null,null,null,null,null,null,null);
   Assert.assertNotNull(entitiesAttempts);
   Assert.assertEquals(1,entitiesAttempts.getEntities().size());
   Assert.assertEquals(2,entitiesAttempts.getEntities().get(0).getEvents().size());
   Assert.assertEquals(entitiesAttempts.getEntities().get(0).getEntityType().toString(),ApplicationMaster.DSEntity.DS_APP_ATTEMPT.toString());
+  if (haveDomain) {
+    Assert.assertEquals(domain.getId(),entitiesAttempts.getEntities().get(0).getDomainId());
+  }
+ else {
+    Assert.assertEquals("DEFAULT",entitiesAttempts.getEntities().get(0).getDomainId());
+  }
   TimelineEntities entities=yarnCluster.getApplicationHistoryServer().getTimelineStore().getEntities(ApplicationMaster.DSEntity.DS_CONTAINER.toString(),null,null,null,null,null,null,null,null);
   Assert.assertNotNull(entities);
   Assert.assertEquals(2,entities.getEntities().size());
   Assert.assertEquals(entities.getEntities().get(0).getEntityType().toString(),ApplicationMaster.DSEntity.DS_CONTAINER.toString());
+  if (haveDomain) {
+    Assert.assertEquals(domain.getId(),entities.getEntities().get(0).getDomainId());
+  }
+ else {
+    Assert.assertEquals("DEFAULT",entities.getEntities().get(0).getDomainId());
+  }
 }
