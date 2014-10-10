@@ -1,0 +1,40 @@
+{
+  String location=conf.get(YarnConfiguration.SHARED_CACHE_ROOT,YarnConfiguration.DEFAULT_SHARED_CACHE_ROOT);
+  Path root=new Path(location);
+  if (!fs.exists(root)) {
+    String message="The shared cache root directory " + location + " was not found";
+    LOG.error(message);
+    throw new IOException(message);
+  }
+  int nestedLevel=SharedCacheUtil.getCacheDepth(conf);
+  StringBuilder pattern=new StringBuilder();
+  for (int i=0; i < nestedLevel + 1; i++) {
+    pattern.append("*/");
+  }
+  pattern.append("*");
+  LOG.info("Querying for all individual cached resource files");
+  FileStatus[] entries=fs.globStatus(new Path(root,pattern.toString()));
+  int numEntries=entries == null ? 0 : entries.length;
+  LOG.info("Found " + numEntries + " files: processing for one resource per "+ "key");
+  Map<String,String> initialCachedEntries=new HashMap<String,String>();
+  if (entries != null) {
+    for (    FileStatus entry : entries) {
+      Path file=entry.getPath();
+      String fileName=file.getName();
+      if (entry.isFile()) {
+        Path parent=file.getParent();
+        if (parent != null) {
+          String key=parent.getName();
+          if (initialCachedEntries.containsKey(key)) {
+            LOG.warn("Key " + key + " is already mapped to file "+ initialCachedEntries.get(key)+ "; file "+ fileName+ " will not be added");
+          }
+ else {
+            initialCachedEntries.put(key,fileName);
+          }
+        }
+      }
+    }
+  }
+  LOG.info("A total of " + initialCachedEntries.size() + " files are now mapped");
+  return initialCachedEntries;
+}
