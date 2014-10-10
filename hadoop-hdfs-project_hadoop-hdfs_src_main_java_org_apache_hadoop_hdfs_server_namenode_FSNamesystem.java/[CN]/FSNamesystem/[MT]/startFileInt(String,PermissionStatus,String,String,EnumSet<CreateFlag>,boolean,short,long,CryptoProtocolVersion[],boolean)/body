@@ -31,27 +31,30 @@
   CryptoProtocolVersion protocolVersion=null;
   CipherSuite suite=null;
   String ezKeyName=null;
-  readLock();
-  try {
-    src=resolvePath(src,pathComponents);
-    INodesInPath iip=dir.getINodesInPath4Write(src);
-    if (dir.isInAnEZ(iip)) {
-      EncryptionZone zone=dir.getEZForPath(iip);
-      protocolVersion=chooseProtocolVersion(zone,supportedVersions);
-      suite=zone.getSuite();
-      ezKeyName=dir.getKeyName(iip);
-      Preconditions.checkNotNull(protocolVersion);
-      Preconditions.checkNotNull(suite);
-      Preconditions.checkArgument(!suite.equals(CipherSuite.UNKNOWN),"Chose an UNKNOWN CipherSuite!");
-      Preconditions.checkNotNull(ezKeyName);
+  EncryptedKeyVersion edek=null;
+  if (provider != null) {
+    readLock();
+    try {
+      src=resolvePath(src,pathComponents);
+      INodesInPath iip=dir.getINodesInPath4Write(src);
+      if (dir.isInAnEZ(iip)) {
+        EncryptionZone zone=dir.getEZForPath(iip);
+        protocolVersion=chooseProtocolVersion(zone,supportedVersions);
+        suite=zone.getSuite();
+        ezKeyName=dir.getKeyName(iip);
+        Preconditions.checkNotNull(protocolVersion);
+        Preconditions.checkNotNull(suite);
+        Preconditions.checkArgument(!suite.equals(CipherSuite.UNKNOWN),"Chose an UNKNOWN CipherSuite!");
+        Preconditions.checkNotNull(ezKeyName);
+      }
     }
-  }
   finally {
-    readUnlock();
+      readUnlock();
+    }
+    Preconditions.checkState((suite == null && ezKeyName == null) || (suite != null && ezKeyName != null),"Both suite and ezKeyName should both be null or not null");
+    edek=generateEncryptedDataEncryptionKey(ezKeyName);
+    EncryptionFaultInjector.getInstance().startFileAfterGenerateKey();
   }
-  Preconditions.checkState((suite == null && ezKeyName == null) || (suite != null && ezKeyName != null),"Both suite and ezKeyName should both be null or not null");
-  EncryptedKeyVersion edek=generateEncryptedDataEncryptionKey(ezKeyName);
-  EncryptionFaultInjector.getInstance().startFileAfterGenerateKey();
   BlocksMapUpdateInfo toRemoveBlocks=null;
   writeLock();
   try {
