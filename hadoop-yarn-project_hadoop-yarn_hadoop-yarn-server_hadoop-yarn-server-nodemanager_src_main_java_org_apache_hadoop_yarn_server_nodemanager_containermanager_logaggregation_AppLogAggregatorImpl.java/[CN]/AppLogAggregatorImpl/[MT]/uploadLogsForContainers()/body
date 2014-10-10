@@ -42,17 +42,25 @@
         containerLogAggregators.remove(container);
       }
     }
+    if (uploadedLogsInThisCycle) {
+      cleanOldLogs();
+    }
     if (writer != null) {
       writer.close();
     }
-    final Path renamedPath=logAggregationContext == null || logAggregationContext.getRollingIntervalSeconds() <= 0 ? remoteNodeLogFileForApp : new Path(remoteNodeLogFileForApp.getParent(),remoteNodeLogFileForApp.getName() + "_" + System.currentTimeMillis());
+    final Path renamedPath=this.rollingMonitorInterval <= 0 ? remoteNodeLogFileForApp : new Path(remoteNodeLogFileForApp.getParent(),remoteNodeLogFileForApp.getName() + "_" + System.currentTimeMillis());
     final boolean rename=uploadedLogsInThisCycle;
     try {
       userUgi.doAs(new PrivilegedExceptionAction<Object>(){
         @Override public Object run() throws Exception {
           FileSystem remoteFS=FileSystem.get(conf);
-          if (remoteFS.exists(remoteNodeTmpLogFileForApp) && rename) {
-            remoteFS.rename(remoteNodeTmpLogFileForApp,renamedPath);
+          if (remoteFS.exists(remoteNodeTmpLogFileForApp)) {
+            if (rename) {
+              remoteFS.rename(remoteNodeTmpLogFileForApp,renamedPath);
+            }
+ else {
+              remoteFS.delete(remoteNodeTmpLogFileForApp,false);
+            }
           }
           return null;
         }

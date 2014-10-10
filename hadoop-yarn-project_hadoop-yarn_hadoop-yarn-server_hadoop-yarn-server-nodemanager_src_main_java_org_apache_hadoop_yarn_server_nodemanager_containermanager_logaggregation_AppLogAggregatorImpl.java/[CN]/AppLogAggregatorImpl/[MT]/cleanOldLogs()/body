@@ -1,0 +1,41 @@
+{
+  try {
+    final FileSystem remoteFS=this.remoteNodeLogFileForApp.getFileSystem(conf);
+    Path appDir=this.remoteNodeLogFileForApp.getParent().makeQualified(remoteFS.getUri(),remoteFS.getWorkingDirectory());
+    Set<FileStatus> status=new HashSet<FileStatus>(Arrays.asList(remoteFS.listStatus(appDir)));
+    Iterable<FileStatus> mask=Iterables.filter(status,new Predicate<FileStatus>(){
+      @Override public boolean apply(      FileStatus next){
+        return next.getPath().getName().contains(LogAggregationUtils.getNodeString(nodeId)) && !next.getPath().getName().endsWith(LogAggregationUtils.TMP_FILE_SUFFIX);
+      }
+    }
+);
+    status=Sets.newHashSet(mask);
+    if (status.size() >= this.retentionSize) {
+      List<FileStatus> statusList=new ArrayList<FileStatus>(status);
+      Collections.sort(statusList,new Comparator<FileStatus>(){
+        public int compare(        FileStatus s1,        FileStatus s2){
+          return s1.getModificationTime() < s2.getModificationTime() ? -1 : s1.getModificationTime() > s2.getModificationTime() ? 1 : 0;
+        }
+      }
+);
+      for (int i=0; i <= statusList.size() - this.retentionSize; i++) {
+        final FileStatus remove=statusList.get(i);
+        try {
+          userUgi.doAs(new PrivilegedExceptionAction<Object>(){
+            @Override public Object run() throws Exception {
+              remoteFS.delete(remove.getPath(),false);
+              return null;
+            }
+          }
+);
+        }
+ catch (        Exception e) {
+          LOG.error("Failed to delete " + remove.getPath(),e);
+        }
+      }
+    }
+  }
+ catch (  Exception e) {
+    LOG.error("Failed to clean old logs",e);
+  }
+}
