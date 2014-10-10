@@ -1,0 +1,66 @@
+{
+  Path mirrorPath=new Path(rootDirPath,MIRROR_FILENAME);
+  Path oldMirrorPath=new Path(rootDirPath,MIRROR_FILENAME + ".old");
+  FSDataInputStream is=null;
+  if (fs.exists(mirrorPath)) {
+    is=fs.open(mirrorPath);
+  }
+ else   if (fs.exists(oldMirrorPath)) {
+    is=fs.open(oldMirrorPath);
+  }
+  if (null != is) {
+    Set<String> labels=new AddToClusterNodeLabelsRequestPBImpl(AddToClusterNodeLabelsRequestProto.parseDelimitedFrom(is)).getNodeLabels();
+    Map<NodeId,Set<String>> nodeToLabels=new ReplaceLabelsOnNodeRequestPBImpl(ReplaceLabelsOnNodeRequestProto.parseDelimitedFrom(is)).getNodeToLabels();
+    mgr.addToCluserNodeLabels(labels);
+    mgr.replaceLabelsOnNode(nodeToLabels);
+    is.close();
+  }
+  editLogPath=new Path(rootDirPath,EDITLOG_FILENAME);
+  if (fs.exists(editLogPath)) {
+    is=fs.open(editLogPath);
+    while (true) {
+      try {
+        SerializedLogType type=SerializedLogType.values()[is.readInt()];
+switch (type) {
+case ADD_LABELS:
+{
+            Collection<String> labels=AddToClusterNodeLabelsRequestProto.parseDelimitedFrom(is).getNodeLabelsList();
+            mgr.addToCluserNodeLabels(Sets.newHashSet(labels.iterator()));
+            break;
+          }
+case REMOVE_LABELS:
+{
+          Collection<String> labels=RemoveFromClusterNodeLabelsRequestProto.parseDelimitedFrom(is).getNodeLabelsList();
+          mgr.removeFromClusterNodeLabels(labels);
+          break;
+        }
+case NODE_TO_LABELS:
+{
+        Map<NodeId,Set<String>> map=new ReplaceLabelsOnNodeRequestPBImpl(ReplaceLabelsOnNodeRequestProto.parseDelimitedFrom(is)).getNodeToLabels();
+        mgr.replaceLabelsOnNode(map);
+        break;
+      }
+  }
+}
+ catch (EOFException e) {
+  break;
+}
+}
+}
+Path writingMirrorPath=new Path(rootDirPath,MIRROR_FILENAME + ".writing");
+FSDataOutputStream os=fs.create(writingMirrorPath,true);
+((AddToClusterNodeLabelsRequestPBImpl)AddToClusterNodeLabelsRequestPBImpl.newInstance(mgr.getClusterNodeLabels())).getProto().writeDelimitedTo(os);
+((ReplaceLabelsOnNodeRequestPBImpl)ReplaceLabelsOnNodeRequest.newInstance(mgr.getNodeLabels())).getProto().writeDelimitedTo(os);
+os.close();
+if (fs.exists(mirrorPath)) {
+fs.delete(oldMirrorPath,false);
+fs.rename(mirrorPath,oldMirrorPath);
+}
+fs.rename(writingMirrorPath,mirrorPath);
+fs.delete(writingMirrorPath,false);
+fs.delete(oldMirrorPath,false);
+editlogOs=fs.create(editLogPath,true);
+editlogOs.close();
+LOG.info("Finished write mirror at:" + mirrorPath.toString());
+LOG.info("Finished create editlog file at:" + editLogPath.toString());
+}
