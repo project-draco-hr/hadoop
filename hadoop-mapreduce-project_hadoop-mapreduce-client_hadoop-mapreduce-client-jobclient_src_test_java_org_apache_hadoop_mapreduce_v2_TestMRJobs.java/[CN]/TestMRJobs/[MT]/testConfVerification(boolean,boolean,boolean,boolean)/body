@@ -1,12 +1,21 @@
 {
-  LOG.info("\n\n\nStarting testJobClassloader()" + " useCustomClasses=" + useCustomClasses);
+  LOG.info("\n\n\nStarting testConfVerification()" + " jobClassloader=" + useJobClassLoader + " customClasses="+ useCustomClasses+ " jobClient="+ useJobClientForMonitring+ " localMode="+ useLocal);
   if (!(new File(MiniMRYarnCluster.APPJAR)).exists()) {
     LOG.info("MRAppJar " + MiniMRYarnCluster.APPJAR + " not found. Not running test.");
     return;
   }
-  final Configuration sleepConf=new Configuration(mrCluster.getConfig());
+  final Configuration clusterConfig;
+  if (useLocal) {
+    clusterConfig=new Configuration();
+    conf.set(MRConfig.FRAMEWORK_NAME,MRConfig.LOCAL_FRAMEWORK_NAME);
+  }
+ else {
+    clusterConfig=mrCluster.getConfig();
+  }
+  final JobClient jc=new JobClient(clusterConfig);
+  final Configuration sleepConf=new Configuration(clusterConfig);
   sleepConf.set(MRConfig.MASTER_ADDRESS,"local");
-  sleepConf.setBoolean(MRJobConfig.MAPREDUCE_JOB_CLASSLOADER,true);
+  sleepConf.setBoolean(MRJobConfig.MAPREDUCE_JOB_CLASSLOADER,useJobClassLoader);
   if (useCustomClasses) {
     String systemClasses=ApplicationClassLoader.SYSTEM_CLASSES_DEFAULT;
     systemClasses="-" + CustomOutputFormat.class.getName() + ",-"+ CustomSpeculator.class.getName()+ ","+ systemClasses;
@@ -17,6 +26,7 @@
   sleepConf.set(MRJobConfig.MAP_LOG_LEVEL,Level.ALL.toString());
   sleepConf.set(MRJobConfig.REDUCE_LOG_LEVEL,Level.ALL.toString());
   sleepConf.set(MRJobConfig.MAP_JAVA_OPTS,"-verbose:class");
+  sleepConf.set(MRJobConfig.COUNTER_GROUPS_MAX_KEY,TEST_GROUP_MAX);
   final SleepJob sleepJob=new SleepJob();
   sleepJob.setConf(sleepConf);
   final Job job=sleepJob.createJob(1,1,10,1,10,1);
@@ -31,6 +41,21 @@
     jobConf.setBoolean(MRJobConfig.MAP_SPECULATIVE,true);
   }
   job.submit();
-  boolean succeeded=job.waitForCompletion(true);
+  final boolean succeeded;
+  if (useJobClientForMonitring && !useLocal) {
+    final JobID mapredJobID=JobID.downgrade(job.getJobID());
+    RunningJob runningJob=null;
+    do {
+      Thread.sleep(10);
+      runningJob=jc.getJob(mapredJobID);
+    }
+ while (runningJob == null);
+    Assert.assertEquals("Unexpected RunningJob's " + MRJobConfig.COUNTER_GROUPS_MAX_KEY,TEST_GROUP_MAX,runningJob.getConfiguration().get(MRJobConfig.COUNTER_GROUPS_MAX_KEY));
+    runningJob.waitForCompletion();
+    succeeded=runningJob.isSuccessful();
+  }
+ else {
+    succeeded=job.waitForCompletion(true);
+  }
   Assert.assertTrue("Job status: " + job.getStatus().getFailureInfo(),succeeded);
 }

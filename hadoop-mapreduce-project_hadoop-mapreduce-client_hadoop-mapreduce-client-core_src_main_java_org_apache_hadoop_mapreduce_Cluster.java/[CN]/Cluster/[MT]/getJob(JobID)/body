@@ -1,16 +1,15 @@
 {
   JobStatus status=client.getJobStatus(jobId);
   if (status != null) {
-    JobConf conf;
+    final JobConf conf=new JobConf();
+    final Path jobPath=new Path(client.getFilesystemName(),status.getJobFile());
+    final FileSystem fs=FileSystem.get(jobPath.toUri(),getConf());
     try {
-      conf=new JobConf(status.getJobFile());
+      conf.addResource(fs.open(jobPath),jobPath.toString());
     }
- catch (    RuntimeException ex) {
-      if (ex.getCause() instanceof FileNotFoundException) {
-        return null;
-      }
- else {
-        throw ex;
+ catch (    FileNotFoundException fnf) {
+      if (LOG.isWarnEnabled()) {
+        LOG.warn("Job conf missing on cluster",fnf);
       }
     }
     return Job.getInstance(this,status,conf);
