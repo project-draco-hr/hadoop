@@ -1,0 +1,49 @@
+{
+  if (srcFile == null) {
+    throw new NullPointerException("Source must not be null");
+  }
+  if (destFile == null) {
+    throw new NullPointerException("Destination must not be null");
+  }
+  if (srcFile.exists() == false) {
+    throw new FileNotFoundException("Source '" + srcFile + "' does not exist");
+  }
+  if (srcFile.isDirectory()) {
+    throw new IOException("Source '" + srcFile + "' exists but is a directory");
+  }
+  if (srcFile.getCanonicalPath().equals(destFile.getCanonicalPath())) {
+    throw new IOException("Source '" + srcFile + "' and destination '"+ destFile+ "' are the same");
+  }
+  File parentFile=destFile.getParentFile();
+  if (parentFile != null) {
+    if (!parentFile.mkdirs() && !parentFile.isDirectory()) {
+      throw new IOException("Destination '" + parentFile + "' directory cannot be created");
+    }
+  }
+  if (destFile.exists()) {
+    if (FileUtil.canWrite(destFile) == false) {
+      throw new IOException("Destination '" + destFile + "' exists but is read-only");
+    }
+ else {
+      if (destFile.delete() == false) {
+        throw new IOException("Destination '" + destFile + "' exists but cannot be deleted");
+      }
+    }
+  }
+  try {
+    NativeIO.copyFileUnbuffered(srcFile,destFile);
+  }
+ catch (  NativeIOException e) {
+    throw new IOException("Failed to copy " + srcFile.getCanonicalPath() + " to "+ destFile.getCanonicalPath()+ " due to failure in NativeIO#copyFileUnbuffered(). "+ e.toString());
+  }
+  if (srcFile.length() != destFile.length()) {
+    throw new IOException("Failed to copy full contents from '" + srcFile + "' to '"+ destFile+ "'");
+  }
+  if (preserveFileDate) {
+    if (destFile.setLastModified(srcFile.lastModified()) == false) {
+      if (LOG.isDebugEnabled()) {
+        LOG.debug("Failed to preserve last modified date from'" + srcFile + "' to '"+ destFile+ "'");
+      }
+    }
+  }
+}
