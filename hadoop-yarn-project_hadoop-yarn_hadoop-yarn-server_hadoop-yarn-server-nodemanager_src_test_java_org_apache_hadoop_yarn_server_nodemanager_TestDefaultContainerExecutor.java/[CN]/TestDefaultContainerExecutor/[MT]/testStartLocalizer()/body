@@ -1,0 +1,79 @@
+{
+  InetSocketAddress localizationServerAddress;
+  final Path firstDir=new Path(BASE_TMP_PATH,"localDir1");
+  List<String> localDirs=new ArrayList<String>();
+  final Path secondDir=new Path(BASE_TMP_PATH,"localDir2");
+  List<String> logDirs=new ArrayList<String>();
+  final Path logDir=new Path(BASE_TMP_PATH,"logDir");
+  final Path tokenDir=new Path(BASE_TMP_PATH,"tokenDir");
+  FsPermission perms=new FsPermission((short)0770);
+  Configuration conf=new Configuration();
+  localizationServerAddress=conf.getSocketAddr(YarnConfiguration.NM_BIND_HOST,YarnConfiguration.NM_LOCALIZER_ADDRESS,YarnConfiguration.DEFAULT_NM_LOCALIZER_ADDRESS,YarnConfiguration.DEFAULT_NM_LOCALIZER_PORT);
+  final FileContext mockLfs=spy(FileContext.getLocalFSFileContext(conf));
+  final FileContext.Util mockUtil=spy(mockLfs.util());
+  doAnswer(new Answer(){
+    @Override public Object answer(    InvocationOnMock invocationOnMock) throws Throwable {
+      return mockUtil;
+    }
+  }
+).when(mockLfs).util();
+  doAnswer(new Answer(){
+    @Override public Object answer(    InvocationOnMock invocationOnMock) throws Throwable {
+      Path dest=(Path)invocationOnMock.getArguments()[1];
+      if (dest.toString().contains(firstDir.toString())) {
+        throw new IOException("No space on this drive " + dest.toString());
+      }
+ else {
+        DataOutputStream tokenOut=null;
+        try {
+          Credentials credentials=new Credentials();
+          tokenOut=mockLfs.create(dest,EnumSet.of(CREATE,OVERWRITE));
+          credentials.writeTokenStorageToStream(tokenOut);
+        }
+  finally {
+          if (tokenOut != null) {
+            tokenOut.close();
+          }
+        }
+      }
+      return null;
+    }
+  }
+).when(mockUtil).copy(any(Path.class),any(Path.class));
+  doAnswer(new Answer(){
+    @Override public Object answer(    InvocationOnMock invocationOnMock) throws Throwable {
+      Path p=(Path)invocationOnMock.getArguments()[0];
+      if (p.toString().contains(firstDir.toString())) {
+        return new FsStatus(2000,2000,0);
+      }
+ else {
+        return new FsStatus(1000,0,1000);
+      }
+    }
+  }
+).when(mockLfs).getFsStatus(any(Path.class));
+  DefaultContainerExecutor mockExec=spy(new DefaultContainerExecutor(mockLfs));
+  mockExec.setConf(conf);
+  localDirs.add(mockLfs.makeQualified(firstDir).toString());
+  localDirs.add(mockLfs.makeQualified(secondDir).toString());
+  logDirs.add(mockLfs.makeQualified(logDir).toString());
+  conf.setStrings(YarnConfiguration.NM_LOCAL_DIRS,localDirs.toArray(new String[localDirs.size()]));
+  conf.set(YarnConfiguration.NM_LOG_DIRS,logDir.toString());
+  mockLfs.mkdir(tokenDir,perms,true);
+  Path nmPrivateCTokensPath=new Path(tokenDir,"test.tokens");
+  String appSubmitter="nobody";
+  String appId="APP_ID";
+  String locId="LOC_ID";
+  try {
+    mockExec.startLocalizer(nmPrivateCTokensPath,localizationServerAddress,appSubmitter,appId,locId,localDirs,logDirs);
+  }
+ catch (  IOException e) {
+    Assert.fail("StartLocalizer failed to copy token file " + e);
+  }
+ finally {
+    mockExec.deleteAsUser(appSubmitter,firstDir);
+    mockExec.deleteAsUser(appSubmitter,secondDir);
+    mockExec.deleteAsUser(appSubmitter,logDir);
+    deleteTmpFiles();
+  }
+}
