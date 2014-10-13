@@ -1,6 +1,12 @@
 {
   NodeStatus remoteNodeStatus=request.getNodeStatus();
   NodeId nodeId=remoteNodeStatus.getNodeId();
+  if (!this.nodesListManager.isValidNode(nodeId.getHost())) {
+    String message="Disallowed NodeManager nodeId: " + nodeId + " hostname: "+ nodeId.getHost();
+    LOG.info(message);
+    shutDown.setDiagnosticsMessage(message);
+    return shutDown;
+  }
   RMNode rmNode=this.rmContext.getRMNodes().get(nodeId);
   if (rmNode == null) {
     String message="Node not found resyncing " + remoteNodeStatus.getNodeId();
@@ -9,13 +15,6 @@
     return resync;
   }
   this.nmLivelinessMonitor.receivedPing(nodeId);
-  if (!this.nodesListManager.isValidNode(rmNode.getHostName())) {
-    String message="Disallowed NodeManager nodeId: " + nodeId + " hostname: "+ rmNode.getNodeAddress();
-    LOG.info(message);
-    shutDown.setDiagnosticsMessage(message);
-    this.rmContext.getDispatcher().getEventHandler().handle(new RMNodeEvent(nodeId,RMNodeEventType.DECOMMISSION));
-    return shutDown;
-  }
   NodeHeartbeatResponse lastNodeHeartbeatResponse=rmNode.getLastNodeHeartBeatResponse();
   if (remoteNodeStatus.getResponseId() + 1 == lastNodeHeartbeatResponse.getResponseId()) {
     LOG.info("Received duplicate heartbeat from node " + rmNode.getNodeAddress());
