@@ -1,6 +1,7 @@
 {
   AMRMTokenIdentifier amrmTokenIdentifier=authorizeRequest();
   ApplicationAttemptId appAttemptId=amrmTokenIdentifier.getApplicationAttemptId();
+  ApplicationId applicationId=appAttemptId.getApplicationId();
   this.amLivelinessMonitor.receivedPing(appAttemptId);
   AllocateResponseLock lock=responseMap.get(appAttemptId);
   if (lock == null) {
@@ -10,9 +11,9 @@
 synchronized (lock) {
     AllocateResponse lastResponse=lock.getAllocateResponse();
     if (!hasApplicationMasterRegistered(appAttemptId)) {
-      String message="Application Master is not registered for known application: " + appAttemptId.getApplicationId() + ". Let AM resync.";
+      String message="Application Master is not registered for known application: " + applicationId + ". Let AM resync.";
       LOG.info(message);
-      RMAuditLogger.logFailure(this.rmContext.getRMApps().get(appAttemptId.getApplicationId()).getUser(),AuditConstants.REGISTER_AM,"","ApplicationMasterService",message,appAttemptId.getApplicationId(),appAttemptId);
+      RMAuditLogger.logFailure(this.rmContext.getRMApps().get(applicationId).getUser(),AuditConstants.REGISTER_AM,"","ApplicationMasterService",message,applicationId,appAttemptId);
       return resync;
     }
     if ((request.getResponseId() + 1) == lastResponse.getResponseId()) {
@@ -35,8 +36,15 @@ synchronized (lock) {
     ResourceBlacklistRequest blacklistRequest=request.getResourceBlacklistRequest();
     List<String> blacklistAdditions=(blacklistRequest != null) ? blacklistRequest.getBlacklistAdditions() : Collections.EMPTY_LIST;
     List<String> blacklistRemovals=(blacklistRequest != null) ? blacklistRequest.getBlacklistRemovals() : Collections.EMPTY_LIST;
+    RMApp app=this.rmContext.getRMApps().get(applicationId);
+    ApplicationSubmissionContext asc=app.getApplicationSubmissionContext();
+    for (    ResourceRequest req : ask) {
+      if (null == req.getNodeLabelExpression()) {
+        req.setNodeLabelExpression(asc.getNodeLabelExpression());
+      }
+    }
     try {
-      RMServerUtils.validateResourceRequests(ask,rScheduler.getMaximumResourceCapability());
+      RMServerUtils.validateResourceRequests(ask,rScheduler.getMaximumResourceCapability(),app.getQueue(),rScheduler);
     }
  catch (    InvalidResourceRequestException e) {
       LOG.warn("Invalid resource ask by application " + appAttemptId,e);
@@ -49,7 +57,6 @@ synchronized (lock) {
       LOG.warn("Invalid blacklist request by application " + appAttemptId,e);
       throw e;
     }
-    RMApp app=this.rmContext.getRMApps().get(appAttemptId.getApplicationId());
     if (!app.getApplicationSubmissionContext().getKeepContainersAcrossApplicationAttempts()) {
       try {
         RMServerUtils.validateContainerReleaseRequest(release,appAttemptId);
@@ -95,7 +102,7 @@ synchronized (lock) {
       Token<AMRMTokenIdentifier> amrmToken=rmContext.getAMRMTokenSecretManager().createAndGetAMRMToken(appAttemptId);
       ((RMAppAttemptImpl)appAttempt).setAMRMToken(amrmToken);
       allocateResponse.setAMRMToken(org.apache.hadoop.yarn.api.records.Token.newInstance(amrmToken.getIdentifier(),amrmToken.getKind().toString(),amrmToken.getPassword(),amrmToken.getService().toString()));
-      LOG.info("The AMRMToken has been rolled-over. Send new AMRMToken back" + " to application: " + appAttemptId.getApplicationId());
+      LOG.info("The AMRMToken has been rolled-over. Send new AMRMToken back" + " to application: " + applicationId);
     }
     lock.setAllocateResponse(allocateResponse);
     return allocateResponse;

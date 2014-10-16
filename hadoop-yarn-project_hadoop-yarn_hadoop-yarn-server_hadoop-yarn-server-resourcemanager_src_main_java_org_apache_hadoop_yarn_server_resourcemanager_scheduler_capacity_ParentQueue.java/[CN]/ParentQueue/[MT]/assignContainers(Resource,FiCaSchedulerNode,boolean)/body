@@ -1,11 +1,15 @@
 {
   CSAssignment assignment=new CSAssignment(Resources.createResource(0,0),NodeType.NODE_LOCAL);
+  if (!SchedulerUtils.checkQueueAccessToNode(accessibleLabels,labelManager.getLabelsOnNode(node.getNodeID()))) {
+    return assignment;
+  }
   while (canAssign(clusterResource,node)) {
     if (LOG.isDebugEnabled()) {
       LOG.debug("Trying to assign containers to child-queue of " + getQueueName());
     }
     boolean localNeedToUnreserve=false;
-    if (!assignToQueue(clusterResource)) {
+    Set<String> nodeLabels=labelManager.getLabelsOnNode(node.getNodeID());
+    if (!canAssignToThisQueue(clusterResource,nodeLabels)) {
       localNeedToUnreserve=assignToQueueIfUnreserve(clusterResource);
       if (!localNeedToUnreserve) {
         break;
@@ -14,7 +18,7 @@
     CSAssignment assignedToChild=assignContainersToChildQueues(clusterResource,node,localNeedToUnreserve | needToUnreserve);
     assignment.setType(assignedToChild.getType());
     if (Resources.greaterThan(resourceCalculator,clusterResource,assignedToChild.getResource(),Resources.none())) {
-      allocateResource(clusterResource,assignedToChild.getResource());
+      super.allocateResource(clusterResource,assignedToChild.getResource(),nodeLabels);
       Resources.addTo(assignment.getResource(),assignedToChild.getResource());
       LOG.info("assignedContainer" + " queue=" + getQueueName() + " usedCapacity="+ getUsedCapacity()+ " absoluteUsedCapacity="+ getAbsoluteUsedCapacity()+ " used="+ usedResources+ " cluster="+ clusterResource);
     }

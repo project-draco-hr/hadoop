@@ -2,6 +2,9 @@
   if (LOG.isDebugEnabled()) {
     LOG.debug("assignContainers: node=" + node.getNodeName() + " #applications="+ activeApplications.size());
   }
+  if (!SchedulerUtils.checkQueueAccessToNode(accessibleLabels,labelManager.getLabelsOnNode(node.getNodeID()))) {
+    return NULL_ASSIGNMENT;
+  }
   RMContainer reservedContainer=node.getReservedContainer();
   if (reservedContainer != null) {
     FiCaSchedulerApp application=getApplication(reservedContainer.getApplicationAttemptId());
@@ -35,11 +38,12 @@ synchronized (application) {
             continue;
           }
         }
-        Resource userLimit=computeUserLimitAndSetHeadroom(application,clusterResource,required);
-        if (!assignToQueue(clusterResource,required,application,true)) {
+        Set<String> requestedNodeLabels=getRequestLabelSetByExpression(anyRequest.getNodeLabelExpression());
+        Resource userLimit=computeUserLimitAndSetHeadroom(application,clusterResource,required,requestedNodeLabels);
+        if (!canAssignToThisQueue(clusterResource,required,labelManager.getLabelsOnNode(node.getNodeID()),application,true)) {
           return NULL_ASSIGNMENT;
         }
-        if (!assignToUser(clusterResource,application.getUser(),userLimit,application,true)) {
+        if (!assignToUser(clusterResource,application.getUser(),userLimit,application,true,requestedNodeLabels)) {
           break;
         }
         application.addSchedulingOpportunity(priority);
@@ -50,7 +54,7 @@ synchronized (application) {
         }
         Resource assigned=assignment.getResource();
         if (Resources.greaterThan(resourceCalculator,clusterResource,assigned,Resources.none())) {
-          allocateResource(clusterResource,application,assigned);
+          allocateResource(clusterResource,application,assigned,labelManager.getLabelsOnNode(node.getNodeID()));
           if (assignment.getType() != NodeType.OFF_SWITCH) {
             if (LOG.isDebugEnabled()) {
               LOG.debug("Resetting scheduling opportunities");

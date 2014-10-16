@@ -1,0 +1,31 @@
+{
+  final RMNodeLabelsManager mgr=new DummyRMNodeLabelsManager();
+  mgr.init(conf);
+  mgr.addToCluserNodeLabels(ImmutableSet.of("x","y"));
+  mgr.addLabelsToNode(ImmutableMap.of(NodeId.newInstance("h1",0),toSet("x"),NodeId.newInstance("h2",0),toSet("y")));
+  MockRM rm1=new MockRM(getConfigurationWithDefaultQueueLabels(conf)){
+    @Override public RMNodeLabelsManager createNodeLabelManager(){
+      return mgr;
+    }
+  }
+;
+  rm1.getRMContext().setNodeLabelManager(mgr);
+  rm1.start();
+  MockNM nm1=rm1.registerNode("h1:1234",8000);
+  MockNM nm2=rm1.registerNode("h2:1234",8000);
+  MockNM nm3=rm1.registerNode("h3:1234",8000);
+  RMApp app1=rm1.submitApp(200,"app","user",null,"a1");
+  MockAM am1=MockRM.launchAndRegisterAM(app1,rm1,nm1);
+  ContainerId containerId=ContainerId.newInstance(am1.getApplicationAttemptId(),2);
+  am1.allocate("*",1024,1,new ArrayList<ContainerId>(),"");
+  Assert.assertTrue(rm1.waitForState(nm3,containerId,RMContainerState.ALLOCATED,10 * 1000));
+  containerId=ContainerId.newInstance(am1.getApplicationAttemptId(),3);
+  am1.allocate("*",1024,1,new ArrayList<ContainerId>(),"");
+  Assert.assertFalse(rm1.waitForState(nm3,containerId,RMContainerState.ALLOCATED,10 * 1000));
+  for (int id=3; id <= 8; id++) {
+    containerId=ContainerId.newInstance(am1.getApplicationAttemptId(),id);
+    am1.allocate("*",1024,1,new ArrayList<ContainerId>(),"x");
+    Assert.assertTrue(rm1.waitForState(nm1,containerId,RMContainerState.ALLOCATED,10 * 1000));
+  }
+  rm1.close();
+}
