@@ -6,6 +6,7 @@
   boolean allAlive=false;
   while (!allAlive) {
     DatanodeID dead=null;
+    DatanodeStorageInfo failedStorage=null;
     int numOfStaleNodes=0;
     int numOfStaleStorages=0;
 synchronized (this) {
@@ -22,13 +23,16 @@ synchronized (this) {
           if (storageInfo.areBlockContentsStale()) {
             numOfStaleStorages++;
           }
+          if (failedStorage == null && storageInfo.areBlocksOnFailedStorage() && d != dead) {
+            failedStorage=storageInfo;
+          }
         }
       }
       dm.setNumStaleNodes(numOfStaleNodes);
       dm.setNumStaleStorages(numOfStaleStorages);
     }
-    allAlive=dead == null;
-    if (!allAlive) {
+    allAlive=dead == null && failedStorage == null;
+    if (dead != null) {
       namesystem.writeLock();
       try {
         if (namesystem.isInStartupSafeMode()) {
@@ -36,6 +40,20 @@ synchronized (this) {
         }
 synchronized (this) {
           dm.removeDeadDatanode(dead);
+        }
+      }
+  finally {
+        namesystem.writeUnlock();
+      }
+    }
+    if (failedStorage != null) {
+      namesystem.writeLock();
+      try {
+        if (namesystem.isInStartupSafeMode()) {
+          return;
+        }
+synchronized (this) {
+          blockManager.removeBlocksAssociatedTo(failedStorage);
         }
       }
   finally {
