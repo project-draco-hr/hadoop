@@ -1,19 +1,19 @@
 {
   JobStatus status=clientCache.getClient(arg0).getJobStatus(arg0);
+  ApplicationId appId=TypeConverter.toYarn(arg0).getAppId();
+  if (status == null) {
+    killUnFinishedApplication(appId);
+    return;
+  }
   if (status.getState() != JobStatus.State.RUNNING) {
-    try {
-      resMgrDelegate.killApplication(TypeConverter.toYarn(arg0).getAppId());
-    }
- catch (    YarnException e) {
-      throw new IOException(e);
-    }
+    killApplication(appId);
     return;
   }
   try {
     clientCache.getClient(arg0).killJob(arg0);
     long currentTimeMillis=System.currentTimeMillis();
     long timeKillIssued=currentTimeMillis;
-    while ((currentTimeMillis < timeKillIssued + 10000L) && (status.getState() != JobStatus.State.KILLED)) {
+    while ((currentTimeMillis < timeKillIssued + 10000L) && !isJobInTerminalState(status)) {
       try {
         Thread.sleep(1000L);
       }
@@ -22,17 +22,16 @@
       }
       currentTimeMillis=System.currentTimeMillis();
       status=clientCache.getClient(arg0).getJobStatus(arg0);
+      if (status == null) {
+        killUnFinishedApplication(appId);
+        return;
+      }
     }
   }
  catch (  IOException io) {
     LOG.debug("Error when checking for application status",io);
   }
-  if (status.getState() != JobStatus.State.KILLED) {
-    try {
-      resMgrDelegate.killApplication(TypeConverter.toYarn(arg0).getAppId());
-    }
- catch (    YarnException e) {
-      throw new IOException(e);
-    }
+  if (status != null && !isJobInTerminalState(status)) {
+    killApplication(appId);
   }
 }
