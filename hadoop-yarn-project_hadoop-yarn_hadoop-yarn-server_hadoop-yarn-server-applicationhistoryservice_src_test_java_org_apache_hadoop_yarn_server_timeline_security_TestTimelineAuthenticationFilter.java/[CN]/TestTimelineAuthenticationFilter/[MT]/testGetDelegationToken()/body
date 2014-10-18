@@ -1,0 +1,40 @@
+{
+  KerberosTestUtils.doAs(HTTP_USER + "/localhost",new Callable<Void>(){
+    @Override public Void call() throws Exception {
+      Token<TimelineDelegationTokenIdentifier> token=client.getDelegationToken(UserGroupInformation.getCurrentUser().getShortUserName());
+      Assert.assertNotNull(token);
+      TimelineDelegationTokenIdentifier tDT=token.decodeIdentifier();
+      Assert.assertNotNull(tDT);
+      Assert.assertEquals(new Text(HTTP_USER),tDT.getOwner());
+      UserGroupInformation fooUgi=UserGroupInformation.createProxyUser(FOO_USER,UserGroupInformation.getCurrentUser());
+      token=fooUgi.doAs(new PrivilegedExceptionAction<Token<TimelineDelegationTokenIdentifier>>(){
+        @Override public Token<TimelineDelegationTokenIdentifier> run() throws Exception {
+          return client.getDelegationToken(UserGroupInformation.getCurrentUser().getShortUserName());
+        }
+      }
+);
+      Assert.assertNotNull(token);
+      tDT=token.decodeIdentifier();
+      Assert.assertNotNull(tDT);
+      Assert.assertEquals(new Text(FOO_USER),tDT.getOwner());
+      Assert.assertEquals(new Text(HTTP_USER),tDT.getRealUser());
+      UserGroupInformation barUgi=UserGroupInformation.createProxyUser(BAR_USER,UserGroupInformation.getCurrentUser());
+      token=barUgi.doAs(new PrivilegedExceptionAction<Token<TimelineDelegationTokenIdentifier>>(){
+        @Override public Token<TimelineDelegationTokenIdentifier> run() throws Exception {
+          try {
+            Token<TimelineDelegationTokenIdentifier> token=client.getDelegationToken(UserGroupInformation.getCurrentUser().getShortUserName());
+            Assert.fail();
+            return token;
+          }
+ catch (          Exception e) {
+            Assert.assertTrue(e instanceof AuthorizationException);
+            return null;
+          }
+        }
+      }
+);
+      return null;
+    }
+  }
+);
+}

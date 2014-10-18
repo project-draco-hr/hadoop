@@ -6,23 +6,21 @@
  else {
     ClientConfig cc=new DefaultClientConfig();
     cc.getClasses().add(YarnJacksonJaxbJsonProvider.class);
-    ConnectionConfigurator connConfigurator=newConnConfigurator(conf);
+    connConfigurator=newConnConfigurator(conf);
     if (UserGroupInformation.isSecurityEnabled()) {
-      TimelineAuthenticator.setStaticConnectionConfigurator(connConfigurator);
-      urlFactory=new KerberosAuthenticatedURLConnectionFactory(connConfigurator);
-      client=new Client(new URLConnectionClientHandler(urlFactory),cc);
+      authenticator=new KerberosDelegationTokenAuthenticator();
     }
  else {
-      client=new Client(new URLConnectionClientHandler(new PseudoAuthenticatedURLConnectionFactory(connConfigurator)),cc);
+      authenticator=new PseudoDelegationTokenAuthenticator();
     }
+    authenticator.setConnectionConfigurator(connConfigurator);
+    client=new Client(new URLConnectionClientHandler(new TimelineURLConnectionFactory()),cc);
+    token=new DelegationTokenAuthenticatedURL.Token();
     if (YarnConfiguration.useHttps(conf)) {
       resURI=URI.create(JOINER.join("https://",conf.get(YarnConfiguration.TIMELINE_SERVICE_WEBAPP_HTTPS_ADDRESS,YarnConfiguration.DEFAULT_TIMELINE_SERVICE_WEBAPP_HTTPS_ADDRESS),RESOURCE_URI_STR));
     }
  else {
       resURI=URI.create(JOINER.join("http://",conf.get(YarnConfiguration.TIMELINE_SERVICE_WEBAPP_ADDRESS,YarnConfiguration.DEFAULT_TIMELINE_SERVICE_WEBAPP_ADDRESS),RESOURCE_URI_STR));
-    }
-    if (UserGroupInformation.isSecurityEnabled()) {
-      urlFactory.setService(TimelineUtils.buildTimelineTokenService(conf));
     }
     LOG.info("Timeline service address: " + resURI);
   }
