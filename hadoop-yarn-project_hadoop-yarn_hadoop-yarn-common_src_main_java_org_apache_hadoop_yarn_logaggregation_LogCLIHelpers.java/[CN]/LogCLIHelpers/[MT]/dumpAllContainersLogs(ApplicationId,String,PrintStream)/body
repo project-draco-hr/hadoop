@@ -9,36 +9,43 @@
     nodeFiles=FileContext.getFileContext(qualifiedLogDir.toUri(),getConf()).listStatus(remoteAppLogDir);
   }
  catch (  FileNotFoundException fnf) {
-    System.out.println("Logs not available at " + remoteAppLogDir.toString());
-    System.out.println("Log aggregation has not completed or is not enabled.");
+    logDirNotExist(remoteAppLogDir.toString());
     return -1;
   }
+  boolean foundAnyLogs=false;
   while (nodeFiles.hasNext()) {
     FileStatus thisNodeFile=nodeFiles.next();
-    AggregatedLogFormat.LogReader reader=new AggregatedLogFormat.LogReader(getConf(),new Path(remoteAppLogDir,thisNodeFile.getPath().getName()));
-    try {
-      DataInputStream valueStream;
-      LogKey key=new LogKey();
-      valueStream=reader.next(key);
-      while (valueStream != null) {
-        String containerString="\n\nContainer: " + key + " on "+ thisNodeFile.getPath().getName();
-        out.println(containerString);
-        out.println(StringUtils.repeat("=",containerString.length()));
-        while (true) {
-          try {
-            LogReader.readAContainerLogsForALogType(valueStream,out);
-          }
- catch (          EOFException eof) {
-            break;
-          }
-        }
-        key=new LogKey();
+    if (!thisNodeFile.getPath().getName().endsWith(LogAggregationUtils.TMP_FILE_SUFFIX)) {
+      AggregatedLogFormat.LogReader reader=new AggregatedLogFormat.LogReader(getConf(),thisNodeFile.getPath());
+      try {
+        DataInputStream valueStream;
+        LogKey key=new LogKey();
         valueStream=reader.next(key);
+        while (valueStream != null) {
+          String containerString="\n\nContainer: " + key + " on "+ thisNodeFile.getPath().getName();
+          out.println(containerString);
+          out.println(StringUtils.repeat("=",containerString.length()));
+          while (true) {
+            try {
+              LogReader.readAContainerLogsForALogType(valueStream,out);
+              foundAnyLogs=true;
+            }
+ catch (            EOFException eof) {
+              break;
+            }
+          }
+          key=new LogKey();
+          valueStream=reader.next(key);
+        }
+      }
+  finally {
+        reader.close();
       }
     }
-  finally {
-      reader.close();
-    }
+  }
+  if (!foundAnyLogs) {
+    emptyLogDir(remoteAppLogDir.toString());
+    return -1;
   }
   return 0;
 }
