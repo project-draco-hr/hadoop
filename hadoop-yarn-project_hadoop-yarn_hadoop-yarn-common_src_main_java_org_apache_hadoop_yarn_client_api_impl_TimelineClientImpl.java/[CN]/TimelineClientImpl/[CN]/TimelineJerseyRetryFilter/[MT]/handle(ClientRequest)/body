@@ -1,36 +1,17 @@
 {
-  int leftRetries=maxRetries;
-  retried=false;
-  while (true) {
-    try {
+  TimelineClientRetryOp jerseyRetryOp=new TimelineClientRetryOp(){
+    @Override public Object run(){
       return getNext().handle(cr);
     }
- catch (    ClientHandlerException e) {
-      if (leftRetries == 0) {
-        break;
-      }
-      if (e.getCause() instanceof ConnectException) {
-        if (leftRetries > 0) {
-          LOG.info("Connection Timeout (" + cr.getURI() + "), will try "+ leftRetries+ " more time(s).");
-        }
- else {
-          LOG.info("Connection Timeout (" + cr.getURI() + "), will keep retrying.");
-        }
-        retried=true;
-      }
- else {
-        throw e;
-      }
-    }
-    if (leftRetries > 0) {
-      leftRetries--;
-    }
-    try {
-      Thread.sleep(retryInterval);
-    }
- catch (    InterruptedException ie) {
-      LOG.warn("Client retry sleep interrupted! ");
+    @Override public boolean shouldRetryOn(    Exception e){
+      return (e instanceof ClientHandlerException) && (e.getCause() instanceof ConnectException);
     }
   }
-  throw new ClientHandlerException("Failed to connect to timeline server. " + "Connection retries limit exceeded. " + "The posted timeline event may be missing");
+;
+  try {
+    return (ClientResponse)connectionRetry.retryOn(jerseyRetryOp);
+  }
+ catch (  IOException e) {
+    throw new ClientHandlerException("Jersey retry failed!\nMessage: " + e.getMessage());
+  }
 }

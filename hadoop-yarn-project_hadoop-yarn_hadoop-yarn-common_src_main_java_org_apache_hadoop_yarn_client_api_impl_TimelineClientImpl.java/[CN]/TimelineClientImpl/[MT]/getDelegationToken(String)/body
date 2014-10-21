@@ -1,20 +1,29 @@
 {
-  boolean isProxyAccess=UserGroupInformation.getCurrentUser().getAuthenticationMethod() == UserGroupInformation.AuthenticationMethod.PROXY;
-  UserGroupInformation callerUGI=isProxyAccess ? UserGroupInformation.getCurrentUser().getRealUser() : UserGroupInformation.getCurrentUser();
-  final String doAsUser=isProxyAccess ? UserGroupInformation.getCurrentUser().getShortUserName() : null;
-  try {
-    return callerUGI.doAs(new PrivilegedExceptionAction<Token<TimelineDelegationTokenIdentifier>>(){
-      @Override public Token<TimelineDelegationTokenIdentifier> run() throws Exception {
-        DelegationTokenAuthenticatedURL authUrl=new DelegationTokenAuthenticatedURL(authenticator,connConfigurator);
-        return (Token)authUrl.getDelegationToken(resURI.toURL(),token,renewer,doAsUser);
+  TimelineClientRetryOp tokenRetryOp=new TimelineClientRetryOp(){
+    @Override public Object run() throws IOException {
+      boolean isProxyAccess=UserGroupInformation.getCurrentUser().getAuthenticationMethod() == UserGroupInformation.AuthenticationMethod.PROXY;
+      UserGroupInformation callerUGI=isProxyAccess ? UserGroupInformation.getCurrentUser().getRealUser() : UserGroupInformation.getCurrentUser();
+      final String doAsUser=isProxyAccess ? UserGroupInformation.getCurrentUser().getShortUserName() : null;
+      try {
+        return callerUGI.doAs(new PrivilegedExceptionAction<Token<TimelineDelegationTokenIdentifier>>(){
+          @Override public Token<TimelineDelegationTokenIdentifier> run() throws Exception {
+            DelegationTokenAuthenticatedURL authUrl=new DelegationTokenAuthenticatedURL(authenticator,connConfigurator);
+            return (Token)authUrl.getDelegationToken(resURI.toURL(),token,renewer,doAsUser);
+          }
+        }
+);
+      }
+ catch (      UndeclaredThrowableException e) {
+        throw new IOException(e.getCause());
+      }
+catch (      InterruptedException e) {
+        throw new IOException(e);
       }
     }
-);
+    @Override public boolean shouldRetryOn(    Exception e){
+      return (e instanceof ConnectException);
+    }
   }
- catch (  UndeclaredThrowableException e) {
-    throw new IOException(e.getCause());
-  }
-catch (  InterruptedException e) {
-    throw new IOException(e);
-  }
+;
+  return (Token<TimelineDelegationTokenIdentifier>)connectionRetry.retryOn(tokenRetryOp);
 }
