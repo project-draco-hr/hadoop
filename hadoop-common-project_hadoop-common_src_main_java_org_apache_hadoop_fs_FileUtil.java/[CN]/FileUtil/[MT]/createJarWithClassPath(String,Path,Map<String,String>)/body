@@ -8,18 +8,25 @@
   if (!workingDir.mkdirs()) {
     LOG.debug("mkdirs false for " + workingDir + ", execution will continue");
   }
+  StringBuilder unexpandedWildcardClasspath=new StringBuilder();
   List<String> classPathEntryList=new ArrayList<String>(classPathEntries.length);
   for (  String classPathEntry : classPathEntries) {
     if (classPathEntry.length() == 0) {
       continue;
     }
     if (classPathEntry.endsWith("*")) {
+      boolean foundWildCardJar=false;
       Path globPath=new Path(classPathEntry).suffix("{.jar,.JAR}");
       FileStatus[] wildcardJars=FileContext.getLocalFSFileContext().util().globStatus(globPath);
       if (wildcardJars != null) {
         for (        FileStatus wildcardJar : wildcardJars) {
+          foundWildCardJar=true;
           classPathEntryList.add(wildcardJar.getPath().toUri().toURL().toExternalForm());
         }
+      }
+      if (!foundWildCardJar) {
+        unexpandedWildcardClasspath.append(File.pathSeparator);
+        unexpandedWildcardClasspath.append(classPathEntry);
       }
     }
  else {
@@ -53,5 +60,6 @@
   finally {
     IOUtils.cleanup(LOG,jos,bos,fos);
   }
-  return classPathJar.getCanonicalPath();
+  String[] jarCp={classPathJar.getCanonicalPath(),unexpandedWildcardClasspath.toString()};
+  return jarCp;
 }
