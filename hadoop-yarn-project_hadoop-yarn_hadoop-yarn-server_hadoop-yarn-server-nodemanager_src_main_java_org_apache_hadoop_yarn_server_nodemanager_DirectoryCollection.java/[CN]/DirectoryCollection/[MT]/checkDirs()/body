@@ -1,28 +1,51 @@
 {
-  int oldNumFailures=numFailures;
-  HashSet<String> checkFailedDirs=new HashSet<String>();
-  for (  final String dir : localDirs) {
-    try {
-      File testDir=new File(dir);
-      DiskChecker.checkDir(testDir);
-      if (isDiskUsageUnderPercentageLimit(testDir)) {
-        LOG.warn("Directory " + dir + " error, used space above threshold of "+ diskUtilizationPercentageCutoff+ "%, removing from the list of valid directories.");
-        checkFailedDirs.add(dir);
-      }
- else       if (isDiskFreeSpaceWithinLimit(testDir)) {
-        LOG.warn("Directory " + dir + " error, free space below limit of "+ diskUtilizationSpaceCutoff+ "MB, removing from the list of valid directories.");
-        checkFailedDirs.add(dir);
-      }
-    }
- catch (    DiskErrorException de) {
-      LOG.warn("Directory " + dir + " error "+ de.getMessage()+ ", removing from the list of valid directories.");
-      checkFailedDirs.add(dir);
-    }
-  }
-  for (  String dir : checkFailedDirs) {
-    localDirs.remove(dir);
-    failedDirs.add(dir);
-    numFailures++;
-  }
-  return numFailures > oldNumFailures;
+  boolean setChanged=false;
+  Set<String> preCheckGoodDirs=new HashSet<String>(localDirs);
+  Set<String> preCheckFullDirs=new HashSet<String>(fullDirs);
+  Set<String> preCheckOtherErrorDirs=new HashSet<String>(errorDirs);
+  List<String> failedDirs=DirectoryCollection.concat(errorDirs,fullDirs);
+  List<String> allLocalDirs=DirectoryCollection.concat(localDirs,failedDirs);
+  Map<String,DiskErrorInformation> dirsFailedCheck=testDirs(allLocalDirs);
+  localDirs.clear();
+  errorDirs.clear();
+  fullDirs.clear();
+  for (  Map.Entry<String,DiskErrorInformation> entry : dirsFailedCheck.entrySet()) {
+    String dir=entry.getKey();
+    DiskErrorInformation errorInformation=entry.getValue();
+switch (entry.getValue().cause) {
+case DISK_FULL:
+      fullDirs.add(entry.getKey());
+    break;
+case OTHER:
+  errorDirs.add(entry.getKey());
+break;
+}
+if (preCheckGoodDirs.contains(dir)) {
+LOG.warn("Directory " + dir + " error, "+ errorInformation.message+ ", removing from list of valid directories");
+setChanged=true;
+numFailures++;
+}
+}
+for (String dir : allLocalDirs) {
+if (!dirsFailedCheck.containsKey(dir)) {
+localDirs.add(dir);
+if (preCheckFullDirs.contains(dir) || preCheckOtherErrorDirs.contains(dir)) {
+setChanged=true;
+LOG.info("Directory " + dir + " passed disk check, adding to list of valid directories.");
+}
+}
+}
+Set<String> postCheckFullDirs=new HashSet<String>(fullDirs);
+Set<String> postCheckOtherDirs=new HashSet<String>(errorDirs);
+for (String dir : preCheckFullDirs) {
+if (postCheckOtherDirs.contains(dir)) {
+LOG.warn("Directory " + dir + " error "+ dirsFailedCheck.get(dir).message);
+}
+}
+for (String dir : preCheckOtherErrorDirs) {
+if (postCheckFullDirs.contains(dir)) {
+LOG.warn("Directory " + dir + " error "+ dirsFailedCheck.get(dir).message);
+}
+}
+return setChanged;
 }
