@@ -7,9 +7,34 @@
       return COMMIT_STATUS.COMMIT_INACTIVE_WITH_PENDING_WRITE;
     }
   }
+  if (pendingWrites.isEmpty()) {
+    return COMMIT_STATUS.COMMIT_FINISHED;
+  }
   long flushed=getFlushedOffset();
   if (LOG.isDebugEnabled()) {
     LOG.debug("getFlushedOffset=" + flushed + " commitOffset="+ commitOffset);
+  }
+  if (uploadLargeFile && !aixCompatMode) {
+    long co=(commitOffset > 0) ? commitOffset : pendingWrites.firstEntry().getKey().getMax() - 1;
+    if (co <= flushed) {
+      return COMMIT_STATUS.COMMIT_DO_SYNC;
+    }
+ else     if (co < nextOffset.get()) {
+      if (!fromRead) {
+        CommitCtx commitCtx=new CommitCtx(commitOffset,channel,xid,preOpAttr);
+        pendingCommits.put(commitOffset,commitCtx);
+      }
+      if (LOG.isDebugEnabled()) {
+        LOG.debug("return COMMIT_SPECIAL_WAIT");
+      }
+      return COMMIT_STATUS.COMMIT_SPECIAL_WAIT;
+    }
+ else {
+      if (LOG.isDebugEnabled()) {
+        LOG.debug("return COMMIT_SPECIAL_SUCCESS");
+      }
+      return COMMIT_STATUS.COMMIT_SPECIAL_SUCCESS;
+    }
   }
   if (commitOffset > 0) {
     if (aixCompatMode) {
@@ -31,16 +56,11 @@
     }
   }
   Entry<OffsetRange,WriteCtx> key=pendingWrites.firstEntry();
-  if (pendingWrites.isEmpty()) {
-    return COMMIT_STATUS.COMMIT_FINISHED;
+  if (!fromRead) {
+    long maxOffset=key.getKey().getMax() - 1;
+    Preconditions.checkState(maxOffset > 0);
+    CommitCtx commitCtx=new CommitCtx(maxOffset,channel,xid,preOpAttr);
+    pendingCommits.put(maxOffset,commitCtx);
   }
- else {
-    if (!fromRead) {
-      long maxOffset=key.getKey().getMax() - 1;
-      Preconditions.checkState(maxOffset > 0);
-      CommitCtx commitCtx=new CommitCtx(maxOffset,channel,xid,preOpAttr);
-      pendingCommits.put(maxOffset,commitCtx);
-    }
-    return COMMIT_STATUS.COMMIT_WAIT;
-  }
+  return COMMIT_STATUS.COMMIT_WAIT;
 }
