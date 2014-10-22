@@ -1,0 +1,45 @@
+{
+  environment.put(Environment.CONTAINER_ID.name(),container.getContainerId().toString());
+  environment.put(Environment.NM_PORT.name(),String.valueOf(this.context.getNodeId().getPort()));
+  environment.put(Environment.NM_HOST.name(),this.context.getNodeId().getHost());
+  environment.put(Environment.NM_HTTP_PORT.name(),String.valueOf(this.context.getHttpPort()));
+  environment.put(Environment.LOCAL_DIRS.name(),StringUtils.join(",",appDirs));
+  environment.put(Environment.LOG_DIRS.name(),StringUtils.join(",",containerLogDirs));
+  environment.put(Environment.USER.name(),container.getUser());
+  environment.put(Environment.LOGNAME.name(),container.getUser());
+  environment.put(Environment.HOME.name(),conf.get(YarnConfiguration.NM_USER_HOME_DIR,YarnConfiguration.DEFAULT_NM_USER_HOME_DIR));
+  environment.put(Environment.PWD.name(),pwd.toString());
+  putEnvIfNotNull(environment,Environment.HADOOP_CONF_DIR.name(),System.getenv(Environment.HADOOP_CONF_DIR.name()));
+  if (!Shell.WINDOWS) {
+    environment.put("JVM_PID","$$");
+  }
+  String[] whitelist=conf.get(YarnConfiguration.NM_ENV_WHITELIST,YarnConfiguration.DEFAULT_NM_ENV_WHITELIST).split(",");
+  for (  String whitelistEnvVariable : whitelist) {
+    putEnvIfAbsent(environment,whitelistEnvVariable.trim());
+  }
+  Apps.setEnvFromInputString(environment,conf.get(YarnConfiguration.NM_ADMIN_USER_ENV,YarnConfiguration.DEFAULT_NM_ADMIN_USER_ENV),File.pathSeparator);
+  if (Shell.WINDOWS) {
+    String inputClassPath=environment.get(Environment.CLASSPATH.name());
+    if (inputClassPath != null && !inputClassPath.isEmpty()) {
+      StringBuilder newClassPath=new StringBuilder(inputClassPath);
+      for (      Map.Entry<Path,List<String>> entry : resources.entrySet()) {
+        boolean targetIsDirectory=new File(entry.getKey().toUri().getPath()).isDirectory();
+        for (        String linkName : entry.getValue()) {
+          newClassPath.append(File.pathSeparator).append(pwd.toString()).append(Path.SEPARATOR).append(linkName);
+          if (targetIsDirectory) {
+            newClassPath.append(Path.SEPARATOR);
+          }
+        }
+      }
+      Map<String,String> mergedEnv=new HashMap<String,String>(System.getenv());
+      mergedEnv.putAll(environment);
+      String[] jarCp=FileUtil.createJarWithClassPath(newClassPath.toString(),nmPrivateClasspathJarDir,pwd,mergedEnv);
+      Path localizedClassPathJar=exec.localizeClasspathJar(new Path(jarCp[0]),pwd,container.getUser());
+      String replacementClassPath=localizedClassPathJar.toString() + jarCp[1];
+      environment.put(Environment.CLASSPATH.name(),replacementClassPath);
+    }
+  }
+  for (  Map.Entry<String,ByteBuffer> meta : containerManager.getAuxServiceMetaData().entrySet()) {
+    AuxiliaryServiceHelper.setServiceDataIntoEnv(meta.getKey(),meta.getValue(),environment);
+  }
+}

@@ -1,0 +1,35 @@
+{
+  List<String> localDirs=dirsHandler.getLocalDirs();
+  List<String> logDirs=dirsHandler.getLogDirs();
+  verifyUsernamePattern(user);
+  String runAsUser=getRunAsUser(user);
+  List<String> command=new ArrayList<String>();
+  addSchedPriorityCommand(command);
+  command.addAll(Arrays.asList(containerExecutorExe,runAsUser,user,Integer.toString(Commands.INITIALIZE_CONTAINER.getValue()),appId,nmPrivateContainerTokensPath.toUri().getPath().toString(),StringUtils.join(",",localDirs),StringUtils.join(",",logDirs)));
+  File jvm=new File(new File(System.getProperty("java.home"),"bin"),"java");
+  command.add(jvm.toString());
+  command.add("-classpath");
+  command.add(System.getProperty("java.class.path"));
+  String javaLibPath=System.getProperty("java.library.path");
+  if (javaLibPath != null) {
+    command.add("-Djava.library.path=" + javaLibPath);
+  }
+  buildMainArgs(command,user,appId,locId,nmAddr,localDirs);
+  String[] commandArray=command.toArray(new String[command.size()]);
+  ShellCommandExecutor shExec=new ShellCommandExecutor(commandArray);
+  if (LOG.isDebugEnabled()) {
+    LOG.debug("initApplication: " + Arrays.toString(commandArray));
+  }
+  try {
+    shExec.execute();
+    if (LOG.isDebugEnabled()) {
+      logOutput(shExec.getOutput());
+    }
+  }
+ catch (  ExitCodeException e) {
+    int exitCode=shExec.getExitCode();
+    LOG.warn("Exit code from container " + locId + " startLocalizer is : "+ exitCode,e);
+    logOutput(shExec.getOutput());
+    throw new IOException("Application " + appId + " initialization failed"+ " (exitCode="+ exitCode+ ") with output: "+ shExec.getOutput(),e);
+  }
+}
