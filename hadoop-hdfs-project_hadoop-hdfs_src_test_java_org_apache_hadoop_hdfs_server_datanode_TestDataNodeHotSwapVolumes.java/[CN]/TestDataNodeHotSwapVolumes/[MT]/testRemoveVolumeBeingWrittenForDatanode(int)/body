@@ -1,0 +1,23 @@
+{
+  startDFSCluster(1,3);
+  final short REPLICATION=3;
+  final DataNode dn=cluster.getDataNodes().get(dataNodeIdx);
+  final FileSystem fs=cluster.getFileSystem();
+  final Path testFile=new Path("/test");
+  FSDataOutputStream out=fs.create(testFile,REPLICATION);
+  Random rb=new Random(0);
+  byte[] writeBuf=new byte[BLOCK_SIZE / 2];
+  rb.nextBytes(writeBuf);
+  out.write(writeBuf);
+  out.hflush();
+  List<String> oldDirs=getDataDirs(dn);
+  String newDirs=oldDirs.get(1);
+  dn.reconfigurePropertyImpl(DFSConfigKeys.DFS_DATANODE_DATA_DIR_KEY,newDirs);
+  rb.nextBytes(writeBuf);
+  out.write(writeBuf);
+  out.hflush();
+  out.close();
+  DFSTestUtil.waitReplication(fs,testFile,REPLICATION);
+  byte[] content=DFSTestUtil.readFileBuffer(fs,testFile);
+  assertEquals(BLOCK_SIZE,content.length);
+}

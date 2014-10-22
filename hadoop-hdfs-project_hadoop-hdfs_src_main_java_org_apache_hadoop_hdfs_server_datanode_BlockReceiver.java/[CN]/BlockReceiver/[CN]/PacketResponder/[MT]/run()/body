@@ -67,7 +67,23 @@ catch (      IOException ioe) {
         continue;
       }
       if (lastPacketInBlock) {
-        finalizeBlock(startTime);
+        try {
+          finalizeBlock(startTime);
+        }
+ catch (        ReplicaNotFoundException e) {
+          FsVolumeSpi volume;
+synchronized (datanode.data) {
+            volume=datanode.data.getVolume(block);
+          }
+          if (volume == null) {
+            LOG.info(myString + ": BlockReceiver is interrupted because the block pool " + block.getBlockPoolId()+ " has been removed.",e);
+            sendAckUpstream(ack,expected,totalAckTimeNanos,0,Status.OOB_INTERRUPTED);
+            running=false;
+            receiverThread.interrupt();
+            continue;
+          }
+          throw e;
+        }
       }
       sendAckUpstream(ack,expected,totalAckTimeNanos,(pkt != null ? pkt.offsetInBlock : 0),(pkt != null ? pkt.ackStatus : Status.SUCCESS));
       if (pkt != null) {
