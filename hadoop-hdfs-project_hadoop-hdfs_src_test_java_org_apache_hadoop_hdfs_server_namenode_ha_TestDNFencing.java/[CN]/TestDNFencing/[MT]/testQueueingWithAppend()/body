@@ -5,17 +5,8 @@
   try {
     AppendTestUtil.write(out,0,10);
     out.hflush();
+    cluster.triggerBlockReports();
     numQueued+=numDN;
-  }
-  finally {
-    IOUtils.closeStream(out);
-    numQueued+=numDN;
-  }
-  cluster.triggerBlockReports();
-  numQueued+=numDN;
-  try {
-    out=fs.append(TEST_FILE_PATH);
-    AppendTestUtil.write(out,10,10);
     numQueued+=numDN;
   }
   finally {
@@ -25,11 +16,35 @@
   cluster.triggerBlockReports();
   numQueued+=numDN;
   assertEquals(numQueued,cluster.getNameNode(1).getNamesystem().getPendingDataNodeMessageCount());
+  try {
+    out=fs.append(TEST_FILE_PATH);
+    AppendTestUtil.write(out,10,10);
+    out.hflush();
+    cluster.triggerBlockReports();
+    numQueued+=numDN * 2;
+  }
+  finally {
+    IOUtils.closeStream(out);
+    numQueued+=numDN;
+  }
+  assertEquals(numQueued,cluster.getNameNode(1).getNamesystem().getPendingDataNodeMessageCount());
+  try {
+    out=fs.append(TEST_FILE_PATH);
+    AppendTestUtil.write(out,20,10);
+  }
+  finally {
+    IOUtils.closeStream(out);
+    numQueued+=numDN;
+  }
+  cluster.triggerBlockReports();
+  numQueued+=numDN;
+  LOG.info("Expect " + numQueued + " and got: "+ cluster.getNameNode(1).getNamesystem().getPendingDataNodeMessageCount());
+  assertEquals(numQueued,cluster.getNameNode(1).getNamesystem().getPendingDataNodeMessageCount());
   cluster.transitionToStandby(0);
   cluster.transitionToActive(1);
   BlockManagerTestUtil.updateState(nn1.getNamesystem().getBlockManager());
   BlockManagerTestUtil.updateState(nn2.getNamesystem().getBlockManager());
   assertEquals(0,nn1.getNamesystem().getCorruptReplicaBlocks());
   assertEquals(0,nn2.getNamesystem().getCorruptReplicaBlocks());
-  AppendTestUtil.check(fs,TEST_FILE_PATH,20);
+  AppendTestUtil.check(fs,TEST_FILE_PATH,30);
 }
