@@ -24,6 +24,7 @@
   BlockReceiver blockReceiver=null;
   DataInputStream proxyReply=null;
   DataOutputStream replyOut=new DataOutputStream(getOutputStream());
+  boolean IoeDuringCopyBlockOperation=false;
   try {
     final String dnAddr=proxySource.getXferAddr(connectToDnViaHostname);
     if (LOG.isDebugEnabled()) {
@@ -41,7 +42,9 @@
     unbufProxyIn=saslStreams.in;
     proxyOut=new DataOutputStream(new BufferedOutputStream(unbufProxyOut,HdfsConstants.SMALL_BUFFER_SIZE));
     proxyReply=new DataInputStream(new BufferedInputStream(unbufProxyIn,HdfsConstants.IO_FILE_BUFFER_SIZE));
+    IoeDuringCopyBlockOperation=true;
     new Sender(proxyOut).copyBlock(block,blockToken);
+    IoeDuringCopyBlockOperation=false;
     BlockOpResponseProto copyResponse=BlockOpResponseProto.parseFrom(PBHelper.vintPrefixed(proxyReply));
     if (copyResponse.getStatus() != SUCCESS) {
       if (copyResponse.getStatus() == ERROR_ACCESS_TOKEN) {
@@ -60,6 +63,9 @@
     opStatus=ERROR;
     errMsg="opReplaceBlock " + block + " received exception "+ ioe;
     LOG.info(errMsg);
+    if (!IoeDuringCopyBlockOperation) {
+      datanode.metrics.incrDatanodeNetworkErrors();
+    }
     throw ioe;
   }
  finally {
@@ -76,6 +82,7 @@
     }
  catch (    IOException ioe) {
       LOG.warn("Error writing reply back to " + peer.getRemoteAddressString());
+      datanode.metrics.incrDatanodeNetworkErrors();
     }
     IOUtils.closeStream(proxyOut);
     IOUtils.closeStream(blockReceiver);

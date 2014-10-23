@@ -1,0 +1,24 @@
+{
+  final Configuration conf=new HdfsConfiguration();
+  final Path path=new Path("/test");
+  final MiniDFSCluster cluster=new MiniDFSCluster.Builder(conf).numDataNodes(2).build();
+  final List<FSDataOutputStream> streams=Lists.newArrayList();
+  try {
+    final FSDataOutputStream out=cluster.getFileSystem().create(path,(short)2);
+    final DataNodeFaultInjector injector=Mockito.mock(DataNodeFaultInjector.class);
+    Mockito.doThrow(new IOException("mock IOException")).when(injector).writeBlockAfterFlush();
+    DataNodeFaultInjector.instance=injector;
+    streams.add(out);
+    out.writeBytes("old gs data\n");
+    out.hflush();
+    final MetricsRecordBuilder dnMetrics=getMetrics(cluster.getDataNodes().get(0).getMetrics().name());
+    assertCounter("DatanodeNetworkErrors",1L,dnMetrics);
+  }
+  finally {
+    IOUtils.cleanup(LOG,streams.toArray(new Closeable[0]));
+    if (cluster != null) {
+      cluster.shutdown();
+    }
+    DataNodeFaultInjector.instance=new DataNodeFaultInjector();
+  }
+}
