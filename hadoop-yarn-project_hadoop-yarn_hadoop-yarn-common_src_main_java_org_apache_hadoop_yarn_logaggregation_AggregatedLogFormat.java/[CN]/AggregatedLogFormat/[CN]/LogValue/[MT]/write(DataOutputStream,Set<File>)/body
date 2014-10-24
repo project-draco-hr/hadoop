@@ -2,12 +2,19 @@
   List<File> fileList=new ArrayList<File>(pendingUploadFiles);
   Collections.sort(fileList);
   for (  File logFile : fileList) {
+    FileInputStream in=null;
+    try {
+      in=secureOpenFile(logFile);
+    }
+ catch (    IOException e) {
+      logErrorMessage(logFile,e);
+      IOUtils.cleanup(LOG,in);
+      continue;
+    }
     final long fileLength=logFile.length();
     out.writeUTF(logFile.getName());
     out.writeUTF(String.valueOf(fileLength));
-    FileInputStream in=null;
     try {
-      in=SecureIOUtils.openForRead(logFile,getUser(),null);
       byte[] buf=new byte[65535];
       int len=0;
       long bytesLeft=fileLength;
@@ -28,14 +35,11 @@
       this.uploadedFiles.add(logFile);
     }
  catch (    IOException e) {
-      String message="Error aggregating log file. Log file : " + logFile.getAbsolutePath() + e.getMessage();
-      LOG.error(message,e);
+      String message=logErrorMessage(logFile,e);
       out.write(message.getBytes());
     }
  finally {
-      if (in != null) {
-        in.close();
-      }
+      IOUtils.cleanup(LOG,in);
     }
   }
 }

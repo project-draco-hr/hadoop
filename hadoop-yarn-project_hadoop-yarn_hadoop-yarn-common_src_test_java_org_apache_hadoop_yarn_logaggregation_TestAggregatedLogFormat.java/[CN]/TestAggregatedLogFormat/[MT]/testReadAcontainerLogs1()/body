@@ -7,12 +7,16 @@
   Path t=new Path(srcFileRoot,testContainerId.getApplicationAttemptId().getApplicationId().toString());
   Path srcFilePath=new Path(t,testContainerId.toString());
   int numChars=80000;
+  writeSrcFile(srcFilePath,"stderr",numChars);
   writeSrcFile(srcFilePath,"stdout",numChars);
   UserGroupInformation ugi=UserGroupInformation.getCurrentUser();
   LogWriter logWriter=new LogWriter(conf,remoteAppLogFile,ugi);
   LogKey logKey=new LogKey(testContainerId);
   LogValue logValue=new LogValue(Collections.singletonList(srcFileRoot.toString()),testContainerId,ugi.getShortUserName());
-  logWriter.append(logKey,logValue);
+  LogValue spyLogValue=spy(logValue);
+  File errorFile=new File((new Path(srcFilePath,"stderr")).toString());
+  doThrow(new IOException("Mock can not open FileInputStream")).when(spyLogValue).secureOpenFile(errorFile);
+  logWriter.append(logKey,spyLogValue);
   logWriter.close();
   FileStatus fsStatus=fs.getFileStatus(remoteAppLogFile);
   Assert.assertEquals("permissions on log aggregation file are wrong",FsPermission.createImmutable((short)0640),fsStatus.getPermission());
@@ -24,6 +28,7 @@
   String s=writer.toString();
   int expectedLength="\n\nLogType:stdout".length() + ("\nLogLength:" + numChars).length() + "\nLog Contents:\n".length()+ numChars;
   Assert.assertTrue("LogType not matched",s.contains("LogType:stdout"));
+  Assert.assertTrue("log file:stderr should not be aggregated.",!s.contains("LogType:stderr"));
   Assert.assertTrue("LogLength not matched",s.contains("LogLength:" + numChars));
   Assert.assertTrue("Log Contents not matched",s.contains("Log Contents"));
   StringBuilder sb=new StringBuilder();
