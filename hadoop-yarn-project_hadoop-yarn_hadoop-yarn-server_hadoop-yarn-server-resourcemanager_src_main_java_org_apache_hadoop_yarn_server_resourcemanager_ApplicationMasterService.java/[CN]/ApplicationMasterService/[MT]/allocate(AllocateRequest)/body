@@ -5,23 +5,24 @@
   this.amLivelinessMonitor.receivedPing(appAttemptId);
   AllocateResponseLock lock=responseMap.get(appAttemptId);
   if (lock == null) {
-    LOG.error("AppAttemptId doesnt exist in cache " + appAttemptId);
-    return shutdown;
+    String message="Application attempt " + appAttemptId + " doesn't exist in ApplicationMasterService cache.";
+    LOG.error(message);
+    throw new ApplicationAttemptNotFoundException(message);
   }
 synchronized (lock) {
     AllocateResponse lastResponse=lock.getAllocateResponse();
     if (!hasApplicationMasterRegistered(appAttemptId)) {
-      String message="Application Master is not registered for known application: " + applicationId + ". Let AM resync.";
+      String message="AM is not registered for known application attempt: " + appAttemptId + " or RM had restarted after AM registered . AM should re-register.";
       LOG.info(message);
-      RMAuditLogger.logFailure(this.rmContext.getRMApps().get(applicationId).getUser(),AuditConstants.REGISTER_AM,"","ApplicationMasterService",message,applicationId,appAttemptId);
-      return resync;
+      RMAuditLogger.logFailure(this.rmContext.getRMApps().get(appAttemptId.getApplicationId()).getUser(),AuditConstants.AM_ALLOCATE,"","ApplicationMasterService",message,applicationId,appAttemptId);
+      throw new ApplicationMasterNotRegisteredException(message);
     }
     if ((request.getResponseId() + 1) == lastResponse.getResponseId()) {
       return lastResponse;
     }
  else     if (request.getResponseId() + 1 < lastResponse.getResponseId()) {
-      LOG.error("Invalid responseid from appAttemptId " + appAttemptId);
-      return resync;
+      String message="Invalid responseId in AllocateRequest from application attempt: " + appAttemptId + ", expect responseId to be "+ (lastResponse.getResponseId() + 1);
+      throw new InvalidApplicationMasterRequestException(message);
     }
     float filteredProgress=request.getProgress();
     if (Float.isNaN(filteredProgress) || filteredProgress == Float.NEGATIVE_INFINITY || filteredProgress < 0) {

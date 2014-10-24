@@ -5,7 +5,18 @@
     response=makeRemoteRequest();
     retrystartTime=System.currentTimeMillis();
   }
- catch (  Exception e) {
+ catch (  ApplicationAttemptNotFoundException e) {
+    eventHandler.handle(new JobEvent(this.getJob().getID(),JobEventType.JOB_AM_REBOOT));
+    throw new YarnRuntimeException("Resource Manager doesn't recognize AttemptId: " + this.getContext().getApplicationID(),e);
+  }
+catch (  ApplicationMasterNotRegisteredException e) {
+    LOG.info("ApplicationMaster is out of sync with ResourceManager," + " hence resync and send outstanding requests.");
+    lastResponseID=0;
+    register();
+    addOutstandingRequestOnResync();
+    return null;
+  }
+catch (  Exception e) {
     if (System.currentTimeMillis() - retrystartTime >= retryInterval) {
       LOG.error("Could not contact RM after " + retryInterval + " milliseconds.");
       eventHandler.handle(new JobEvent(this.getJob().getID(),JobEventType.INTERNAL_ERROR));
@@ -13,65 +24,48 @@
     }
     throw e;
   }
-  if (response.getAMCommand() != null) {
-switch (response.getAMCommand()) {
-case AM_RESYNC:
-      LOG.info("ApplicationMaster is out of sync with ResourceManager," + " hence resyncing.");
-    lastResponseID=0;
-  register();
-addOutstandingRequestOnResync();
-break;
-case AM_SHUTDOWN:
-eventHandler.handle(new JobEvent(this.getJob().getID(),JobEventType.JOB_AM_REBOOT));
-throw new YarnRuntimeException("Resource Manager doesn't recognize AttemptId: " + this.getContext().getApplicationID());
-default :
-String msg="Unhandled value of AMCommand: " + response.getAMCommand();
-LOG.error(msg);
-throw new YarnRuntimeException(msg);
-}
-}
-Resource newHeadRoom=getAvailableResources() == null ? Resources.none() : getAvailableResources();
-List<Container> newContainers=response.getAllocatedContainers();
-if (response.getNMTokens() != null) {
-for (NMToken nmToken : response.getNMTokens()) {
-NMTokenCache.setNMToken(nmToken.getNodeId().toString(),nmToken.getToken());
-}
-}
-if (response.getAMRMToken() != null) {
-updateAMRMToken(response.getAMRMToken());
-}
-List<ContainerStatus> finishedContainers=response.getCompletedContainersStatuses();
-final PreemptionMessage preemptReq=response.getPreemptionMessage();
-if (preemptReq != null) {
-preemptionPolicy.preempt(new PreemptionContext(assignedRequests),preemptReq);
-}
-if (newContainers.size() + finishedContainers.size() > 0 || !headRoom.equals(newHeadRoom)) {
-recalculateReduceSchedule=true;
-if (LOG.isDebugEnabled() && !headRoom.equals(newHeadRoom)) {
-LOG.debug("headroom=" + newHeadRoom);
-}
-}
-if (LOG.isDebugEnabled()) {
-for (Container cont : newContainers) {
-LOG.debug("Received new Container :" + cont);
-}
-}
-computeIgnoreBlacklisting();
-handleUpdatedNodes(response);
-for (ContainerStatus cont : finishedContainers) {
-LOG.info("Received completed container " + cont.getContainerId());
-TaskAttemptId attemptID=assignedRequests.get(cont.getContainerId());
-if (attemptID == null) {
-LOG.error("Container complete event for unknown container id " + cont.getContainerId());
-}
+  Resource newHeadRoom=getAvailableResources() == null ? Resources.none() : getAvailableResources();
+  List<Container> newContainers=response.getAllocatedContainers();
+  if (response.getNMTokens() != null) {
+    for (    NMToken nmToken : response.getNMTokens()) {
+      NMTokenCache.setNMToken(nmToken.getNodeId().toString(),nmToken.getToken());
+    }
+  }
+  if (response.getAMRMToken() != null) {
+    updateAMRMToken(response.getAMRMToken());
+  }
+  List<ContainerStatus> finishedContainers=response.getCompletedContainersStatuses();
+  final PreemptionMessage preemptReq=response.getPreemptionMessage();
+  if (preemptReq != null) {
+    preemptionPolicy.preempt(new PreemptionContext(assignedRequests),preemptReq);
+  }
+  if (newContainers.size() + finishedContainers.size() > 0 || !headRoom.equals(newHeadRoom)) {
+    recalculateReduceSchedule=true;
+    if (LOG.isDebugEnabled() && !headRoom.equals(newHeadRoom)) {
+      LOG.debug("headroom=" + newHeadRoom);
+    }
+  }
+  if (LOG.isDebugEnabled()) {
+    for (    Container cont : newContainers) {
+      LOG.debug("Received new Container :" + cont);
+    }
+  }
+  computeIgnoreBlacklisting();
+  handleUpdatedNodes(response);
+  for (  ContainerStatus cont : finishedContainers) {
+    LOG.info("Received completed container " + cont.getContainerId());
+    TaskAttemptId attemptID=assignedRequests.get(cont.getContainerId());
+    if (attemptID == null) {
+      LOG.error("Container complete event for unknown container id " + cont.getContainerId());
+    }
  else {
-pendingRelease.remove(cont.getContainerId());
-assignedRequests.remove(attemptID);
-eventHandler.handle(createContainerFinishedEvent(cont,attemptID));
-String diagnostics=StringInterner.weakIntern(cont.getDiagnostics());
-eventHandler.handle(new TaskAttemptDiagnosticsUpdateEvent(attemptID,diagnostics));
-preemptionPolicy.handleCompletedContainer(attemptID);
-}
-}
-return newContainers;
+      pendingRelease.remove(cont.getContainerId());
+      assignedRequests.remove(attemptID);
+      eventHandler.handle(createContainerFinishedEvent(cont,attemptID));
+      String diagnostics=StringInterner.weakIntern(cont.getDiagnostics());
+      eventHandler.handle(new TaskAttemptDiagnosticsUpdateEvent(attemptID,diagnostics));
+      preemptionPolicy.handleCompletedContainer(attemptID);
+    }
+  }
+  return newContainers;
 }

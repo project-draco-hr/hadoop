@@ -1,11 +1,20 @@
 {
   AllocateRequest allocateRequest=AllocateRequest.newInstance(this.lastResponseID,super.getApplicationProgress(),new ArrayList<ResourceRequest>(),new ArrayList<ContainerId>(),null);
-  AllocateResponse allocateResponse;
   try {
-    allocateResponse=scheduler.allocate(allocateRequest);
+    scheduler.allocate(allocateRequest);
     retrystartTime=System.currentTimeMillis();
   }
- catch (  Exception e) {
+ catch (  ApplicationAttemptNotFoundException e) {
+    LOG.info("Event from RM: shutting down Application Master");
+    eventHandler.handle(new JobEvent(this.getJob().getID(),JobEventType.JOB_AM_REBOOT));
+    throw new YarnRuntimeException("Resource Manager doesn't recognize AttemptId: " + this.getContext().getApplicationID(),e);
+  }
+catch (  ApplicationMasterNotRegisteredException e) {
+    LOG.info("ApplicationMaster is out of sync with ResourceManager," + " hence resync and send outstanding requests.");
+    this.lastResponseID=0;
+    register();
+  }
+catch (  Exception e) {
     if (System.currentTimeMillis() - retrystartTime >= retryInterval) {
       LOG.error("Could not contact RM after " + retryInterval + " milliseconds.");
       eventHandler.handle(new JobEvent(this.getJob().getID(),JobEventType.INTERNAL_ERROR));
@@ -13,21 +22,4 @@
     }
     throw e;
   }
-  if (allocateResponse.getAMCommand() != null) {
-switch (allocateResponse.getAMCommand()) {
-case AM_RESYNC:
-      LOG.info("ApplicationMaster is out of sync with ResourceManager," + " hence resyncing.");
-    this.lastResponseID=0;
-  register();
-break;
-case AM_SHUTDOWN:
-LOG.info("Event from RM: shutting down Application Master");
-eventHandler.handle(new JobEvent(this.getJob().getID(),JobEventType.JOB_AM_REBOOT));
-throw new YarnRuntimeException("Resource Manager doesn't recognize AttemptId: " + this.getContext().getApplicationID());
-default :
-String msg="Unhandled value of AMCommand: " + allocateResponse.getAMCommand();
-LOG.error(msg);
-throw new YarnRuntimeException(msg);
-}
-}
 }

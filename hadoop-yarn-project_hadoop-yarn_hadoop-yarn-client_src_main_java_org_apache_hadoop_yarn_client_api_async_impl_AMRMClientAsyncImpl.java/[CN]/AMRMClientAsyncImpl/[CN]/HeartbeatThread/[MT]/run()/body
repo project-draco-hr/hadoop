@@ -8,24 +8,26 @@ synchronized (unregisterHeartbeatLock) {
       try {
         response=client.allocate(progress);
       }
- catch (      Throwable ex) {
+ catch (      ApplicationAttemptNotFoundException e) {
+        handler.onShutdownRequest();
+        LOG.info("Shutdown requested. Stopping callback.");
+        return;
+      }
+catch (      Throwable ex) {
         LOG.error("Exception on heartbeat",ex);
         savedException=ex;
         handlerThread.interrupt();
         return;
       }
-    }
-    if (response != null) {
-      while (true) {
-        try {
-          responseQueue.put(response);
-          if (response.getAMCommand() == AMCommand.AM_SHUTDOWN) {
-            return;
+      if (response != null) {
+        while (true) {
+          try {
+            responseQueue.put(response);
+            break;
           }
-          break;
-        }
- catch (        InterruptedException ex) {
-          LOG.debug("Interrupted while waiting to put on response queue",ex);
+ catch (          InterruptedException ex) {
+            LOG.debug("Interrupted while waiting to put on response queue",ex);
+          }
         }
       }
     }
