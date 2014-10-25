@@ -1,0 +1,36 @@
+{
+  metrics.reportCleaningStart();
+  try {
+    String pattern=SharedCacheUtil.getCacheEntryGlobPattern(nestedLevel);
+    FileStatus[] resources=fs.globStatus(new Path(root,pattern));
+    int numResources=resources == null ? 0 : resources.length;
+    LOG.info("Processing " + numResources + " resources in the shared cache");
+    long beginMs=System.currentTimeMillis();
+    if (resources != null) {
+      for (      FileStatus resource : resources) {
+        if (Thread.currentThread().isInterrupted()) {
+          LOG.warn("The cleaner task was interrupted. Aborting.");
+          break;
+        }
+        if (resource.isDirectory()) {
+          processSingleResource(resource);
+        }
+ else {
+          LOG.warn("Invalid file at path " + resource.getPath().toString() + " when a directory was expected");
+        }
+        if (sleepTime > 0) {
+          Thread.sleep(sleepTime);
+        }
+      }
+    }
+    long endMs=System.currentTimeMillis();
+    long durationMs=endMs - beginMs;
+    LOG.info("Processed " + numResources + " resource(s) in "+ durationMs+ " ms.");
+  }
+ catch (  IOException e1) {
+    LOG.error("Unable to complete the cleaner task",e1);
+  }
+catch (  InterruptedException e2) {
+    Thread.currentThread().interrupt();
+  }
+}

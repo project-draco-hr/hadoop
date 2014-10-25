@@ -1,0 +1,61 @@
+{
+  Path path=resource.getPath();
+  ResourceStatus resourceStatus=ResourceStatus.INIT;
+  if (path.toString().endsWith(RENAMED_SUFFIX)) {
+    LOG.info("Found a renamed directory that was left undeleted at " + path.toString() + ". Deleting.");
+    try {
+      if (fs.delete(path,true)) {
+        resourceStatus=ResourceStatus.DELETED;
+      }
+    }
+ catch (    IOException e) {
+      LOG.error("Error while processing a shared cache resource: " + path,e);
+    }
+  }
+ else {
+    String key=path.getName();
+    try {
+      store.cleanResourceReferences(key);
+    }
+ catch (    YarnException e) {
+      LOG.error("Exception thrown while removing dead appIds.",e);
+    }
+    if (store.isResourceEvictable(key,resource)) {
+      try {
+        if (store.removeResource(key)) {
+          boolean deleted=removeResourceFromCacheFileSystem(path);
+          if (deleted) {
+            resourceStatus=ResourceStatus.DELETED;
+          }
+ else {
+            LOG.error("Failed to remove path from the file system." + " Skipping this resource: " + path);
+            resourceStatus=ResourceStatus.ERROR;
+          }
+        }
+ else {
+          resourceStatus=ResourceStatus.PROCESSED;
+        }
+      }
+ catch (      IOException e) {
+        LOG.error("Failed to remove path from the file system. Skipping this resource: " + path,e);
+        resourceStatus=ResourceStatus.ERROR;
+      }
+    }
+ else {
+      resourceStatus=ResourceStatus.PROCESSED;
+    }
+  }
+switch (resourceStatus) {
+case DELETED:
+    metrics.reportAFileDelete();
+  break;
+case PROCESSED:
+metrics.reportAFileProcess();
+break;
+case ERROR:
+metrics.reportAFileError();
+break;
+default :
+LOG.error("Cleaner encountered an invalid status (" + resourceStatus + ") while processing resource: "+ path.getName());
+}
+}
