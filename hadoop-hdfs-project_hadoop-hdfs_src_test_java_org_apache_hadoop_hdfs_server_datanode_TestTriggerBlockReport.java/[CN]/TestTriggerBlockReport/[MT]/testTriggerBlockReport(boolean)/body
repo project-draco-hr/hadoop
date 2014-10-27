@@ -1,0 +1,29 @@
+{
+  Configuration conf=new HdfsConfiguration();
+  conf.setLong(DFSConfigKeys.DFS_BLOCKREPORT_INTERVAL_MSEC_KEY,10800000L);
+  conf.setLong(DFSConfigKeys.DFS_HEARTBEAT_INTERVAL_KEY,1080L);
+  final MiniDFSCluster cluster=new MiniDFSCluster.Builder(conf).numDataNodes(1).build();
+  cluster.waitActive();
+  FileSystem fs=cluster.getFileSystem();
+  DatanodeProtocolClientSideTranslatorPB spy=DataNodeTestUtils.spyOnBposToNN(cluster.getDataNodes().get(0),cluster.getNameNode());
+  DFSTestUtil.createFile(fs,new Path("/abc"),16,(short)1,1L);
+  Mockito.verify(spy,timeout(60000).times(1)).blockReceivedAndDeleted(any(DatanodeRegistration.class),anyString(),any(StorageReceivedDeletedBlocks[].class));
+  for (int i=0; i < 3; i++) {
+    Thread.sleep(10);
+    Mockito.verify(spy,times(0)).blockReport(any(DatanodeRegistration.class),anyString(),any(StorageBlockReport[].class));
+    Mockito.verify(spy,times(1)).blockReceivedAndDeleted(any(DatanodeRegistration.class),anyString(),any(StorageReceivedDeletedBlocks[].class));
+  }
+  ReceivedDeletedBlockInfo rdbi=new ReceivedDeletedBlockInfo(new Block(5678,512,1000),BlockStatus.DELETED_BLOCK,null);
+  DataNode datanode=cluster.getDataNodes().get(0);
+  BPServiceActor actor=datanode.getAllBpOs()[0].getBPServiceActors().get(0);
+  String storageUuid=datanode.getFSDataset().getVolumes().get(0).getStorageID();
+  actor.notifyNamenodeDeletedBlock(rdbi,storageUuid);
+  datanode.triggerBlockReport(new BlockReportOptions.Factory().setIncremental(incremental).build());
+  if (incremental) {
+    Mockito.verify(spy,timeout(60000).times(2)).blockReceivedAndDeleted(any(DatanodeRegistration.class),anyString(),any(StorageReceivedDeletedBlocks[].class));
+  }
+ else {
+    Mockito.verify(spy,timeout(60000)).blockReport(any(DatanodeRegistration.class),anyString(),any(StorageBlockReport[].class));
+  }
+  cluster.shutdown();
+}
