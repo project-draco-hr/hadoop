@@ -1,0 +1,36 @@
+{
+  final DataChecksum checksum=BlockMetadataHeader.readDataChecksum(srcMeta);
+  final byte[] data=new byte[1 << 16];
+  final byte[] crcs=new byte[checksum.getChecksumSize(data.length)];
+  DataOutputStream metaOut=null;
+  InputStream dataIn=null;
+  try {
+    File parentFile=dstMeta.getParentFile();
+    if (parentFile != null) {
+      if (!parentFile.mkdirs() && !parentFile.isDirectory()) {
+        throw new IOException("Destination '" + parentFile + "' directory cannot be created");
+      }
+    }
+    metaOut=new DataOutputStream(new BufferedOutputStream(new FileOutputStream(dstMeta),HdfsConstants.SMALL_BUFFER_SIZE));
+    BlockMetadataHeader.writeHeader(metaOut,checksum);
+    dataIn=isNativeIOAvailable ? NativeIO.getShareDeleteFileInputStream(blockFile) : new FileInputStream(blockFile);
+    int offset=0;
+    for (int n; (n=dataIn.read(data,offset,data.length - offset)) != -1; ) {
+      if (n > 0) {
+        n+=offset;
+        offset=n % checksum.getBytesPerChecksum();
+        final int length=n - offset;
+        if (length > 0) {
+          checksum.calculateChunkedSums(data,0,length,crcs,0);
+          metaOut.write(crcs,0,checksum.getChecksumSize(length));
+          System.arraycopy(data,length,data,0,offset);
+        }
+      }
+    }
+    checksum.calculateChunkedSums(data,0,offset,crcs,0);
+    metaOut.write(crcs,0,4);
+  }
+  finally {
+    IOUtils.cleanup(LOG,dataIn,metaOut);
+  }
+}

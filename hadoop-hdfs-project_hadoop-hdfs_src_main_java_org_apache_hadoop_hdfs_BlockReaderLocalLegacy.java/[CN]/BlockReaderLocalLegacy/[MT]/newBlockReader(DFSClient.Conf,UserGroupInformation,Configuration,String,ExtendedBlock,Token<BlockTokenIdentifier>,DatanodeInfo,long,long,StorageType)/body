@@ -1,0 +1,47 @@
+{
+  LocalDatanodeInfo localDatanodeInfo=getLocalDatanodeInfo(node.getIpcPort());
+  BlockLocalPathInfo pathinfo=localDatanodeInfo.getBlockLocalPathInfo(blk);
+  if (pathinfo == null) {
+    if (userGroupInformation == null) {
+      userGroupInformation=UserGroupInformation.getCurrentUser();
+    }
+    pathinfo=getBlockPathInfo(userGroupInformation,blk,node,configuration,conf.socketTimeout,token,conf.connectToDnViaHostname,storageType);
+  }
+  FileInputStream dataIn=null;
+  FileInputStream checksumIn=null;
+  BlockReaderLocalLegacy localBlockReader=null;
+  boolean skipChecksumCheck=conf.skipShortCircuitChecksums || storageType.isTransient();
+  try {
+    File blkfile=new File(pathinfo.getBlockPath());
+    dataIn=new FileInputStream(blkfile);
+    if (LOG.isDebugEnabled()) {
+      LOG.debug("New BlockReaderLocalLegacy for file " + blkfile + " of size "+ blkfile.length()+ " startOffset "+ startOffset+ " length "+ length+ " short circuit checksum "+ !skipChecksumCheck);
+    }
+    if (!skipChecksumCheck) {
+      File metafile=new File(pathinfo.getMetaPath());
+      checksumIn=new FileInputStream(metafile);
+      final DataChecksum checksum=BlockMetadataHeader.readDataChecksum(new DataInputStream(checksumIn),blk);
+      long firstChunkOffset=startOffset - (startOffset % checksum.getBytesPerChecksum());
+      localBlockReader=new BlockReaderLocalLegacy(conf,file,blk,token,startOffset,length,pathinfo,checksum,true,dataIn,firstChunkOffset,checksumIn);
+    }
+ else {
+      localBlockReader=new BlockReaderLocalLegacy(conf,file,blk,token,startOffset,length,pathinfo,dataIn);
+    }
+  }
+ catch (  IOException e) {
+    localDatanodeInfo.removeBlockLocalPathInfo(blk);
+    DFSClient.LOG.warn("BlockReaderLocalLegacy: Removing " + blk + " from cache because local file "+ pathinfo.getBlockPath()+ " could not be opened.");
+    throw e;
+  }
+ finally {
+    if (localBlockReader == null) {
+      if (dataIn != null) {
+        dataIn.close();
+      }
+      if (checksumIn != null) {
+        checksumIn.close();
+      }
+    }
+  }
+  return localBlockReader;
+}

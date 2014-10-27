@@ -1,0 +1,28 @@
+{
+  int sizePartialChunk=(int)(blkoff % bytesPerChecksum);
+  blkoff=blkoff - sizePartialChunk;
+  if (LOG.isDebugEnabled()) {
+    LOG.debug("computePartialChunkCrc for " + block + ": sizePartialChunk="+ sizePartialChunk+ ", block offset="+ blkoff+ ", metafile offset="+ ckoff);
+  }
+  byte[] buf=new byte[sizePartialChunk];
+  byte[] crcbuf=new byte[checksumSize];
+  ReplicaInputStreams instr=null;
+  try {
+    instr=datanode.data.getTmpInputStreams(block,blkoff,ckoff);
+    IOUtils.readFully(instr.getDataIn(),buf,0,sizePartialChunk);
+    IOUtils.readFully(instr.getChecksumIn(),crcbuf,0,crcbuf.length);
+  }
+  finally {
+    IOUtils.closeStream(instr);
+  }
+  final Checksum partialCrc=DataChecksum.newDataChecksum(diskChecksum.getChecksumType(),diskChecksum.getBytesPerChecksum());
+  partialCrc.update(buf,0,sizePartialChunk);
+  if (LOG.isDebugEnabled()) {
+    LOG.debug("Read in partial CRC chunk from disk for " + block);
+  }
+  if (partialCrc.getValue() != checksum2long(crcbuf)) {
+    String msg="Partial CRC " + partialCrc.getValue() + " does not match value computed the "+ " last time file was closed "+ checksum2long(crcbuf);
+    throw new IOException(msg);
+  }
+  return partialCrc;
+}
