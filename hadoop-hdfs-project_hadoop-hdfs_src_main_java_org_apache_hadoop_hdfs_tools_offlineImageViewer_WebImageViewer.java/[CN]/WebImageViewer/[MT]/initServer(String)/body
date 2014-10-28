@@ -1,19 +1,14 @@
 {
-  FSImageLoader loader=FSImageLoader.load(fsimage);
-  ChannelPipeline pipeline=Channels.pipeline();
-  pipeline.addLast("channelTracker",new SimpleChannelUpstreamHandler(){
-    @Override public void channelOpen(    ChannelHandlerContext ctx,    ChannelStateEvent e) throws Exception {
-      allChannels.add(e.getChannel());
+  final FSImageLoader loader=FSImageLoader.load(fsimage);
+  bootstrap.childHandler(new ChannelInitializer<SocketChannel>(){
+    @Override protected void initChannel(    SocketChannel ch) throws Exception {
+      ChannelPipeline p=ch.pipeline();
+      p.addLast(new HttpRequestDecoder(),new StringEncoder(),new HttpResponseEncoder(),new FSImageHandler(loader,allChannels));
     }
   }
 );
-  pipeline.addLast("httpDecoder",new HttpRequestDecoder());
-  pipeline.addLast("requestHandler",new FSImageHandler(loader));
-  pipeline.addLast("stringEncoder",new StringEncoder());
-  pipeline.addLast("httpEncoder",new HttpResponseEncoder());
-  bootstrap.setPipeline(pipeline);
-  channel=bootstrap.bind(address);
+  channel=bootstrap.bind(address).sync().channel();
   allChannels.add(channel);
-  address=(InetSocketAddress)channel.getLocalAddress();
+  address=(InetSocketAddress)channel.localAddress();
   LOG.info("WebImageViewer started. Listening on " + address.toString() + ". Press Ctrl+C to stop the viewer.");
 }
