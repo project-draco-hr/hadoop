@@ -7,12 +7,24 @@
     throw new InvalidMagicNumberException(magicNumber);
   }
   try {
-    performSaslStep1(out,in,sasl);
     byte[] remoteResponse=readSaslMessage(in);
     byte[] localResponse=sasl.evaluateChallengeOrResponse(remoteResponse);
     sendSaslMessage(out,localResponse);
+    List<CipherOption> cipherOptions=Lists.newArrayList();
+    remoteResponse=readSaslMessageAndNegotiationCipherOptions(in,cipherOptions);
+    localResponse=sasl.evaluateChallengeOrResponse(remoteResponse);
     checkSaslComplete(sasl,saslProps);
-    return sasl.createStreamPair(out,in);
+    CipherOption cipherOption=null;
+    if (sasl.isNegotiatedQopPrivacy()) {
+      cipherOption=negotiateCipherOption(dnConf.getConf(),cipherOptions);
+      if (cipherOption != null) {
+        if (LOG.isDebugEnabled()) {
+          LOG.debug("Server using cipher suite " + cipherOption.getCipherSuite().getName());
+        }
+      }
+    }
+    sendSaslMessageAndNegotiatedCipherOption(out,localResponse,wrap(cipherOption,sasl));
+    return cipherOption != null ? createStreamPair(dnConf.getConf(),cipherOption,underlyingOut,underlyingIn,true) : sasl.createStreamPair(out,in);
   }
  catch (  IOException ioe) {
     if (ioe instanceof SaslException && ioe.getCause() != null && ioe.getCause() instanceof InvalidEncryptionKeyException) {

@@ -5,9 +5,21 @@
     setEncryptionConfigKeys(conf);
     cluster=new MiniDFSCluster.Builder(conf).numDataNodes(numDns).build();
     FileSystem fs=getFileSystem(conf);
-    writeTestDataToFile(fs);
+    LogCapturer logs=GenericTestUtils.LogCapturer.captureLogs(LogFactory.getLog(SaslDataTransferServer.class));
+    LogCapturer logs1=GenericTestUtils.LogCapturer.captureLogs(LogFactory.getLog(DataTransferSaslUtil.class));
+    try {
+      writeTestDataToFile(fs);
+    }
+  finally {
+      logs.stopCapturing();
+      logs1.stopCapturing();
+    }
     assertEquals(PLAIN_TEXT,DFSTestUtil.readFile(fs,TEST_PATH));
     fs.close();
+    if (resolverClazz != null && !resolverClazz.endsWith("TestTrustedChannelResolver")) {
+      GenericTestUtils.assertMatches(logs.getOutput(),"Server using cipher suite");
+      GenericTestUtils.assertMatches(logs1.getOutput(),"Creating IOStreamPair of CryptoInputStream and CryptoOutputStream.");
+    }
   }
   finally {
     if (cluster != null) {

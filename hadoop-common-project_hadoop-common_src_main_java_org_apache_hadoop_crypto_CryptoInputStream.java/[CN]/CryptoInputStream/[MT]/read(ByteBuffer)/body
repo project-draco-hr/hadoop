@@ -1,6 +1,6 @@
 {
   checkStream();
-  if (in instanceof ByteBufferReadable) {
+  if (isByteBufferReadable || isReadableByteChannel) {
     final int unread=outBuffer.remaining();
     if (unread > 0) {
       int toRead=buf.remaining();
@@ -16,7 +16,7 @@
       }
     }
     final int pos=buf.position();
-    final int n=((ByteBufferReadable)in).read(buf);
+    final int n=isByteBufferReadable ? ((ByteBufferReadable)in).read(buf) : ((ReadableByteChannel)in).read(buf);
     if (n > 0) {
       streamOffset+=n;
       decrypt(buf,n,pos);
@@ -33,5 +33,21 @@
       }
     }
   }
-  throw new UnsupportedOperationException("ByteBuffer read unsupported " + "by input stream.");
+ else {
+    int n=0;
+    if (buf.hasArray()) {
+      n=read(buf.array(),buf.position(),buf.remaining());
+      if (n > 0) {
+        buf.position(buf.position() + n);
+      }
+    }
+ else {
+      byte[] tmp=new byte[buf.remaining()];
+      n=read(tmp);
+      if (n > 0) {
+        buf.put(tmp,0,n);
+      }
+    }
+    return n;
+  }
 }
