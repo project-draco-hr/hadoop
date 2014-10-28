@@ -1,0 +1,55 @@
+{
+  if (blockId == null) {
+    out.println("Please provide valid blockId!");
+    return;
+  }
+  BlockManager bm=namenode.getNamesystem().getBlockManager();
+  try {
+    Block block=new Block(Block.getBlockId(blockId));
+    BlockInfo blockInfo=bm.getStoredBlock(block);
+    if (blockInfo == null) {
+      out.println("Block " + blockId + " "+ NONEXISTENT_STATUS);
+      LOG.warn("Block " + blockId + " "+ NONEXISTENT_STATUS);
+      return;
+    }
+    BlockCollection bc=bm.getBlockCollection(blockInfo);
+    INode iNode=(INode)bc;
+    NumberReplicas numberReplicas=bm.countNodes(block);
+    out.println("Block Id: " + blockId);
+    out.println("Block belongs to: " + iNode.getFullPathName());
+    out.println("No. of Expected Replica: " + bc.getBlockReplication());
+    out.println("No. of live Replica: " + numberReplicas.liveReplicas());
+    out.println("No. of excess Replica: " + numberReplicas.excessReplicas());
+    out.println("No. of stale Replica: " + numberReplicas.replicasOnStaleNodes());
+    out.println("No. of decommission Replica: " + numberReplicas.decommissionedReplicas());
+    out.println("No. of corrupted Replica: " + numberReplicas.corruptReplicas());
+    Collection<DatanodeDescriptor> corruptionRecord=null;
+    if (bm.getCorruptReplicas(block) != null) {
+      corruptionRecord=bm.getCorruptReplicas(block);
+    }
+    for (int idx=(blockInfo.numNodes() - 1); idx >= 0; idx--) {
+      DatanodeDescriptor dn=blockInfo.getDatanode(idx);
+      out.print("Block replica on datanode/rack: " + dn.getHostName() + dn.getNetworkLocation()+ " ");
+      if (corruptionRecord != null && corruptionRecord.contains(dn)) {
+        out.print(CORRUPT_STATUS + "\t ReasonCode: " + bm.getCorruptReason(block,dn));
+      }
+ else       if (dn.isDecommissioned()) {
+        out.print(DECOMMISSIONED_STATUS);
+      }
+ else       if (dn.isDecommissionInProgress()) {
+        out.print(DECOMMISSIONING_STATUS);
+      }
+ else {
+        out.print(HEALTHY_STATUS);
+      }
+      out.print("\n");
+    }
+  }
+ catch (  Exception e) {
+    String errMsg="Fsck on blockId '" + blockId;
+    LOG.warn(errMsg,e);
+    out.println(e.getMessage());
+    out.print("\n\n" + errMsg);
+    LOG.warn("Error in looking up block",e);
+  }
+}
