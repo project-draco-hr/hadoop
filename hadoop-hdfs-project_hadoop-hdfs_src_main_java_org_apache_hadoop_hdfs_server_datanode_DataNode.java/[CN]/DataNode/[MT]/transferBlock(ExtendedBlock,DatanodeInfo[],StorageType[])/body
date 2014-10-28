@@ -1,17 +1,40 @@
 {
   BPOfferService bpos=getBPOSForBlock(block);
   DatanodeRegistration bpReg=getDNRegistrationForBP(block.getBlockPoolId());
-  if (!data.isValidBlock(block)) {
+  boolean replicaNotExist=false;
+  boolean replicaStateNotFinalized=false;
+  boolean blockFileNotExist=false;
+  boolean lengthTooShort=false;
+  try {
+    data.checkBlock(block,block.getNumBytes(),ReplicaState.FINALIZED);
+  }
+ catch (  ReplicaNotFoundException e) {
+    replicaNotExist=true;
+  }
+catch (  UnexpectedReplicaStateException e) {
+    replicaStateNotFinalized=true;
+  }
+catch (  FileNotFoundException e) {
+    blockFileNotExist=true;
+  }
+catch (  EOFException e) {
+    lengthTooShort=true;
+  }
+catch (  IOException e) {
+    blockFileNotExist=true;
+  }
+  if (replicaNotExist || replicaStateNotFinalized) {
     String errStr="Can't send invalid block " + block;
     LOG.info(errStr);
     bpos.trySendErrorReport(DatanodeProtocol.INVALID_BLOCK,errStr);
     return;
   }
-  long onDiskLength=data.getLength(block);
-  if (block.getNumBytes() > onDiskLength) {
-    FsVolumeSpi volume=getFSDataset().getVolume(block);
-    bpos.reportBadBlocks(block,volume.getStorageID(),volume.getStorageType());
-    LOG.warn("Can't replicate block " + block + " because on-disk length "+ onDiskLength+ " is shorter than NameNode recorded length "+ block.getNumBytes());
+  if (blockFileNotExist) {
+    reportBadBlock(bpos,block,"Can't replicate block " + block + " because the block file doesn't exist, or is not accessible");
+    return;
+  }
+  if (lengthTooShort) {
+    reportBadBlock(bpos,block,"Can't replicate block " + block + " because on-disk length "+ data.getLength(block)+ " is shorter than NameNode recorded length "+ block.getNumBytes());
     return;
   }
   int numTargets=xferTargets.length;
