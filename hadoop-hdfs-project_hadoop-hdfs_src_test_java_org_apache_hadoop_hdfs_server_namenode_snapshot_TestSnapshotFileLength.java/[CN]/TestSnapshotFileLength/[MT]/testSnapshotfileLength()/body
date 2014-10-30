@@ -2,25 +2,37 @@
   hdfs.mkdirs(sub);
   int bytesRead;
   byte[] buffer=new byte[BLOCKSIZE * 8];
+  int origLen=BLOCKSIZE + 1;
+  int toAppend=BLOCKSIZE;
   FSDataInputStream fis=null;
   FileStatus fileStatus=null;
   Path file1=new Path(sub,file1Name);
-  DFSTestUtil.createFile(hdfs,file1,0,REPLICATION,SEED);
-  DFSTestUtil.appendFile(hdfs,file1,BLOCKSIZE);
+  DFSTestUtil.createFile(hdfs,file1,BLOCKSIZE,0,BLOCKSIZE,REPLICATION,SEED);
+  DFSTestUtil.appendFile(hdfs,file1,origLen);
   hdfs.allowSnapshot(sub);
   hdfs.createSnapshot(sub,snapshot1);
-  DFSTestUtil.appendFile(hdfs,file1,BLOCKSIZE);
+  Path file1snap1=SnapshotTestHelper.getSnapshotPath(sub,snapshot1,file1Name);
+  FSDataOutputStream out=hdfs.append(file1);
+  try {
+    AppendTestUtil.write(out,0,toAppend);
+    byte[] dataFromSnapshot=DFSTestUtil.readFileBuffer(hdfs,file1snap1);
+    assertThat("Wrong data size in snapshot.",dataFromSnapshot.length,is(origLen));
+  }
+  finally {
+    out.close();
+  }
   fileStatus=hdfs.getFileStatus(file1);
-  assertThat(fileStatus.getLen(),is((long)BLOCKSIZE * 2));
+  assertThat(fileStatus.getLen(),is((long)origLen + toAppend));
   fis=hdfs.open(file1);
   bytesRead=fis.read(0,buffer,0,buffer.length);
-  assertThat(bytesRead,is(BLOCKSIZE * 2));
+  assertThat(bytesRead,is(origLen + toAppend));
   fis.close();
-  Path file1snap1=SnapshotTestHelper.getSnapshotPath(sub,snapshot1,file1Name);
   fis=hdfs.open(file1snap1);
   fileStatus=hdfs.getFileStatus(file1snap1);
-  assertThat(fileStatus.getLen(),is((long)BLOCKSIZE));
+  assertThat(fileStatus.getLen(),is((long)origLen));
   bytesRead=fis.read(0,buffer,0,buffer.length);
-  assertThat(bytesRead,is(BLOCKSIZE));
+  assertThat(bytesRead,is(origLen));
   fis.close();
+  byte[] dataFromSnapshot=DFSTestUtil.readFileBuffer(hdfs,file1snap1);
+  assertThat("Wrong data size in snapshot.",dataFromSnapshot.length,is(origLen));
 }
