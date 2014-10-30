@@ -6,6 +6,9 @@
   MemoryRMStateStore memStore=new MemoryRMStateStore();
   memStore.init(conf);
   rm1=new MockRM(conf,memStore);
+  if (schedulerClass.equals(FairScheduler.class)) {
+    initFairScheduler(rm1);
+  }
   rm1.start();
   MockNM nm1=new MockNM("127.0.0.1:1234",8192,rm1.getResourceTrackerService());
   nm1.registerNode();
@@ -13,6 +16,9 @@
   MockAM am1=MockRM.launchAndRegisterAM(app1,rm1,nm1);
   rm1.clearQueueMetrics(app1);
   rm2=new MockRM(conf,memStore);
+  if (schedulerClass.equals(FairScheduler.class)) {
+    initFairScheduler(rm2);
+  }
   rm2.start();
   nm1.setResourceTrackerService(rm2.getResourceTrackerService());
   RMApp recoveredApp1=rm2.getRMContext().getRMApps().get(app1.getApplicationId());
@@ -45,14 +51,14 @@
     checkCSQueue(rm2,schedulerApp,nmResource,nmResource,usedResources,2);
   }
  else   if (schedulerClass.equals(FifoScheduler.class)) {
-    checkFifoQueue(schedulerApp,usedResources,availableResources);
+    checkFifoQueue(rm2,schedulerApp,usedResources,availableResources);
+  }
+ else   if (schedulerClass.equals(FairScheduler.class)) {
+    checkFSQueue(rm2,schedulerApp,usedResources,availableResources);
   }
   SchedulerApplicationAttempt schedulerAttempt=schedulerApp.getCurrentAppAttempt();
   assertTrue(schedulerAttempt.getLiveContainers().contains(scheduler.getRMContainer(amContainer.getContainerId())));
   assertTrue(schedulerAttempt.getLiveContainers().contains(scheduler.getRMContainer(runningContainer.getContainerId())));
   assertEquals(schedulerAttempt.getCurrentConsumption(),usedResources);
-  if (scheduler.getClass() != FairScheduler.class) {
-    assertEquals(availableResources,schedulerAttempt.getHeadroom());
-  }
   assertEquals((1L << 40) + 1L,schedulerAttempt.getNewContainerId());
 }
