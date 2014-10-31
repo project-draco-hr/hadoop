@@ -1,0 +1,43 @@
+{
+  int newMaxRetries=5;
+  long newIntervalMs=500;
+  YarnConfiguration conf=new YarnConfiguration();
+  conf.setInt(YarnConfiguration.TIMELINE_SERVICE_CLIENT_MAX_RETRIES,newMaxRetries);
+  conf.setLong(YarnConfiguration.TIMELINE_SERVICE_CLIENT_RETRY_INTERVAL_MS,newIntervalMs);
+  conf.setBoolean(YarnConfiguration.TIMELINE_SERVICE_ENABLED,true);
+  conf.set(CommonConfigurationKeysPublic.HADOOP_SECURITY_AUTHENTICATION,"kerberos");
+  UserGroupInformation.setConfiguration(conf);
+  TimelineClientImpl client=createTimelineClient(conf);
+  TestTimlineDelegationTokenSecretManager dtManager=new TestTimlineDelegationTokenSecretManager();
+  try {
+    dtManager.startThreads();
+    Thread.sleep(3000);
+    try {
+      client.getDelegationToken(UserGroupInformation.getCurrentUser().getShortUserName());
+      assertFail();
+    }
+ catch (    RuntimeException ce) {
+      assertException(client,ce);
+    }
+    try {
+      TimelineDelegationTokenIdentifier timelineDT=new TimelineDelegationTokenIdentifier(new Text("tester"),new Text("tester"),new Text("tester"));
+      client.renewDelegationToken(new Token<TimelineDelegationTokenIdentifier>(timelineDT,dtManager));
+      assertFail();
+    }
+ catch (    RuntimeException ce) {
+      assertException(client,ce);
+    }
+    try {
+      TimelineDelegationTokenIdentifier timelineDT=new TimelineDelegationTokenIdentifier(new Text("tester"),new Text("tester"),new Text("tester"));
+      client.cancelDelegationToken(new Token<TimelineDelegationTokenIdentifier>(timelineDT,dtManager));
+      assertFail();
+    }
+ catch (    RuntimeException ce) {
+      assertException(client,ce);
+    }
+  }
+  finally {
+    client.stop();
+    dtManager.stopThreads();
+  }
+}

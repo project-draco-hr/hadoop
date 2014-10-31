@@ -6,6 +6,18 @@
       TimelineDelegationTokenIdentifier tDT=token.decodeIdentifier();
       Assert.assertNotNull(tDT);
       Assert.assertEquals(new Text(HTTP_USER),tDT.getOwner());
+      long renewTime1=client.renewDelegationToken(token);
+      Thread.sleep(100);
+      long renewTime2=client.renewDelegationToken(token);
+      Assert.assertTrue(renewTime1 < renewTime2);
+      client.cancelDelegationToken(token);
+      try {
+        client.renewDelegationToken(token);
+        Assert.fail();
+      }
+ catch (      Exception e) {
+        Assert.assertTrue(e.getMessage().contains("Renewal request for unknown token"));
+      }
       UserGroupInformation fooUgi=UserGroupInformation.createProxyUser(FOO_USER,UserGroupInformation.getCurrentUser());
       token=fooUgi.doAs(new PrivilegedExceptionAction<Token<TimelineDelegationTokenIdentifier>>(){
         @Override public Token<TimelineDelegationTokenIdentifier> run() throws Exception {
@@ -18,6 +30,40 @@
       Assert.assertNotNull(tDT);
       Assert.assertEquals(new Text(FOO_USER),tDT.getOwner());
       Assert.assertEquals(new Text(HTTP_USER),tDT.getRealUser());
+      final Token<TimelineDelegationTokenIdentifier> tokenToRenew=token;
+      renewTime1=fooUgi.doAs(new PrivilegedExceptionAction<Long>(){
+        @Override public Long run() throws Exception {
+          return client.renewDelegationToken(tokenToRenew);
+        }
+      }
+);
+      renewTime2=fooUgi.doAs(new PrivilegedExceptionAction<Long>(){
+        @Override public Long run() throws Exception {
+          return client.renewDelegationToken(tokenToRenew);
+        }
+      }
+);
+      Assert.assertTrue(renewTime1 < renewTime2);
+      fooUgi.doAs(new PrivilegedExceptionAction<Void>(){
+        @Override public Void run() throws Exception {
+          client.cancelDelegationToken(tokenToRenew);
+          return null;
+        }
+      }
+);
+      try {
+        fooUgi.doAs(new PrivilegedExceptionAction<Void>(){
+          @Override public Void run() throws Exception {
+            client.renewDelegationToken(tokenToRenew);
+            return null;
+          }
+        }
+);
+        Assert.fail();
+      }
+ catch (      Exception e) {
+        Assert.assertTrue(e.getMessage().contains("Renewal request for unknown token"));
+      }
       UserGroupInformation barUgi=UserGroupInformation.createProxyUser(BAR_USER,UserGroupInformation.getCurrentUser());
       token=barUgi.doAs(new PrivilegedExceptionAction<Token<TimelineDelegationTokenIdentifier>>(){
         @Override public Token<TimelineDelegationTokenIdentifier> run() throws Exception {
