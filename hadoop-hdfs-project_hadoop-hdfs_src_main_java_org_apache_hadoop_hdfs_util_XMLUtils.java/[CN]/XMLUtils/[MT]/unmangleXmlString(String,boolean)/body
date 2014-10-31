@@ -1,0 +1,74 @@
+{
+  int slashPosition=-1;
+  String escapedCp="";
+  StringBuilder bld=new StringBuilder();
+  StringBuilder entityRef=null;
+  for (int i=0; i < str.length(); i++) {
+    char ch=str.charAt(i);
+    if (entityRef != null) {
+      entityRef.append(ch);
+      if (ch == ';') {
+        String e=entityRef.toString();
+        if (e.equals("&quot;")) {
+          bld.append("\"");
+        }
+ else         if (e.equals("&apos;")) {
+          bld.append("\'");
+        }
+ else         if (e.equals("&amp;")) {
+          bld.append("&");
+        }
+ else         if (e.equals("&lt;")) {
+          bld.append("<");
+        }
+ else         if (e.equals("&gt;")) {
+          bld.append(">");
+        }
+ else {
+          throw new UnmanglingError("Unknown entity ref " + e);
+        }
+        entityRef=null;
+      }
+    }
+ else     if ((slashPosition >= 0) && (slashPosition < NUM_SLASH_POSITIONS)) {
+      escapedCp+=ch;
+      ++slashPosition;
+    }
+ else     if (slashPosition == NUM_SLASH_POSITIONS) {
+      if (ch != ';') {
+        throw new UnmanglingError("unterminated code point escape: " + "expected semicolon at end.");
+      }
+      try {
+        bld.appendCodePoint(Integer.parseInt(escapedCp,16));
+      }
+ catch (      NumberFormatException e) {
+        throw new UnmanglingError("error parsing unmangling escape code",e);
+      }
+      escapedCp="";
+      slashPosition=-1;
+    }
+ else     if (ch == '\\') {
+      slashPosition=0;
+    }
+ else {
+      boolean startingEntityRef=false;
+      if (decodeEntityRefs) {
+        startingEntityRef=(ch == '&');
+      }
+      if (startingEntityRef) {
+        entityRef=new StringBuilder();
+        entityRef.append("&");
+      }
+ else {
+        bld.append(ch);
+      }
+    }
+  }
+  if (entityRef != null) {
+    throw new UnmanglingError("unterminated entity ref starting with " + entityRef.toString());
+  }
+ else   if (slashPosition != -1) {
+    throw new UnmanglingError("unterminated code point escape: string " + "broke off in the middle");
+  }
+  return bld.toString();
+}
