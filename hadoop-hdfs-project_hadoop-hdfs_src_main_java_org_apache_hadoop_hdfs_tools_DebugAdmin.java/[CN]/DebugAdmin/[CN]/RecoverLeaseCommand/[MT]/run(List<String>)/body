@@ -1,0 +1,73 @@
+{
+  if (args.size() == 0) {
+    System.out.println(usageText);
+    System.out.println(helpText + "\n");
+    return 1;
+  }
+  String pathStr=StringUtils.popOptionWithArgument("-path",args);
+  String retriesStr=StringUtils.popOptionWithArgument("-retries",args);
+  if (pathStr == null) {
+    System.err.println("You must supply a -path argument to " + "recoverLease.");
+    return 1;
+  }
+  int maxRetries=1;
+  if (retriesStr != null) {
+    try {
+      maxRetries=Integer.parseInt(retriesStr);
+    }
+ catch (    NumberFormatException e) {
+      System.err.println("Failed to parse the argument to -retries: " + StringUtils.stringifyException(e));
+      return 1;
+    }
+  }
+  FileSystem fs;
+  try {
+    fs=FileSystem.newInstance(new URI(pathStr),getConf(),null);
+  }
+ catch (  URISyntaxException e) {
+    System.err.println("URISyntaxException for " + pathStr + ":"+ StringUtils.stringifyException(e));
+    return 1;
+  }
+catch (  InterruptedException e) {
+    System.err.println("InterruptedException for " + pathStr + ":"+ StringUtils.stringifyException(e));
+    return 1;
+  }
+  DistributedFileSystem dfs=null;
+  try {
+    dfs=(DistributedFileSystem)fs;
+  }
+ catch (  ClassCastException e) {
+    System.err.println("Invalid filesystem for path " + pathStr + ": "+ "needed scheme hdfs, but got: "+ fs.getScheme());
+    return 1;
+  }
+  for (int retry=0; true; ) {
+    boolean recovered=false;
+    IOException ioe=null;
+    try {
+      recovered=dfs.recoverLease(new Path(pathStr));
+    }
+ catch (    IOException e) {
+      ioe=e;
+    }
+    if (recovered) {
+      System.out.println("recoverLease SUCCEEDED on " + pathStr);
+      return 0;
+    }
+    if (ioe != null) {
+      System.err.println("recoverLease got exception: ");
+      ioe.printStackTrace();
+    }
+ else {
+      System.err.println("recoverLease returned false.");
+    }
+    retry++;
+    if (retry >= maxRetries) {
+      break;
+    }
+    System.err.println("Retrying in " + TIMEOUT_MS + " ms...");
+    Uninterruptibles.sleepUninterruptibly(TIMEOUT_MS,TimeUnit.MILLISECONDS);
+    System.err.println("Retry #" + retry);
+  }
+  System.err.println("Giving up on recoverLease for " + pathStr + " after "+ maxRetries+ (maxRetries == 1 ? " try." : " tries."));
+  return 1;
+}
