@@ -1,0 +1,27 @@
+{
+  Configuration conf=new Configuration();
+  conf.set(DFS_DATANODE_DATA_DIR_KEY,newVolumes);
+  List<StorageLocation> locations=getStorageLocations(conf);
+  if (locations.isEmpty()) {
+    throw new IOException("No directory is specified.");
+  }
+  ChangedVolumes results=new ChangedVolumes();
+  results.newLocations.addAll(locations);
+  for (Iterator<Storage.StorageDirectory> it=storage.dirIterator(); it.hasNext(); ) {
+    Storage.StorageDirectory dir=it.next();
+    boolean found=false;
+    for (Iterator<StorageLocation> sl=results.newLocations.iterator(); sl.hasNext(); ) {
+      StorageLocation location=sl.next();
+      if (location.getFile().getCanonicalPath().equals(dir.getRoot().getCanonicalPath())) {
+        sl.remove();
+        results.unchangedLocations.add(location);
+        found=true;
+        break;
+      }
+    }
+    if (!found) {
+      results.deactivateLocations.add(StorageLocation.parse(dir.getRoot().toString()));
+    }
+  }
+  return results;
+}

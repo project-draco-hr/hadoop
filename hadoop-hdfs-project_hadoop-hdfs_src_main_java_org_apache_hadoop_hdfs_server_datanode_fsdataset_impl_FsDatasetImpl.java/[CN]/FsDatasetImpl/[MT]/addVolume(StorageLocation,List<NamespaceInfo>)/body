@@ -1,0 +1,32 @@
+{
+  final File dir=location.getFile();
+  DataStorage.VolumeBuilder builder=dataStorage.prepareVolume(datanode,location.getFile(),nsInfos);
+  final Storage.StorageDirectory sd=builder.getStorageDirectory();
+  StorageType storageType=location.getStorageType();
+  final FsVolumeImpl fsVolume=new FsVolumeImpl(this,sd.getStorageUuid(),dir,this.conf,storageType);
+  final ReplicaMap tempVolumeMap=new ReplicaMap(fsVolume);
+  ArrayList<IOException> exceptions=Lists.newArrayList();
+  for (  final NamespaceInfo nsInfo : nsInfos) {
+    String bpid=nsInfo.getBlockPoolID();
+    try {
+      fsVolume.addBlockPool(bpid,this.conf);
+      fsVolume.getVolumeMap(bpid,tempVolumeMap,ramDiskReplicaTracker);
+    }
+ catch (    IOException e) {
+      LOG.warn("Caught exception when adding " + fsVolume + ". Will throw later.",e);
+      exceptions.add(e);
+    }
+  }
+  if (!exceptions.isEmpty()) {
+    throw MultipleIOException.createIOException(exceptions);
+  }
+  setupAsyncLazyPersistThread(fsVolume);
+  builder.build();
+synchronized (this) {
+    volumeMap.addAll(tempVolumeMap);
+    storageMap.put(sd.getStorageUuid(),new DatanodeStorage(sd.getStorageUuid(),DatanodeStorage.State.NORMAL,storageType));
+    asyncDiskService.addVolume(sd.getCurrentDir());
+    volumes.addVolume(fsVolume);
+  }
+  LOG.info("Added volume - " + dir + ", StorageType: "+ storageType);
+}
