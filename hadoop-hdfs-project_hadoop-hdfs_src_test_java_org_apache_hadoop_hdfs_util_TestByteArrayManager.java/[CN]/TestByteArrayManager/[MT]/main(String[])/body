@@ -1,0 +1,31 @@
+{
+  ((Log4JLogger)LogFactory.getLog(ByteArrayManager.class)).getLogger().setLevel(Level.OFF);
+  final int arrayLength=64 * 1024;
+  final int nThreads=512;
+  final int nAllocations=1 << 15;
+  final int maxArrays=1 << 10;
+  final int nTrials=5;
+  System.out.println("arrayLength=" + arrayLength + ", nThreads="+ nThreads+ ", nAllocations="+ nAllocations+ ", maxArrays="+ maxArrays);
+  final Random ran=DFSUtil.getRandom();
+  final ByteArrayManager[] impls={new ByteArrayManager.NewByteArrayWithoutLimit(),new NewByteArrayWithLimit(maxArrays),new ByteArrayManager.Impl(new ByteArrayManager.Conf(DFSConfigKeys.DFS_CLIENT_WRITE_BYTE_ARRAY_MANAGER_COUNT_THRESHOLD_DEFAULT,maxArrays,DFSConfigKeys.DFS_CLIENT_WRITE_BYTE_ARRAY_MANAGER_COUNT_RESET_TIME_PERIOD_MS_DEFAULT))};
+  final double[] avg=new double[impls.length];
+  for (int i=0; i < impls.length; i++) {
+    double duration=0;
+    printf("%26s:",impls[i].getClass().getSimpleName());
+    for (int j=0; j < nTrials; j++) {
+      final int[] sleepTime=new int[nAllocations];
+      for (int k=0; k < sleepTime.length; k++) {
+        sleepTime[k]=ran.nextInt(100);
+      }
+      final long elapsed=performanceTest(arrayLength,maxArrays,nThreads,sleepTime,impls[i]);
+      duration+=elapsed;
+      printf("%5d, ",elapsed);
+    }
+    avg[i]=duration / nTrials;
+    printf("avg=%6.3fs",avg[i] / 1000);
+    for (int j=0; j < i; j++) {
+      printf(" (%6.2f%%)",percentageDiff(avg[j],avg[i]));
+    }
+    printf("\n");
+  }
+}
