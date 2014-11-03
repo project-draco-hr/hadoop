@@ -1,0 +1,50 @@
+{
+  Configuration conf=new Configuration();
+  File workDir=new File(testWorkDir,"testReadAcontainerLogs1");
+  Path remoteAppLogFile=new Path(workDir.getAbsolutePath(),"aggregatedLogFile");
+  Path srcFileRoot=new Path(workDir.getAbsolutePath(),"srcFiles");
+  ContainerId testContainerId=TestContainerId.newContainerId(1,1,1,1);
+  Path t=new Path(srcFileRoot,testContainerId.getApplicationAttemptId().getApplicationId().toString());
+  Path srcFilePath=new Path(t,testContainerId.toString());
+  int numChars=80000;
+  Path subDir=new Path(srcFilePath,"subDir");
+  fs.mkdirs(subDir);
+  writeSrcFile(subDir,"logs",numChars);
+  writeSrcFile(srcFilePath,"stderr",numChars);
+  writeSrcFile(srcFilePath,"stdout",numChars);
+  UserGroupInformation ugi=UserGroupInformation.getCurrentUser();
+  LogWriter logWriter=new LogWriter(conf,remoteAppLogFile,ugi);
+  LogKey logKey=new LogKey(testContainerId);
+  LogValue logValue=new LogValue(Collections.singletonList(srcFileRoot.toString()),testContainerId,ugi.getShortUserName());
+  LogValue spyLogValue=spy(logValue);
+  File errorFile=new File((new Path(srcFilePath,"stderr")).toString());
+  doThrow(new IOException("Mock can not open FileInputStream")).when(spyLogValue).secureOpenFile(errorFile);
+  logWriter.append(logKey,spyLogValue);
+  logWriter.close();
+  FileStatus fsStatus=fs.getFileStatus(remoteAppLogFile);
+  Assert.assertEquals("permissions on log aggregation file are wrong",FsPermission.createImmutable((short)0640),fsStatus.getPermission());
+  LogReader logReader=new LogReader(conf,remoteAppLogFile);
+  LogKey rLogKey=new LogKey();
+  DataInputStream dis=logReader.next(rLogKey);
+  Writer writer=new StringWriter();
+  if (logUploadedTime) {
+    LogReader.readAcontainerLogs(dis,writer,System.currentTimeMillis());
+  }
+ else {
+    LogReader.readAcontainerLogs(dis,writer);
+  }
+  String s=writer.toString();
+  int expectedLength="LogType:stdout".length() + (logUploadedTime ? ("\nLog Upload Time:" + Times.format(System.currentTimeMillis())).length() : 0) + ("\nLogLength:" + numChars).length()+ "\nLog Contents:\n".length()+ numChars+ "\n".length();
+  Assert.assertTrue("LogType not matched",s.contains("LogType:stdout"));
+  Assert.assertTrue("log file:stderr should not be aggregated.",!s.contains("LogType:stderr"));
+  Assert.assertTrue("log file:logs should not be aggregated.",!s.contains("LogType:logs"));
+  Assert.assertTrue("LogLength not matched",s.contains("LogLength:" + numChars));
+  Assert.assertTrue("Log Contents not matched",s.contains("Log Contents"));
+  StringBuilder sb=new StringBuilder();
+  for (int i=0; i < numChars; i++) {
+    sb.append(filler);
+  }
+  String expectedContent=sb.toString();
+  Assert.assertTrue("Log content incorrect",s.contains(expectedContent));
+  Assert.assertEquals(expectedLength,s.length());
+}
