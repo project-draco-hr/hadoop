@@ -1,52 +1,15 @@
 {
-  final Path absF=fixRelativePart(p);
-  return new RemoteIterator<LocatedFileStatus>(){
-    private DirectoryListing thisListing;
-    private int i;
-    private String src;
-    private LocatedFileStatus curStat=null;
-{
-      src=getPathName(resolvePath(absF));
-      thisListing=dfs.listPaths(src,HdfsFileStatus.EMPTY_NAME,true);
-      statistics.incrementReadOps(1);
-      if (thisListing == null) {
-        throw new FileNotFoundException("File " + p + " does not exist.");
-      }
+  Path absF=fixRelativePart(p);
+  return new FileSystemLinkResolver<RemoteIterator<LocatedFileStatus>>(){
+    @Override public RemoteIterator<LocatedFileStatus> doCall(    final Path p) throws IOException, UnresolvedLinkException {
+      return new DirListingIterator<LocatedFileStatus>(p,filter,true);
     }
-    @Override public boolean hasNext() throws IOException {
-      while (curStat == null && hasNextNoFilter()) {
-        LocatedFileStatus next=((HdfsLocatedFileStatus)thisListing.getPartialListing()[i++]).makeQualifiedLocated(getUri(),absF);
-        if (filter.accept(next.getPath())) {
-          curStat=next;
-        }
+    @Override public RemoteIterator<LocatedFileStatus> next(    final FileSystem fs,    final Path p) throws IOException {
+      if (fs instanceof DistributedFileSystem) {
+        return ((DistributedFileSystem)fs).listLocatedStatus(p,filter);
       }
-      return curStat != null;
-    }
-    /** 
- * Check if there is a next item before applying the given filter 
- */
-    private boolean hasNextNoFilter() throws IOException {
-      if (thisListing == null) {
-        return false;
-      }
-      if (i >= thisListing.getPartialListing().length && thisListing.hasMore()) {
-        thisListing=dfs.listPaths(src,thisListing.getLastName(),true);
-        statistics.incrementReadOps(1);
-        if (thisListing == null) {
-          return false;
-        }
-        i=0;
-      }
-      return (i < thisListing.getPartialListing().length);
-    }
-    @Override public LocatedFileStatus next() throws IOException {
-      if (hasNext()) {
-        LocatedFileStatus tmp=curStat;
-        curStat=null;
-        return tmp;
-      }
-      throw new java.util.NoSuchElementException("No more entry in " + p);
+      throw new IOException("Link resolution does not work with multiple " + "file systems for listLocatedStatus(): " + p);
     }
   }
-;
+.resolve(this,absF);
 }
