@@ -1,0 +1,64 @@
+{
+  final Configuration conf=new HdfsConfiguration();
+  conf.setBoolean(DFS_NAMENODE_ACLS_ENABLED_KEY,true);
+  conf.set(DFS_NAMENODE_AUDIT_LOGGERS_KEY,DummyAuditLogger.class.getName());
+  final MiniDFSCluster cluster=new MiniDFSCluster.Builder(conf).build();
+  try {
+    cluster.waitClusterUp();
+    final FSDirectory dir=cluster.getNamesystem().getFSDirectory();
+    final FSDirectory mockedDir=Mockito.spy(dir);
+    Mockito.doThrow(new AccessControlException("mock setAcl exception")).when(mockedDir).setAcl(anyString(),anyListOf(AclEntry.class));
+    Mockito.doThrow(new AccessControlException("mock getAclStatus exception")).when(mockedDir).getAclStatus(anyString());
+    Mockito.doThrow(new AccessControlException("mock removeAcl exception")).when(mockedDir).removeAcl(anyString());
+    Mockito.doThrow(new AccessControlException("mock removeDefaultAcl exception")).when(mockedDir).removeDefaultAcl(anyString());
+    Mockito.doThrow(new AccessControlException("mock removeAclEntries exception")).when(mockedDir).removeAclEntries(anyString(),anyListOf(AclEntry.class));
+    Mockito.doThrow(new AccessControlException("mock modifyAclEntries exception")).when(mockedDir).modifyAclEntries(anyString(),anyListOf(AclEntry.class));
+    cluster.getNamesystem().setFSDirectory(mockedDir);
+    assertTrue(DummyAuditLogger.initialized);
+    DummyAuditLogger.resetLogCount();
+    final FileSystem fs=cluster.getFileSystem();
+    final Path p=new Path("/");
+    final List<AclEntry> acls=Lists.newArrayList();
+    try {
+      fs.getAclStatus(p);
+    }
+ catch (    AccessControlException e) {
+      assertExceptionContains("mock getAclStatus exception",e);
+    }
+    try {
+      fs.setAcl(p,acls);
+    }
+ catch (    AccessControlException e) {
+      assertExceptionContains("mock setAcl exception",e);
+    }
+    try {
+      fs.removeAcl(p);
+    }
+ catch (    AccessControlException e) {
+      assertExceptionContains("mock removeAcl exception",e);
+    }
+    try {
+      fs.removeDefaultAcl(p);
+    }
+ catch (    AccessControlException e) {
+      assertExceptionContains("mock removeDefaultAcl exception",e);
+    }
+    try {
+      fs.removeAclEntries(p,acls);
+    }
+ catch (    AccessControlException e) {
+      assertExceptionContains("mock removeAclEntries exception",e);
+    }
+    try {
+      fs.modifyAclEntries(p,acls);
+    }
+ catch (    AccessControlException e) {
+      assertExceptionContains("mock modifyAclEntries exception",e);
+    }
+    assertEquals(6,DummyAuditLogger.logCount);
+    assertEquals(6,DummyAuditLogger.unsuccessfulCount);
+  }
+  finally {
+    cluster.shutdown();
+  }
+}
