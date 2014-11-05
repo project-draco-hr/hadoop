@@ -1,0 +1,37 @@
+{
+  baseDir=new File(System.getProperty("test.build.dir","target/test-dir"),TestSecureNNWithQJM.class.getSimpleName());
+  FileUtil.fullyDelete(baseDir);
+  assertTrue(baseDir.mkdirs());
+  Properties kdcConf=MiniKdc.createConf();
+  kdc=new MiniKdc(kdcConf,baseDir);
+  kdc.start();
+  baseConf=new HdfsConfiguration();
+  SecurityUtil.setAuthenticationMethod(AuthenticationMethod.KERBEROS,baseConf);
+  UserGroupInformation.setConfiguration(baseConf);
+  assertTrue("Expected configuration to enable security",UserGroupInformation.isSecurityEnabled());
+  String userName=UserGroupInformation.getLoginUser().getShortUserName();
+  File keytabFile=new File(baseDir,userName + ".keytab");
+  String keytab=keytabFile.getAbsolutePath();
+  String krbInstance=Path.WINDOWS ? "127.0.0.1" : "localhost";
+  kdc.createPrincipal(keytabFile,userName + "/" + krbInstance,"HTTP/" + krbInstance);
+  String hdfsPrincipal=userName + "/" + krbInstance+ "@"+ kdc.getRealm();
+  String spnegoPrincipal="HTTP/" + krbInstance + "@"+ kdc.getRealm();
+  baseConf.set(DFS_NAMENODE_KERBEROS_PRINCIPAL_KEY,hdfsPrincipal);
+  baseConf.set(DFS_NAMENODE_KEYTAB_FILE_KEY,keytab);
+  baseConf.set(DFS_DATANODE_KERBEROS_PRINCIPAL_KEY,hdfsPrincipal);
+  baseConf.set(DFS_DATANODE_KEYTAB_FILE_KEY,keytab);
+  baseConf.set(DFS_WEB_AUTHENTICATION_KERBEROS_PRINCIPAL_KEY,spnegoPrincipal);
+  baseConf.set(DFS_JOURNALNODE_KEYTAB_FILE_KEY,keytab);
+  baseConf.set(DFS_JOURNALNODE_KERBEROS_PRINCIPAL_KEY,hdfsPrincipal);
+  baseConf.set(DFS_JOURNALNODE_KERBEROS_INTERNAL_SPNEGO_PRINCIPAL_KEY,spnegoPrincipal);
+  baseConf.setBoolean(DFS_BLOCK_ACCESS_TOKEN_ENABLE_KEY,true);
+  baseConf.set(DFS_DATA_TRANSFER_PROTECTION_KEY,"authentication");
+  baseConf.set(DFS_HTTP_POLICY_KEY,HttpConfig.Policy.HTTPS_ONLY.name());
+  baseConf.set(DFS_NAMENODE_HTTPS_ADDRESS_KEY,"localhost:0");
+  baseConf.set(DFS_DATANODE_HTTPS_ADDRESS_KEY,"localhost:0");
+  baseConf.set(DFS_JOURNALNODE_HTTPS_ADDRESS_KEY,"localhost:0");
+  baseConf.setInt(IPC_CLIENT_CONNECT_MAX_RETRIES_ON_SASL_KEY,10);
+  String keystoresDir=baseDir.getAbsolutePath();
+  String sslConfDir=KeyStoreTestUtil.getClasspathDir(TestSecureNNWithQJM.class);
+  KeyStoreTestUtil.setupSSLConfig(keystoresDir,sslConfDir,baseConf,false);
+}
