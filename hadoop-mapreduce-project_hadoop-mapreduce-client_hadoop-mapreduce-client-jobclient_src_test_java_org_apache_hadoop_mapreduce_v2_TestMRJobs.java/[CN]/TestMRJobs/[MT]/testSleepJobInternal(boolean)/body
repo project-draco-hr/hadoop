@@ -1,0 +1,31 @@
+{
+  LOG.info("\n\n\nStarting testSleepJob: useRemoteJar=" + useRemoteJar);
+  if (!(new File(MiniMRYarnCluster.APPJAR)).exists()) {
+    LOG.info("MRAppJar " + MiniMRYarnCluster.APPJAR + " not found. Not running test.");
+    return;
+  }
+  Configuration sleepConf=new Configuration(mrCluster.getConfig());
+  sleepConf.set(MRConfig.MASTER_ADDRESS,"local");
+  SleepJob sleepJob=new SleepJob();
+  sleepJob.setConf(sleepConf);
+  Job job=sleepJob.createJob(3,numSleepReducers,10000,1,5000,1);
+  job.addFileToClassPath(APP_JAR);
+  if (useRemoteJar) {
+    final Path localJar=new Path(ClassUtil.findContainingJar(SleepJob.class));
+    ConfigUtil.addLink(job.getConfiguration(),"/jobjars",localFs.makeQualified(localJar.getParent()).toUri());
+    job.setJar("viewfs:///jobjars/" + localJar.getName());
+  }
+ else {
+    job.setJarByClass(SleepJob.class);
+  }
+  job.setMaxMapAttempts(1);
+  job.submit();
+  String trackingUrl=job.getTrackingURL();
+  String jobId=job.getJobID().toString();
+  boolean succeeded=job.waitForCompletion(true);
+  Assert.assertTrue(succeeded);
+  Assert.assertEquals(JobStatus.State.SUCCEEDED,job.getJobState());
+  Assert.assertTrue("Tracking URL was " + trackingUrl + " but didn't Match Job ID "+ jobId,trackingUrl.endsWith(jobId.substring(jobId.lastIndexOf("_")) + "/"));
+  verifySleepJobCounters(job);
+  verifyTaskProgress(job);
+}
