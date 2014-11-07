@@ -12,13 +12,35 @@
     @Override public ContainerState getCurrentState(){
       return ContainerState.COMPLETE;
     }
+    @Override public org.apache.hadoop.yarn.server.nodemanager.containermanager.container.ContainerState getContainerState(){
+      return org.apache.hadoop.yarn.server.nodemanager.containermanager.container.ContainerState.DONE;
+    }
+  }
+;
+  ContainerId runningContainerId=ContainerId.newInstance(appAttemptId,3);
+  Token runningContainerToken=BuilderUtils.newContainerToken(runningContainerId,"anyHost",1234,"anyUser",BuilderUtils.newResource(1024,1),0,123,"password".getBytes(),0);
+  Container runningContainer=new ContainerImpl(conf,null,null,null,null,null,BuilderUtils.newContainerTokenIdentifier(runningContainerToken)){
+    @Override public ContainerState getCurrentState(){
+      return ContainerState.RUNNING;
+    }
+    @Override public org.apache.hadoop.yarn.server.nodemanager.containermanager.container.ContainerState getContainerState(){
+      return org.apache.hadoop.yarn.server.nodemanager.containermanager.container.ContainerState.RUNNING;
+    }
   }
 ;
   nm.getNMContext().getApplications().putIfAbsent(appId,mock(Application.class));
   nm.getNMContext().getContainers().put(cId,anyCompletedContainer);
-  Assert.assertEquals(1,nodeStatusUpdater.getContainerStatuses().size());
+  nm.getNMContext().getContainers().put(runningContainerId,runningContainer);
+  Assert.assertEquals(2,nodeStatusUpdater.getContainerStatuses().size());
   List<ContainerId> ackedContainers=new ArrayList<ContainerId>();
   ackedContainers.add(cId);
-  nodeStatusUpdater.removeCompletedContainersFromContext(ackedContainers);
-  Assert.assertTrue(nodeStatusUpdater.getContainerStatuses().isEmpty());
+  ackedContainers.add(runningContainerId);
+  nodeStatusUpdater.removeOrTrackCompletedContainersFromContext(ackedContainers);
+  Set<ContainerId> containerIdSet=new HashSet<ContainerId>();
+  for (  ContainerStatus status : nodeStatusUpdater.getContainerStatuses()) {
+    containerIdSet.add(status.getContainerId());
+  }
+  Assert.assertTrue(nodeStatusUpdater.getContainerStatuses().size() == 1);
+  Assert.assertFalse(containerIdSet.contains(anyCompletedContainer));
+  Assert.assertTrue(containerIdSet.contains(runningContainerId));
 }
