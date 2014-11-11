@@ -7,33 +7,48 @@
       return COMMIT_STATUS.COMMIT_INACTIVE_WITH_PENDING_WRITE;
     }
   }
-  if (pendingWrites.isEmpty()) {
-    return COMMIT_STATUS.COMMIT_FINISHED;
-  }
   long flushed=getFlushedOffset();
   if (LOG.isDebugEnabled()) {
-    LOG.debug("getFlushedOffset=" + flushed + " commitOffset="+ commitOffset);
+    LOG.debug("getFlushedOffset=" + flushed + " commitOffset="+ commitOffset+ "nextOffset="+ nextOffset.get());
   }
+  if (pendingWrites.isEmpty()) {
+    if (aixCompatMode) {
+      return COMMIT_STATUS.COMMIT_FINISHED;
+    }
+ else {
+      if (flushed < nextOffset.get()) {
+        if (LOG.isDebugEnabled()) {
+          LOG.debug("get commit while still writing to the requested offset," + " with empty queue");
+        }
+        return handleSpecialWait(fromRead,nextOffset.get(),channel,xid,preOpAttr);
+      }
+ else {
+        return COMMIT_STATUS.COMMIT_FINISHED;
+      }
+    }
+  }
+  Preconditions.checkState(flushed <= nextOffset.get(),"flushed " + flushed + " is larger than nextOffset "+ nextOffset.get());
   if (uploadLargeFile && !aixCompatMode) {
     long co=(commitOffset > 0) ? commitOffset : pendingWrites.firstEntry().getKey().getMax() - 1;
     if (co <= flushed) {
       return COMMIT_STATUS.COMMIT_DO_SYNC;
     }
  else     if (co < nextOffset.get()) {
-      if (!fromRead) {
-        CommitCtx commitCtx=new CommitCtx(commitOffset,channel,xid,preOpAttr);
-        pendingCommits.put(commitOffset,commitCtx);
-      }
       if (LOG.isDebugEnabled()) {
-        LOG.debug("return COMMIT_SPECIAL_WAIT");
+        LOG.debug("get commit while still writing to the requested offset");
       }
-      return COMMIT_STATUS.COMMIT_SPECIAL_WAIT;
+      return handleSpecialWait(fromRead,co,channel,xid,preOpAttr);
     }
  else {
-      if (LOG.isDebugEnabled()) {
-        LOG.debug("return COMMIT_SPECIAL_SUCCESS");
+      if (checkSequential(co,nextOffset.get())) {
+        return handleSpecialWait(fromRead,co,channel,xid,preOpAttr);
       }
-      return COMMIT_STATUS.COMMIT_SPECIAL_SUCCESS;
+ else {
+        if (LOG.isDebugEnabled()) {
+          LOG.debug("return COMMIT_SPECIAL_SUCCESS");
+        }
+        return COMMIT_STATUS.COMMIT_SPECIAL_SUCCESS;
+      }
     }
   }
   if (commitOffset > 0) {
