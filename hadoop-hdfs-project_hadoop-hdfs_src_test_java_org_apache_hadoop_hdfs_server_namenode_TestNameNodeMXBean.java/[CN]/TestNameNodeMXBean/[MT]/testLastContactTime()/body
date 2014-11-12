@@ -1,0 +1,43 @@
+{
+  Configuration conf=new Configuration();
+  conf.setInt(DFSConfigKeys.DFS_HEARTBEAT_INTERVAL_KEY,1);
+  conf.setInt(DFSConfigKeys.DFS_NAMENODE_HEARTBEAT_RECHECK_INTERVAL_KEY,1);
+  MiniDFSCluster cluster=null;
+  try {
+    cluster=new MiniDFSCluster.Builder(conf).numDataNodes(3).build();
+    cluster.waitActive();
+    FSNamesystem fsn=cluster.getNameNode().namesystem;
+    MBeanServer mbs=ManagementFactory.getPlatformMBeanServer();
+    ObjectName mxbeanName=new ObjectName("Hadoop:service=NameNode,name=NameNodeInfo");
+    FileSystem localFileSys=FileSystem.getLocal(conf);
+    Path workingDir=localFileSys.getWorkingDirectory();
+    Path dir=new Path(workingDir,"build/test/data/temp/TestNameNodeMXBean");
+    Path includeFile=new Path(dir,"include");
+    assertTrue(localFileSys.mkdirs(dir));
+    StringBuilder includeHosts=new StringBuilder();
+    for (    DataNode dn : cluster.getDataNodes()) {
+      includeHosts.append(dn.getDisplayName()).append("\n");
+    }
+    DFSTestUtil.writeFile(localFileSys,includeFile,includeHosts.toString());
+    conf.set(DFSConfigKeys.DFS_HOSTS,includeFile.toUri().getPath());
+    fsn.getBlockManager().getDatanodeManager().refreshNodes(conf);
+    cluster.stopDataNode(0);
+    while (fsn.getBlockManager().getDatanodeManager().getNumLiveDataNodes() != 2) {
+      Uninterruptibles.sleepUninterruptibly(1,TimeUnit.SECONDS);
+    }
+    String deadnodeinfo=(String)(mbs.getAttribute(mxbeanName,"DeadNodes"));
+    assertEquals(fsn.getDeadNodes(),deadnodeinfo);
+    Map<String,Map<String,Object>> deadNodes=(Map<String,Map<String,Object>>)JSON.parse(deadnodeinfo);
+    assertTrue(deadNodes.size() > 0);
+    for (    Map<String,Object> deadNode : deadNodes.values()) {
+      assertTrue(deadNode.containsKey("lastContact"));
+      assertTrue(deadNode.containsKey("decommissioned"));
+      assertTrue(deadNode.containsKey("xferaddr"));
+    }
+  }
+  finally {
+    if (cluster != null) {
+      cluster.shutdown();
+    }
+  }
+}
