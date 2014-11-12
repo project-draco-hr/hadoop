@@ -1,0 +1,34 @@
+{
+  try {
+    lfs=FileContext.getLocalFSFileContext();
+    workDir=new Path("/tmp/temp-" + System.currentTimeMillis());
+    workSpace=new File(workDir.toUri().getPath());
+    lfs.mkdir(workDir,FsPermission.getDirDefault(),true);
+  }
+ catch (  IOException e) {
+    throw new RuntimeException(e);
+  }
+  Configuration conf=new Configuration();
+  yarnImage="yarnImage";
+  long time=System.currentTimeMillis();
+  conf.set(YarnConfiguration.NM_LOCAL_DIRS,"/tmp/nm-local-dir" + time);
+  conf.set(YarnConfiguration.NM_LOG_DIRS,"/tmp/userlogs" + time);
+  dockerUrl=System.getProperty("docker-service-url");
+  LOG.info("dockerUrl: " + dockerUrl);
+  if (Strings.isNullOrEmpty(dockerUrl)) {
+    return;
+  }
+  dockerUrl=" -H " + dockerUrl;
+  dockerExec="docker " + dockerUrl;
+  conf.set(YarnConfiguration.NM_DOCKER_CONTAINER_EXECUTOR_IMAGE_NAME,yarnImage);
+  conf.set(YarnConfiguration.NM_DOCKER_CONTAINER_EXECUTOR_EXEC_NAME,dockerExec);
+  exec=new DockerContainerExecutor();
+  dirsHandler=new LocalDirsHandlerService();
+  dirsHandler.init(conf);
+  exec.setConf(conf);
+  appSubmitter=System.getProperty("application.submitter");
+  if (appSubmitter == null || appSubmitter.isEmpty()) {
+    appSubmitter="nobody";
+  }
+  shellExec(dockerExec + " pull " + testImage);
+}
