@@ -1,0 +1,22 @@
+{
+  if (resource.getVisibility() == LocalResourceVisibility.PUBLIC) {
+    return true;
+  }
+  final Path remotePath;
+  try {
+    remotePath=ConverterUtils.getPathFromYarnURL(resource.getResource());
+  }
+ catch (  URISyntaxException e) {
+    throw new IOException("Invalid resource",e);
+  }
+  FileSystem remoteFs=remotePath.getFileSystem(conf);
+  FileStatus status=remoteFs.getFileStatus(remotePath);
+  if (status.getModificationTime() != resource.getTimestamp()) {
+    LOG.warn("The remote file " + remotePath + " has changed since it's localized; will not consider it for upload");
+    return false;
+  }
+  if (status.getOwner().equals(user)) {
+    return true;
+  }
+  return fileIsPublic(remotePath,remoteFs,status);
+}

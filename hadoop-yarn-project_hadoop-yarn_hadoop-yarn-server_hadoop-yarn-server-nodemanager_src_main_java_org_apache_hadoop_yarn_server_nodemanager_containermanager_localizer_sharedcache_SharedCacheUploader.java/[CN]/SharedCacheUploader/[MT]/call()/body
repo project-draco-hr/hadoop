@@ -1,0 +1,38 @@
+{
+  Path tempPath=null;
+  try {
+    if (!verifyAccess()) {
+      LOG.warn("User " + user + " is not authorized to upload file "+ localPath.getName());
+      return false;
+    }
+    Path actualPath=getActualPath();
+    String checksumVal=computeChecksum(actualPath);
+    Path directoryPath=new Path(SharedCacheUtil.getCacheEntryPath(nestedLevel,sharedCacheRootDir,checksumVal));
+    fs.mkdirs(directoryPath,DIRECTORY_PERMISSION);
+    tempPath=new Path(directoryPath,getTemporaryFileName(actualPath));
+    if (!uploadFile(actualPath,tempPath)) {
+      LOG.warn("Could not copy the file to the shared cache at " + tempPath);
+      return false;
+    }
+    fs.setPermission(tempPath,FILE_PERMISSION);
+    Path finalPath=new Path(directoryPath,actualPath.getName());
+    if (!fs.rename(tempPath,finalPath)) {
+      LOG.warn("The file already exists under " + finalPath + ". Ignoring this attempt.");
+      deleteTempFile(tempPath);
+      return false;
+    }
+    if (!notifySharedCacheManager(checksumVal,actualPath.getName())) {
+      fs.delete(finalPath,false);
+      return false;
+    }
+    short replication=(short)conf.getInt(YarnConfiguration.SHARED_CACHE_NM_UPLOADER_REPLICATION_FACTOR,YarnConfiguration.DEFAULT_SHARED_CACHE_NM_UPLOADER_REPLICATION_FACTOR);
+    fs.setReplication(finalPath,replication);
+    LOG.info("File " + actualPath.getName() + " was uploaded to the shared cache at "+ finalPath);
+    return true;
+  }
+ catch (  IOException e) {
+    LOG.warn("Exception while uploading the file " + localPath.getName(),e);
+    deleteTempFile(tempPath);
+    throw e;
+  }
+}
