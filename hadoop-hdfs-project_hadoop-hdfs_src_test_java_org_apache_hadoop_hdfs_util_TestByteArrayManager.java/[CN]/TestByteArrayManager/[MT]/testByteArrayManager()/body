@@ -8,11 +8,12 @@
   final ExecutorService pool=Executors.newFixedThreadPool(128);
   final Runner[] runners=new Runner[Runner.NUM_RUNNERS];
   final Thread[] threads=new Thread[runners.length];
-  final int num=1 << 8;
+  final int num=1 << 10;
   for (int i=0; i < runners.length; i++) {
     runners[i]=new Runner(i,countThreshold,countLimit,pool,i,bam);
     threads[i]=runners[i].start(num);
   }
+  final List<Exception> exceptions=new ArrayList<Exception>();
   final Thread randomRecycler=new Thread(){
     @Override public void run(){
       LOG.info("randomRecycler start");
@@ -23,9 +24,10 @@
         }
  catch (        Exception e) {
           e.printStackTrace();
-          Assert.fail(this + " has " + e);
+          exceptions.add(new Exception(this + " has an exception",e));
         }
         if ((i & 0xFF) == 0) {
+          LOG.info("randomRecycler sleep, i=" + i);
           sleepMs(100);
         }
       }
@@ -46,6 +48,7 @@
 ;
   randomRecycler.start();
   randomRecycler.join();
+  Assert.assertTrue(exceptions.isEmpty());
   Assert.assertNull(counters.get(0,false));
   for (int i=1; i < runners.length; i++) {
     if (!runners[i].assertionErrors.isEmpty()) {
