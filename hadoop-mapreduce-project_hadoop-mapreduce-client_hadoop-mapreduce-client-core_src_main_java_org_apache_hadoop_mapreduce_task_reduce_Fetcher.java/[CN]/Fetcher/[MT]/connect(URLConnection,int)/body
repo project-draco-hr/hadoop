@@ -6,21 +6,42 @@
  else   if (connectionTimeout > 0) {
     unit=Math.min(UNIT_CONNECT_TIMEOUT,connectionTimeout);
   }
+  long startTime=Time.monotonicNow();
+  long lastTime=startTime;
+  int attempts=0;
   connection.setConnectTimeout(unit);
   while (true) {
     try {
+      attempts++;
       connection.connect();
       break;
     }
  catch (    IOException ioe) {
-      connectionTimeout-=unit;
-      if (connectionTimeout == 0) {
+      long currentTime=Time.monotonicNow();
+      long retryTime=currentTime - startTime;
+      long leftTime=connectionTimeout - retryTime;
+      long timeSinceLastIteration=currentTime - lastTime;
+      if (leftTime <= 0) {
+        int retryTimeInSeconds=(int)retryTime / 1000;
+        LOG.error("Connection retry failed with " + attempts + " attempts in "+ retryTimeInSeconds+ " seconds");
         throw ioe;
       }
-      if (connectionTimeout < unit) {
-        unit=connectionTimeout;
+      if (leftTime < unit) {
+        unit=(int)leftTime;
         connection.setConnectTimeout(unit);
       }
+      if (timeSinceLastIteration < unit) {
+        try {
+          sleep(unit - timeSinceLastIteration);
+        }
+ catch (        InterruptedException e) {
+          LOG.warn("Sleep in connection retry get interrupted.");
+          if (stopped) {
+            return;
+          }
+        }
+      }
+      lastTime=Time.monotonicNow();
     }
   }
 }
