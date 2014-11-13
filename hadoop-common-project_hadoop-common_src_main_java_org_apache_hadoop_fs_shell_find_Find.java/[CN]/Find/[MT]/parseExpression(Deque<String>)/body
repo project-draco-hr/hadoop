@@ -1,0 +1,65 @@
+{
+  Deque<Expression> primaries=new LinkedList<Expression>();
+  Deque<Expression> operators=new LinkedList<Expression>();
+  Expression prevExpr=getExpression(And.class);
+  while (!args.isEmpty()) {
+    String arg=args.pop();
+    if ("(".equals(arg)) {
+      Expression expr=parseExpression(args);
+      primaries.add(expr);
+      prevExpr=new BaseExpression(){
+        @Override public Result apply(        PathData item,        int depth) throws IOException {
+          return Result.PASS;
+        }
+      }
+;
+    }
+ else     if (")".equals(arg)) {
+      break;
+    }
+ else     if (isExpression(arg)) {
+      Expression expr=getExpression(arg);
+      expr.addArguments(args);
+      if (expr.isOperator()) {
+        while (!operators.isEmpty()) {
+          if (operators.peek().getPrecedence() >= expr.getPrecedence()) {
+            Expression op=operators.pop();
+            op.addChildren(primaries);
+            primaries.push(op);
+          }
+ else {
+            break;
+          }
+        }
+        operators.push(expr);
+      }
+ else {
+        if (!prevExpr.isOperator()) {
+          Expression and=getExpression(And.class);
+          while (!operators.isEmpty()) {
+            if (operators.peek().getPrecedence() >= and.getPrecedence()) {
+              Expression op=operators.pop();
+              op.addChildren(primaries);
+              primaries.push(op);
+            }
+ else {
+              break;
+            }
+          }
+          operators.push(and);
+        }
+        primaries.push(expr);
+      }
+      prevExpr=expr;
+    }
+ else {
+      throw new IOException("Unexpected argument: " + arg);
+    }
+  }
+  while (!operators.isEmpty()) {
+    Expression operator=operators.pop();
+    operator.addChildren(primaries);
+    primaries.push(operator);
+  }
+  return primaries.isEmpty() ? getExpression(Print.class) : primaries.pop();
+}
