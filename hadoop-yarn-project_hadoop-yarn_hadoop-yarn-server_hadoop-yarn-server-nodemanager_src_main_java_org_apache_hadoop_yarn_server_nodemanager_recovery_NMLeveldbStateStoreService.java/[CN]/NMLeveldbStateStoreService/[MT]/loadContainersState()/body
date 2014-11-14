@@ -1,5 +1,6 @@
 {
   ArrayList<RecoveredContainerState> containers=new ArrayList<RecoveredContainerState>();
+  ArrayList<ContainerId> containersToRemove=new ArrayList<ContainerId>();
   LeveldbIterator iter=null;
   try {
     iter=new LeveldbIterator(db);
@@ -16,7 +17,13 @@
       }
       ContainerId containerId=ConverterUtils.toContainerId(key.substring(CONTAINERS_KEY_PREFIX.length(),idEndPos));
       String keyPrefix=key.substring(0,idEndPos + 1);
-      containers.add(loadContainerState(containerId,iter,keyPrefix));
+      RecoveredContainerState rcs=loadContainerState(containerId,iter,keyPrefix);
+      if (rcs.startRequest != null) {
+        containers.add(rcs);
+      }
+ else {
+        containersToRemove.add(containerId);
+      }
     }
   }
  catch (  DBException e) {
@@ -25,6 +32,15 @@
  finally {
     if (iter != null) {
       iter.close();
+    }
+  }
+  for (  ContainerId containerId : containersToRemove) {
+    LOG.warn("Remove container " + containerId + " with incomplete records");
+    try {
+      removeContainer(containerId);
+    }
+ catch (    IOException e) {
+      LOG.error("Unable to remove container " + containerId + " in store",e);
     }
   }
   return containers;
