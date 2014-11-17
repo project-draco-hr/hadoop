@@ -12,21 +12,23 @@
     throw new RuntimeException("Cannot start secure datanode with unprivileged RPC ports");
   }
   System.err.println("Opened streaming server at " + streamingAddr);
-  Connector listener=null;
+  final ServerSocketChannel httpChannel;
   if (policy.isHttpEnabled()) {
-    listener=HttpServer2.createDefaultChannelConnector();
+    httpChannel=ServerSocketChannel.open();
     InetSocketAddress infoSocAddr=DataNode.getInfoAddr(conf);
-    listener.setHost(infoSocAddr.getHostName());
-    listener.setPort(infoSocAddr.getPort());
-    listener.open();
-    if (listener.getPort() != infoSocAddr.getPort()) {
+    httpChannel.socket().bind(infoSocAddr);
+    InetSocketAddress localAddr=(InetSocketAddress)httpChannel.socket().getLocalSocketAddress();
+    if (localAddr.getPort() != infoSocAddr.getPort()) {
       throw new RuntimeException("Unable to bind on specified info port in secure " + "context. Needed " + streamingAddr.getPort() + ", got "+ ss.getLocalPort());
     }
-    System.err.println("Successfully obtained privileged resources (streaming port = " + ss + " ) (http listener port = "+ listener.getConnection()+ ")");
-    if (listener.getPort() > 1023 && isSecure) {
+    System.err.println("Successfully obtained privileged resources (streaming port = " + ss + " ) (http listener port = "+ localAddr.getPort()+ ")");
+    if (localAddr.getPort() > 1023 && isSecure) {
       throw new RuntimeException("Cannot start secure datanode with unprivileged HTTP ports");
     }
     System.err.println("Opened info server at " + infoSocAddr);
   }
-  return new SecureResources(ss,listener);
+ else {
+    httpChannel=null;
+  }
+  return new SecureResources(ss,httpChannel);
 }

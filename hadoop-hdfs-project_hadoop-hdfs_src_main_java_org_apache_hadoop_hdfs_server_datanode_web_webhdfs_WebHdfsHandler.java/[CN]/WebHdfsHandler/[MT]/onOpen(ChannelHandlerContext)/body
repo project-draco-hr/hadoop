@@ -1,0 +1,25 @@
+{
+  final String nnId=params.namenodeId();
+  final int bufferSize=params.bufferSize();
+  final long offset=params.offset();
+  DefaultHttpResponse response=new DefaultHttpResponse(HTTP_1_1,OK);
+  HttpHeaders headers=response.headers();
+  headers.set(ACCESS_CONTROL_ALLOW_METHODS,GET);
+  headers.set(ACCESS_CONTROL_ALLOW_ORIGIN,"*");
+  headers.set(CONTENT_TYPE,APPLICATION_OCTET_STREAM);
+  headers.set(CONNECTION,CLOSE);
+  final DFSClient dfsclient=newDfsClient(nnId,conf);
+  HdfsDataInputStream in=dfsclient.createWrappedInputStream(dfsclient.open(path,bufferSize,true));
+  in.seek(offset);
+  if (in.getVisibleLength() >= offset) {
+    headers.set(CONTENT_LENGTH,in.getVisibleLength() - offset);
+  }
+  ctx.write(response);
+  ctx.writeAndFlush(new ChunkedStream(in){
+    @Override public void close() throws Exception {
+      super.close();
+      dfsclient.close();
+    }
+  }
+).addListener(ChannelFutureListener.CLOSE);
+}
