@@ -1,39 +1,26 @@
 {
-  final Configuration conf=new HdfsConfiguration();
-  final int NUM_OF_DATANODES=3;
-  final MiniDFSCluster cluster=new MiniDFSCluster.Builder(conf).numDataNodes(NUM_OF_DATANODES).build();
+  final int blockInvalidateLimit=bm.getDatanodeManager().blockInvalidateLimit;
+  namesystem.writeLock();
   try {
-    cluster.waitActive();
-    final FSNamesystem namesystem=cluster.getNamesystem();
-    final BlockManager bm=namesystem.getBlockManager();
-    final int blockInvalidateLimit=bm.getDatanodeManager().blockInvalidateLimit;
-    final DatanodeDescriptor[] nodes=bm.getDatanodeManager().getHeartbeatManager().getDatanodes();
-    assertEquals(nodes.length,NUM_OF_DATANODES);
-    namesystem.writeLock();
-    try {
-      for (int i=0; i < nodes.length; i++) {
-        for (int j=0; j < 3 * blockInvalidateLimit + 1; j++) {
-          Block block=new Block(i * (blockInvalidateLimit + 1) + j,0,GenerationStamp.LAST_RESERVED_STAMP);
-          bm.addToInvalidates(block,nodes[i]);
-        }
-      }
-      assertEquals(blockInvalidateLimit * NUM_OF_DATANODES,bm.computeInvalidateWork(NUM_OF_DATANODES + 1));
-      assertEquals(blockInvalidateLimit * NUM_OF_DATANODES,bm.computeInvalidateWork(NUM_OF_DATANODES));
-      assertEquals(blockInvalidateLimit * (NUM_OF_DATANODES - 1),bm.computeInvalidateWork(NUM_OF_DATANODES - 1));
-      int workCount=bm.computeInvalidateWork(1);
-      if (workCount == 1) {
-        assertEquals(blockInvalidateLimit + 1,bm.computeInvalidateWork(2));
-      }
- else {
-        assertEquals(workCount,blockInvalidateLimit);
-        assertEquals(2,bm.computeInvalidateWork(2));
+    for (int i=0; i < nodes.length; i++) {
+      for (int j=0; j < 3 * blockInvalidateLimit + 1; j++) {
+        Block block=new Block(i * (blockInvalidateLimit + 1) + j,0,GenerationStamp.LAST_RESERVED_STAMP);
+        bm.addToInvalidates(block,nodes[i]);
       }
     }
-  finally {
-      namesystem.writeUnlock();
+    assertEquals(blockInvalidateLimit * NUM_OF_DATANODES,bm.computeInvalidateWork(NUM_OF_DATANODES + 1));
+    assertEquals(blockInvalidateLimit * NUM_OF_DATANODES,bm.computeInvalidateWork(NUM_OF_DATANODES));
+    assertEquals(blockInvalidateLimit * (NUM_OF_DATANODES - 1),bm.computeInvalidateWork(NUM_OF_DATANODES - 1));
+    int workCount=bm.computeInvalidateWork(1);
+    if (workCount == 1) {
+      assertEquals(blockInvalidateLimit + 1,bm.computeInvalidateWork(2));
+    }
+ else {
+      assertEquals(workCount,blockInvalidateLimit);
+      assertEquals(2,bm.computeInvalidateWork(2));
     }
   }
   finally {
-    cluster.shutdown();
+    namesystem.writeUnlock();
   }
 }

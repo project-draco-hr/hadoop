@@ -1,0 +1,33 @@
+{
+  final DistributedFileSystem dfs=cluster.getFileSystem();
+  final Path path=new Path("/testRR");
+  DFSTestUtil.createFile(dfs,path,dfs.getDefaultBlockSize(),(short)NUM_OF_DATANODES,0xED0ED0);
+  for (  DataNode dn : cluster.getDataNodes()) {
+    dn.shutdown();
+  }
+  dfs.delete(path,false);
+  namesystem.writeLock();
+  InvalidateBlocks invalidateBlocks;
+  int expected=NUM_OF_DATANODES;
+  try {
+    invalidateBlocks=(InvalidateBlocks)Whitebox.getInternalState(cluster.getNamesystem().getBlockManager(),"invalidateBlocks");
+    assertEquals("Expected invalidate blocks to be the number of DNs",(long)expected,invalidateBlocks.numBlocks());
+  }
+  finally {
+    namesystem.writeUnlock();
+  }
+  for (  DataNode dn : cluster.getDataNodes()) {
+    DatanodeID did=dn.getDatanodeId();
+    did.setDatanodeUuidForTesting(UUID.randomUUID().toString());
+    DatanodeRegistration reg=new DatanodeRegistration(did,new StorageInfo(HdfsServerConstants.NodeType.DATA_NODE),new ExportedBlockKeys(),VersionInfo.getVersion());
+    namesystem.writeLock();
+    try {
+      bm.getDatanodeManager().registerDatanode(reg);
+      expected--;
+      assertEquals("Expected number of invalidate blocks to decrease",(long)expected,invalidateBlocks.numBlocks());
+    }
+  finally {
+      namesystem.writeUnlock();
+    }
+  }
+}
