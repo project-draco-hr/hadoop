@@ -7,10 +7,10 @@
     cluster=new MiniDFSCluster.Builder(conf).numDataNodes(NUM_DATA_NODES).build();
     cluster.waitActive();
     fileSys=cluster.getFileSystem();
-    final FSNamesystem namesystem=cluster.getNamesystem();
-    FSImage fsimage=namesystem.getFSImage();
+    final NamenodeProtocols nn=cluster.getNameNode().getRpcServer();
+    FSImage fsimage=cluster.getNamesystem().getFSImage();
     StorageDirectory sd=fsimage.getStorage().getStorageDir(0);
-    startTransactionWorkers(namesystem,caughtErr);
+    startTransactionWorkers(nn,caughtErr);
     long previousLogTxId=1;
     for (int i=0; i < NUM_ROLLS && caughtErr.get() == null; i++) {
       try {
@@ -19,10 +19,10 @@
  catch (      InterruptedException e) {
       }
       LOG.info("Starting roll " + i + ".");
-      CheckpointSignature sig=namesystem.rollEditLog();
+      CheckpointSignature sig=nn.rollEditLog();
       long nextLog=sig.curSegmentTxId;
       String logFileName=NNStorage.getFinalizedEditsFileName(previousLogTxId,nextLog - 1);
-      previousLogTxId+=verifyEditLogs(namesystem,fsimage,logFileName,previousLogTxId);
+      previousLogTxId+=verifyEditLogs(cluster.getNamesystem(),fsimage,logFileName,previousLogTxId);
       assertEquals(previousLogTxId,nextLog);
       File expectedLog=NNStorage.getInProgressEditsFile(sd,previousLogTxId);
       assertTrue("Expect " + expectedLog + " to exist",expectedLog.exists());
