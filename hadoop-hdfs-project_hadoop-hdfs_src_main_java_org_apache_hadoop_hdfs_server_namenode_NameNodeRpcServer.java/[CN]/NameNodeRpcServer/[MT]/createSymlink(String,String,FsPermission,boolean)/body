@@ -1,4 +1,8 @@
 {
+  CacheEntry cacheEntry=RetryCache.waitForCompletion(retryCache);
+  if (cacheEntry != null && cacheEntry.isSuccess()) {
+    return;
+  }
   metrics.incrCreateSymlinkOps();
   if (!checkPathLength(link)) {
     throw new IOException("Symlink path exceeds " + MAX_PATH_LENGTH + " character limit");
@@ -7,5 +11,13 @@
     throw new IOException("Invalid symlink target");
   }
   final UserGroupInformation ugi=getRemoteUser();
-  namesystem.createSymlink(target,link,new PermissionStatus(ugi.getShortUserName(),null,dirPerms),createParent);
+  boolean success=false;
+  try {
+    PermissionStatus perm=new PermissionStatus(ugi.getShortUserName(),null,dirPerms);
+    namesystem.createSymlink(target,link,perm,createParent,cacheEntry != null);
+    success=true;
+  }
+  finally {
+    RetryCache.setState(cacheEntry,success);
+  }
 }

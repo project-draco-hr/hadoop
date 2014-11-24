@@ -5,7 +5,17 @@
   if (!checkPathLength(dst)) {
     throw new IOException("rename: Pathname too long.  Limit " + MAX_PATH_LENGTH + " characters, "+ MAX_PATH_DEPTH+ " levels.");
   }
-  boolean ret=namesystem.renameTo(src,dst);
+  CacheEntry cacheEntry=RetryCache.waitForCompletion(retryCache);
+  if (cacheEntry != null && cacheEntry.isSuccess()) {
+    return true;
+  }
+  boolean ret=false;
+  try {
+    ret=namesystem.renameTo(src,dst,cacheEntry != null);
+  }
+  finally {
+    RetryCache.setState(cacheEntry,ret);
+  }
   if (ret) {
     metrics.incrFilesRenamed();
   }

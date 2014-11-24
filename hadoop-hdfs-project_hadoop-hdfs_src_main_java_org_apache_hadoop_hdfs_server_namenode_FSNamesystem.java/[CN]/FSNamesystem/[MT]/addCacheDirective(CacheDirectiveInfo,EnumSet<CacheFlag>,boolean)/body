@@ -1,0 +1,35 @@
+{
+  checkOperation(OperationCategory.WRITE);
+  final FSPermissionChecker pc=isPermissionEnabled ? getPermissionChecker() : null;
+  if (!flags.contains(CacheFlag.FORCE)) {
+    cacheManager.waitForRescanIfNeeded();
+  }
+  boolean success=false;
+  writeLock();
+  String effectiveDirectiveStr=null;
+  Long result=null;
+  try {
+    checkOperation(OperationCategory.WRITE);
+    if (isInSafeMode()) {
+      throw new SafeModeException("Cannot add cache directive",safeMode);
+    }
+    if (directive.getId() != null) {
+      throw new IOException("addDirective: you cannot specify an ID " + "for this operation.");
+    }
+    CacheDirectiveInfo effectiveDirective=cacheManager.addDirective(directive,pc,flags);
+    getEditLog().logAddCacheDirectiveInfo(effectiveDirective,logRetryCache);
+    result=effectiveDirective.getId();
+    effectiveDirectiveStr=effectiveDirective.toString();
+    success=true;
+  }
+  finally {
+    writeUnlock();
+    if (success) {
+      getEditLog().logSync();
+    }
+    if (isAuditEnabled() && isExternalInvocation()) {
+      logAuditEvent(success,"addCacheDirective",effectiveDirectiveStr,null,null);
+    }
+  }
+  return result;
+}

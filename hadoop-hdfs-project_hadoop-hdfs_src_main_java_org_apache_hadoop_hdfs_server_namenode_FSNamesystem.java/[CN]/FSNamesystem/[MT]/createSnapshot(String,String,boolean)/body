@@ -1,0 +1,38 @@
+{
+  checkOperation(OperationCategory.WRITE);
+  final FSPermissionChecker pc=getPermissionChecker();
+  String snapshotPath=null;
+  writeLock();
+  try {
+    checkOperation(OperationCategory.WRITE);
+    checkNameNodeSafeMode("Cannot create snapshot for " + snapshotRoot);
+    if (isPermissionEnabled) {
+      checkOwner(pc,snapshotRoot);
+    }
+    if (snapshotName == null || snapshotName.isEmpty()) {
+      snapshotName=Snapshot.generateDefaultSnapshotName();
+    }
+    if (snapshotName != null) {
+      if (!DFSUtil.isValidNameForComponent(snapshotName)) {
+        throw new InvalidPathException("Invalid snapshot name: " + snapshotName);
+      }
+    }
+    dir.verifySnapshotName(snapshotName,snapshotRoot);
+    dir.writeLock();
+    try {
+      snapshotPath=snapshotManager.createSnapshot(snapshotRoot,snapshotName);
+    }
+  finally {
+      dir.writeUnlock();
+    }
+    getEditLog().logCreateSnapshot(snapshotRoot,snapshotName,logRetryCache);
+  }
+  finally {
+    writeUnlock();
+  }
+  getEditLog().logSync();
+  if (auditLog.isInfoEnabled() && isExternalInvocation()) {
+    logAuditEvent(true,"createSnapshot",snapshotRoot,snapshotPath,null);
+  }
+  return snapshotPath;
+}

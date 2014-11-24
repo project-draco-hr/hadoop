@@ -6,8 +6,19 @@
   if (!checkPathLength(src)) {
     throw new IOException("create: Pathname too long.  Limit " + MAX_PATH_LENGTH + " characters, "+ MAX_PATH_DEPTH+ " levels.");
   }
-  HdfsFileStatus fileStatus=namesystem.startFile(src,new PermissionStatus(getRemoteUser().getShortUserName(),null,masked),clientName,clientMachine,flag.get(),createParent,replication,blockSize,supportedVersions);
+  CacheEntryWithPayload cacheEntry=RetryCache.waitForCompletion(retryCache,null);
+  if (cacheEntry != null && cacheEntry.isSuccess()) {
+    return (HdfsFileStatus)cacheEntry.getPayload();
+  }
+  HdfsFileStatus status=null;
+  try {
+    PermissionStatus perm=new PermissionStatus(getRemoteUser().getShortUserName(),null,masked);
+    status=namesystem.startFile(src,perm,clientName,clientMachine,flag.get(),createParent,replication,blockSize,supportedVersions,cacheEntry != null);
+  }
+  finally {
+    RetryCache.setState(cacheEntry,status != null,status);
+  }
   metrics.incrFilesCreated();
   metrics.incrCreateFileOps();
-  return fileStatus;
+  return status;
 }

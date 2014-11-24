@@ -2,7 +2,17 @@
   if (stateChangeLog.isDebugEnabled()) {
     stateChangeLog.debug("*DIR* Namenode.delete: src=" + src + ", recursive="+ recursive);
   }
-  boolean ret=namesystem.delete(src,recursive);
+  CacheEntry cacheEntry=RetryCache.waitForCompletion(retryCache);
+  if (cacheEntry != null && cacheEntry.isSuccess()) {
+    return true;
+  }
+  boolean ret=false;
+  try {
+    ret=namesystem.delete(src,recursive,cacheEntry != null);
+  }
+  finally {
+    RetryCache.setState(cacheEntry,ret);
+  }
   if (ret)   metrics.incrDeleteFileOps();
   return ret;
 }

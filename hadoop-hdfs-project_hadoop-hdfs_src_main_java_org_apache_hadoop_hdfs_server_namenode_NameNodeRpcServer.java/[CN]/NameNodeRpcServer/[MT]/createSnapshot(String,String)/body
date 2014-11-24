@@ -2,6 +2,17 @@
   if (!checkPathLength(snapshotRoot)) {
     throw new IOException("createSnapshot: Pathname too long.  Limit " + MAX_PATH_LENGTH + " characters, "+ MAX_PATH_DEPTH+ " levels.");
   }
+  CacheEntryWithPayload cacheEntry=RetryCache.waitForCompletion(retryCache,null);
+  if (cacheEntry != null && cacheEntry.isSuccess()) {
+    return (String)cacheEntry.getPayload();
+  }
   metrics.incrCreateSnapshotOps();
-  return namesystem.createSnapshot(snapshotRoot,snapshotName);
+  String ret=null;
+  try {
+    ret=namesystem.createSnapshot(snapshotRoot,snapshotName,cacheEntry != null);
+  }
+  finally {
+    RetryCache.setState(cacheEntry,ret != null,ret);
+  }
+  return ret;
 }

@@ -1,0 +1,34 @@
+{
+  checkOperation(OperationCategory.WRITE);
+  final FSPermissionChecker pc=getPermissionChecker();
+  BlocksMapUpdateInfo collectedBlocks=new BlocksMapUpdateInfo();
+  writeLock();
+  try {
+    checkOperation(OperationCategory.WRITE);
+    checkNameNodeSafeMode("Cannot delete snapshot for " + snapshotRoot);
+    if (isPermissionEnabled) {
+      checkOwner(pc,snapshotRoot);
+    }
+    List<INode> removedINodes=new ChunkedArrayList<INode>();
+    dir.writeLock();
+    try {
+      snapshotManager.deleteSnapshot(snapshotRoot,snapshotName,collectedBlocks,removedINodes);
+      dir.removeFromInodeMap(removedINodes);
+    }
+  finally {
+      dir.writeUnlock();
+    }
+    removedINodes.clear();
+    getEditLog().logDeleteSnapshot(snapshotRoot,snapshotName,logRetryCache);
+  }
+  finally {
+    writeUnlock();
+  }
+  getEditLog().logSync();
+  removeBlocks(collectedBlocks);
+  collectedBlocks.clear();
+  if (auditLog.isInfoEnabled() && isExternalInvocation()) {
+    String rootPath=Snapshot.getSnapshotPath(snapshotRoot,snapshotName);
+    logAuditEvent(true,"deleteSnapshot",rootPath,null,null);
+  }
+}

@@ -2,5 +2,16 @@
   namesystem.checkSuperuserPrivilege();
   verifyRequest(registration);
   if (!nn.isRole(NamenodeRole.NAMENODE))   throw new IOException("Only an ACTIVE node can invoke startCheckpoint.");
-  return namesystem.startCheckpoint(registration,nn.setRegistration());
+  CacheEntryWithPayload cacheEntry=RetryCache.waitForCompletion(retryCache,null);
+  if (cacheEntry != null && cacheEntry.isSuccess()) {
+    return (NamenodeCommand)cacheEntry.getPayload();
+  }
+  NamenodeCommand ret=null;
+  try {
+    ret=namesystem.startCheckpoint(registration,nn.setRegistration());
+  }
+  finally {
+    RetryCache.setState(cacheEntry,ret != null,ret);
+  }
+  return ret;
 }
