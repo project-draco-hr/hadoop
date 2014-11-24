@@ -10,11 +10,7 @@
     List<TimelineEvent> events=entity.getEvents();
     StartAndInsertTime startAndInsertTime=getAndSetStartTime(entity.getEntityId(),entity.getEntityType(),entity.getStartTime(),events);
     if (startAndInsertTime == null) {
-      TimelinePutError error=new TimelinePutError();
-      error.setEntityId(entity.getEntityId());
-      error.setEntityType(entity.getEntityType());
-      error.setErrorCode(TimelinePutError.NO_START_TIME);
-      response.addError(error);
+      handleError(entity,response,TimelinePutError.NO_START_TIME);
       return;
     }
     revStartTime=writeReverseOrderedLong(startAndInsertTime.startTime);
@@ -54,11 +50,7 @@
               domainId=new String(domainIdBytes);
             }
             if (!domainId.equals(entity.getDomainId())) {
-              TimelinePutError error=new TimelinePutError();
-              error.setEntityId(entity.getEntityId());
-              error.setEntityType(entity.getEntityType());
-              error.setErrorCode(TimelinePutError.FORBIDDEN_RELATION);
-              response.addError(error);
+              handleError(entity,response,TimelinePutError.FORBIDDEN_RELATION);
               continue;
             }
           }
@@ -88,11 +80,7 @@
     byte[] key=createDomainIdKey(entity.getEntityId(),entity.getEntityType(),revStartTime);
     if (entity.getDomainId() == null || entity.getDomainId().length() == 0) {
       if (!allowEmptyDomainId) {
-        TimelinePutError error=new TimelinePutError();
-        error.setEntityId(entity.getEntityId());
-        error.setEntityType(entity.getEntityType());
-        error.setErrorCode(TimelinePutError.NO_DOMAIN);
-        response.addError(error);
+        handleError(entity,response,TimelinePutError.NO_DOMAIN);
         return;
       }
     }
@@ -102,13 +90,13 @@
     }
     db.write(writeBatch);
   }
- catch (  IOException e) {
+ catch (  DBException de) {
+    LOG.error("Error putting entity " + entity.getEntityId() + " of type "+ entity.getEntityType(),de);
+    handleError(entity,response,TimelinePutError.IO_EXCEPTION);
+  }
+catch (  IOException e) {
     LOG.error("Error putting entity " + entity.getEntityId() + " of type "+ entity.getEntityType(),e);
-    TimelinePutError error=new TimelinePutError();
-    error.setEntityId(entity.getEntityId());
-    error.setEntityType(entity.getEntityType());
-    error.setErrorCode(TimelinePutError.IO_EXCEPTION);
-    response.addError(error);
+    handleError(entity,response,TimelinePutError.IO_EXCEPTION);
   }
  finally {
     lock.unlock();
@@ -129,13 +117,13 @@
       db.put(createRelatedEntityKey(relatedEntity.getId(),relatedEntity.getType(),relatedEntityStartTime,entity.getEntityId(),entity.getEntityType()),EMPTY_BYTES);
       db.put(createEntityMarkerKey(relatedEntity.getId(),relatedEntity.getType(),relatedEntityStartTime),writeReverseOrderedLong(relatedEntityStartAndInsertTime.insertTime));
     }
- catch (    IOException e) {
+ catch (    DBException de) {
+      LOG.error("Error putting related entity " + relatedEntity.getId() + " of type "+ relatedEntity.getType()+ " for entity "+ entity.getEntityId()+ " of type "+ entity.getEntityType(),de);
+      handleError(entity,response,TimelinePutError.IO_EXCEPTION);
+    }
+catch (    IOException e) {
       LOG.error("Error putting related entity " + relatedEntity.getId() + " of type "+ relatedEntity.getType()+ " for entity "+ entity.getEntityId()+ " of type "+ entity.getEntityType(),e);
-      TimelinePutError error=new TimelinePutError();
-      error.setEntityId(entity.getEntityId());
-      error.setEntityType(entity.getEntityType());
-      error.setErrorCode(TimelinePutError.IO_EXCEPTION);
-      response.addError(error);
+      handleError(entity,response,TimelinePutError.IO_EXCEPTION);
     }
  finally {
       lock.unlock();

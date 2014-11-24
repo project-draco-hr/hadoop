@@ -1,21 +1,26 @@
 {
   StartAndInsertTime startAndInsertTime=null;
   byte[] b=createStartTimeLookupKey(entity.getId(),entity.getType());
-  byte[] v=db.get(b);
-  if (v == null) {
-    if (suggestedStartTime == null) {
-      return null;
+  try {
+    byte[] v=db.get(b);
+    if (v == null) {
+      if (suggestedStartTime == null) {
+        return null;
+      }
+      startAndInsertTime=new StartAndInsertTime(suggestedStartTime,System.currentTimeMillis());
+      v=new byte[16];
+      writeReverseOrderedLong(suggestedStartTime,v,0);
+      writeReverseOrderedLong(startAndInsertTime.insertTime,v,8);
+      WriteOptions writeOptions=new WriteOptions();
+      writeOptions.sync(true);
+      db.put(b,v,writeOptions);
     }
-    startAndInsertTime=new StartAndInsertTime(suggestedStartTime,System.currentTimeMillis());
-    v=new byte[16];
-    writeReverseOrderedLong(suggestedStartTime,v,0);
-    writeReverseOrderedLong(startAndInsertTime.insertTime,v,8);
-    WriteOptions writeOptions=new WriteOptions();
-    writeOptions.sync(true);
-    db.put(b,v,writeOptions);
-  }
  else {
-    startAndInsertTime=new StartAndInsertTime(readReverseOrderedLong(v,0),readReverseOrderedLong(v,8));
+      startAndInsertTime=new StartAndInsertTime(readReverseOrderedLong(v,0),readReverseOrderedLong(v,8));
+    }
+  }
+ catch (  DBException e) {
+    throw new IOException(e);
   }
   startTimeWriteCache.put(entity,startAndInsertTime);
   startTimeReadCache.put(entity,startAndInsertTime.startTime);
