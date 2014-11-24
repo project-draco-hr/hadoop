@@ -1,12 +1,20 @@
 {
-  if (FSNamesystem.LOG.isDebugEnabled()) {
-    FSNamesystem.LOG.debug("concat " + Arrays.toString(srcs) + " to "+ target);
-  }
+  checkOperation(OperationCategory.WRITE);
+  waitForLoadingFSImage();
+  HdfsFileStatus stat=null;
+  boolean success=false;
+  writeLock();
   try {
-    concatInt(target,srcs,logRetryCache);
+    checkOperation(OperationCategory.WRITE);
+    checkNameNodeSafeMode("Cannot concat " + target);
+    stat=FSDirConcatOp.concat(dir,target,srcs,logRetryCache);
+    success=true;
   }
- catch (  AccessControlException e) {
-    logAuditEvent(false,"concat",Arrays.toString(srcs),target,null);
-    throw e;
+  finally {
+    writeUnlock();
+    if (success) {
+      getEditLog().logSync();
+    }
+    logAuditEvent(success,"concat",Arrays.toString(srcs),target,stat);
   }
 }
