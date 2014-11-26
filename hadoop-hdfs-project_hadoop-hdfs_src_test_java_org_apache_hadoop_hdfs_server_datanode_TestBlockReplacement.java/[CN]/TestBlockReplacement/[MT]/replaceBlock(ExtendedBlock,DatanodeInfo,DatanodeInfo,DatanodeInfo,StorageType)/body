@@ -1,0 +1,19 @@
+{
+  Socket sock=new Socket();
+  try {
+    sock.connect(NetUtils.createSocketAddr(destination.getXferAddr()),HdfsServerConstants.READ_TIMEOUT);
+    sock.setKeepAlive(true);
+    DataOutputStream out=new DataOutputStream(sock.getOutputStream());
+    new Sender(out).replaceBlock(block,targetStorageType,BlockTokenSecretManager.DUMMY_TOKEN,source.getDatanodeUuid(),sourceProxy);
+    out.flush();
+    DataInputStream reply=new DataInputStream(sock.getInputStream());
+    BlockOpResponseProto proto=BlockOpResponseProto.parseDelimitedFrom(reply);
+    while (proto.getStatus() == Status.IN_PROGRESS) {
+      proto=BlockOpResponseProto.parseDelimitedFrom(reply);
+    }
+    return proto.getStatus() == Status.SUCCESS;
+  }
+  finally {
+    sock.close();
+  }
+}

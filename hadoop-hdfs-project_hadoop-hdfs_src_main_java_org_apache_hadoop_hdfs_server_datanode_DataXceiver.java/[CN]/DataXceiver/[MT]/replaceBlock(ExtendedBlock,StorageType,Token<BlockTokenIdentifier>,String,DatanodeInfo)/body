@@ -1,6 +1,5 @@
 {
   updateCurrentThreadName("Replacing block " + block + " from "+ delHint);
-  block.setNumBytes(dataXceiverServer.estimateBlockSize);
   if (datanode.isBlockTokenEnabled) {
     try {
       datanode.blockPoolTokenSecretManager.checkAccess(blockToken,null,block,BlockTokenSecretManager.AccessMode.REPLACE);
@@ -26,38 +25,47 @@
   DataOutputStream replyOut=new DataOutputStream(getOutputStream());
   boolean IoeDuringCopyBlockOperation=false;
   try {
-    final String dnAddr=proxySource.getXferAddr(connectToDnViaHostname);
-    if (LOG.isDebugEnabled()) {
-      LOG.debug("Connecting to datanode " + dnAddr);
-    }
-    InetSocketAddress proxyAddr=NetUtils.createSocketAddr(dnAddr);
-    proxySock=datanode.newSocket();
-    NetUtils.connect(proxySock,proxyAddr,dnConf.socketTimeout);
-    proxySock.setSoTimeout(dnConf.socketTimeout);
-    OutputStream unbufProxyOut=NetUtils.getOutputStream(proxySock,dnConf.socketWriteTimeout);
-    InputStream unbufProxyIn=NetUtils.getInputStream(proxySock);
-    DataEncryptionKeyFactory keyFactory=datanode.getDataEncryptionKeyFactoryForBlock(block);
-    IOStreamPair saslStreams=datanode.saslClient.socketSend(proxySock,unbufProxyOut,unbufProxyIn,keyFactory,blockToken,proxySource);
-    unbufProxyOut=saslStreams.out;
-    unbufProxyIn=saslStreams.in;
-    proxyOut=new DataOutputStream(new BufferedOutputStream(unbufProxyOut,HdfsConstants.SMALL_BUFFER_SIZE));
-    proxyReply=new DataInputStream(new BufferedInputStream(unbufProxyIn,HdfsConstants.IO_FILE_BUFFER_SIZE));
-    IoeDuringCopyBlockOperation=true;
-    new Sender(proxyOut).copyBlock(block,blockToken);
-    IoeDuringCopyBlockOperation=false;
-    BlockOpResponseProto copyResponse=BlockOpResponseProto.parseFrom(PBHelper.vintPrefixed(proxyReply));
-    if (copyResponse.getStatus() != SUCCESS) {
-      if (copyResponse.getStatus() == ERROR_ACCESS_TOKEN) {
-        throw new IOException("Copy block " + block + " from "+ proxySock.getRemoteSocketAddress()+ " failed due to access token error");
+    if (proxySource.equals(datanode.getDatanodeId())) {
+      ReplicaInfo oldReplica=datanode.data.moveBlockAcrossStorage(block,storageType);
+      if (oldReplica != null) {
+        LOG.info("Moved " + block + " from StorageType "+ oldReplica.getVolume().getStorageType()+ " to "+ storageType);
       }
-      throw new IOException("Copy block " + block + " from "+ proxySock.getRemoteSocketAddress()+ " failed");
     }
-    ReadOpChecksumInfoProto checksumInfo=copyResponse.getReadOpChecksumInfo();
-    DataChecksum remoteChecksum=DataTransferProtoUtil.fromProto(checksumInfo.getChecksum());
-    blockReceiver=new BlockReceiver(block,storageType,proxyReply,proxySock.getRemoteSocketAddress().toString(),proxySock.getLocalSocketAddress().toString(),null,0,0,0,"",null,datanode,remoteChecksum,CachingStrategy.newDropBehind(),false);
-    blockReceiver.receiveBlock(null,null,replyOut,null,dataXceiverServer.balanceThrottler,null,true);
-    datanode.notifyNamenodeReceivedBlock(block,delHint,blockReceiver.getStorageUuid());
-    LOG.info("Moved " + block + " from "+ peer.getRemoteAddressString()+ ", delHint="+ delHint);
+ else {
+      block.setNumBytes(dataXceiverServer.estimateBlockSize);
+      final String dnAddr=proxySource.getXferAddr(connectToDnViaHostname);
+      if (LOG.isDebugEnabled()) {
+        LOG.debug("Connecting to datanode " + dnAddr);
+      }
+      InetSocketAddress proxyAddr=NetUtils.createSocketAddr(dnAddr);
+      proxySock=datanode.newSocket();
+      NetUtils.connect(proxySock,proxyAddr,dnConf.socketTimeout);
+      proxySock.setSoTimeout(dnConf.socketTimeout);
+      OutputStream unbufProxyOut=NetUtils.getOutputStream(proxySock,dnConf.socketWriteTimeout);
+      InputStream unbufProxyIn=NetUtils.getInputStream(proxySock);
+      DataEncryptionKeyFactory keyFactory=datanode.getDataEncryptionKeyFactoryForBlock(block);
+      IOStreamPair saslStreams=datanode.saslClient.socketSend(proxySock,unbufProxyOut,unbufProxyIn,keyFactory,blockToken,proxySource);
+      unbufProxyOut=saslStreams.out;
+      unbufProxyIn=saslStreams.in;
+      proxyOut=new DataOutputStream(new BufferedOutputStream(unbufProxyOut,HdfsConstants.SMALL_BUFFER_SIZE));
+      proxyReply=new DataInputStream(new BufferedInputStream(unbufProxyIn,HdfsConstants.IO_FILE_BUFFER_SIZE));
+      IoeDuringCopyBlockOperation=true;
+      new Sender(proxyOut).copyBlock(block,blockToken);
+      IoeDuringCopyBlockOperation=false;
+      BlockOpResponseProto copyResponse=BlockOpResponseProto.parseFrom(PBHelper.vintPrefixed(proxyReply));
+      if (copyResponse.getStatus() != SUCCESS) {
+        if (copyResponse.getStatus() == ERROR_ACCESS_TOKEN) {
+          throw new IOException("Copy block " + block + " from "+ proxySock.getRemoteSocketAddress()+ " failed due to access token error");
+        }
+        throw new IOException("Copy block " + block + " from "+ proxySock.getRemoteSocketAddress()+ " failed");
+      }
+      ReadOpChecksumInfoProto checksumInfo=copyResponse.getReadOpChecksumInfo();
+      DataChecksum remoteChecksum=DataTransferProtoUtil.fromProto(checksumInfo.getChecksum());
+      blockReceiver=new BlockReceiver(block,storageType,proxyReply,proxySock.getRemoteSocketAddress().toString(),proxySock.getLocalSocketAddress().toString(),null,0,0,0,"",null,datanode,remoteChecksum,CachingStrategy.newDropBehind(),false);
+      blockReceiver.receiveBlock(null,null,replyOut,null,dataXceiverServer.balanceThrottler,null,true);
+      datanode.notifyNamenodeReceivedBlock(block,delHint,blockReceiver.getStorageUuid());
+      LOG.info("Moved " + block + " from "+ peer.getRemoteAddressString()+ ", delHint="+ delHint);
+    }
   }
  catch (  IOException ioe) {
     opStatus=ERROR;
@@ -69,7 +77,7 @@
     throw ioe;
   }
  finally {
-    if (opStatus == SUCCESS) {
+    if (opStatus == SUCCESS && proxyReply != null) {
       try {
         proxyReply.readChar();
       }

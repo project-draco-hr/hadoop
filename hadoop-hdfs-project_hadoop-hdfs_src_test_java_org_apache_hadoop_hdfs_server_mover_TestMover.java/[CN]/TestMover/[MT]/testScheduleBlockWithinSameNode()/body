@@ -1,0 +1,34 @@
+{
+  final Configuration conf=new HdfsConfiguration();
+  final MiniDFSCluster cluster=new MiniDFSCluster.Builder(conf).numDataNodes(3).storageTypes(new StorageType[]{StorageType.DISK,StorageType.ARCHIVE}).build();
+  try {
+    cluster.waitActive();
+    final DistributedFileSystem dfs=cluster.getFileSystem();
+    final String file="/testScheduleWithinSameNode/file";
+    Path dir=new Path("/testScheduleWithinSameNode");
+    dfs.mkdirs(dir);
+    dfs.setStoragePolicy(dir,"HOT");
+{
+      final FSDataOutputStream out=dfs.create(new Path(file));
+      out.writeChars("testScheduleWithinSameNode");
+      out.close();
+    }
+    LocatedBlock lb=dfs.getClient().getLocatedBlocks(file,0).get(0);
+    StorageType[] storageTypes=lb.getStorageTypes();
+    for (    StorageType storageType : storageTypes) {
+      Assert.assertTrue(StorageType.DISK == storageType);
+    }
+    dfs.setStoragePolicy(dir,"COLD");
+    int rc=ToolRunner.run(conf,new Mover.Cli(),new String[]{"-p",dir.toString()});
+    Assert.assertEquals("Movement to ARCHIVE should be successfull",0,rc);
+    Thread.sleep(3000);
+    lb=dfs.getClient().getLocatedBlocks(file,0).get(0);
+    storageTypes=lb.getStorageTypes();
+    for (    StorageType storageType : storageTypes) {
+      Assert.assertTrue(StorageType.ARCHIVE == storageType);
+    }
+  }
+  finally {
+    cluster.shutdown();
+  }
+}

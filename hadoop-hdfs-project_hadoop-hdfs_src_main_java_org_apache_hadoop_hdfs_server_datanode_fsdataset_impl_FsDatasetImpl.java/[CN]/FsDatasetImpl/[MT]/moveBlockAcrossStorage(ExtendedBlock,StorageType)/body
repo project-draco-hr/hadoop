@@ -1,0 +1,25 @@
+{
+  ReplicaInfo replicaInfo=getReplicaInfo(block);
+  if (replicaInfo.getState() != ReplicaState.FINALIZED) {
+    throw new ReplicaNotFoundException(ReplicaNotFoundException.UNFINALIZED_REPLICA + block);
+  }
+  if (replicaInfo.getNumBytes() != block.getNumBytes()) {
+    throw new IOException("Corrupted replica " + replicaInfo + " with a length of "+ replicaInfo.getNumBytes()+ " expected length is "+ block.getNumBytes());
+  }
+  if (replicaInfo.getVolume().getStorageType() == targetStorageType) {
+    throw new ReplicaAlreadyExistsException("Replica " + replicaInfo + " already exists on storage "+ targetStorageType);
+  }
+  if (replicaInfo.isOnTransientStorage()) {
+    throw new IOException("Replica " + replicaInfo + " cannot be moved from storageType : "+ replicaInfo.getVolume().getStorageType());
+  }
+  FsVolumeImpl targetVolume=volumes.getNextVolume(targetStorageType,block.getNumBytes());
+  File oldBlockFile=replicaInfo.getBlockFile();
+  File oldMetaFile=replicaInfo.getMetaFile();
+  File[] blockFiles=copyBlockFiles(block.getBlockId(),block.getGenerationStamp(),oldMetaFile,oldBlockFile,targetVolume.getTmpDir(block.getBlockPoolId()),replicaInfo.isOnTransientStorage());
+  ReplicaInfo newReplicaInfo=new ReplicaInPipeline(replicaInfo.getBlockId(),replicaInfo.getGenerationStamp(),targetVolume,blockFiles[0].getParentFile(),0);
+  newReplicaInfo.setNumBytes(blockFiles[1].length());
+  newReplicaInfo=finalizeReplica(block.getBlockPoolId(),newReplicaInfo);
+  removeOldReplica(replicaInfo,newReplicaInfo,oldBlockFile,oldMetaFile,oldBlockFile.length(),oldMetaFile.length(),block.getBlockPoolId());
+  datanode.getBlockScanner().addBlock(block);
+  return replicaInfo;
+}
