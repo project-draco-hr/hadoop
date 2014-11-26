@@ -5,11 +5,12 @@
   FSEditLog log=namesystem.getFSImage().getEditLog();
   long syncTxid=log.getSyncTxId();
   boolean readInProgress=syncTxid > 0;
-  List<Event> events=Lists.newArrayList();
+  List<EventBatch> batches=Lists.newArrayList();
+  int totalEvents=0;
   long maxSeenTxid=-1;
   long firstSeenTxid=-1;
   if (syncTxid > 0 && txid > syncTxid) {
-    return new EventsList(events,firstSeenTxid,maxSeenTxid,syncTxid);
+    return new EventBatchList(batches,firstSeenTxid,maxSeenTxid,syncTxid);
   }
   Collection<EditLogInputStream> streams=null;
   try {
@@ -17,7 +18,7 @@
   }
  catch (  IllegalStateException e) {
     LOG.info("NN is transitioning from active to standby and FSEditLog " + "is closed -- could not read edits");
-    return new EventsList(events,firstSeenTxid,maxSeenTxid,syncTxid);
+    return new EventBatchList(batches,firstSeenTxid,maxSeenTxid,syncTxid);
   }
   boolean breakOuter=false;
   for (  EditLogInputStream elis : streams) {
@@ -28,9 +29,10 @@
           breakOuter=true;
           break;
         }
-        Event[] eventsFromOp=InotifyFSEditLogOpTranslator.translate(op);
-        if (eventsFromOp != null) {
-          events.addAll(Arrays.asList(eventsFromOp));
+        EventBatch eventBatch=InotifyFSEditLogOpTranslator.translate(op);
+        if (eventBatch != null) {
+          batches.add(eventBatch);
+          totalEvents+=eventBatch.getEvents().length;
         }
         if (op.getTransactionId() > maxSeenTxid) {
           maxSeenTxid=op.getTransactionId();
@@ -38,7 +40,7 @@
         if (firstSeenTxid == -1) {
           firstSeenTxid=op.getTransactionId();
         }
-        if (events.size() >= maxEventsPerRPC || (syncTxid > 0 && op.getTransactionId() == syncTxid)) {
+        if (totalEvents >= maxEventsPerRPC || (syncTxid > 0 && op.getTransactionId() == syncTxid)) {
           breakOuter=true;
           break;
         }
@@ -51,5 +53,5 @@
       break;
     }
   }
-  return new EventsList(events,firstSeenTxid,maxSeenTxid,syncTxid);
+  return new EventBatchList(batches,firstSeenTxid,maxSeenTxid,syncTxid);
 }
