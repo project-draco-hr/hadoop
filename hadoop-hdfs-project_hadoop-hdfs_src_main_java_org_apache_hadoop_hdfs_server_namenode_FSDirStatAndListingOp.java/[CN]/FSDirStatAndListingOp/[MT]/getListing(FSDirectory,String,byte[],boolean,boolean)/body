@@ -1,0 +1,44 @@
+{
+  String srcs=FSDirectory.normalizePath(src);
+  final boolean isRawPath=FSDirectory.isReservedRawName(src);
+  fsd.readLock();
+  try {
+    if (srcs.endsWith(HdfsConstants.SEPARATOR_DOT_SNAPSHOT_DIR)) {
+      return getSnapshotsListing(fsd,srcs,startAfter);
+    }
+    final INodesInPath inodesInPath=fsd.getINodesInPath(srcs,true);
+    final INode[] inodes=inodesInPath.getINodes();
+    final int snapshot=inodesInPath.getPathSnapshotId();
+    final INode targetNode=inodes[inodes.length - 1];
+    if (targetNode == null)     return null;
+    byte parentStoragePolicy=isSuperUser ? targetNode.getStoragePolicyID() : BlockStoragePolicySuite.ID_UNSPECIFIED;
+    if (!targetNode.isDirectory()) {
+      return new DirectoryListing(new HdfsFileStatus[]{createFileStatus(fsd,HdfsFileStatus.EMPTY_NAME,targetNode,needLocation,parentStoragePolicy,snapshot,isRawPath,inodesInPath)},0);
+    }
+    final INodeDirectory dirInode=targetNode.asDirectory();
+    final ReadOnlyList<INode> contents=dirInode.getChildrenList(snapshot);
+    int startChild=INodeDirectory.nextChild(contents,startAfter);
+    int totalNumChildren=contents.size();
+    int numOfListing=Math.min(totalNumChildren - startChild,fsd.getLsLimit());
+    int locationBudget=fsd.getLsLimit();
+    int listingCnt=0;
+    HdfsFileStatus listing[]=new HdfsFileStatus[numOfListing];
+    for (int i=0; i < numOfListing && locationBudget > 0; i++) {
+      INode cur=contents.get(startChild + i);
+      byte curPolicy=isSuperUser && !cur.isSymlink() ? cur.getLocalStoragePolicyID() : BlockStoragePolicySuite.ID_UNSPECIFIED;
+      listing[i]=createFileStatus(fsd,cur.getLocalNameBytes(),cur,needLocation,fsd.getStoragePolicyID(curPolicy,parentStoragePolicy),snapshot,isRawPath,inodesInPath);
+      listingCnt++;
+      if (needLocation) {
+        LocatedBlocks blks=((HdfsLocatedFileStatus)listing[i]).getBlockLocations();
+        locationBudget-=(blks == null) ? 0 : blks.locatedBlockCount() * listing[i].getReplication();
+      }
+    }
+    if (listingCnt < numOfListing) {
+      listing=Arrays.copyOf(listing,listingCnt);
+    }
+    return new DirectoryListing(listing,totalNumChildren - startChild - listingCnt);
+  }
+  finally {
+    fsd.readUnlock();
+  }
+}
