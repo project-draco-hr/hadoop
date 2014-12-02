@@ -1,11 +1,24 @@
 {
-  boolean ret=false;
+  waitForLoadingFSImage();
+  checkOperation(OperationCategory.WRITE);
+  FSDirRenameOp.RenameOldResult ret=null;
+  writeLock();
   try {
-    ret=renameToInt(src,dst,logRetryCache);
+    checkOperation(OperationCategory.WRITE);
+    checkNameNodeSafeMode("Cannot rename " + src);
+    ret=FSDirRenameOp.renameToInt(dir,src,dst,logRetryCache);
   }
  catch (  AccessControlException e) {
     logAuditEvent(false,"rename",src,dst,null);
     throw e;
   }
-  return ret;
+ finally {
+    writeUnlock();
+  }
+  boolean success=ret != null && ret.success;
+  if (success) {
+    getEditLog().logSync();
+  }
+  logAuditEvent(success,"rename",src,dst,ret == null ? null : ret.auditStat);
+  return success;
 }

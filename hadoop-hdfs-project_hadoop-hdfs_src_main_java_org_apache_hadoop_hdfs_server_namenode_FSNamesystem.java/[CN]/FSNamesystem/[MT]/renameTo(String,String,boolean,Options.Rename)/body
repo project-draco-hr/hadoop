@@ -1,40 +1,26 @@
 {
-  String src=srcArg;
-  String dst=dstArg;
-  if (NameNode.stateChangeLog.isDebugEnabled()) {
-    NameNode.stateChangeLog.debug("DIR* NameSystem.renameTo: with options - " + src + " to "+ dst);
-  }
-  if (!DFSUtil.isValidName(dst)) {
-    throw new InvalidPathException("Invalid name: " + dst);
-  }
-  final FSPermissionChecker pc=getPermissionChecker();
+  waitForLoadingFSImage();
   checkOperation(OperationCategory.WRITE);
-  byte[][] srcComponents=FSDirectory.getPathComponentsForReservedPath(src);
-  byte[][] dstComponents=FSDirectory.getPathComponentsForReservedPath(dst);
-  HdfsFileStatus resultingStat=null;
+  Map.Entry<BlocksMapUpdateInfo,HdfsFileStatus> res=null;
   writeLock();
-  BlocksMapUpdateInfo collectedBlocks=new BlocksMapUpdateInfo();
   try {
     checkOperation(OperationCategory.WRITE);
     checkNameNodeSafeMode("Cannot rename " + src);
-    src=dir.resolvePath(pc,src,srcComponents);
-    dst=dir.resolvePath(pc,dst,dstComponents);
-    renameToInternal(pc,src,dst,logRetryCache,collectedBlocks,options);
-    resultingStat=getAuditFileInfo(dst,false);
+    res=FSDirRenameOp.renameToInt(dir,src,dst,logRetryCache,options);
   }
-  finally {
+ catch (  AccessControlException e) {
+    logAuditEvent(false,"rename (options=" + Arrays.toString(options) + ")",src,dst,null);
+    throw e;
+  }
+ finally {
     writeUnlock();
   }
   getEditLog().logSync();
+  BlocksMapUpdateInfo collectedBlocks=res.getKey();
+  HdfsFileStatus auditStat=res.getValue();
   if (!collectedBlocks.getToDeleteList().isEmpty()) {
     removeBlocks(collectedBlocks);
     collectedBlocks.clear();
   }
-  if (resultingStat != null) {
-    StringBuilder cmd=new StringBuilder("rename options=");
-    for (    Rename option : options) {
-      cmd.append(option.value()).append(" ");
-    }
-    logAuditEvent(true,cmd.toString(),srcArg,dstArg,resultingStat);
-  }
+  logAuditEvent(true,"rename (options=" + Arrays.toString(options) + ")",src,dst,auditStat);
 }
