@@ -1,0 +1,49 @@
+{
+  String log4jPropertyFile=conf.get(MRJobConfig.MAPREDUCE_JOB_LOG4J_PROPERTIES_FILE,"");
+  if (log4jPropertyFile.isEmpty()) {
+    vargs.add("-Dlog4j.configuration=container-log4j.properties");
+  }
+ else {
+    URI log4jURI=null;
+    try {
+      log4jURI=new URI(log4jPropertyFile);
+    }
+ catch (    URISyntaxException e) {
+      throw new IllegalArgumentException(e);
+    }
+    Path log4jPath=new Path(log4jURI);
+    vargs.add("-Dlog4j.configuration=" + log4jPath.getName());
+  }
+  long logSize;
+  String logLevel;
+  int numBackups;
+  if (task == null) {
+    logSize=conf.getLong(MRJobConfig.MR_AM_LOG_KB,MRJobConfig.DEFAULT_MR_AM_LOG_KB) << 10;
+    logLevel=conf.get(MRJobConfig.MR_AM_LOG_LEVEL,MRJobConfig.DEFAULT_MR_AM_LOG_LEVEL);
+    numBackups=conf.getInt(MRJobConfig.MR_AM_LOG_BACKUPS,MRJobConfig.DEFAULT_MR_AM_LOG_BACKUPS);
+  }
+ else {
+    logSize=TaskLog.getTaskLogLimitBytes(conf);
+    logLevel=getChildLogLevel(conf,task.isMapTask());
+    numBackups=conf.getInt(MRJobConfig.TASK_LOG_BACKUPS,MRJobConfig.DEFAULT_TASK_LOG_BACKUPS);
+  }
+  vargs.add("-D" + YarnConfiguration.YARN_APP_CONTAINER_LOG_DIR + "="+ ApplicationConstants.LOG_DIR_EXPANSION_VAR);
+  vargs.add("-D" + YarnConfiguration.YARN_APP_CONTAINER_LOG_SIZE + "="+ logSize);
+  if (logSize > 0L && numBackups > 0) {
+    vargs.add("-D" + YarnConfiguration.YARN_APP_CONTAINER_LOG_BACKUPS + "="+ numBackups);
+    vargs.add("-Dhadoop.root.logger=" + logLevel + ",CRLA");
+  }
+ else {
+    vargs.add("-Dhadoop.root.logger=" + logLevel + ",CLA");
+  }
+  vargs.add("-Dhadoop.root.logfile=" + TaskLog.LogName.SYSLOG);
+  if (task != null && !task.isMapTask() && conf.getBoolean(MRJobConfig.REDUCE_SEPARATE_SHUFFLE_LOG,MRJobConfig.DEFAULT_REDUCE_SEPARATE_SHUFFLE_LOG)) {
+    final int numShuffleBackups=conf.getInt(MRJobConfig.SHUFFLE_LOG_BACKUPS,MRJobConfig.DEFAULT_SHUFFLE_LOG_BACKUPS);
+    final long shuffleLogSize=conf.getLong(MRJobConfig.SHUFFLE_LOG_KB,MRJobConfig.DEFAULT_SHUFFLE_LOG_KB) << 10;
+    final String shuffleLogger=logLevel + (shuffleLogSize > 0L && numShuffleBackups > 0 ? ",shuffleCRLA" : ",shuffleCLA");
+    vargs.add("-D" + MRJobConfig.MR_PREFIX + "shuffle.logger="+ shuffleLogger);
+    vargs.add("-D" + MRJobConfig.MR_PREFIX + "shuffle.logfile="+ TaskLog.LogName.SYSLOG+ ".shuffle");
+    vargs.add("-D" + MRJobConfig.MR_PREFIX + "shuffle.log.filesize="+ shuffleLogSize);
+    vargs.add("-D" + MRJobConfig.MR_PREFIX + "shuffle.log.backups="+ numShuffleBackups);
+  }
+}
