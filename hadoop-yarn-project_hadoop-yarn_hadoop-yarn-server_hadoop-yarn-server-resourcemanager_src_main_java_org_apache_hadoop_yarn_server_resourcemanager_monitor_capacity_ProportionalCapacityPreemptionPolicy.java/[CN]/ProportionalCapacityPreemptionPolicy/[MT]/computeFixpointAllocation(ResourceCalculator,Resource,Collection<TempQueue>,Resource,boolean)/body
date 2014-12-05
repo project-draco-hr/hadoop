@@ -1,14 +1,31 @@
 {
-  while (!qAlloc.isEmpty() && Resources.greaterThan(rc,tot_guarant,unassigned,Resources.none())) {
+  TQComparator tqComparator=new TQComparator(rc,tot_guarant);
+  PriorityQueue<TempQueue> orderedByNeed=new PriorityQueue<TempQueue>(10,tqComparator);
+  for (Iterator<TempQueue> i=qAlloc.iterator(); i.hasNext(); ) {
+    TempQueue q=i.next();
+    if (Resources.greaterThan(rc,tot_guarant,q.current,q.guaranteed)) {
+      q.idealAssigned=Resources.add(q.guaranteed,q.untouchableExtra);
+    }
+ else {
+      q.idealAssigned=Resources.clone(q.current);
+    }
+    Resources.subtractFrom(unassigned,q.idealAssigned);
+    Resource curPlusPend=Resources.add(q.current,q.pending);
+    if (Resources.lessThan(rc,tot_guarant,q.idealAssigned,curPlusPend)) {
+      orderedByNeed.add(q);
+    }
+  }
+  while (!orderedByNeed.isEmpty() && Resources.greaterThan(rc,tot_guarant,unassigned,Resources.none())) {
     Resource wQassigned=Resource.newInstance(0,0);
-    resetCapacity(rc,unassigned,qAlloc,ignoreGuarantee);
-    for (Iterator<TempQueue> i=qAlloc.iterator(); i.hasNext(); ) {
+    resetCapacity(rc,unassigned,orderedByNeed,ignoreGuarantee);
+    Collection<TempQueue> underserved=getMostUnderservedQueues(orderedByNeed,tqComparator);
+    for (Iterator<TempQueue> i=underserved.iterator(); i.hasNext(); ) {
       TempQueue sub=i.next();
-      Resource wQavail=Resources.multiply(unassigned,sub.normalizedGuarantee);
+      Resource wQavail=Resources.multiplyAndNormalizeUp(rc,unassigned,sub.normalizedGuarantee,Resource.newInstance(1,1));
       Resource wQidle=sub.offer(wQavail,rc,tot_guarant);
       Resource wQdone=Resources.subtract(wQavail,wQidle);
-      if (!Resources.greaterThan(rc,tot_guarant,wQdone,Resources.none())) {
-        i.remove();
+      if (Resources.greaterThan(rc,tot_guarant,wQdone,Resources.none())) {
+        orderedByNeed.add(sub);
       }
       Resources.addTo(wQassigned,wQdone);
     }

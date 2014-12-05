@@ -1,0 +1,48 @@
+{
+  TempQueue ret;
+synchronized (root) {
+    String queueName=root.getQueueName();
+    float absUsed=root.getAbsoluteUsedCapacity();
+    float absCap=root.getAbsoluteCapacity();
+    float absMaxCap=root.getAbsoluteMaximumCapacity();
+    Resource current=Resources.multiply(clusterResources,absUsed);
+    Resource guaranteed=Resources.multiply(clusterResources,absCap);
+    Resource maxCapacity=Resources.multiply(clusterResources,absMaxCap);
+    boolean queueDisablePreemption=false;
+    String queuePropName=BASE_YARN_RM_PREEMPTION + root.getQueuePath() + SUFFIX_DISABLE_PREEMPTION;
+    queueDisablePreemption=scheduler.getConfiguration().getBoolean(queuePropName,parentDisablePreempt);
+    Resource extra=Resource.newInstance(0,0);
+    if (Resources.greaterThan(rc,clusterResources,current,guaranteed)) {
+      extra=Resources.subtract(current,guaranteed);
+    }
+    if (root instanceof LeafQueue) {
+      LeafQueue l=(LeafQueue)root;
+      Resource pending=l.getTotalResourcePending();
+      ret=new TempQueue(queueName,current,pending,guaranteed,maxCapacity);
+      if (queueDisablePreemption) {
+        ret.untouchableExtra=extra;
+      }
+ else {
+        ret.preemptableExtra=extra;
+      }
+      ret.setLeafQueue(l);
+    }
+ else {
+      Resource pending=Resource.newInstance(0,0);
+      ret=new TempQueue(root.getQueueName(),current,pending,guaranteed,maxCapacity);
+      Resource childrensPreemptable=Resource.newInstance(0,0);
+      for (      CSQueue c : root.getChildQueues()) {
+        TempQueue subq=cloneQueues(c,clusterResources,queueDisablePreemption);
+        Resources.addTo(childrensPreemptable,subq.preemptableExtra);
+        ret.addChild(subq);
+      }
+      if (Resources.greaterThanOrEqual(rc,clusterResources,childrensPreemptable,extra)) {
+        ret.untouchableExtra=Resource.newInstance(0,0);
+      }
+ else {
+        ret.untouchableExtra=Resources.subtractFrom(extra,childrensPreemptable);
+      }
+    }
+  }
+  return ret;
+}
