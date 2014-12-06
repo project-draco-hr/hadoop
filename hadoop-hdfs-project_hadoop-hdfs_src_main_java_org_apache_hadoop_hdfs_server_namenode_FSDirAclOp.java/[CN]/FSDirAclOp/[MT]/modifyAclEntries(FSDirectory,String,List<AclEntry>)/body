@@ -1,0 +1,22 @@
+{
+  String src=srcArg;
+  checkAclsConfigFlag(fsd);
+  FSPermissionChecker pc=fsd.getPermissionChecker();
+  byte[][] pathComponents=FSDirectory.getPathComponentsForReservedPath(src);
+  src=fsd.resolvePath(pc,src,pathComponents);
+  fsd.writeLock();
+  try {
+    INodesInPath iip=fsd.getINodesInPath4Write(FSDirectory.normalizePath(src),true);
+    fsd.checkOwner(pc,iip);
+    INode inode=FSDirectory.resolveLastINode(src,iip);
+    int snapshotId=iip.getLatestSnapshotId();
+    List<AclEntry> existingAcl=AclStorage.readINodeLogicalAcl(inode);
+    List<AclEntry> newAcl=AclTransformation.mergeAclEntries(existingAcl,aclSpec);
+    AclStorage.updateINodeAcl(inode,newAcl,snapshotId);
+    fsd.getEditLog().logSetAcl(src,newAcl);
+  }
+  finally {
+    fsd.writeUnlock();
+  }
+  return fsd.getAuditFileInfo(src,false);
+}

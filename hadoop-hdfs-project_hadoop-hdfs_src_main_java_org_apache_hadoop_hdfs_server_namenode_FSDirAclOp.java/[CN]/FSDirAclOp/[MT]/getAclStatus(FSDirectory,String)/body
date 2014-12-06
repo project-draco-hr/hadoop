@@ -1,0 +1,24 @@
+{
+  checkAclsConfigFlag(fsd);
+  FSPermissionChecker pc=fsd.getPermissionChecker();
+  byte[][] pathComponents=FSDirectory.getPathComponentsForReservedPath(src);
+  src=fsd.resolvePath(pc,src,pathComponents);
+  String srcs=FSDirectory.normalizePath(src);
+  fsd.readLock();
+  try {
+    if (srcs.endsWith(HdfsConstants.SEPARATOR_DOT_SNAPSHOT_DIR) && fsd.getINode4DotSnapshot(srcs) != null) {
+      return new AclStatus.Builder().owner("").group("").build();
+    }
+    INodesInPath iip=fsd.getINodesInPath(srcs,true);
+    if (fsd.isPermissionEnabled()) {
+      fsd.checkTraverse(pc,iip);
+    }
+    INode inode=FSDirectory.resolveLastINode(srcs,iip);
+    int snapshotId=iip.getPathSnapshotId();
+    List<AclEntry> acl=AclStorage.readINodeAcl(inode,snapshotId);
+    return new AclStatus.Builder().owner(inode.getUserName()).group(inode.getGroupName()).stickyBit(inode.getFsPermission(snapshotId).getStickyBit()).addEntries(acl).build();
+  }
+  finally {
+    fsd.readUnlock();
+  }
+}
