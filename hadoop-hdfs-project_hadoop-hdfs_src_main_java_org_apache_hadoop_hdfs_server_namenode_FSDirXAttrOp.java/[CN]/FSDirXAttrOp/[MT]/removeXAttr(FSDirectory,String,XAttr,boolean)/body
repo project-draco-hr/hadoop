@@ -1,0 +1,25 @@
+{
+  FSDirXAttrOp.checkXAttrsConfigFlag(fsd);
+  FSPermissionChecker pc=fsd.getPermissionChecker();
+  XAttrPermissionFilter.checkPermissionForApi(pc,xAttr,FSDirectory.isReservedRawName(src));
+  byte[][] pathComponents=FSDirectory.getPathComponentsForReservedPath(src);
+  src=fsd.resolvePath(pc,src,pathComponents);
+  final INodesInPath iip=fsd.getINodesInPath4Write(src);
+  checkXAttrChangeAccess(fsd,iip,xAttr,pc);
+  List<XAttr> xAttrs=Lists.newArrayListWithCapacity(1);
+  xAttrs.add(xAttr);
+  fsd.writeLock();
+  try {
+    List<XAttr> removedXAttrs=unprotectedRemoveXAttrs(fsd,src,xAttrs);
+    if (removedXAttrs != null && !removedXAttrs.isEmpty()) {
+      fsd.getEditLog().logRemoveXAttrs(src,removedXAttrs,logRetryCache);
+    }
+ else {
+      throw new IOException("No matching attributes found for remove operation");
+    }
+  }
+  finally {
+    fsd.writeUnlock();
+  }
+  return fsd.getAuditFileInfo(src,false);
+}

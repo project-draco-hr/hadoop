@@ -1,0 +1,39 @@
+{
+  String src=srcArg;
+  checkXAttrsConfigFlag(fsd);
+  FSPermissionChecker pc=fsd.getPermissionChecker();
+  final boolean isRawPath=FSDirectory.isReservedRawName(src);
+  boolean getAll=xAttrs == null || xAttrs.isEmpty();
+  if (!getAll) {
+    XAttrPermissionFilter.checkPermissionForApi(pc,xAttrs,isRawPath);
+  }
+  byte[][] pathComponents=FSDirectory.getPathComponentsForReservedPath(src);
+  src=fsd.resolvePath(pc,src,pathComponents);
+  final INodesInPath iip=fsd.getINodesInPath(src,true);
+  if (fsd.isPermissionEnabled()) {
+    fsd.checkPathAccess(pc,iip,FsAction.READ);
+  }
+  List<XAttr> all=FSDirXAttrOp.getXAttrs(fsd,src);
+  List<XAttr> filteredAll=XAttrPermissionFilter.filterXAttrsForApi(pc,all,isRawPath);
+  if (getAll) {
+    return filteredAll;
+  }
+  if (filteredAll == null || filteredAll.isEmpty()) {
+    return null;
+  }
+  List<XAttr> toGet=Lists.newArrayListWithCapacity(xAttrs.size());
+  for (  XAttr xAttr : xAttrs) {
+    boolean foundIt=false;
+    for (    XAttr a : filteredAll) {
+      if (xAttr.getNameSpace() == a.getNameSpace() && xAttr.getName().equals(a.getName())) {
+        toGet.add(a);
+        foundIt=true;
+        break;
+      }
+    }
+    if (!foundIt) {
+      throw new IOException("At least one of the attributes provided was not found.");
+    }
+  }
+  return toGet;
+}
