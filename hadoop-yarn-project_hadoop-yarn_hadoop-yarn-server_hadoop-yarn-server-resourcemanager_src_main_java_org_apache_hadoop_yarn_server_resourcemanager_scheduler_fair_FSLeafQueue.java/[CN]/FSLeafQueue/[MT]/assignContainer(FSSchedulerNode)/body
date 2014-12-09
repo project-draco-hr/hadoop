@@ -7,15 +7,27 @@
     return assigned;
   }
   Comparator<Schedulable> comparator=policy.getComparator();
-  Collections.sort(runnableApps,comparator);
-  for (  FSAppAttempt sched : runnableApps) {
-    if (SchedulerAppUtils.isBlacklisted(sched,node,LOG)) {
-      continue;
+  writeLock.lock();
+  try {
+    Collections.sort(runnableApps,comparator);
+  }
+  finally {
+    writeLock.unlock();
+  }
+  readLock.lock();
+  try {
+    for (    FSAppAttempt sched : runnableApps) {
+      if (SchedulerAppUtils.isBlacklisted(sched,node,LOG)) {
+        continue;
+      }
+      assigned=sched.assignContainer(node);
+      if (!assigned.equals(Resources.none())) {
+        break;
+      }
     }
-    assigned=sched.assignContainer(node);
-    if (!assigned.equals(Resources.none())) {
-      break;
-    }
+  }
+  finally {
+    readLock.unlock();
   }
   return assigned;
 }
