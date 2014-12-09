@@ -1,25 +1,25 @@
 {
-  ArrayList<FsVolumeImpl> removedVols=null;
-  final List<FsVolumeImpl> volumeList=new ArrayList<FsVolumeImpl>(volumes);
-  for (Iterator<FsVolumeImpl> i=volumeList.iterator(); i.hasNext(); ) {
-    final FsVolumeImpl fsv=i.next();
-    try {
-      fsv.checkDirs();
-    }
- catch (    DiskErrorException e) {
-      FsDatasetImpl.LOG.warn("Removing failed volume " + fsv + ": ",e);
-      if (removedVols == null) {
-        removedVols=new ArrayList<FsVolumeImpl>(1);
+synchronized (checkDirsMutex) {
+    ArrayList<FsVolumeImpl> removedVols=null;
+    final List<FsVolumeImpl> volumeList=new ArrayList<FsVolumeImpl>(volumes);
+    for (Iterator<FsVolumeImpl> i=volumeList.iterator(); i.hasNext(); ) {
+      final FsVolumeImpl fsv=i.next();
+      try {
+        fsv.checkDirs();
       }
-      removedVols.add(fsv);
-      fsv.shutdown();
-      i.remove();
-      numFailedVolumes++;
+ catch (      DiskErrorException e) {
+        FsDatasetImpl.LOG.warn("Removing failed volume " + fsv + ": ",e);
+        if (removedVols == null) {
+          removedVols=new ArrayList<FsVolumeImpl>(1);
+        }
+        removedVols.add(fsv);
+        removeVolume(fsv.getBasePath());
+        numFailedVolumes++;
+      }
     }
+    if (removedVols != null && removedVols.size() > 0) {
+      FsDatasetImpl.LOG.warn("Completed checkDirs. Removed " + removedVols.size() + " volumes. Current volumes: "+ this);
+    }
+    return removedVols;
   }
-  if (removedVols != null && removedVols.size() > 0) {
-    volumes=Collections.unmodifiableList(volumeList);
-    FsDatasetImpl.LOG.warn("Completed checkDirs. Removed " + removedVols.size() + " volumes. Current volumes: "+ this);
-  }
-  return removedVols;
 }
