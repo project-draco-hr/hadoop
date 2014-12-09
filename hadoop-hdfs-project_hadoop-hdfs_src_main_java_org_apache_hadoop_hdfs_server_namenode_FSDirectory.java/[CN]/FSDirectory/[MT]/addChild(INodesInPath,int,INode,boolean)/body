@@ -1,17 +1,17 @@
 {
-  final INode[] inodes=iip.getINodes();
-  if (pos == 1 && inodes[0] == rootDir && isReservedName(child)) {
+  if (pos == 1 && iip.getINode(0) == rootDir && isReservedName(child)) {
     throw new HadoopIllegalArgumentException("File name \"" + child.getLocalName() + "\" is reserved and cannot "+ "be created. If this is during upgrade change the name of the "+ "existing file or directory to another name before upgrading "+ "to the new release.");
   }
+  final INodeDirectory parent=iip.getINode(pos - 1).asDirectory();
   if (checkQuota) {
-    verifyMaxComponentLength(child.getLocalNameBytes(),inodes,pos);
-    verifyMaxDirItems(inodes,pos);
+    final String parentPath=iip.getPath(pos - 1);
+    verifyMaxComponentLength(child.getLocalNameBytes(),parentPath);
+    verifyMaxDirItems(parent,parentPath);
   }
   verifyINodeName(child.getLocalNameBytes());
   final Quota.Counts counts=child.computeQuotaUsage();
   updateCount(iip,pos,counts.get(Quota.NAMESPACE),counts.get(Quota.DISKSPACE),checkQuota);
   boolean isRename=(child.getParent() != null);
-  final INodeDirectory parent=inodes[pos - 1].asDirectory();
   boolean added;
   try {
     added=parent.addChild(child,true,iip.getLatestSnapshotId());
@@ -24,7 +24,6 @@
     updateCountNoQuotaCheck(iip,pos,-counts.get(Quota.NAMESPACE),-counts.get(Quota.DISKSPACE));
   }
  else {
-    iip.setINode(pos - 1,child.getParent());
     if (!isRename) {
       AclStorage.copyINodeDefaultAcl(child);
     }

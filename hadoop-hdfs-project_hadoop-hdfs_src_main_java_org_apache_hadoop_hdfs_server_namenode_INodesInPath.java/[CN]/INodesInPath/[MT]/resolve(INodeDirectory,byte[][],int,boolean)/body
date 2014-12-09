@@ -1,36 +1,36 @@
 {
   Preconditions.checkArgument(startingDir.compareTo(components[0]) == 0);
   INode curNode=startingDir;
-  final INodesInPath existing=new INodesInPath(components,numOfINodes);
   int count=0;
-  int index=numOfINodes - components.length;
-  if (index > 0) {
-    index=0;
-  }
+  int index=numOfINodes <= components.length ? numOfINodes - components.length : 0;
+  int inodeNum=0;
+  int capacity=numOfINodes;
+  INode[] inodes=new INode[numOfINodes];
+  boolean isSnapshot=false;
+  int snapshotId=CURRENT_STATE_ID;
   while (count < components.length && curNode != null) {
     final boolean lastComp=(count == components.length - 1);
     if (index >= 0) {
-      existing.addNode(curNode);
+      inodes[inodeNum++]=curNode;
     }
     final boolean isRef=curNode.isReference();
     final boolean isDir=curNode.isDirectory();
     final INodeDirectory dir=isDir ? curNode.asDirectory() : null;
     if (!isRef && isDir && dir.isWithSnapshot()) {
-      if (!existing.isSnapshot()) {
-        existing.updateLatestSnapshotId(dir.getDirectoryWithSnapshotFeature().getLastSnapshotId());
+      if (!isSnapshot && shouldUpdateLatestId(dir.getDirectoryWithSnapshotFeature().getLastSnapshotId(),snapshotId)) {
+        snapshotId=dir.getDirectoryWithSnapshotFeature().getLastSnapshotId();
       }
     }
  else     if (isRef && isDir && !lastComp) {
-      if (!existing.isSnapshot()) {
+      if (!isSnapshot) {
         int dstSnapshotId=curNode.asReference().getDstSnapshotId();
-        int latest=existing.getLatestSnapshotId();
-        if (latest == Snapshot.CURRENT_STATE_ID || (dstSnapshotId != Snapshot.CURRENT_STATE_ID && dstSnapshotId >= latest)) {
-          int lastSnapshot=Snapshot.CURRENT_STATE_ID;
+        if (snapshotId == CURRENT_STATE_ID || (dstSnapshotId != CURRENT_STATE_ID && dstSnapshotId >= snapshotId)) {
+          int lastSnapshot=CURRENT_STATE_ID;
           DirectoryWithSnapshotFeature sf;
           if (curNode.isDirectory() && (sf=curNode.asDirectory().getDirectoryWithSnapshotFeature()) != null) {
             lastSnapshot=sf.getLastSnapshotId();
           }
-          existing.setSnapshotId(lastSnapshot);
+          snapshotId=lastSnapshot;
         }
       }
     }
@@ -52,9 +52,9 @@
     if (isDotSnapshotDir(childName) && dir.isSnapshottable()) {
       count++;
       index++;
-      existing.isSnapshot=true;
+      isSnapshot=true;
       if (index >= 0) {
-        existing.capacity--;
+        capacity--;
       }
       if (count == components.length - 1) {
         break;
@@ -65,17 +65,19 @@
       }
  else {
         curNode=s.getRoot();
-        existing.setSnapshotId(s.getId());
-      }
-      if (index >= -1) {
-        existing.snapshotRootIndex=existing.numNonNull;
+        snapshotId=s.getId();
       }
     }
  else {
-      curNode=dir.getChild(childName,existing.getPathSnapshotId());
+      curNode=dir.getChild(childName,isSnapshot ? snapshotId : CURRENT_STATE_ID);
     }
     count++;
     index++;
   }
-  return existing;
+  if (isSnapshot && capacity < numOfINodes && !isDotSnapshotDir(components[components.length - 1])) {
+    INode[] newNodes=new INode[capacity];
+    System.arraycopy(inodes,0,newNodes,0,capacity);
+    inodes=newNodes;
+  }
+  return new INodesInPath(inodes,components,isSnapshot,snapshotId);
 }
