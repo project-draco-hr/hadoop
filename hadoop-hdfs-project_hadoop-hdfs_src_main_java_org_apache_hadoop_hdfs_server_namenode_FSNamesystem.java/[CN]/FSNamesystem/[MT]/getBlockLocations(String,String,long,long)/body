@@ -1,11 +1,49 @@
 {
-  LocatedBlocks blocks=getBlockLocations(src,offset,length,true,true,true);
+  checkOperation(OperationCategory.READ);
+  GetBlockLocationsResult res=null;
+  readLock();
+  try {
+    checkOperation(OperationCategory.READ);
+    res=getBlockLocations(src,offset,length,true,true);
+  }
+ catch (  AccessControlException e) {
+    logAuditEvent(false,"open",src);
+    throw e;
+  }
+ finally {
+    readUnlock();
+  }
+  logAuditEvent(true,"open",src);
+  if (res == null) {
+    return null;
+  }
+  if (res.updateAccessTime()) {
+    writeLock();
+    final long now=now();
+    try {
+      checkOperation(OperationCategory.WRITE);
+      INode inode=res.iip.getLastINode();
+      boolean updateAccessTime=now > inode.getAccessTime() + getAccessTimePrecision();
+      if (!isInSafeMode() && updateAccessTime) {
+        boolean changed=dir.setTimes(inode,-1,now,false,res.iip.getLatestSnapshotId());
+        if (changed) {
+          getEditLog().logTimes(src,-1,now);
+        }
+      }
+    }
+ catch (    Throwable e) {
+      LOG.warn("Failed to update the access time of " + src,e);
+    }
+ finally {
+      writeUnlock();
+    }
+  }
+  LocatedBlocks blocks=res.blocks;
   if (blocks != null) {
     blockManager.getDatanodeManager().sortLocatedBlocks(clientMachine,blocks.getLocatedBlocks());
     LocatedBlock lastBlock=blocks.getLastLocatedBlock();
     if (lastBlock != null) {
-      ArrayList<LocatedBlock> lastBlockList=Lists.newArrayListWithCapacity(1);
-      lastBlockList.add(lastBlock);
+      ArrayList<LocatedBlock> lastBlockList=Lists.newArrayList(lastBlock);
       blockManager.getDatanodeManager().sortLocatedBlocks(clientMachine,lastBlockList);
     }
   }
