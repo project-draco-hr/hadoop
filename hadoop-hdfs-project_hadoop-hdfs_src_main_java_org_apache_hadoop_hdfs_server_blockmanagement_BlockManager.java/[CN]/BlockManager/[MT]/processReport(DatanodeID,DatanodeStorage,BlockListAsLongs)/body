@@ -3,6 +3,7 @@
   final long startTime=Time.now();
   final long endTime;
   DatanodeDescriptor node;
+  Collection<Block> invalidatedBlocks=null;
   try {
     node=datanodeManager.getDatanode(nodeID);
     if (node == null || !node.isAlive) {
@@ -20,7 +21,7 @@
       processFirstBlockReport(storageInfo,newReport);
     }
  else {
-      processReport(storageInfo,newReport);
+      invalidatedBlocks=processReport(storageInfo,newReport);
     }
     boolean staleBefore=storageInfo.areBlockContentsStale();
     storageInfo.receivedBlockReport();
@@ -32,6 +33,11 @@
   finally {
     endTime=Time.now();
     namesystem.writeUnlock();
+  }
+  if (invalidatedBlocks != null) {
+    for (    Block b : invalidatedBlocks) {
+      blockLog.info("BLOCK* processReport: " + b + " on "+ node+ " size "+ b.getNumBytes()+ " does not belong to any file");
+    }
   }
   final NameNodeMetrics metrics=NameNode.getNameNodeMetrics();
   if (metrics != null) {
