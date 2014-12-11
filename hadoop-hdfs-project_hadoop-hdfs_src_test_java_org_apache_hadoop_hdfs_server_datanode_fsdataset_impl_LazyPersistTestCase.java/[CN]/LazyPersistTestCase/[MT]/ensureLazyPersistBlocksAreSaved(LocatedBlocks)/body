@@ -1,0 +1,24 @@
+{
+  final String bpid=cluster.getNamesystem().getBlockPoolId();
+  List<? extends FsVolumeSpi> volumes=cluster.getDataNodes().get(0).getFSDataset().getVolumes();
+  final Set<Long> persistedBlockIds=new HashSet<Long>();
+  while (persistedBlockIds.size() < locatedBlocks.getLocatedBlocks().size()) {
+    Thread.sleep(1000);
+    for (    LocatedBlock lb : locatedBlocks.getLocatedBlocks()) {
+      for (      FsVolumeSpi v : volumes) {
+        if (v.isTransientStorage()) {
+          continue;
+        }
+        FsVolumeImpl volume=(FsVolumeImpl)v;
+        File lazyPersistDir=volume.getBlockPoolSlice(bpid).getLazypersistDir();
+        long blockId=lb.getBlock().getBlockId();
+        File targetDir=DatanodeUtil.idToBlockDir(lazyPersistDir,blockId);
+        File blockFile=new File(targetDir,lb.getBlock().getBlockName());
+        if (blockFile.exists()) {
+          persistedBlockIds.add(blockId);
+        }
+      }
+    }
+  }
+  assertThat(persistedBlockIds.size(),is(locatedBlocks.getLocatedBlocks().size()));
+}
