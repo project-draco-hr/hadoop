@@ -1,0 +1,52 @@
+{
+  final int lastInodeIndex=iip.length() - 1;
+  final byte[][] components=iip.getPathComponents();
+  final String[] names=new String[components.length];
+  for (int i=0; i < components.length; i++) {
+    names[i]=DFSUtil.bytes2String(components[i]);
+  }
+  fsd.writeLock();
+  try {
+    if (iip.isSnapshot()) {
+      throw new SnapshotAccessControlException("Modification on RO snapshot is disallowed");
+    }
+    final int length=iip.length();
+    StringBuilder pathbuilder=new StringBuilder();
+    int i=1;
+    INode curNode;
+    for (; i < length && (curNode=iip.getINode(i)) != null; i++) {
+      pathbuilder.append(Path.SEPARATOR).append(names[i]);
+      if (!curNode.isDirectory()) {
+        throw new FileAlreadyExistsException("Parent path is not a directory: " + pathbuilder + " "+ curNode.getLocalName());
+      }
+    }
+    PermissionStatus parentPermissions=permissions;
+    if (inheritPermission || (i < lastInodeIndex)) {
+      FsPermission parentFsPerm=inheritPermission ? iip.getINode(i - 1).getFsPermission() : permissions.getPermission();
+      if (!parentFsPerm.getUserAction().implies(FsAction.WRITE_EXECUTE)) {
+        parentFsPerm=new FsPermission(parentFsPerm.getUserAction().or(FsAction.WRITE_EXECUTE),parentFsPerm.getGroupAction(),parentFsPerm.getOtherAction());
+      }
+      if (!parentPermissions.getPermission().equals(parentFsPerm)) {
+        parentPermissions=new PermissionStatus(parentPermissions.getUserName(),parentPermissions.getGroupName(),parentFsPerm);
+        if (inheritPermission)         permissions=parentPermissions;
+      }
+    }
+    for (; i < length; i++) {
+      pathbuilder.append(Path.SEPARATOR).append(names[i]);
+      iip=unprotectedMkdir(fsd,fsd.allocateNewInodeId(),iip,i,components[i],(i < lastInodeIndex) ? parentPermissions : permissions,null,now);
+      if (iip.getINode(i) == null) {
+        return null;
+      }
+      NameNode.getNameNodeMetrics().incrFilesCreated();
+      final String cur=pathbuilder.toString();
+      fsd.getEditLog().logMkDir(cur,iip.getINode(i));
+      if (NameNode.stateChangeLog.isDebugEnabled()) {
+        NameNode.stateChangeLog.debug("mkdirs: created directory " + cur);
+      }
+    }
+  }
+  finally {
+    fsd.writeUnlock();
+  }
+  return iip;
+}
