@@ -1,37 +1,28 @@
 {
-  MetricValueMap map=new MetricValueMap();
-  Set<String> metricNames=metricMap.keySet();
-  LOG.debug("iterating in reported metrics, size={} values={}",metricNames.size(),metricNames);
-  for (  Map.Entry<String,RollingWindowMap> rwEntry : metricMap.entrySet()) {
-    String metricName=rwEntry.getKey();
-    RollingWindowMap rollingWindows=rwEntry.getValue();
-    TopN topN=new TopN(topUsersCnt);
-    Iterator<Map.Entry<String,RollingWindow>> iterator=rollingWindows.entrySet().iterator();
-    while (iterator.hasNext()) {
-      Map.Entry<String,RollingWindow> entry=iterator.next();
-      String userName=entry.getKey();
-      RollingWindow aWindow=entry.getValue();
-      long windowSum=aWindow.getSum(time);
-      if (windowSum == 0) {
-        LOG.debug("gc window of metric: {} userName: {}",metricName,userName);
-        iterator.remove();
-        continue;
-      }
-      LOG.debug("offer window of metric: {} userName: {} sum: {}",metricName,userName,windowSum);
-      topN.offer(new NameValuePair(userName,windowSum));
-    }
-    int n=topN.size();
-    LOG.info("topN size for command " + metricName + " is: "+ n);
-    if (n == 0) {
+  TopWindow window=new TopWindow(windowLenMs);
+  if (LOG.isDebugEnabled()) {
+    Set<String> metricNames=metricMap.keySet();
+    LOG.debug("iterating in reported metrics, size={} values={}",metricNames.size(),metricNames);
+  }
+  for (  Map.Entry<String,RollingWindowMap> entry : metricMap.entrySet()) {
+    String metricName=entry.getKey();
+    RollingWindowMap rollingWindows=entry.getValue();
+    TopN topN=getTopUsersForMetric(time,metricName,rollingWindows);
+    final int size=topN.size();
+    if (size == 0) {
       continue;
     }
-    String allMetricName=createMetricName(metricName,TopConf.ALL_USERS);
-    map.put(allMetricName,Long.valueOf(topN.total));
-    for (int i=0; i < n; i++) {
-      NameValuePair userEntry=topN.poll();
-      String userMetricName=createMetricName(metricName,userEntry.name);
-      map.put(userMetricName,Long.valueOf(userEntry.value));
+    Op op=new Op(metricName,topN.getTotal());
+    window.addOp(op);
+    Stack<NameValuePair> reverse=new Stack<NameValuePair>();
+    for (int i=0; i < size; i++) {
+      reverse.push(topN.poll());
+    }
+    for (int i=0; i < size; i++) {
+      NameValuePair userEntry=reverse.pop();
+      User user=new User(userEntry.name,Long.valueOf(userEntry.value));
+      op.addUser(user);
     }
   }
-  return map;
+  return window;
 }
