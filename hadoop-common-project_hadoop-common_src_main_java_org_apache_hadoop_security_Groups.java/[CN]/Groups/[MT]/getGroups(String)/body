@@ -3,34 +3,21 @@
   if (staticMapping != null) {
     return staticMapping;
   }
-  CachedGroups groups=userToGroupsMap.get(user);
-  long startMs=timer.monotonicNow();
-  if (!hasExpired(groups,startMs)) {
-    if (LOG.isDebugEnabled()) {
-      LOG.debug("Returning cached groups for '" + user + "'");
+  if (isNegativeCacheEnabled()) {
+    Long expirationTime=negativeCacheMask.get(user);
+    if (expirationTime != null) {
+      if (timer.monotonicNow() < expirationTime) {
+        throw noGroupsForUser(user);
+      }
+ else {
+        negativeCacheMask.remove(user,expirationTime);
+      }
     }
-    if (groups.getGroups().isEmpty()) {
-      throw new IOException("No groups found for user " + user);
-    }
-    return groups.getGroups();
   }
-  List<String> groupList=impl.getGroups(user);
-  long endMs=timer.monotonicNow();
-  long deltaMs=endMs - startMs;
-  UserGroupInformation.metrics.addGetGroups(deltaMs);
-  if (deltaMs > warningDeltaMs) {
-    LOG.warn("Potential performance problem: getGroups(user=" + user + ") "+ "took "+ deltaMs+ " milliseconds.");
+  try {
+    return cache.get(user);
   }
-  groups=new CachedGroups(groupList,endMs);
-  if (groups.getGroups().isEmpty()) {
-    if (isNegativeCacheEnabled()) {
-      userToGroupsMap.put(user,groups);
-    }
-    throw new IOException("No groups found for user " + user);
+ catch (  ExecutionException e) {
+    throw (IOException)e.getCause();
   }
-  userToGroupsMap.put(user,groups);
-  if (LOG.isDebugEnabled()) {
-    LOG.debug("Returning fetched groups for '" + user + "'");
-  }
-  return groups.getGroups();
 }
