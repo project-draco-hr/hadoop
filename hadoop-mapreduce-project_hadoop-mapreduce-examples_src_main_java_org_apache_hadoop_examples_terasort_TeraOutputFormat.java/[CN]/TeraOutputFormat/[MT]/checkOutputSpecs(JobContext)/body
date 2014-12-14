@@ -3,5 +3,19 @@
   if (outDir == null) {
     throw new InvalidJobConfException("Output directory not set in JobConf.");
   }
-  TokenCache.obtainTokensForNamenodes(job.getCredentials(),new Path[]{outDir},job.getConfiguration());
+  final Configuration jobConf=job.getConfiguration();
+  TokenCache.obtainTokensForNamenodes(job.getCredentials(),new Path[]{outDir},jobConf);
+  final FileSystem fs=outDir.getFileSystem(jobConf);
+  if (fs.exists(outDir)) {
+    final FileStatus[] outDirKids=fs.listStatus(outDir);
+    boolean empty=false;
+    if (outDirKids != null && outDirKids.length == 1) {
+      final FileStatus st=outDirKids[0];
+      final String fname=st.getPath().getName();
+      empty=!st.isDirectory() && TeraInputFormat.PARTITION_FILENAME.equals(fname);
+    }
+    if (TeraSort.getUseSimplePartitioner(job) || !empty) {
+      throw new FileAlreadyExistsException("Output directory " + outDir + " already exists");
+    }
+  }
 }
