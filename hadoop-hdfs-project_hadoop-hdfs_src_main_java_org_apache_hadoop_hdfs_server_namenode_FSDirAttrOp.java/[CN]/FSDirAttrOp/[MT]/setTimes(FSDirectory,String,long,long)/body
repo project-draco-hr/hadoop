@@ -1,0 +1,27 @@
+{
+  if (!fsd.isAccessTimeSupported() && atime != -1) {
+    throw new IOException("Access time for hdfs is not configured. " + " Please set " + DFS_NAMENODE_ACCESSTIME_PRECISION_KEY + " configuration parameter.");
+  }
+  FSPermissionChecker pc=fsd.getPermissionChecker();
+  byte[][] pathComponents=FSDirectory.getPathComponentsForReservedPath(src);
+  fsd.writeLock();
+  try {
+    src=fsd.resolvePath(pc,src,pathComponents);
+    final INodesInPath iip=fsd.getINodesInPath4Write(src);
+    if (fsd.isPermissionEnabled()) {
+      fsd.checkPathAccess(pc,iip,FsAction.WRITE);
+    }
+    final INode inode=iip.getLastINode();
+    if (inode == null) {
+      throw new FileNotFoundException("File/Directory " + src + " does not exist.");
+    }
+    boolean changed=unprotectedSetTimes(fsd,inode,mtime,atime,true,iip.getLatestSnapshotId());
+    if (changed) {
+      fsd.getEditLog().logTimes(src,mtime,atime);
+    }
+  }
+  finally {
+    fsd.writeUnlock();
+  }
+  return fsd.getAuditFileInfo(src,false);
+}

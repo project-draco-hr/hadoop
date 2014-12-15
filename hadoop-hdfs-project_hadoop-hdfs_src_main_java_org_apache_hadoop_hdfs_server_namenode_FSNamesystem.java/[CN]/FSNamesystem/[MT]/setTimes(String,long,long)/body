@@ -1,12 +1,19 @@
 {
-  if (!isAccessTimeSupported() && atime != -1) {
-    throw new IOException("Access time for hdfs is not configured. " + " Please set " + DFS_NAMENODE_ACCESSTIME_PRECISION_KEY + " configuration parameter.");
-  }
+  HdfsFileStatus auditStat;
+  checkOperation(OperationCategory.WRITE);
+  writeLock();
   try {
-    setTimesInt(src,mtime,atime);
+    checkOperation(OperationCategory.WRITE);
+    checkNameNodeSafeMode("Cannot set times " + src);
+    auditStat=FSDirAttrOp.setTimes(dir,src,mtime,atime);
   }
  catch (  AccessControlException e) {
     logAuditEvent(false,"setTimes",src);
     throw e;
   }
+ finally {
+    writeUnlock();
+  }
+  getEditLog().logSync();
+  logAuditEvent(true,"setTimes",src,null,auditStat);
 }

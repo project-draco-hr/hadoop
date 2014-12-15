@@ -1,0 +1,25 @@
+{
+  if (!fsd.isStoragePolicyEnabled()) {
+    throw new IOException("Failed to set storage policy since " + DFS_STORAGE_POLICY_ENABLED_KEY + " is set to false.");
+  }
+  FSPermissionChecker pc=fsd.getPermissionChecker();
+  byte[][] pathComponents=FSDirectory.getPathComponentsForReservedPath(src);
+  fsd.writeLock();
+  try {
+    src=FSDirectory.resolvePath(src,pathComponents,fsd);
+    final INodesInPath iip=fsd.getINodesInPath4Write(src);
+    if (fsd.isPermissionEnabled()) {
+      fsd.checkPathAccess(pc,iip,FsAction.WRITE);
+    }
+    BlockStoragePolicy policy=bm.getStoragePolicy(policyName);
+    if (policy == null) {
+      throw new HadoopIllegalArgumentException("Cannot find a block policy with the name " + policyName);
+    }
+    unprotectedSetStoragePolicy(fsd,bm,iip,policy.getId());
+    fsd.getEditLog().logSetStoragePolicy(src,policy.getId());
+  }
+  finally {
+    fsd.writeUnlock();
+  }
+  return fsd.getAuditFileInfo(src,false);
+}
