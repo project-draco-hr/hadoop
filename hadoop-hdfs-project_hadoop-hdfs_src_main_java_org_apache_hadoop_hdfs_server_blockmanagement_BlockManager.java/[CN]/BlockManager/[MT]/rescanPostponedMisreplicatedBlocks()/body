@@ -1,22 +1,52 @@
 {
-  for (Iterator<Block> it=postponedMisreplicatedBlocks.iterator(); it.hasNext(); ) {
-    Block b=it.next();
-    BlockInfo bi=blocksMap.getStoredBlock(b);
-    if (bi == null) {
-      if (LOG.isDebugEnabled()) {
-        LOG.debug("BLOCK* rescanPostponedMisreplicatedBlocks: " + "Postponed mis-replicated block " + b + " no longer found "+ "in block map.");
+  if (getPostponedMisreplicatedBlocksCount() == 0) {
+    return;
+  }
+  long startTimeRescanPostponedMisReplicatedBlocks=Time.now();
+  long startPostponedMisReplicatedBlocksCount=getPostponedMisreplicatedBlocksCount();
+  namesystem.writeLock();
+  try {
+    int i=0;
+    long startIndex=0;
+    long blocksPerRescan=datanodeManager.getBlocksPerPostponedMisreplicatedBlocksRescan();
+    long base=getPostponedMisreplicatedBlocksCount() - blocksPerRescan;
+    if (base > 0) {
+      startIndex=DFSUtil.getRandom().nextLong() % (base + 1);
+      if (startIndex < 0) {
+        startIndex+=(base + 1);
       }
-      it.remove();
-      postponedMisreplicatedBlocksCount.decrementAndGet();
-      continue;
     }
-    MisReplicationResult res=processMisReplicatedBlock(bi);
-    if (LOG.isDebugEnabled()) {
-      LOG.debug("BLOCK* rescanPostponedMisreplicatedBlocks: " + "Re-scanned block " + b + ", result is "+ res);
+    Iterator<Block> it=postponedMisreplicatedBlocks.iterator();
+    for (int tmp=0; tmp < startIndex; tmp++) {
+      it.next();
     }
-    if (res != MisReplicationResult.POSTPONE) {
-      it.remove();
-      postponedMisreplicatedBlocksCount.decrementAndGet();
+    for (; it.hasNext(); i++) {
+      Block b=it.next();
+      if (i >= blocksPerRescan) {
+        break;
+      }
+      BlockInfo bi=blocksMap.getStoredBlock(b);
+      if (bi == null) {
+        if (LOG.isDebugEnabled()) {
+          LOG.debug("BLOCK* rescanPostponedMisreplicatedBlocks: " + "Postponed mis-replicated block " + b + " no longer found "+ "in block map.");
+        }
+        it.remove();
+        postponedMisreplicatedBlocksCount.decrementAndGet();
+        continue;
+      }
+      MisReplicationResult res=processMisReplicatedBlock(bi);
+      if (LOG.isDebugEnabled()) {
+        LOG.debug("BLOCK* rescanPostponedMisreplicatedBlocks: " + "Re-scanned block " + b + ", result is "+ res);
+      }
+      if (res != MisReplicationResult.POSTPONE) {
+        it.remove();
+        postponedMisreplicatedBlocksCount.decrementAndGet();
+      }
     }
+  }
+  finally {
+    namesystem.writeUnlock();
+    long endPostponedMisReplicatedBlocksCount=getPostponedMisreplicatedBlocksCount();
+    LOG.info("Rescan of postponedMisreplicatedBlocks completed in " + (Time.now() - startTimeRescanPostponedMisReplicatedBlocks) + " msecs. "+ endPostponedMisReplicatedBlocksCount+ " blocks are left. "+ (startPostponedMisReplicatedBlocksCount - endPostponedMisReplicatedBlocksCount)+ " blocks are removed.");
   }
 }
