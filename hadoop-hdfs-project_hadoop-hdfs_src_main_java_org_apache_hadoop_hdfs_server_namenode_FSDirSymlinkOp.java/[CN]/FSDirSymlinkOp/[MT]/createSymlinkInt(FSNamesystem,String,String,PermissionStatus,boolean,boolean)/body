@@ -1,0 +1,36 @@
+{
+  FSDirectory fsd=fsn.getFSDirectory();
+  String link=linkArg;
+  if (!DFSUtil.isValidName(link)) {
+    throw new InvalidPathException("Invalid link name: " + link);
+  }
+  if (FSDirectory.isReservedName(target) || target.isEmpty()) {
+    throw new InvalidPathException("Invalid target name: " + target);
+  }
+  if (NameNode.stateChangeLog.isDebugEnabled()) {
+    NameNode.stateChangeLog.debug("DIR* NameSystem.createSymlink: target=" + target + " link="+ link);
+  }
+  FSPermissionChecker pc=fsn.getPermissionChecker();
+  byte[][] pathComponents=FSDirectory.getPathComponentsForReservedPath(link);
+  fsd.writeLock();
+  try {
+    link=fsd.resolvePath(pc,link,pathComponents);
+    final INodesInPath iip=fsd.getINodesInPath4Write(link,false);
+    if (!createParent) {
+      fsd.verifyParentDir(iip,link);
+    }
+    if (!fsd.isValidToCreate(link,iip)) {
+      throw new IOException("failed to create link " + link + " either because the filename is invalid or the file exists");
+    }
+    if (fsd.isPermissionEnabled()) {
+      fsd.checkAncestorAccess(pc,iip,FsAction.WRITE);
+    }
+    fsn.checkFsObjectLimit();
+    addSymlink(fsd,link,iip,target,dirPerms,createParent,logRetryCache);
+  }
+  finally {
+    fsd.writeUnlock();
+  }
+  NameNode.getNameNodeMetrics().incrCreateSymlinkOps();
+  return fsd.getAuditFileInfo(link,false);
+}

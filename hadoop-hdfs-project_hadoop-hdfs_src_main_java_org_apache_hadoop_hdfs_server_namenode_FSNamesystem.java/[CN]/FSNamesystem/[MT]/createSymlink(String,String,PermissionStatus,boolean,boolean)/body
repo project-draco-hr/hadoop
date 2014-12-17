@@ -1,15 +1,20 @@
 {
-  if (!DFSUtil.isValidName(link)) {
-    throw new InvalidPathException("Invalid link name: " + link);
-  }
-  if (FSDirectory.isReservedName(target)) {
-    throw new InvalidPathException("Invalid target name: " + target);
-  }
+  waitForLoadingFSImage();
+  HdfsFileStatus auditStat=null;
+  checkOperation(OperationCategory.WRITE);
+  writeLock();
   try {
-    createSymlinkInt(target,link,dirPerms,createParent,logRetryCache);
+    checkOperation(OperationCategory.WRITE);
+    checkNameNodeSafeMode("Cannot create symlink " + link);
+    auditStat=FSDirSymlinkOp.createSymlinkInt(this,target,link,dirPerms,createParent,logRetryCache);
   }
  catch (  AccessControlException e) {
     logAuditEvent(false,"createSymlink",link,target,null);
     throw e;
   }
+ finally {
+    writeUnlock();
+  }
+  getEditLog().logSync();
+  logAuditEvent(true,"createSymlink",link,target,auditStat);
 }
