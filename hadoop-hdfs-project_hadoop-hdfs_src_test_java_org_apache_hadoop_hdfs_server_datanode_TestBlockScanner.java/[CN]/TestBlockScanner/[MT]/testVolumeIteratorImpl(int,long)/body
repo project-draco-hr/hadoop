@@ -1,0 +1,81 @@
+{
+  Configuration conf=new Configuration();
+  disableBlockScanner(conf);
+  TestContext ctx=new TestContext(conf,1);
+  ctx.createFiles(0,numFiles,1);
+  assertEquals(1,ctx.volumes.size());
+  FsVolumeSpi volume=ctx.volumes.get(0);
+  ExtendedBlock savedBlock=null, loadedBlock=null;
+  boolean testedRewind=false, testedSave=false, testedLoad=false;
+  int blocksProcessed=0, savedBlocksProcessed=0;
+  try {
+    BPOfferService bpos[]=ctx.datanode.getAllBpOs();
+    assertEquals(1,bpos.length);
+    BlockIterator iter=volume.newBlockIterator(ctx.bpids[0],"test");
+    assertEquals(ctx.bpids[0],iter.getBlockPoolId());
+    iter.setMaxStalenessMs(maxStaleness);
+    while (true) {
+      HashSet<ExtendedBlock> blocks=new HashSet<ExtendedBlock>();
+      for (int blockIdx=0; blockIdx < numFiles; blockIdx++) {
+        blocks.add(ctx.getFileBlock(0,blockIdx));
+      }
+      while (true) {
+        ExtendedBlock block=iter.nextBlock();
+        if (block == null) {
+          break;
+        }
+        blocksProcessed++;
+        LOG.info("BlockIterator for {} found block {}, blocksProcessed = {}",volume,block,blocksProcessed);
+        if (testedSave && (savedBlock == null)) {
+          savedBlock=block;
+        }
+        if (testedLoad && (loadedBlock == null)) {
+          loadedBlock=block;
+          assertEquals(savedBlock,loadedBlock);
+        }
+        boolean blockRemoved=blocks.remove(block);
+        assertTrue("Found unknown block " + block,blockRemoved);
+        if (blocksProcessed > (numFiles / 3)) {
+          if (!testedSave) {
+            LOG.info("Processed {} blocks out of {}.  Saving iterator.",blocksProcessed,numFiles);
+            iter.save();
+            testedSave=true;
+            savedBlocksProcessed=blocksProcessed;
+          }
+        }
+        if (blocksProcessed > (numFiles / 2)) {
+          if (!testedRewind) {
+            LOG.info("Processed {} blocks out of {}.  Rewinding iterator.",blocksProcessed,numFiles);
+            iter.rewind();
+            break;
+          }
+        }
+        if (blocksProcessed > ((2 * numFiles) / 3)) {
+          if (!testedLoad) {
+            LOG.info("Processed {} blocks out of {}.  Loading iterator.",blocksProcessed,numFiles);
+            iter=volume.loadBlockIterator(ctx.bpids[0],"test");
+            iter.setMaxStalenessMs(maxStaleness);
+            break;
+          }
+        }
+      }
+      if (!testedRewind) {
+        testedRewind=true;
+        blocksProcessed=0;
+        LOG.info("Starting again at the beginning...");
+        continue;
+      }
+      if (!testedLoad) {
+        testedLoad=true;
+        blocksProcessed=savedBlocksProcessed;
+        LOG.info("Starting again at the load point...");
+        continue;
+      }
+      assertEquals(numFiles,blocksProcessed);
+      break;
+    }
+  }
+  finally {
+    ctx.close();
+  }
+}

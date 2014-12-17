@@ -1,0 +1,77 @@
+{
+  long bytesScanned=-1;
+  boolean scanError=false;
+  ExtendedBlock block=null;
+  try {
+    long monotonicMs=Time.monotonicNow();
+    expireOldScannedBytesRecords(monotonicMs);
+    if (!calculateShouldScan(conf.targetBytesPerSec,scannedBytesSum)) {
+      return 30000L;
+    }
+    if ((curBlockIter == null) || curBlockIter.atEnd()) {
+      long timeout=findNextUsableBlockIter();
+      if (timeout > 0) {
+        LOG.trace("{}: no block pools are ready to scan yet.  Waiting " + "{} ms.",this,timeout);
+synchronized (stats) {
+          stats.nextBlockPoolScanStartMs=Time.monotonicNow() + timeout;
+        }
+        return timeout;
+      }
+synchronized (stats) {
+        stats.scansSinceRestart++;
+        stats.blocksScannedInCurrentPeriod=0;
+        stats.nextBlockPoolScanStartMs=-1;
+      }
+      return 0L;
+    }
+    try {
+      block=curBlockIter.nextBlock();
+    }
+ catch (    IOException e) {
+      LOG.warn("{}: nextBlock error on {}",this,curBlockIter);
+      return 0L;
+    }
+    if (block == null) {
+      LOG.info("{}: finished scanning block pool {}",this,curBlockIter.getBlockPoolId());
+      saveBlockIterator(curBlockIter);
+      return 0;
+    }
+    long saveDelta=monotonicMs - curBlockIter.getLastSavedMs();
+    if (saveDelta >= conf.cursorSaveMs) {
+      LOG.debug("{}: saving block iterator {} after {} ms.",this,curBlockIter,saveDelta);
+      saveBlockIterator(curBlockIter);
+    }
+    bytesScanned=scanBlock(block,conf.targetBytesPerSec);
+    if (bytesScanned >= 0) {
+      scannedBytesSum+=bytesScanned;
+      scannedBytes[(int)(curMinute % MINUTES_PER_HOUR)]+=bytesScanned;
+    }
+ else {
+      scanError=true;
+    }
+    return 0L;
+  }
+  finally {
+synchronized (stats) {
+      stats.bytesScannedInPastHour=scannedBytesSum;
+      if (bytesScanned >= 0) {
+        stats.blocksScannedInCurrentPeriod++;
+        stats.blocksScannedSinceRestart++;
+      }
+      if (scanError) {
+        stats.scanErrorsSinceRestart++;
+      }
+      if (block != null) {
+        stats.lastBlockScanned=block;
+      }
+      if (curBlockIter == null) {
+        stats.eof=true;
+        stats.blockPoolPeriodEndsMs=-1;
+      }
+ else {
+        stats.eof=curBlockIter.atEnd();
+        stats.blockPoolPeriodEndsMs=curBlockIter.getIterStartMs() + conf.scanPeriodMs;
+      }
+    }
+  }
+}

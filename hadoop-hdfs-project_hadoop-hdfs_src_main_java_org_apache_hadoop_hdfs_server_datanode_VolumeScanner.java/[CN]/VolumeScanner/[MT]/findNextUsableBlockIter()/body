@@ -1,0 +1,37 @@
+{
+  int numBlockIters=blockIters.size();
+  if (numBlockIters == 0) {
+    LOG.debug("{}: no block pools are registered.",this);
+    return Long.MAX_VALUE;
+  }
+  int curIdx;
+  if (curBlockIter == null) {
+    curIdx=0;
+  }
+ else {
+    curIdx=blockIters.indexOf(curBlockIter);
+    Preconditions.checkState(curIdx >= 0);
+  }
+  long nowMs=Time.now();
+  long minTimeoutMs=Long.MAX_VALUE;
+  for (int i=0; i < numBlockIters; i++) {
+    int idx=(curIdx + i + 1) % numBlockIters;
+    BlockIterator iter=blockIters.get(idx);
+    if (!iter.atEnd()) {
+      LOG.info("Now scanning bpid {} on volume {}",iter.getBlockPoolId(),volume.getBasePath());
+      curBlockIter=iter;
+      return 0L;
+    }
+    long iterStartMs=iter.getIterStartMs();
+    long waitMs=(iterStartMs + conf.scanPeriodMs) - nowMs;
+    if (waitMs <= 0) {
+      iter.rewind();
+      LOG.info("Now rescanning bpid {} on volume {}, after more than " + "{} hour(s)",iter.getBlockPoolId(),volume.getBasePath(),TimeUnit.HOURS.convert(conf.scanPeriodMs,TimeUnit.MILLISECONDS));
+      curBlockIter=iter;
+      return 0L;
+    }
+    minTimeoutMs=Math.min(minTimeoutMs,waitMs);
+  }
+  LOG.info("{}: no suitable block pools found to scan.  Waiting {} ms.",this,minTimeoutMs);
+  return minTimeoutMs;
+}

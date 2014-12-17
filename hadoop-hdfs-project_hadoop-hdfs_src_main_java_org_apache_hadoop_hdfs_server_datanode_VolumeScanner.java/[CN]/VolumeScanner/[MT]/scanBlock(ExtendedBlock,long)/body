@@ -1,0 +1,36 @@
+{
+  ExtendedBlock block=null;
+  try {
+    Block b=volume.getDataset().getStoredBlock(cblock.getBlockPoolId(),cblock.getBlockId());
+    if (b == null) {
+      LOG.info("FileNotFound while finding block {} on volume {}",cblock,volume.getBasePath());
+    }
+ else {
+      block=new ExtendedBlock(cblock.getBlockPoolId(),b);
+    }
+  }
+ catch (  FileNotFoundException e) {
+    LOG.info("FileNotFoundException while finding block {} on volume {}",cblock,volume.getBasePath());
+  }
+catch (  IOException e) {
+    LOG.warn("I/O error while finding block {} on volume {}",cblock,volume.getBasePath());
+  }
+  if (block == null) {
+    return -1;
+  }
+  BlockSender blockSender=null;
+  try {
+    blockSender=new BlockSender(block,0,-1,false,true,true,datanode,null,CachingStrategy.newDropBehind());
+    throttler.setBandwidth(bytesPerSec);
+    long bytesRead=blockSender.sendBlock(nullStream,null,throttler);
+    resultHandler.handle(block,null);
+    return bytesRead;
+  }
+ catch (  IOException e) {
+    resultHandler.handle(block,e);
+  }
+ finally {
+    IOUtils.cleanup(null,blockSender);
+  }
+  return -1;
+}
