@@ -15,11 +15,19 @@
   boolean hasHdfsToken=false;
   for (  Token<?> token : tokens) {
     if (token.isManaged()) {
-      tokenList.add(new DelegationTokenToRenew(applicationId,token,getConfig(),now,shouldCancelAtEnd,evt.getUser()));
       if (token.getKind().equals(new Text("HDFS_DELEGATION_TOKEN"))) {
         LOG.info(applicationId + " found existing hdfs token " + token);
         hasHdfsToken=true;
       }
+      DelegationTokenToRenew dttr=allTokens.get(token);
+      if (dttr != null) {
+        if (!evt.shouldCancelAtEnd) {
+          dttr.shouldCancelAtEnd=evt.shouldCancelAtEnd;
+          LOG.info("Set shouldCancelAtEnd=" + shouldCancelAtEnd + " for token "+ dttr.token);
+        }
+        continue;
+      }
+      tokenList.add(new DelegationTokenToRenew(applicationId,token,getConfig(),now,shouldCancelAtEnd,evt.getUser()));
     }
   }
   if (!tokenList.isEmpty()) {
@@ -33,6 +41,7 @@
     }
     for (    DelegationTokenToRenew dtr : tokenList) {
       appTokens.get(applicationId).add(dtr);
+      allTokens.put(dtr.token,dtr);
       setTimerForTokenRenewal(dtr);
     }
   }
