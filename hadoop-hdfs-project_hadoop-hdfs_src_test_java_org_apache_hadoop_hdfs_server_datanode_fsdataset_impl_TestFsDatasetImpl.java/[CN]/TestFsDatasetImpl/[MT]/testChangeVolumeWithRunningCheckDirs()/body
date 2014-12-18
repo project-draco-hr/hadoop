@@ -1,0 +1,32 @@
+{
+  RoundRobinVolumeChoosingPolicy<FsVolumeImpl> blockChooser=new RoundRobinVolumeChoosingPolicy<>();
+  final FsVolumeList volumeList=new FsVolumeList(0,blockChooser);
+  final List<FsVolumeImpl> oldVolumes=new ArrayList<>();
+  final int NUM_VOLUMES=5;
+  for (int i=0; i < NUM_VOLUMES; i++) {
+    FsVolumeImpl volume=mock(FsVolumeImpl.class);
+    oldVolumes.add(volume);
+    when(volume.getBasePath()).thenReturn("data" + i);
+    volumeList.addVolume(volume);
+  }
+  final FsVolumeImpl newVolume=mock(FsVolumeImpl.class);
+  FsVolumeImpl blockedVolume=volumeList.getVolumes().get(1);
+  doAnswer(new Answer(){
+    @Override public Object answer(    InvocationOnMock invocationOnMock) throws Throwable {
+      volumeList.removeVolume("data4");
+      volumeList.addVolume(newVolume);
+      return null;
+    }
+  }
+).when(blockedVolume).checkDirs();
+  FsVolumeImpl brokenVolume=volumeList.getVolumes().get(2);
+  doThrow(new DiskChecker.DiskErrorException("broken")).when(brokenVolume).checkDirs();
+  volumeList.checkDirs();
+  for (  FsVolumeImpl volume : oldVolumes) {
+    verify(volume).checkDirs();
+  }
+  verify(newVolume,never()).checkDirs();
+  assertTrue(volumeList.getVolumes().contains(newVolume));
+  assertFalse(volumeList.getVolumes().contains(brokenVolume));
+  assertEquals(NUM_VOLUMES - 1,volumeList.getVolumes().size());
+}
