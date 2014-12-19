@@ -1,0 +1,77 @@
+{
+  TreeMap<Long,List<LinkArgs>> highestGenstamps=new TreeMap<Long,List<LinkArgs>>();
+  for (  LinkArgs duplicate : duplicates) {
+    if (!Block.isMetaFilename(duplicate.src.getName())) {
+      continue;
+    }
+    long blockId=Block.getBlockId(duplicate.src.getName());
+    List<LinkArgs> prevHighest=highestGenstamps.get(blockId);
+    if (prevHighest == null) {
+      List<LinkArgs> highest=new LinkedList<LinkArgs>();
+      highest.add(duplicate);
+      highestGenstamps.put(blockId,highest);
+      continue;
+    }
+    long prevGenstamp=Block.getGenerationStamp(prevHighest.get(0).src.getName());
+    long genstamp=Block.getGenerationStamp(duplicate.src.getName());
+    if (genstamp < prevGenstamp) {
+      continue;
+    }
+    if (genstamp > prevGenstamp) {
+      prevHighest.clear();
+    }
+    prevHighest.add(duplicate);
+  }
+  for (Iterator<LinkArgs> iter=duplicates.iterator(); iter.hasNext(); ) {
+    LinkArgs duplicate=iter.next();
+    long blockId=Block.getBlockId(duplicate.src.getName());
+    List<LinkArgs> highest=highestGenstamps.get(blockId);
+    if (highest != null) {
+      boolean found=false;
+      for (      LinkArgs high : highest) {
+        if (high.src.getParent().equals(duplicate.src.getParent())) {
+          found=true;
+          break;
+        }
+      }
+      if (!found) {
+        LOG.warn("Unexpectedly low genstamp on " + duplicate.src.getAbsolutePath() + ".");
+        iter.remove();
+      }
+    }
+  }
+  TreeMap<Long,LinkArgs> longestBlockFiles=new TreeMap<Long,LinkArgs>();
+  for (  LinkArgs duplicate : duplicates) {
+    if (Block.isMetaFilename(duplicate.src.getName())) {
+      continue;
+    }
+    long blockId=Block.getBlockId(duplicate.src.getName());
+    LinkArgs prevLongest=longestBlockFiles.get(blockId);
+    if (prevLongest == null) {
+      longestBlockFiles.put(blockId,duplicate);
+      continue;
+    }
+    long blockLength=duplicate.src.length();
+    long prevBlockLength=prevLongest.src.length();
+    if (blockLength < prevBlockLength) {
+      LOG.warn("Unexpectedly short length on " + duplicate.src.getAbsolutePath() + ".");
+      continue;
+    }
+    if (blockLength > prevBlockLength) {
+      LOG.warn("Unexpectedly short length on " + prevLongest.src.getAbsolutePath() + ".");
+    }
+    longestBlockFiles.put(blockId,duplicate);
+  }
+  for (Iterator<LinkArgs> iter=all.iterator(); iter.hasNext(); ) {
+    LinkArgs args=iter.next();
+    long blockId=Block.getBlockId(args.src.getName());
+    LinkArgs bestDuplicate=longestBlockFiles.get(blockId);
+    if (bestDuplicate == null) {
+      continue;
+    }
+    if (!bestDuplicate.src.getParent().equals(args.src.getParent())) {
+      LOG.warn("Discarding " + args.src.getAbsolutePath() + ".");
+      iter.remove();
+    }
+  }
+}
