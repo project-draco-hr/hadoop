@@ -1,0 +1,45 @@
+{
+  mgr.addToCluserNodeLabels(ImmutableSet.of("x","y","z"));
+  mgr.addLabelsToNode(ImmutableMap.of(NodeId.newInstance("h1",0),toSet("x")));
+  mgr.addLabelsToNode(ImmutableMap.of(NodeId.newInstance("h2",0),toSet("y")));
+  MockRM rm=new MockRM(getConfigurationWithQueueLabels(conf)){
+    @Override public RMNodeLabelsManager createNodeLabelManager(){
+      return mgr;
+    }
+  }
+;
+  rm.getRMContext().setNodeLabelManager(mgr);
+  rm.start();
+  MockNM nm1=rm.registerNode("h1:1234",8000);
+  MockNM nm2=rm.registerNode("h2:1234",8000);
+  MockNM nm3=rm.registerNode("h3:1234",8000);
+  ContainerId containerId;
+  RMApp app1=rm.submitApp(GB,"app","user",null,"a");
+  MockAM am1=MockRM.launchAndRegisterAM(app1,rm,nm3);
+  am1.allocate("*",GB,1,new ArrayList<ContainerId>(),"x");
+  containerId=ContainerId.newContainerId(am1.getApplicationAttemptId(),2);
+  Assert.assertTrue(rm.waitForState(nm1,containerId,RMContainerState.ALLOCATED,10 * 1000));
+  checkUsedResource(rm,"a",1024,"x");
+  checkUsedResource(rm,"a",1024);
+  mgr.replaceLabelsOnNode(ImmutableMap.of(NodeId.newInstance("h1",0),toSet("z")));
+  Assert.assertTrue(rm.waitForState(nm1,containerId,RMContainerState.KILLED,10 * 1000));
+  checkUsedResource(rm,"a",0,"x");
+  checkUsedResource(rm,"a",1024);
+  am1.allocate("*",GB,1,new ArrayList<ContainerId>(),"y");
+  containerId=ContainerId.newContainerId(am1.getApplicationAttemptId(),3);
+  Assert.assertTrue(rm.waitForState(nm2,containerId,RMContainerState.ALLOCATED,10 * 1000));
+  checkUsedResource(rm,"a",1024,"y");
+  checkUsedResource(rm,"a",1024);
+  mgr.replaceLabelsOnNode(ImmutableMap.of(NodeId.newInstance("h2",0),CommonNodeLabelsManager.EMPTY_STRING_SET));
+  Assert.assertTrue(rm.waitForState(nm1,containerId,RMContainerState.KILLED,10 * 1000));
+  checkUsedResource(rm,"a",0,"x");
+  checkUsedResource(rm,"a",0,"y");
+  checkUsedResource(rm,"a",1024);
+  containerId=ContainerId.newContainerId(am1.getApplicationAttemptId(),1);
+  mgr.replaceLabelsOnNode(ImmutableMap.of(NodeId.newInstance("h3",0),toSet("z")));
+  Assert.assertTrue(rm.waitForState(nm1,containerId,RMContainerState.KILLED,10 * 1000));
+  checkUsedResource(rm,"a",0,"x");
+  checkUsedResource(rm,"a",0,"y");
+  checkUsedResource(rm,"a",0);
+  rm.close();
+}
