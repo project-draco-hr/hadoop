@@ -1,11 +1,25 @@
 {
+  waitForLoadingFSImage();
+  checkOperation(OperationCategory.WRITE);
+  BlocksMapUpdateInfo toRemovedBlocks=null;
+  writeLock();
   boolean ret=false;
   try {
-    ret=deleteInt(src,recursive,logRetryCache);
+    checkOperation(OperationCategory.WRITE);
+    checkNameNodeSafeMode("Cannot delete " + src);
+    toRemovedBlocks=FSDirDeleteOp.delete(this,src,recursive,logRetryCache);
+    ret=toRemovedBlocks != null;
   }
  catch (  AccessControlException e) {
     logAuditEvent(false,"delete",src);
     throw e;
   }
+ finally {
+    writeUnlock();
+  }
+  if (toRemovedBlocks != null) {
+    removeBlocks(toRemovedBlocks);
+  }
+  logAuditEvent(true,"delete",src);
   return ret;
 }
