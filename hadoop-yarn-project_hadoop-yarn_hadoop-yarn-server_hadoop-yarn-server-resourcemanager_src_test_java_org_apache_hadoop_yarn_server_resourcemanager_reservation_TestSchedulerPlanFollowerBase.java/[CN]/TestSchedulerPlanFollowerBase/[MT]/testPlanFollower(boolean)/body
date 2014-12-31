@@ -1,0 +1,74 @@
+{
+  plan=new InMemoryPlan(scheduler.getRootQueueMetrics(),policy,mAgent,scheduler.getClusterResource(),1L,res,scheduler.getMinimumResourceCapability(),maxAlloc,"dedicated",null,isMove);
+  long ts=System.currentTimeMillis();
+  ReservationId r1=ReservationId.newInstance(ts,1);
+  int[] f1={10,10,10,10,10};
+  assertTrue(plan.toString(),plan.addReservation(new InMemoryReservationAllocation(r1,null,"u3","dedicated",0,0 + f1.length,ReservationSystemTestUtil.generateAllocation(0L,1L,f1),res,minAlloc)));
+  ReservationId r2=ReservationId.newInstance(ts,2);
+  assertTrue(plan.toString(),plan.addReservation(new InMemoryReservationAllocation(r2,null,"u3","dedicated",3,3 + f1.length,ReservationSystemTestUtil.generateAllocation(3L,1L,f1),res,minAlloc)));
+  ReservationId r3=ReservationId.newInstance(ts,3);
+  int[] f2={0,10,20,10,0};
+  assertTrue(plan.toString(),plan.addReservation(new InMemoryReservationAllocation(r3,null,"u4","dedicated",10,10 + f2.length,ReservationSystemTestUtil.generateAllocation(10L,1L,f2),res,minAlloc)));
+  AbstractSchedulerPlanFollower planFollower=createPlanFollower();
+  when(mClock.getTime()).thenReturn(0L);
+  planFollower.run();
+  Queue q=getReservationQueue(r1.toString());
+  assertReservationQueueExists(r1);
+  String user_0="test-user";
+  ApplicationId appId=ApplicationId.newInstance(0,1);
+  ApplicationAttemptId appAttemptId_0=ApplicationAttemptId.newInstance(appId,0);
+  AppAddedSchedulerEvent addAppEvent=new AppAddedSchedulerEvent(appId,q.getQueueName(),user_0);
+  scheduler.handle(addAppEvent);
+  AppAttemptAddedSchedulerEvent appAttemptAddedEvent=new AppAttemptAddedSchedulerEvent(appAttemptId_0,false);
+  scheduler.handle(appAttemptAddedEvent);
+  Queue defQ=getDefaultQueue();
+  Assert.assertEquals(0,getNumberOfApplications(defQ));
+  assertReservationQueueExists(r1,0.1,0.1);
+  Assert.assertEquals(1,getNumberOfApplications(q));
+  assertReservationQueueDoesNotExist(r2);
+  assertReservationQueueDoesNotExist(r3);
+  when(mClock.getTime()).thenReturn(3L);
+  planFollower.run();
+  Assert.assertEquals(0,getNumberOfApplications(defQ));
+  assertReservationQueueExists(r1,0.1,0.1);
+  Assert.assertEquals(1,getNumberOfApplications(q));
+  assertReservationQueueExists(r2,0.1,0.1);
+  assertReservationQueueDoesNotExist(r3);
+  when(mClock.getTime()).thenReturn(10L);
+  planFollower.run();
+  q=getReservationQueue(r1.toString());
+  if (isMove) {
+    Assert.assertEquals(1,getNumberOfApplications(defQ));
+    assertNull(q);
+  }
+ else {
+    Assert.assertEquals(0,getNumberOfApplications(defQ));
+    assertNotNull(q);
+    AppAttemptRemovedSchedulerEvent appAttemptRemovedEvent=new AppAttemptRemovedSchedulerEvent(appAttemptId_0,RMAppAttemptState.KILLED,false);
+    scheduler.handle(appAttemptRemovedEvent);
+  }
+  assertReservationQueueDoesNotExist(r2);
+  assertReservationQueueExists(r3,0,1.0);
+  when(mClock.getTime()).thenReturn(11L);
+  planFollower.run();
+  if (isMove) {
+    Assert.assertEquals(1,getNumberOfApplications(defQ));
+  }
+ else {
+    Assert.assertEquals(0,getNumberOfApplications(defQ));
+  }
+  assertReservationQueueDoesNotExist(r1);
+  assertReservationQueueDoesNotExist(r2);
+  assertReservationQueueExists(r3,0.1,0.1);
+  when(mClock.getTime()).thenReturn(12L);
+  planFollower.run();
+  assertReservationQueueDoesNotExist(r1);
+  assertReservationQueueDoesNotExist(r2);
+  assertReservationQueueExists(r3,0.2,0.2);
+  when(mClock.getTime()).thenReturn(16L);
+  planFollower.run();
+  assertReservationQueueDoesNotExist(r1);
+  assertReservationQueueDoesNotExist(r2);
+  assertReservationQueueDoesNotExist(r3);
+  verifyCapacity(defQ);
+}
