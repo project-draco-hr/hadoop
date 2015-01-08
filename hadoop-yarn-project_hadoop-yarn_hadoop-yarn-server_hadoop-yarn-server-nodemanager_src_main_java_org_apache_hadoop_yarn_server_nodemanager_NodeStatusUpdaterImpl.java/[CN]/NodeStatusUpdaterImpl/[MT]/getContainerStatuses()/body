@@ -2,21 +2,28 @@
   List<ContainerStatus> containerStatuses=new ArrayList<ContainerStatus>();
   for (  Container container : this.context.getContainers().values()) {
     ContainerId containerId=container.getContainerId();
-    ApplicationId applicationId=container.getContainerId().getApplicationAttemptId().getApplicationId();
+    ApplicationId applicationId=containerId.getApplicationAttemptId().getApplicationId();
     org.apache.hadoop.yarn.api.records.ContainerStatus containerStatus=container.cloneAndGetContainerStatus();
-    containerStatuses.add(containerStatus);
     if (containerStatus.getState() == ContainerState.COMPLETE) {
       if (isApplicationStopped(applicationId)) {
         if (LOG.isDebugEnabled()) {
           LOG.debug(applicationId + " is completing, " + " remove "+ containerId+ " from NM context.");
         }
         context.getContainers().remove(containerId);
+        pendingCompletedContainers.put(containerId,containerStatus);
       }
  else {
-        addCompletedContainer(container.getContainerId());
+        if (!isContainerRecentlyStopped(containerId)) {
+          pendingCompletedContainers.put(containerId,containerStatus);
+          addCompletedContainer(containerId);
+        }
       }
     }
+ else {
+      containerStatuses.add(containerStatus);
+    }
   }
+  containerStatuses.addAll(pendingCompletedContainers.values());
   if (LOG.isDebugEnabled()) {
     LOG.debug("Sending out " + containerStatuses.size() + " container statuses: "+ containerStatuses);
   }
