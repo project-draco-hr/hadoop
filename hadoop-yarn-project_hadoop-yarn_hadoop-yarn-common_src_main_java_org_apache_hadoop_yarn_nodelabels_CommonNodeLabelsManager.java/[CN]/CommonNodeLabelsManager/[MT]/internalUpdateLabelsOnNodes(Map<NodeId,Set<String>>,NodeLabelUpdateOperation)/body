@@ -1,0 +1,74 @@
+{
+  Map<NodeId,Set<String>> newNMToLabels=new HashMap<NodeId,Set<String>>();
+  for (  Entry<NodeId,Set<String>> entry : nodeToLabels.entrySet()) {
+    NodeId nodeId=entry.getKey();
+    Set<String> labels=entry.getValue();
+    createHostIfNonExisted(nodeId.getHost());
+    if (nodeId.getPort() == WILDCARD_PORT) {
+      Host host=nodeCollections.get(nodeId.getHost());
+switch (op) {
+case REMOVE:
+        host.labels.removeAll(labels);
+      for (      Node node : host.nms.values()) {
+        if (node.labels != null) {
+          node.labels.removeAll(labels);
+        }
+      }
+    break;
+case ADD:
+  host.labels.addAll(labels);
+for (Node node : host.nms.values()) {
+  if (node.labels != null) {
+    node.labels.addAll(labels);
+  }
+}
+break;
+case REPLACE:
+host.labels.clear();
+host.labels.addAll(labels);
+for (Node node : host.nms.values()) {
+node.labels=null;
+}
+break;
+default :
+break;
+}
+newNMToLabels.put(nodeId,host.labels);
+}
+ else {
+if (EnumSet.of(NodeLabelUpdateOperation.ADD,NodeLabelUpdateOperation.REPLACE).contains(op)) {
+createNodeIfNonExisted(nodeId);
+Node nm=getNMInNodeSet(nodeId);
+if (nm.labels == null) {
+nm.labels=new HashSet<String>();
+}
+switch (op) {
+case ADD:
+nm.labels.addAll(labels);
+break;
+case REPLACE:
+nm.labels.clear();
+nm.labels.addAll(labels);
+break;
+default :
+break;
+}
+newNMToLabels.put(nodeId,nm.labels);
+}
+ else {
+Node nm=getNMInNodeSet(nodeId);
+if (nm.labels != null) {
+nm.labels.removeAll(labels);
+newNMToLabels.put(nodeId,nm.labels);
+}
+}
+}
+}
+if (null != dispatcher) {
+dispatcher.getEventHandler().handle(new UpdateNodeToLabelsMappingsEvent(newNMToLabels));
+}
+LOG.info(op.name() + " labels on nodes:");
+for (Entry<NodeId,Set<String>> entry : newNMToLabels.entrySet()) {
+LOG.info("  NM=" + entry.getKey() + ", labels=["+ StringUtils.join(entry.getValue().iterator(),",")+ "]");
+}
+}
