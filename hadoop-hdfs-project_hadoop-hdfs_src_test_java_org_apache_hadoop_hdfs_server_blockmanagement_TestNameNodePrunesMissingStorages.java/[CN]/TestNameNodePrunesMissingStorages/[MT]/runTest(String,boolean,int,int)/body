@@ -1,0 +1,31 @@
+{
+  Configuration conf=new HdfsConfiguration();
+  MiniDFSCluster cluster=null;
+  try {
+    cluster=new MiniDFSCluster.Builder(conf).numDataNodes(1).storagesPerDatanode(numInitialStorages).build();
+    cluster.waitActive();
+    final DataNode dn0=cluster.getDataNodes().get(0);
+    final DatanodeID dnId=dn0.getDatanodeId();
+    final DatanodeDescriptor dnDescriptor=cluster.getNamesystem().getBlockManager().getDatanodeManager().getDatanode(dnId);
+    assertThat(dnDescriptor.getStorageInfos().length,is(numInitialStorages));
+    final String bpid=cluster.getNamesystem().getBlockPoolId();
+    final DatanodeRegistration dnReg=dn0.getDNRegistrationForBP(bpid);
+    DataNodeTestUtils.triggerBlockReport(dn0);
+    if (createFiles) {
+      final Path path=new Path("/",testCaseName);
+      DFSTestUtil.createFile(cluster.getFileSystem(),path,1024,(short)1,0x1BAD5EED);
+      DataNodeTestUtils.triggerBlockReport(dn0);
+    }
+    final StorageReport reports[]=dn0.getFSDataset().getStorageReports(bpid);
+    final StorageReport prunedReports[]=new StorageReport[numInitialStorages - 1];
+    System.arraycopy(reports,0,prunedReports,0,prunedReports.length);
+    cluster.stopDataNode(0);
+    cluster.getNameNodeRpc().sendHeartbeat(dnReg,prunedReports,0L,0L,0,0,0);
+    assertThat(dnDescriptor.getStorageInfos().length,is(expectedStoragesAfterTest));
+  }
+  finally {
+    if (cluster != null) {
+      cluster.shutdown();
+    }
+  }
+}
