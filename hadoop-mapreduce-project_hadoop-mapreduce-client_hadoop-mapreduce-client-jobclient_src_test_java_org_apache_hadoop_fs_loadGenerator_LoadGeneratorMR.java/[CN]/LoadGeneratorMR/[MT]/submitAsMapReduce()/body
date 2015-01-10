@@ -1,0 +1,42 @@
+{
+  System.out.println("Running as a MapReduce job with " + numMapTasks + " mapTasks;  Output to file "+ mrOutDir);
+  Configuration conf=new Configuration(getConf());
+  conf.set(LG_ROOT,root.toString());
+  conf.setInt(LG_MAXDELAYBETWEENOPS,maxDelayBetweenOps);
+  conf.setInt(LG_NUMOFTHREADS,numOfThreads);
+  conf.set(LG_READPR,readProbs[0] + "");
+  conf.set(LG_WRITEPR,writeProbs[0] + "");
+  conf.setLong(LG_SEED,seed);
+  conf.setInt(LG_NUMMAPTASKS,numMapTasks);
+  if (scriptFile == null && durations[0] <= 0) {
+    System.err.println("When run as a MapReduce job, elapsed Time or ScriptFile must be specified");
+    System.exit(-1);
+  }
+  conf.setLong(LG_ELAPSEDTIME,durations[0]);
+  conf.setLong(LG_STARTTIME,startTime);
+  if (scriptFile != null) {
+    conf.set(LG_SCRIPTFILE,scriptFile);
+  }
+  conf.set(LG_FLAGFILE,flagFile.toString());
+  JobConf jobConf=new JobConf(conf,LoadGenerator.class);
+  jobConf.setJobName("NNLoadGeneratorViaMR");
+  jobConf.setNumMapTasks(numMapTasks);
+  jobConf.setNumReduceTasks(1);
+  jobConf.setOutputKeyClass(Text.class);
+  jobConf.setOutputValueClass(IntWritable.class);
+  jobConf.setMapperClass(MapperThatRunsNNLoadGenerator.class);
+  jobConf.setReducerClass(ReducerThatCollectsLGdata.class);
+  jobConf.setInputFormat(DummyInputFormat.class);
+  jobConf.setOutputFormat(TextOutputFormat.class);
+  jobConf.setMaxMapAttempts(1);
+  jobConf.setSpeculativeExecution(false);
+  FileOutputFormat.setOutputPath(jobConf,new Path(mrOutDir));
+  try {
+    JobClient.runJob(jobConf);
+  }
+ catch (  IOException e) {
+    System.err.println("Failed to run job: " + e.getMessage());
+    return -1;
+  }
+  return 0;
+}

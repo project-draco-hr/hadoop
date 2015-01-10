@@ -1,0 +1,73 @@
+{
+  int hostHashCode=hostname.hashCode();
+  if (seed == 0) {
+    r=new Random(System.currentTimeMillis() + hostHashCode);
+  }
+ else {
+    r=new Random(seed + hostHashCode);
+  }
+  try {
+    fc=FileContext.getFileContext(getConf());
+  }
+ catch (  IOException ioe) {
+    System.err.println("Can not initialize the file system: " + ioe.getLocalizedMessage());
+    return -1;
+  }
+  int status=initFileDirTables();
+  if (status != 0) {
+    return status;
+  }
+  barrier();
+  DFSClientThread[] threads=new DFSClientThread[numOfThreads];
+  for (int i=0; i < numOfThreads; i++) {
+    threads[i]=new DFSClientThread(i);
+    threads[i].start();
+  }
+  if (durations[0] > 0) {
+    if (durations.length == 1) {
+      while (shouldRun) {
+        Thread.sleep(2000);
+        totalTime+=2;
+        if (totalTime >= durations[0] || stopFileCreated()) {
+          shouldRun=false;
+        }
+      }
+    }
+ else {
+      while (shouldRun) {
+        Thread.sleep(durations[currentIndex] * 1000);
+        totalTime+=durations[currentIndex];
+        if ((currentIndex + 1) == durations.length || stopFileCreated()) {
+          shouldRun=false;
+        }
+ else {
+          if (LOG.isDebugEnabled()) {
+            LOG.debug("Moving to index " + currentIndex + ": r = "+ readProbs[currentIndex]+ ", w = "+ writeProbs+ " for duration "+ durations[currentIndex]);
+          }
+          currentIndex++;
+        }
+      }
+    }
+  }
+  if (LOG.isDebugEnabled()) {
+    LOG.debug("Done with testing.  Waiting for threads to finish.");
+  }
+  boolean failed=false;
+  for (  DFSClientThread thread : threads) {
+    thread.join();
+    for (int i=0; i < TOTAL_OP_TYPES; i++) {
+      executionTime[i]+=thread.executionTime[i];
+      numOfOps[i]+=thread.totalNumOfOps[i];
+    }
+    failed=failed || thread.failed;
+  }
+  int exitCode=0;
+  if (failed) {
+    exitCode=-ERR_TEST_FAILED;
+  }
+  totalOps=0;
+  for (int i=0; i < TOTAL_OP_TYPES; i++) {
+    totalOps+=numOfOps[i];
+  }
+  return exitCode;
+}
