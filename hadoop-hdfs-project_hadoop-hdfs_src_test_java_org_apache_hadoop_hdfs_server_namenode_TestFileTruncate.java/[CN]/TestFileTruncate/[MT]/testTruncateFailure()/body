@@ -1,0 +1,43 @@
+{
+  int startingFileSize=2 * BLOCK_SIZE + BLOCK_SIZE / 2;
+  int toTruncate=1;
+  byte[] contents=AppendTestUtil.initBuffer(startingFileSize);
+  final Path p=new Path("/testTruncateFailure");
+  FSDataOutputStream out=fs.create(p,false,BLOCK_SIZE,REPLICATION,BLOCK_SIZE);
+  out.write(contents,0,startingFileSize);
+  try {
+    fs.truncate(p,0);
+    fail("Truncate must fail on open file.");
+  }
+ catch (  IOException expected) {
+  }
+  out.close();
+  cluster.shutdownDataNodes();
+  NameNodeAdapter.getLeaseManager(cluster.getNamesystem()).setLeasePeriod(LOW_SOFTLIMIT,LOW_HARDLIMIT);
+  int newLength=startingFileSize - toTruncate;
+  boolean isReady=fs.truncate(p,newLength);
+  assertThat("truncate should have triggered block recovery.",isReady,is(false));
+  FileStatus fileStatus=fs.getFileStatus(p);
+  assertThat(fileStatus.getLen(),is((long)newLength));
+  boolean recoveryTriggered=false;
+  for (int i=0; i < RECOVERY_ATTEMPTS; i++) {
+    String leaseHolder=NameNodeAdapter.getLeaseHolderForPath(cluster.getNameNode(),p.toUri().getPath());
+    if (leaseHolder.equals(HdfsServerConstants.NAMENODE_LEASE_HOLDER)) {
+      cluster.startDataNodes(conf,DATANODE_NUM,true,HdfsServerConstants.StartupOption.REGULAR,null);
+      recoveryTriggered=true;
+      break;
+    }
+    try {
+      Thread.sleep(SLEEP);
+    }
+ catch (    InterruptedException ignored) {
+    }
+  }
+  assertThat("lease recovery should have occurred in ~" + SLEEP * RECOVERY_ATTEMPTS + " ms.",recoveryTriggered,is(true));
+  checkBlockRecovery(p);
+  NameNodeAdapter.getLeaseManager(cluster.getNamesystem()).setLeasePeriod(HdfsConstants.LEASE_SOFTLIMIT_PERIOD,HdfsConstants.LEASE_HARDLIMIT_PERIOD);
+  fileStatus=fs.getFileStatus(p);
+  assertThat(fileStatus.getLen(),is((long)newLength));
+  AppendTestUtil.checkFullFile(fs,p,newLength,contents,p.toString());
+  fs.delete(p,false);
+}

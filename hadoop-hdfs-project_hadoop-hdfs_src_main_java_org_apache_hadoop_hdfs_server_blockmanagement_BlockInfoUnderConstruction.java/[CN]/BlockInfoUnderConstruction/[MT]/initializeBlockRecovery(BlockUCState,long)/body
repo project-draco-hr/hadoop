@@ -1,0 +1,38 @@
+{
+  setBlockUCState(s);
+  blockRecoveryId=recoveryId;
+  if (replicas.size() == 0) {
+    NameNode.blockStateChangeLog.warn("BLOCK*" + " BlockInfoUnderConstruction.initLeaseRecovery:" + " No blocks found, lease removed.");
+  }
+  boolean allLiveReplicasTriedAsPrimary=true;
+  for (int i=0; i < replicas.size(); i++) {
+    if (replicas.get(i).isAlive()) {
+      allLiveReplicasTriedAsPrimary=(allLiveReplicasTriedAsPrimary && replicas.get(i).getChosenAsPrimary());
+    }
+  }
+  if (allLiveReplicasTriedAsPrimary) {
+    for (int i=0; i < replicas.size(); i++) {
+      replicas.get(i).setChosenAsPrimary(false);
+    }
+  }
+  long mostRecentLastUpdate=0;
+  ReplicaUnderConstruction primary=null;
+  primaryNodeIndex=-1;
+  for (int i=0; i < replicas.size(); i++) {
+    if (!(replicas.get(i).isAlive() && !replicas.get(i).getChosenAsPrimary())) {
+      continue;
+    }
+    final ReplicaUnderConstruction ruc=replicas.get(i);
+    final long lastUpdate=ruc.getExpectedStorageLocation().getDatanodeDescriptor().getLastUpdate();
+    if (lastUpdate > mostRecentLastUpdate) {
+      primaryNodeIndex=i;
+      primary=ruc;
+      mostRecentLastUpdate=lastUpdate;
+    }
+  }
+  if (primary != null) {
+    primary.getExpectedStorageLocation().getDatanodeDescriptor().addBlockToBeRecovered(this);
+    primary.setChosenAsPrimary(true);
+    NameNode.blockStateChangeLog.info("BLOCK* " + this + " recovery started, primary="+ primary);
+  }
+}

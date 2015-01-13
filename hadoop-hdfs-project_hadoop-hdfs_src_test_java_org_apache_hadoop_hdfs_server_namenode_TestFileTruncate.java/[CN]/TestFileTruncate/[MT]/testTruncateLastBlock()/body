@@ -1,0 +1,24 @@
+{
+  FSNamesystem fsn=cluster.getNamesystem();
+  String src="/file";
+  Path srcPath=new Path(src);
+  byte[] contents=AppendTestUtil.initBuffer(BLOCK_SIZE);
+  writeContents(contents,BLOCK_SIZE,srcPath);
+  INodeFile inode=fsn.getFSDirectory().getINode(src).asFile();
+  long oldGenstamp=GenerationStamp.LAST_RESERVED_STAMP;
+  DatanodeDescriptor dn=DFSTestUtil.getLocalDatanodeDescriptor();
+  DatanodeStorageInfo storage=DFSTestUtil.createDatanodeStorageInfo(dn.getDatanodeUuid(),InetAddress.getLocalHost().getHostAddress());
+  dn.isAlive=true;
+  BlockInfoUnderConstruction blockInfo=new BlockInfoUnderConstruction(new Block(0,1,oldGenstamp),(short)1,HdfsServerConstants.BlockUCState.BEING_TRUNCATED,new DatanodeStorageInfo[]{storage});
+  inode.setBlocks(new BlockInfo[]{blockInfo});
+  fsn.writeLock();
+  try {
+    fsn.initializeBlockRecovery(inode);
+    assertThat(inode.getLastBlock().getBlockUCState(),is(HdfsServerConstants.BlockUCState.BEING_TRUNCATED));
+    long blockRecoveryId=((BlockInfoUnderConstruction)inode.getLastBlock()).getBlockRecoveryId();
+    assertThat(blockRecoveryId,is(oldGenstamp + 2));
+  }
+  finally {
+    fsn.writeUnlock();
+  }
+}

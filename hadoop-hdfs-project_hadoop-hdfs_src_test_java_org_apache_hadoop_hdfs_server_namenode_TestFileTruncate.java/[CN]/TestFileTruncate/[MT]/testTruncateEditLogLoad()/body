@@ -1,0 +1,16 @@
+{
+  int startingFileSize=2 * BLOCK_SIZE + BLOCK_SIZE / 2;
+  int toTruncate=1;
+  byte[] contents=AppendTestUtil.initBuffer(startingFileSize);
+  final Path p=new Path("/testTruncateEditLogLoad");
+  writeContents(contents,startingFileSize,p);
+  int newLength=startingFileSize - toTruncate;
+  boolean isReady=fs.truncate(p,newLength);
+  assertThat("truncate should have triggered block recovery.",isReady,is(false));
+  checkBlockRecovery(p);
+  cluster.restartNameNode();
+  FileStatus fileStatus=fs.getFileStatus(p);
+  assertThat(fileStatus.getLen(),is((long)newLength));
+  AppendTestUtil.checkFullFile(fs,p,newLength,contents,p.toString());
+  fs.delete(p,false);
+}
