@@ -1,0 +1,77 @@
+{
+  Path parent=new Path("/test");
+  fs.mkdirs(parent);
+  fs.setQuota(parent,100,1000);
+  fs.allowSnapshot(parent);
+  String truncateFile="testSnapshotWithTruncates";
+  final Path src=new Path(parent,truncateFile);
+  int[] length=new int[3];
+  length[0]=3 * BLOCK_SIZE;
+  DFSTestUtil.createFile(fs,src,64,length[0],BLOCK_SIZE,REPLICATION,0L);
+  Block firstBlk=getLocatedBlocks(src).get(0).getBlock().getLocalBlock();
+  Block lastBlk=getLocatedBlocks(src).getLastLocatedBlock().getBlock().getLocalBlock();
+  Path[] snapshotFiles=new Path[3];
+  ContentSummary contentSummary=fs.getContentSummary(parent);
+  assertThat(contentSummary.getSpaceConsumed(),is(36L));
+  String[] ss=new String[]{"ss0","ss1","ss2"};
+  Path snapshotDir=fs.createSnapshot(parent,ss[0]);
+  snapshotFiles[0]=new Path(snapshotDir,truncateFile);
+  length[1]=2 * BLOCK_SIZE;
+  boolean isReady=fs.truncate(src,2 * BLOCK_SIZE);
+  assertTrue("Recovery is not expected.",isReady);
+  contentSummary=fs.getContentSummary(parent);
+  assertThat(contentSummary.getSpaceConsumed(),is(36L));
+  snapshotDir=fs.createSnapshot(parent,ss[1]);
+  snapshotFiles[1]=new Path(snapshotDir,truncateFile);
+  length[2]=BLOCK_SIZE + BLOCK_SIZE / 2;
+  isReady=fs.truncate(src,BLOCK_SIZE + BLOCK_SIZE / 2);
+  assertFalse("Recovery is expected.",isReady);
+  checkBlockRecovery(src);
+  snapshotDir=fs.createSnapshot(parent,ss[2]);
+  snapshotFiles[2]=new Path(snapshotDir,truncateFile);
+  assertFileLength(snapshotFiles[0],length[0]);
+  assertBlockExists(lastBlk);
+  contentSummary=fs.getContentSummary(parent);
+  assertThat(contentSummary.getSpaceConsumed(),is(42L));
+  fs.deleteSnapshot(parent,ss[deleteOrder[0]]);
+  assertFileLength(snapshotFiles[deleteOrder[1]],length[deleteOrder[1]]);
+  assertFileLength(snapshotFiles[deleteOrder[2]],length[deleteOrder[2]]);
+  assertFileLength(src,length[2]);
+  assertBlockExists(firstBlk);
+  contentSummary=fs.getContentSummary(parent);
+  if (fs.exists(snapshotFiles[0])) {
+    assertThat(contentSummary.getSpaceConsumed(),is(42L));
+    assertBlockExists(lastBlk);
+  }
+ else {
+    assertThat(contentSummary.getSpaceConsumed(),is(30L));
+    assertBlockNotPresent(lastBlk);
+  }
+  fs.deleteSnapshot(parent,ss[deleteOrder[1]]);
+  assertFileLength(snapshotFiles[deleteOrder[2]],length[deleteOrder[2]]);
+  assertFileLength(src,length[2]);
+  assertBlockExists(firstBlk);
+  contentSummary=fs.getContentSummary(parent);
+  if (fs.exists(snapshotFiles[0])) {
+    assertThat(contentSummary.getSpaceConsumed(),is(42L));
+    assertBlockExists(lastBlk);
+  }
+ else   if (fs.exists(snapshotFiles[1])) {
+    assertThat(contentSummary.getSpaceConsumed(),is(30L));
+    assertBlockNotPresent(lastBlk);
+  }
+ else {
+    assertThat(contentSummary.getSpaceConsumed(),is(18L));
+    assertBlockNotPresent(lastBlk);
+  }
+  fs.deleteSnapshot(parent,ss[deleteOrder[2]]);
+  assertFileLength(src,length[2]);
+  assertBlockExists(firstBlk);
+  contentSummary=fs.getContentSummary(parent);
+  assertThat(contentSummary.getSpaceConsumed(),is(18L));
+  assertThat(contentSummary.getLength(),is(6L));
+  fs.delete(src,false);
+  assertBlockNotPresent(firstBlk);
+  contentSummary=fs.getContentSummary(parent);
+  assertThat(contentSummary.getSpaceConsumed(),is(0L));
+}

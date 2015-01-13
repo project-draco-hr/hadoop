@@ -1,0 +1,35 @@
+{
+  if (rur.getRecoveryID() != recoveryId) {
+    throw new IOException("rur.getRecoveryID() != recoveryId = " + recoveryId + ", rur="+ rur);
+  }
+  boolean copyOnTruncate=newBlockId > 0L && rur.getBlockId() != newBlockId;
+  File blockFile;
+  File metaFile;
+  if (!copyOnTruncate) {
+    bumpReplicaGS(rur,recoveryId);
+    blockFile=rur.getBlockFile();
+    metaFile=rur.getMetaFile();
+  }
+ else {
+    File[] copiedReplicaFiles=copyReplicaWithNewBlockIdAndGS(rur,bpid,newBlockId,recoveryId);
+    blockFile=copiedReplicaFiles[1];
+    metaFile=copiedReplicaFiles[0];
+  }
+  if (rur.getNumBytes() < newlength) {
+    throw new IOException("rur.getNumBytes() < newlength = " + newlength + ", rur="+ rur);
+  }
+  if (rur.getNumBytes() > newlength) {
+    rur.unlinkBlock(1);
+    truncateBlock(blockFile,metaFile,rur.getNumBytes(),newlength);
+    if (!copyOnTruncate) {
+      rur.setNumBytes(newlength);
+    }
+ else {
+      ReplicaBeingWritten newReplicaInfo=new ReplicaBeingWritten(newBlockId,recoveryId,rur.getVolume(),blockFile.getParentFile(),newlength);
+      newReplicaInfo.setNumBytes(newlength);
+      volumeMap.add(bpid,newReplicaInfo);
+      finalizeReplica(bpid,newReplicaInfo);
+    }
+  }
+  return finalizeReplica(bpid,rur);
+}

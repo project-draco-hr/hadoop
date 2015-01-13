@@ -1,5 +1,5 @@
 {
-  LOG.info("commitBlockSynchronization(lastblock=" + lastblock + ", newgenerationstamp="+ newgenerationstamp+ ", newlength="+ newlength+ ", newtargets="+ Arrays.asList(newtargets)+ ", closeFile="+ closeFile+ ", deleteBlock="+ deleteblock+ ")");
+  LOG.info("commitBlockSynchronization(oldBlock=" + oldBlock + ", newgenerationstamp="+ newgenerationstamp+ ", newlength="+ newlength+ ", newtargets="+ Arrays.asList(newtargets)+ ", closeFile="+ closeFile+ ", deleteBlock="+ deleteblock+ ")");
   checkOperation(OperationCategory.WRITE);
   String src="";
   waitForLoadingFSImage();
@@ -7,16 +7,16 @@
   try {
     checkOperation(OperationCategory.WRITE);
     checkNameNodeSafeMode("Cannot commitBlockSynchronization while in safe mode");
-    final BlockInfo storedBlock=getStoredBlock(ExtendedBlock.getLocalBlock(lastblock));
+    final BlockInfo storedBlock=getStoredBlock(ExtendedBlock.getLocalBlock(oldBlock));
     if (storedBlock == null) {
       if (deleteblock) {
         if (LOG.isDebugEnabled()) {
-          LOG.debug("Block (=" + lastblock + ") not found");
+          LOG.debug("Block (=" + oldBlock + ") not found");
         }
         return;
       }
  else {
-        throw new IOException("Block (=" + lastblock + ") not found");
+        throw new IOException("Block (=" + oldBlock + ") not found");
       }
     }
     BlockCollection blockCollection=storedBlock.getBlockCollection();
@@ -27,26 +27,30 @@
     if (isFileDeleted(iFile)) {
       throw new FileNotFoundException("File not found: " + iFile.getFullPathName() + ", likely due to delayed block"+ " removal");
     }
-    if (!iFile.isUnderConstruction() || storedBlock.isComplete()) {
+    if ((!iFile.isUnderConstruction() || storedBlock.isComplete()) && iFile.getLastBlock().isComplete()) {
       if (LOG.isDebugEnabled()) {
-        LOG.debug("Unexpected block (=" + lastblock + ") since the file (="+ iFile.getLocalName()+ ") is not under construction");
+        LOG.debug("Unexpected block (=" + oldBlock + ") since the file (="+ iFile.getLocalName()+ ") is not under construction");
       }
       return;
     }
-    long recoveryId=((BlockInfoUnderConstruction)storedBlock).getBlockRecoveryId();
+    BlockInfoUnderConstruction truncatedBlock=(BlockInfoUnderConstruction)iFile.getLastBlock();
+    long recoveryId=truncatedBlock.getBlockRecoveryId();
+    boolean copyTruncate=truncatedBlock.getBlockId() != storedBlock.getBlockId();
     if (recoveryId != newgenerationstamp) {
-      throw new IOException("The recovery id " + newgenerationstamp + " does not match current recovery id "+ recoveryId+ " for block "+ lastblock);
+      throw new IOException("The recovery id " + newgenerationstamp + " does not match current recovery id "+ recoveryId+ " for block "+ oldBlock);
     }
     if (deleteblock) {
-      Block blockToDel=ExtendedBlock.getLocalBlock(lastblock);
+      Block blockToDel=ExtendedBlock.getLocalBlock(oldBlock);
       boolean remove=iFile.removeLastBlock(blockToDel);
       if (remove) {
-        blockManager.removeBlockFromMap(storedBlock);
+        blockManager.removeBlock(storedBlock);
       }
     }
  else {
-      storedBlock.setGenerationStamp(newgenerationstamp);
-      storedBlock.setNumBytes(newlength);
+      if (!copyTruncate) {
+        storedBlock.setGenerationStamp(newgenerationstamp);
+        storedBlock.setNumBytes(newlength);
+      }
       ArrayList<DatanodeDescriptor> trimmedTargets=new ArrayList<DatanodeDescriptor>(newtargets.length);
       ArrayList<String> trimmedStorages=new ArrayList<String>(newtargets.length);
       if (newtargets.length > 0) {
@@ -65,15 +69,33 @@
         for (int i=0; i < trimmedTargets.size(); i++) {
           DatanodeStorageInfo storageInfo=trimmedTargets.get(i).getStorageInfo(trimmedStorages.get(i));
           if (storageInfo != null) {
-            storageInfo.addBlock(storedBlock);
+            if (copyTruncate) {
+              storageInfo.addBlock(truncatedBlock);
+            }
+ else {
+              storageInfo.addBlock(storedBlock);
+            }
           }
         }
       }
       DatanodeStorageInfo[] trimmedStorageInfos=blockManager.getDatanodeManager().getDatanodeStorageInfos(trimmedTargets.toArray(new DatanodeID[trimmedTargets.size()]),trimmedStorages.toArray(new String[trimmedStorages.size()]));
-      iFile.setLastBlock(storedBlock,trimmedStorageInfos);
+      if (copyTruncate) {
+        iFile.setLastBlock(truncatedBlock,trimmedStorageInfos);
+      }
+ else {
+        iFile.setLastBlock(storedBlock,trimmedStorageInfos);
+      }
     }
     if (closeFile) {
-      src=closeFileCommitBlocks(iFile,storedBlock);
+      if (copyTruncate) {
+        src=closeFileCommitBlocks(iFile,truncatedBlock);
+        if (!iFile.isBlockInLatestSnapshot(storedBlock)) {
+          blockManager.removeBlock(storedBlock);
+        }
+      }
+ else {
+        src=closeFileCommitBlocks(iFile,storedBlock);
+      }
     }
  else {
       src=iFile.getFullPathName();
@@ -85,9 +107,9 @@
   }
   getEditLog().logSync();
   if (closeFile) {
-    LOG.info("commitBlockSynchronization(newblock=" + lastblock + ", file="+ src+ ", newgenerationstamp="+ newgenerationstamp+ ", newlength="+ newlength+ ", newtargets="+ Arrays.asList(newtargets)+ ") successful");
+    LOG.info("commitBlockSynchronization(oldBlock=" + oldBlock + ", file="+ src+ ", newgenerationstamp="+ newgenerationstamp+ ", newlength="+ newlength+ ", newtargets="+ Arrays.asList(newtargets)+ ") successful");
   }
  else {
-    LOG.info("commitBlockSynchronization(" + lastblock + ") successful");
+    LOG.info("commitBlockSynchronization(" + oldBlock + ") successful");
   }
 }

@@ -17,13 +17,10 @@
   int newLength=startingFileSize - toTruncate;
   boolean isReady=fs.truncate(p,newLength);
   assertThat("truncate should have triggered block recovery.",isReady,is(false));
-  FileStatus fileStatus=fs.getFileStatus(p);
-  assertThat(fileStatus.getLen(),is((long)newLength));
   boolean recoveryTriggered=false;
   for (int i=0; i < RECOVERY_ATTEMPTS; i++) {
     String leaseHolder=NameNodeAdapter.getLeaseHolderForPath(cluster.getNameNode(),p.toUri().getPath());
     if (leaseHolder.equals(HdfsServerConstants.NAMENODE_LEASE_HOLDER)) {
-      cluster.startDataNodes(conf,DATANODE_NUM,true,HdfsServerConstants.StartupOption.REGULAR,null);
       recoveryTriggered=true;
       break;
     }
@@ -34,10 +31,12 @@
     }
   }
   assertThat("lease recovery should have occurred in ~" + SLEEP * RECOVERY_ATTEMPTS + " ms.",recoveryTriggered,is(true));
+  cluster.startDataNodes(conf,DATANODE_NUM,true,StartupOption.REGULAR,null);
+  cluster.waitActive();
   checkBlockRecovery(p);
   NameNodeAdapter.getLeaseManager(cluster.getNamesystem()).setLeasePeriod(HdfsConstants.LEASE_SOFTLIMIT_PERIOD,HdfsConstants.LEASE_HARDLIMIT_PERIOD);
-  fileStatus=fs.getFileStatus(p);
+  FileStatus fileStatus=fs.getFileStatus(p);
   assertThat(fileStatus.getLen(),is((long)newLength));
-  AppendTestUtil.checkFullFile(fs,p,newLength,contents,p.toString());
+  checkFullFile(p,newLength,contents);
   fs.delete(p,false);
 }

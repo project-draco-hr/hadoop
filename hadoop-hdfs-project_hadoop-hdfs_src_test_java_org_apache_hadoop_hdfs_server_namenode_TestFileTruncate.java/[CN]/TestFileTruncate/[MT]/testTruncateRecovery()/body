@@ -1,0 +1,54 @@
+{
+  FSNamesystem fsn=cluster.getNamesystem();
+  String client="client";
+  String clientMachine="clientMachine";
+  Path parent=new Path("/test");
+  String src="/test/testTruncateRecovery";
+  Path srcPath=new Path(src);
+  byte[] contents=AppendTestUtil.initBuffer(BLOCK_SIZE);
+  writeContents(contents,BLOCK_SIZE,srcPath);
+  INodesInPath iip=fsn.getFSDirectory().getINodesInPath4Write(src,true);
+  INodeFile file=iip.getLastINode().asFile();
+  long initialGenStamp=file.getLastBlock().getGenerationStamp();
+  fsn.writeLock();
+  try {
+    Block oldBlock=file.getLastBlock();
+    Block truncateBlock=fsn.prepareFileForTruncate(iip,client,clientMachine,1,null);
+    assertThat(truncateBlock.getBlockId(),is(equalTo(oldBlock.getBlockId())));
+    assertThat(truncateBlock.getNumBytes(),is(oldBlock.getNumBytes()));
+    assertThat(truncateBlock.getGenerationStamp(),is(fsn.getBlockIdManager().getGenerationStampV2()));
+    assertThat(file.getLastBlock().getBlockUCState(),is(HdfsServerConstants.BlockUCState.UNDER_RECOVERY));
+    long blockRecoveryId=((BlockInfoUnderConstruction)file.getLastBlock()).getBlockRecoveryId();
+    assertThat(blockRecoveryId,is(initialGenStamp + 1));
+    fsn.getEditLog().logTruncate(src,client,clientMachine,BLOCK_SIZE - 1,Time.now(),truncateBlock);
+  }
+  finally {
+    fsn.writeUnlock();
+  }
+  writeContents(contents,BLOCK_SIZE,srcPath);
+  fs.allowSnapshot(parent);
+  fs.createSnapshot(parent,"ss0");
+  iip=fsn.getFSDirectory().getINodesInPath(src,true);
+  file=iip.getLastINode().asFile();
+  file.recordModification(iip.getLatestSnapshotId(),true);
+  assertThat(file.isBlockInLatestSnapshot(file.getLastBlock()),is(true));
+  initialGenStamp=file.getLastBlock().getGenerationStamp();
+  fsn.writeLock();
+  try {
+    Block oldBlock=file.getLastBlock();
+    Block truncateBlock=fsn.prepareFileForTruncate(iip,client,clientMachine,1,null);
+    assertThat(truncateBlock.getBlockId(),is(not(equalTo(oldBlock.getBlockId()))));
+    assertThat(truncateBlock.getNumBytes() < oldBlock.getNumBytes(),is(true));
+    assertThat(truncateBlock.getGenerationStamp(),is(fsn.getBlockIdManager().getGenerationStampV2()));
+    assertThat(file.getLastBlock().getBlockUCState(),is(HdfsServerConstants.BlockUCState.UNDER_RECOVERY));
+    long blockRecoveryId=((BlockInfoUnderConstruction)file.getLastBlock()).getBlockRecoveryId();
+    assertThat(blockRecoveryId,is(initialGenStamp + 1));
+    fsn.getEditLog().logTruncate(src,client,clientMachine,BLOCK_SIZE - 1,Time.now(),truncateBlock);
+  }
+  finally {
+    fsn.writeUnlock();
+  }
+  checkBlockRecovery(srcPath);
+  fs.deleteSnapshot(parent,"ss0");
+  fs.delete(parent,true);
+}
