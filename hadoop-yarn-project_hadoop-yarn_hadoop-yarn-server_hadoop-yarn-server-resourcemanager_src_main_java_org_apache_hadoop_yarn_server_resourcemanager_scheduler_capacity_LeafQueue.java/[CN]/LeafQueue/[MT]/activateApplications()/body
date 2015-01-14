@@ -1,15 +1,37 @@
 {
+  Resource amLimit=getAMResourceLimit();
+  Resource userAMLimit=getUserAMResourceLimit();
   for (Iterator<FiCaSchedulerApp> i=pendingApplications.iterator(); i.hasNext(); ) {
     FiCaSchedulerApp application=i.next();
-    if (getNumActiveApplications() >= getMaximumActiveApplications()) {
-      break;
+    Resource amIfStarted=Resources.add(application.getAMResource(),usedAMResources);
+    if (LOG.isDebugEnabled()) {
+      LOG.debug("application AMResource " + application.getAMResource() + " maxAMResourcePerQueuePercent "+ maxAMResourcePerQueuePercent+ " amLimit "+ amLimit+ " lastClusterResource "+ lastClusterResource+ " amIfStarted "+ amIfStarted);
+    }
+    if (!Resources.lessThanOrEqual(resourceCalculator,lastClusterResource,amIfStarted,amLimit)) {
+      if (getNumActiveApplications() < 1) {
+        LOG.warn("maximum-am-resource-percent is insufficient to start a" + " single application in queue, it is likely set too low." + " skipping enforcement to allow at least one application to start");
+      }
+ else {
+        LOG.info("not starting application as amIfStarted exceeds amLimit");
+        continue;
+      }
     }
     User user=getUser(application.getUser());
-    if (user.getActiveApplications() < getMaximumActiveApplicationsPerUser()) {
-      user.activateApplication();
-      activeApplications.add(application);
-      i.remove();
-      LOG.info("Application " + application.getApplicationId() + " from user: "+ application.getUser()+ " activated in queue: "+ getQueueName());
+    Resource userAmIfStarted=Resources.add(application.getAMResource(),user.getConsumedAMResources());
+    if (!Resources.lessThanOrEqual(resourceCalculator,lastClusterResource,userAmIfStarted,userAMLimit)) {
+      if (getNumActiveApplications() < 1) {
+        LOG.warn("maximum-am-resource-percent is insufficient to start a" + " single application in queue for user, it is likely set too low." + " skipping enforcement to allow at least one application to start");
+      }
+ else {
+        LOG.info("not starting application as amIfStarted exceeds " + "userAmLimit");
+        continue;
+      }
     }
+    user.activateApplication();
+    activeApplications.add(application);
+    Resources.addTo(usedAMResources,application.getAMResource());
+    Resources.addTo(user.getConsumedAMResources(),application.getAMResource());
+    i.remove();
+    LOG.info("Application " + application.getApplicationId() + " from user: "+ application.getUser()+ " activated in queue: "+ getQueueName());
   }
 }
