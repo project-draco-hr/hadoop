@@ -9,17 +9,22 @@
   boolean res;
   byte[][] pathComponents=FSDirectory.getPathComponentsForReservedPath(src);
   writeLock();
+  BlocksMapUpdateInfo toRemoveBlocks=new BlocksMapUpdateInfo();
   try {
     checkOperation(OperationCategory.WRITE);
     checkNameNodeSafeMode("Cannot truncate for " + src);
     src=dir.resolvePath(pc,src,pathComponents);
-    res=truncateInternal(src,newLength,clientName,clientMachine,mtime,pc);
-    stat=FSDirStatAndListingOp.getFileInfo(dir,src,false,FSDirectory.isReservedRawName(src),true);
+    res=truncateInternal(src,newLength,clientName,clientMachine,mtime,pc,toRemoveBlocks);
+    stat=dir.getAuditFileInfo(dir.getINodesInPath4Write(src,false));
   }
   finally {
     writeUnlock();
   }
   getEditLog().logSync();
+  if (!toRemoveBlocks.getToDeleteList().isEmpty()) {
+    removeBlocks(toRemoveBlocks);
+    toRemoveBlocks.clear();
+  }
   logAuditEvent(true,"truncate",src,null,stat);
   return res;
 }
