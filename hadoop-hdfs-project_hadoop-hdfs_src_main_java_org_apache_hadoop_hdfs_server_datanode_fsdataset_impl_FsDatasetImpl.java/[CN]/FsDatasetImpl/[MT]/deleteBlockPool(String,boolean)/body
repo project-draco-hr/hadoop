@@ -2,13 +2,21 @@
   List<FsVolumeImpl> curVolumes=getVolumes();
   if (!force) {
     for (    FsVolumeImpl volume : curVolumes) {
-      if (!volume.isBPDirEmpty(bpid)) {
-        LOG.warn(bpid + " has some block files, cannot delete unless forced");
-        throw new IOException("Cannot delete block pool, " + "it contains some block files");
+      try (FsVolumeReference ref=volume.obtainReference()){
+        if (!volume.isBPDirEmpty(bpid)) {
+          LOG.warn(bpid + " has some block files, cannot delete unless forced");
+          throw new IOException("Cannot delete block pool, " + "it contains some block files");
+        }
+      }
+ catch (      ClosedChannelException e) {
       }
     }
   }
   for (  FsVolumeImpl volume : curVolumes) {
-    volume.deleteBPDirectories(bpid,force);
+    try (FsVolumeReference ref=volume.obtainReference()){
+      volume.deleteBPDirectories(bpid,force);
+    }
+ catch (    ClosedChannelException e) {
+    }
   }
 }

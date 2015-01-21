@@ -17,12 +17,19 @@
   if (bytesAcked < minBytesRcvd || numBytes > maxBytesRcvd) {
     throw new ReplicaNotFoundException("Unmatched length replica " + replicaInfo + ": BytesAcked = "+ bytesAcked+ " BytesRcvd = "+ numBytes+ " are not in the range of ["+ minBytesRcvd+ ", "+ maxBytesRcvd+ "].");
   }
-  if (numBytes > bytesAcked) {
-    final File replicafile=rbw.getBlockFile();
-    truncateBlock(replicafile,rbw.getMetaFile(),numBytes,bytesAcked);
-    rbw.setNumBytes(bytesAcked);
-    rbw.setLastChecksumAndDataLen(bytesAcked,null);
+  FsVolumeReference ref=rbw.getVolume().obtainReference();
+  try {
+    if (numBytes > bytesAcked) {
+      final File replicafile=rbw.getBlockFile();
+      truncateBlock(replicafile,rbw.getMetaFile(),numBytes,bytesAcked);
+      rbw.setNumBytes(bytesAcked);
+      rbw.setLastChecksumAndDataLen(bytesAcked,null);
+    }
+    bumpReplicaGS(rbw,newGS);
   }
-  bumpReplicaGS(rbw,newGS);
-  return rbw;
+ catch (  IOException e) {
+    IOUtils.cleanup(null,ref);
+    throw e;
+  }
+  return new ReplicaHandler(rbw,ref);
 }

@@ -10,9 +10,24 @@
   rb.nextBytes(writeBuf);
   out.write(writeBuf);
   out.hflush();
+  final CyclicBarrier barrier=new CyclicBarrier(2);
   List<String> oldDirs=getDataDirs(dn);
-  String newDirs=oldDirs.get(1);
-  dn.reconfigurePropertyImpl(DFSConfigKeys.DFS_DATANODE_DATA_DIR_KEY,newDirs);
+  final String newDirs=oldDirs.get(1);
+  final List<Exception> exceptions=new ArrayList<>();
+  Thread reconfigThread=new Thread(){
+    public void run(){
+      try {
+        barrier.await();
+        dn.reconfigurePropertyImpl(DFSConfigKeys.DFS_DATANODE_DATA_DIR_KEY,newDirs);
+      }
+ catch (      ReconfigurationException|InterruptedException|BrokenBarrierException e) {
+        exceptions.add(e);
+      }
+    }
+  }
+;
+  reconfigThread.start();
+  barrier.await();
   rb.nextBytes(writeBuf);
   out.write(writeBuf);
   out.hflush();
@@ -20,4 +35,8 @@
   DFSTestUtil.waitReplication(fs,testFile,REPLICATION);
   byte[] content=DFSTestUtil.readFileBuffer(fs,testFile);
   assertEquals(BLOCK_SIZE,content.length);
+  reconfigThread.join();
+  if (!exceptions.isEmpty()) {
+    throw new IOException(exceptions.get(0).getCause());
+  }
 }

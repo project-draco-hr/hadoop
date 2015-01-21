@@ -4,17 +4,23 @@ synchronized (checkDirsMutex) {
     final List<FsVolumeImpl> volumeList=getVolumes();
     for (Iterator<FsVolumeImpl> i=volumeList.iterator(); i.hasNext(); ) {
       final FsVolumeImpl fsv=i.next();
-      try {
+      try (FsVolumeReference ref=fsv.obtainReference()){
         fsv.checkDirs();
       }
  catch (      DiskErrorException e) {
         FsDatasetImpl.LOG.warn("Removing failed volume " + fsv + ": ",e);
         if (removedVols == null) {
-          removedVols=new ArrayList<FsVolumeImpl>(1);
+          removedVols=new ArrayList<>(1);
         }
         removedVols.add(fsv);
         removeVolume(fsv);
         numFailedVolumes++;
+      }
+catch (      ClosedChannelException e) {
+        FsDatasetImpl.LOG.debug("Caught exception when obtaining " + "reference count on closed volume",e);
+      }
+catch (      IOException e) {
+        FsDatasetImpl.LOG.error("Unexpected IOException",e);
       }
     }
     if (removedVols != null && removedVols.size() > 0) {

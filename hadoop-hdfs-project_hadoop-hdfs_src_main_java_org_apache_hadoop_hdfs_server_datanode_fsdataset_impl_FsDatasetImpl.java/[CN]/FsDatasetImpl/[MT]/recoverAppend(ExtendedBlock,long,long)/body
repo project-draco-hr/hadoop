@@ -1,11 +1,20 @@
 {
   LOG.info("Recover failed append to " + b);
   ReplicaInfo replicaInfo=recoverCheck(b,newGS,expectedBlockLen);
-  if (replicaInfo.getState() == ReplicaState.FINALIZED) {
-    return append(b.getBlockPoolId(),(FinalizedReplica)replicaInfo,newGS,b.getNumBytes());
-  }
+  FsVolumeReference ref=replicaInfo.getVolume().obtainReference();
+  ReplicaBeingWritten replica;
+  try {
+    if (replicaInfo.getState() == ReplicaState.FINALIZED) {
+      replica=append(b.getBlockPoolId(),(FinalizedReplica)replicaInfo,newGS,b.getNumBytes());
+    }
  else {
-    bumpReplicaGS(replicaInfo,newGS);
-    return (ReplicaBeingWritten)replicaInfo;
+      bumpReplicaGS(replicaInfo,newGS);
+      replica=(ReplicaBeingWritten)replicaInfo;
+    }
   }
+ catch (  IOException e) {
+    IOUtils.cleanup(null,ref);
+    throw e;
+  }
+  return new ReplicaHandler(replica,ref);
 }

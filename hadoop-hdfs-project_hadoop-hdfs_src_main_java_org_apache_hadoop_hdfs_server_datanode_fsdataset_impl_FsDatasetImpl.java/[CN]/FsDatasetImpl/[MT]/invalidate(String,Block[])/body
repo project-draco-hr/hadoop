@@ -37,7 +37,12 @@ synchronized (this) {
     }
     datanode.getShortCircuitRegistry().processBlockInvalidation(new ExtendedBlockId(invalidBlks[i].getBlockId(),bpid));
     cacheManager.uncacheBlock(bpid,invalidBlks[i].getBlockId());
-    asyncDiskService.deleteAsync(v,f,FsDatasetUtil.getMetaFile(f,invalidBlks[i].getGenerationStamp()),new ExtendedBlock(bpid,invalidBlks[i]),dataStorage.getTrashDirectoryForBlockFile(bpid,f));
+    try {
+      asyncDiskService.deleteAsync(v.obtainReference(),f,FsDatasetUtil.getMetaFile(f,invalidBlks[i].getGenerationStamp()),new ExtendedBlock(bpid,invalidBlks[i]),dataStorage.getTrashDirectoryForBlockFile(bpid,f));
+    }
+ catch (    ClosedChannelException e) {
+      LOG.warn("Volume " + v + " is closed, ignore the deletion task for "+ "block "+ invalidBlks[i]);
+    }
   }
   if (!errors.isEmpty()) {
     StringBuilder b=new StringBuilder("Failed to delete ").append(errors.size()).append(" (out of ").append(invalidBlks.length).append(") replica(s):");
