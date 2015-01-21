@@ -1,0 +1,35 @@
+{
+  MiniDFSCluster cluster=new MiniDFSCluster.Builder(new Configuration()).numDataNodes(1).build();
+  FileSystem fs=null;
+  try {
+    fs=cluster.getFileSystem();
+    DataNode dataNode=cluster.getDataNodes().get(0);
+    for (int i=1; i < 10; i++) {
+      Path fileName=new Path("/test" + i);
+      DFSTestUtil.createFile(fs,fileName,1024,(short)1,1000L);
+    }
+    ExtendedBlock block=DFSTestUtil.getFirstBlock(fs,new Path("/test1"));
+    dataNode.getBlockScanner().setLastScanTimeDifference(block,0);
+    Thread.sleep(10000);
+    Long scanTime1Fortest1Block=DataNodeTestUtils.getLatestScanTime(dataNode,block);
+    for (int i=10; i < 20; i++) {
+      Path fileName=new Path("/test" + i);
+      DFSTestUtil.createFile(fs,fileName,1024,(short)1,1000L);
+    }
+    dataNode.getBlockScanner().addBlock(block,true);
+    Thread.sleep(10000);
+    Set<Long> lastScanTimeSet=new HashSet<Long>();
+    for (int i=10; i < 20; i++) {
+      long lastScanTime=DataNodeTestUtils.getLatestScanTime(dataNode,DFSTestUtil.getFirstBlock(fs,new Path("/test" + i)));
+      lastScanTimeSet.add(lastScanTime);
+    }
+    Long scanTime2Fortest1Block=DataNodeTestUtils.getLatestScanTime(dataNode,DFSTestUtil.getFirstBlock(fs,new Path("/test1")));
+    Long minimumLastScanTime=Collections.min(lastScanTimeSet);
+    assertTrue("The second scanTime for test1 block should be greater than " + "first scanTime",scanTime2Fortest1Block > scanTime1Fortest1Block);
+    assertTrue("The second scanTime for test1 block should be less than or" + " equal to minimum of the lastScanTime of second set of blocks",scanTime2Fortest1Block <= minimumLastScanTime);
+  }
+  finally {
+    IOUtils.closeStream(fs);
+    cluster.shutdown();
+  }
+}
