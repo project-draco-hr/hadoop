@@ -3,10 +3,17 @@
   Text dtService=getDelegationTokenService();
   Token<?> token=credentials.getToken(dtService);
   if (token == null) {
-    URL url=createURL(null,null,null,null);
-    DelegationTokenAuthenticatedURL authUrl=new DelegationTokenAuthenticatedURL(configurator);
+    final URL url=createURL(null,null,null,null);
+    final DelegationTokenAuthenticatedURL authUrl=new DelegationTokenAuthenticatedURL(configurator);
     try {
-      token=authUrl.getDelegationToken(url,authToken,renewer);
+      UserGroupInformation currentUgi=UserGroupInformation.getCurrentUser();
+      final String doAsUser=(currentUgi.getAuthenticationMethod() == UserGroupInformation.AuthenticationMethod.PROXY) ? currentUgi.getShortUserName() : null;
+      token=actualUgi.doAs(new PrivilegedExceptionAction<Token<?>>(){
+        @Override public Token<?> run() throws Exception {
+          return authUrl.getDelegationToken(url,new DelegationTokenAuthenticatedURL.Token(),renewer,doAsUser);
+        }
+      }
+);
       if (token != null) {
         credentials.addToken(token.getService(),token);
         tokens=new Token<?>[]{token};
@@ -15,8 +22,11 @@
         throw new IOException("Got NULL as delegation token");
       }
     }
- catch (    AuthenticationException ex) {
-      throw new IOException(ex);
+ catch (    InterruptedException e) {
+      Thread.currentThread().interrupt();
+    }
+catch (    Exception e) {
+      throw new IOException(e);
     }
   }
   return tokens;
