@@ -10,13 +10,13 @@
       @Override public Void run() throws Exception {
         final long txid=parsedParams.getTxId();
         final NameNodeFile nnf=parsedParams.getNameNodeFile();
-        if (!currentlyDownloadingCheckpoints.add(txid)) {
-          response.sendError(HttpServletResponse.SC_CONFLICT,"Another checkpointer is already in the process of uploading a" + " checkpoint made at transaction ID " + txid);
+        if (!nnImage.addToCheckpointing(txid)) {
+          response.sendError(HttpServletResponse.SC_CONFLICT,"Either current namenode is checkpointing or another" + " checkpointer is already in the process of " + "uploading a checkpoint made at transaction ID "+ txid);
           return null;
         }
         try {
           if (nnImage.getStorage().findImageFile(nnf,txid) != null) {
-            response.sendError(HttpServletResponse.SC_CONFLICT,"Another checkpointer already uploaded an checkpoint " + "for txid " + txid);
+            response.sendError(HttpServletResponse.SC_CONFLICT,"Either current namenode has checkpointed or " + "another checkpointer already uploaded an " + "checkpoint for txid "+ txid);
             return null;
           }
           InputStream stream=request.getInputStream();
@@ -35,7 +35,7 @@
           }
         }
   finally {
-          currentlyDownloadingCheckpoints.remove(txid);
+          nnImage.removeFromCheckpointing(txid);
         }
         return null;
       }
