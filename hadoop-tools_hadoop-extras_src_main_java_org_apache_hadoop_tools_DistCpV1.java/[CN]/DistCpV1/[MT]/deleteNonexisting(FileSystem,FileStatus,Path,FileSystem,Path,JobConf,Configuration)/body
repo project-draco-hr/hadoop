@@ -3,8 +3,7 @@
     throw new IOException("dst must be a directory when option " + Options.DELETE.cmd + " is set, but dst (= "+ dstroot.getPath()+ ") is not a directory.");
   }
   final Path dstlsr=new Path(jobdir,"_distcp_dst_lsr");
-  final SequenceFile.Writer writer=SequenceFile.createWriter(jobfs,jobconf,dstlsr,Text.class,NullWritable.class,SequenceFile.CompressionType.NONE);
-  try {
+  try (final SequenceFile.Writer writer=SequenceFile.createWriter(jobconf,Writer.file(dstlsr),Writer.keyClass(Text.class),Writer.valueClass(NullWritable.class),Writer.compression(SequenceFile.CompressionType.NONE))){
     final Stack<FileStatus> lsrstack=new Stack<FileStatus>();
     for (lsrstack.push(dstroot); !lsrstack.isEmpty(); ) {
       final FileStatus status=lsrstack.pop();
@@ -17,18 +16,11 @@
       }
     }
   }
-  finally {
-    checkAndClose(writer);
-  }
-  final Path sortedlsr=new Path(jobdir,"_distcp_dst_lsr_sorted");
+   final Path sortedlsr=new Path(jobdir,"_distcp_dst_lsr_sorted");
   SequenceFile.Sorter sorter=new SequenceFile.Sorter(jobfs,new Text.Comparator(),Text.class,NullWritable.class,jobconf);
   sorter.sort(dstlsr,sortedlsr);
-  SequenceFile.Reader lsrin=null;
-  SequenceFile.Reader dstin=null;
   long deletedPathsCount=0;
-  try {
-    lsrin=new SequenceFile.Reader(jobfs,sortedlsr,jobconf);
-    dstin=new SequenceFile.Reader(jobfs,dstsorted,jobconf);
+  try (SequenceFile.Reader lsrin=new SequenceFile.Reader(jobconf,Reader.file(sortedlsr));SequenceFile.Reader dstin=new SequenceFile.Reader(jobconf,Reader.file(dstsorted))){
     final Text lsrpath=new Text();
     final Text dstpath=new Text();
     final Text dstfrom=new Text();
@@ -56,9 +48,5 @@
       }
     }
   }
-  finally {
-    checkAndClose(lsrin);
-    checkAndClose(dstin);
-  }
-  return deletedPathsCount;
+   return deletedPathsCount;
 }
