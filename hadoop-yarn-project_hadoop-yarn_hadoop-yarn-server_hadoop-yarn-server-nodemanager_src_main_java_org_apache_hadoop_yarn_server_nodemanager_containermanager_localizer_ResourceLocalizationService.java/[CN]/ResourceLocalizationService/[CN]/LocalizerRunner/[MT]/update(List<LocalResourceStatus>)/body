@@ -2,31 +2,7 @@
   LocalizerHeartbeatResponse response=recordFactory.newRecordInstance(LocalizerHeartbeatResponse.class);
   String user=context.getUser();
   ApplicationId applicationId=context.getContainerId().getApplicationAttemptId().getApplicationId();
-  if (remoteResourceStatuses.isEmpty()) {
-    LocalResource next=findNextResource();
-    if (next != null) {
-      response.setLocalizerAction(LocalizerAction.LIVE);
-      try {
-        ArrayList<ResourceLocalizationSpec> rsrcs=new ArrayList<ResourceLocalizationSpec>();
-        ResourceLocalizationSpec rsrc=NodeManagerBuilderUtils.newResourceLocalizationSpec(next,getPathForLocalization(next));
-        rsrcs.add(rsrc);
-        response.setResourceSpecs(rsrcs);
-      }
- catch (      IOException e) {
-        LOG.error("local path for PRIVATE localization could not be found." + "Disks might have failed.",e);
-      }
-catch (      URISyntaxException e) {
-      }
-    }
- else     if (pending.isEmpty()) {
-      response.setLocalizerAction(LocalizerAction.DIE);
-    }
- else {
-      response.setLocalizerAction(LocalizerAction.LIVE);
-    }
-    return response;
-  }
-  ArrayList<ResourceLocalizationSpec> rsrcs=new ArrayList<ResourceLocalizationSpec>();
+  LocalizerAction action=LocalizerAction.LIVE;
   for (  LocalResourceStatus stat : remoteResourceStatuses) {
     LocalResource rsrc=stat.getResource();
     LocalResourceRequest req=null;
@@ -49,11 +25,29 @@ case FETCH_SUCCESS:
       }
     assoc.getResource().unlock();
   scheduled.remove(req);
-if (pending.isEmpty()) {
-  response.setLocalizerAction(LocalizerAction.DIE);
-  break;
+break;
+case FETCH_PENDING:
+break;
+case FETCH_FAILURE:
+final String diagnostics=stat.getException().toString();
+LOG.warn(req + " failed: " + diagnostics);
+response.setLocalizerAction(LocalizerAction.DIE);
+getLocalResourcesTracker(req.getVisibility(),user,applicationId).handle(new ResourceFailedLocalizationEvent(req,diagnostics));
+assoc.getResource().unlock();
+scheduled.remove(req);
+break;
+default :
+LOG.info("Unknown status: " + stat.getStatus());
+action=LocalizerAction.DIE;
+getLocalResourcesTracker(req.getVisibility(),user,applicationId).handle(new ResourceFailedLocalizationEvent(req,stat.getException().getMessage()));
+break;
 }
-response.setLocalizerAction(LocalizerAction.LIVE);
+}
+if (action == LocalizerAction.DIE) {
+response.setLocalizerAction(action);
+return response;
+}
+List<ResourceLocalizationSpec> rsrcs=new ArrayList<ResourceLocalizationSpec>();
 LocalResource next=findNextResource();
 if (next != null) {
 try {
@@ -66,25 +60,10 @@ LOG.error("local path for PRIVATE localization could not be " + "found. Disks mi
 catch (URISyntaxException e) {
 }
 }
-break;
-case FETCH_PENDING:
-response.setLocalizerAction(LocalizerAction.LIVE);
-break;
-case FETCH_FAILURE:
-final String diagnostics=stat.getException().toString();
-LOG.warn(req + " failed: " + diagnostics);
-response.setLocalizerAction(LocalizerAction.DIE);
-getLocalResourcesTracker(req.getVisibility(),user,applicationId).handle(new ResourceFailedLocalizationEvent(req,diagnostics));
-assoc.getResource().unlock();
-scheduled.remove(req);
-break;
-default :
-LOG.info("Unknown status: " + stat.getStatus());
-response.setLocalizerAction(LocalizerAction.DIE);
-getLocalResourcesTracker(req.getVisibility(),user,applicationId).handle(new ResourceFailedLocalizationEvent(req,stat.getException().getMessage()));
-break;
+ else if (pending.isEmpty()) {
+action=LocalizerAction.DIE;
 }
-}
+response.setLocalizerAction(action);
 response.setResourceSpecs(rsrcs);
 return response;
 }
