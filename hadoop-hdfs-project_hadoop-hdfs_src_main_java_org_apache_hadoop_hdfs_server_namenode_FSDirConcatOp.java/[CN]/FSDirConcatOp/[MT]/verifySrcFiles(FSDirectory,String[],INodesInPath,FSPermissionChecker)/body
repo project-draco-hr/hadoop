@@ -1,0 +1,34 @@
+{
+  Set<INodeFile> si=new HashSet<>();
+  final INodeFile targetINode=targetIIP.getLastINode().asFile();
+  final INodeDirectory targetParent=targetINode.getParent();
+  for (  String src : srcs) {
+    final INodesInPath iip=fsd.getINodesInPath4Write(src);
+    if (pc != null) {
+      fsd.checkPathAccess(pc,iip,FsAction.READ);
+      fsd.checkParentAccess(pc,iip,FsAction.WRITE);
+    }
+    final INode srcINode=iip.getLastINode();
+    final INodeFile srcINodeFile=INodeFile.valueOf(srcINode,src);
+    if (srcINodeFile.getParent() != targetParent) {
+      throw new HadoopIllegalArgumentException("Source file " + src + " is not in the same directory with the target "+ targetIIP.getPath());
+    }
+    if (srcINode.isInLatestSnapshot(iip.getLatestSnapshotId())) {
+      throw new SnapshotException("Concat: the source file " + src + " is in snapshot");
+    }
+    if (srcINode.isReference() && ((INodeReference.WithCount)srcINode.asReference().getReferredINode()).getReferenceCount() > 1) {
+      throw new SnapshotException("Concat: the source file " + src + " is referred by some other reference in some snapshot.");
+    }
+    if (srcINode == targetINode) {
+      throw new HadoopIllegalArgumentException("concat: the src file " + src + " is the same with the target file "+ targetIIP.getPath());
+    }
+    if (srcINodeFile.isUnderConstruction() || srcINodeFile.numBlocks() == 0) {
+      throw new HadoopIllegalArgumentException("concat: source file " + src + " is invalid or empty or underConstruction");
+    }
+    si.add(srcINodeFile);
+  }
+  if (si.size() < srcs.length) {
+    throw new HadoopIllegalArgumentException("concat: at least two of the source files are the same");
+  }
+  return si.toArray(new INodeFile[si.size()]);
+}

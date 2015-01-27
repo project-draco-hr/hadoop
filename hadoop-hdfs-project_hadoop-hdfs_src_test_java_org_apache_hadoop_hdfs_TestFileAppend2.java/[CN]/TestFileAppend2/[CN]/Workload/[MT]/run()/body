@@ -13,7 +13,7 @@ synchronized (testFiles) {
     long len=0;
     int sizeToAppend=0;
     try {
-      FileSystem fs=cluster.getFileSystem();
+      DistributedFileSystem fs=cluster.getFileSystem();
       len=fs.getFileStatus(testfile).getLen();
       if (len >= AppendTestUtil.FILE_SIZE) {
         System.out.println("File " + testfile + " is full.");
@@ -25,7 +25,7 @@ synchronized (testFiles) {
       }
       sizeToAppend=AppendTestUtil.nextInt(left);
       System.out.println("Workload thread " + id + " appending "+ sizeToAppend+ " bytes "+ " to file "+ testfile+ " of size "+ len);
-      FSDataOutputStream stm=fs.append(testfile);
+      FSDataOutputStream stm=appendToNewBlock ? fs.append(testfile,EnumSet.of(CreateFlag.APPEND,CreateFlag.NEW_BLOCK),4096,null) : fs.append(testfile);
       stm.write(fileContents,(int)len,sizeToAppend);
       stm.close();
       while (fs.getFileStatus(testfile).getLen() != (len + sizeToAppend)) {
@@ -34,7 +34,6 @@ synchronized (testFiles) {
           Thread.sleep(5000);
         }
  catch (        InterruptedException e) {
-          ;
         }
       }
       assertTrue("File " + testfile + " size is "+ fs.getFileStatus(testfile).getLen()+ " but expected "+ (len + sizeToAppend),fs.getFileStatus(testfile).getLen() == (len + sizeToAppend));

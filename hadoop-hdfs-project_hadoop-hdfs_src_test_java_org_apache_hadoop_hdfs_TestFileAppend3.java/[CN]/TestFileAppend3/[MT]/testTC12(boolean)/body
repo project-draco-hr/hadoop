@@ -1,0 +1,25 @@
+{
+  final Path p=new Path("/TC12/foo" + (appendToNewBlock ? "0" : "1"));
+  System.out.println("p=" + p);
+  final int len1=25687;
+{
+    FSDataOutputStream out=fs.create(p,false,buffersize,REPLICATION,BLOCK_SIZE);
+    AppendTestUtil.write(out,0,len1);
+    out.close();
+  }
+  final int len2=5877;
+{
+    FSDataOutputStream out=appendToNewBlock ? fs.append(p,EnumSet.of(CreateFlag.APPEND,CreateFlag.NEW_BLOCK),4096,null) : fs.append(p);
+    AppendTestUtil.write(out,len1,len2);
+    out.close();
+  }
+  AppendTestUtil.check(fs,p,len1 + len2);
+  if (appendToNewBlock) {
+    LocatedBlocks blks=fs.dfs.getLocatedBlocks(p.toString(),0);
+    Assert.assertEquals(2,blks.getLocatedBlocks().size());
+    Assert.assertEquals(len1,blks.getLocatedBlocks().get(0).getBlockSize());
+    Assert.assertEquals(len2,blks.getLocatedBlocks().get(1).getBlockSize());
+    AppendTestUtil.check(fs,p,0,len1);
+    AppendTestUtil.check(fs,p,len1,len2);
+  }
+}
