@@ -2,20 +2,14 @@
   if (expr == null) {
     return null;
   }
-  Matcher match=VAR_PATTERN.matcher("");
   String eval=expr;
-  Set<String> evalSet=new HashSet<String>();
+  Set<String> evalSet=null;
   for (int s=0; s < MAX_SUBST; s++) {
-    if (evalSet.contains(eval)) {
+    final int[] varBounds=findSubVariable(eval);
+    if (varBounds[SUB_START_IDX] == -1) {
       return eval;
     }
-    evalSet.add(eval);
-    match.reset(eval);
-    if (!match.find()) {
-      return eval;
-    }
-    String var=match.group();
-    var=var.substring(2,var.length() - 1);
+    final String var=eval.substring(varBounds[SUB_START_IDX],varBounds[SUB_END_IDX]);
     String val=null;
     try {
       val=System.getProperty(var);
@@ -29,7 +23,16 @@
     if (val == null) {
       return eval;
     }
-    eval=eval.substring(0,match.start()) + val + eval.substring(match.end());
+    final int dollar=varBounds[SUB_START_IDX] - "${".length();
+    final int afterRightBrace=varBounds[SUB_END_IDX] + "}".length();
+    final String refVar=eval.substring(dollar,afterRightBrace);
+    if (evalSet == null) {
+      evalSet=new HashSet<String>();
+    }
+    if (!evalSet.add(refVar)) {
+      return expr;
+    }
+    eval=eval.substring(0,dollar) + val + eval.substring(afterRightBrace);
   }
   throw new IllegalStateException("Variable substitution depth too large: " + MAX_SUBST + " "+ expr);
 }
