@@ -1,17 +1,52 @@
 {
+  List<ContainerReport> containersForAttempt=new ArrayList<ContainerReport>();
+  boolean appNotFoundInRM=false;
   try {
     GetContainersRequest request=Records.newRecord(GetContainersRequest.class);
     request.setApplicationAttemptId(applicationAttemptId);
     GetContainersResponse response=rmClient.getContainers(request);
-    return response.getContainerList();
+    containersForAttempt.addAll(response.getContainerList());
   }
  catch (  YarnException e) {
-    if (!historyServiceEnabled) {
+    if (e.getClass() != ApplicationNotFoundException.class || !historyServiceEnabled) {
       throw e;
     }
-    if (e.getClass() != ApplicationNotFoundException.class) {
-      throw e;
-    }
-    return historyClient.getContainers(applicationAttemptId);
+    appNotFoundInRM=true;
   }
+  if (historyServiceEnabled) {
+    List<ContainerReport> containersListFromAHS=null;
+    try {
+      containersListFromAHS=historyClient.getContainers(applicationAttemptId);
+    }
+ catch (    IOException e) {
+      if (appNotFoundInRM) {
+        throw e;
+      }
+    }
+    if (null != containersListFromAHS && containersListFromAHS.size() > 0) {
+      Set<ContainerId> containerIdsToBeKeptFromAHS=new HashSet<ContainerId>();
+      Iterator<ContainerReport> tmpItr=containersListFromAHS.iterator();
+      while (tmpItr.hasNext()) {
+        containerIdsToBeKeptFromAHS.add(tmpItr.next().getContainerId());
+      }
+      Iterator<ContainerReport> rmContainers=containersForAttempt.iterator();
+      while (rmContainers.hasNext()) {
+        ContainerReport tmp=rmContainers.next();
+        containerIdsToBeKeptFromAHS.remove(tmp.getContainerId());
+      }
+      if (containerIdsToBeKeptFromAHS.size() > 0 && containersListFromAHS.size() != containerIdsToBeKeptFromAHS.size()) {
+        Iterator<ContainerReport> containersFromHS=containersListFromAHS.iterator();
+        while (containersFromHS.hasNext()) {
+          ContainerReport containerReport=containersFromHS.next();
+          if (containerIdsToBeKeptFromAHS.contains(containerReport.getContainerId())) {
+            containersForAttempt.add(containerReport);
+          }
+        }
+      }
+ else       if (containersListFromAHS.size() == containerIdsToBeKeptFromAHS.size()) {
+        containersForAttempt.addAll(containersListFromAHS);
+      }
+    }
+  }
+  return containersForAttempt;
 }
