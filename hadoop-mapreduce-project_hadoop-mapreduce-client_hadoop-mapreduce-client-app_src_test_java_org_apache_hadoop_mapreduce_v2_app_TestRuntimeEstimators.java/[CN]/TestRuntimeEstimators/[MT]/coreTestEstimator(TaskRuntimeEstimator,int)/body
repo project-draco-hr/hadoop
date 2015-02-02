@@ -13,7 +13,17 @@
   myAppContext=new MyAppContext(MAP_TASKS,REDUCE_TASKS);
   myJob=myAppContext.getAllJobs().values().iterator().next();
   estimator.contextualize(conf,myAppContext);
+  conf.setLong(MRJobConfig.SPECULATIVE_RETRY_AFTER_NO_SPECULATE,500L);
+  conf.setLong(MRJobConfig.SPECULATIVE_RETRY_AFTER_SPECULATE,5000L);
+  conf.setDouble(MRJobConfig.SPECULATIVECAP_RUNNING_TASKS,0.1);
+  conf.setDouble(MRJobConfig.SPECULATIVECAP_TOTAL_TASKS,0.001);
+  conf.setInt(MRJobConfig.SPECULATIVE_MINIMUM_ALLOWED_TASKS,5);
   speculator=new DefaultSpeculator(conf,myAppContext,estimator,clock);
+  Assert.assertEquals("wrong SPECULATIVE_RETRY_AFTER_NO_SPECULATE value",500L,speculator.getSoonestRetryAfterNoSpeculate());
+  Assert.assertEquals("wrong SPECULATIVE_RETRY_AFTER_SPECULATE value",5000L,speculator.getSoonestRetryAfterSpeculate());
+  Assert.assertEquals(speculator.getProportionRunningTasksSpeculatable(),0.1,0.00001);
+  Assert.assertEquals(speculator.getProportionTotalTasksSpeculatable(),0.001,0.00001);
+  Assert.assertEquals("wrong SPECULATIVE_MINIMUM_ALLOWED_TASKS value",5,speculator.getMinimumAllowedSpeculativeTasks());
   dispatcher.register(Speculator.EventType.class,speculator);
   dispatcher.register(TaskEventType.class,new SpeculationRequestEventHandler());
   dispatcher.init(conf);
