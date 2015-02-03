@@ -20,7 +20,7 @@ synchronized (containersToBeAdded) {
 synchronized (containersToBeRemoved) {
       for (      ContainerId containerId : containersToBeRemoved) {
         if (containerMetricsEnabled) {
-          ContainerMetrics.forContainer(containerId).finished();
+          ContainerMetrics.forContainer(containerId,containerMetricsPeriodMs).finished();
         }
         trackingContainers.remove(containerId);
         LOG.info("Stopping resource-monitoring for " + containerId);
@@ -42,6 +42,14 @@ synchronized (containersToBeRemoved) {
             ResourceCalculatorProcessTree pt=ResourceCalculatorProcessTree.getResourceCalculatorProcessTree(pId,processTreeClass,conf);
             ptInfo.setPid(pId);
             ptInfo.setProcessTree(pt);
+            if (containerMetricsEnabled) {
+              ContainerMetrics usageMetrics=ContainerMetrics.forContainer(containerId,containerMetricsPeriodMs);
+              int cpuVcores=ptInfo.getCpuVcores();
+              final int vmemLimit=(int)(ptInfo.getVmemLimit() >> 20);
+              final int pmemLimit=(int)(ptInfo.getPmemLimit() >> 20);
+              usageMetrics.recordResourceLimit(vmemLimit,pmemLimit,cpuVcores);
+              usageMetrics.recordProcessId(pId);
+            }
           }
         }
         if (pId == null) {
