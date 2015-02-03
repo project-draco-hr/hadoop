@@ -1,5 +1,6 @@
 {
   Map<NodeId,Set<String>> newNMToLabels=new HashMap<NodeId,Set<String>>();
+  Set<String> oldLabels;
   for (  Entry<NodeId,Set<String>> entry : nodeToLabels.entrySet()) {
     NodeId nodeId=entry.getKey();
     Set<String> labels=entry.getValue();
@@ -8,25 +9,31 @@
       Host host=nodeCollections.get(nodeId.getHost());
 switch (op) {
 case REMOVE:
-        host.labels.removeAll(labels);
-      for (      Node node : host.nms.values()) {
-        if (node.labels != null) {
-          node.labels.removeAll(labels);
-        }
+        removeNodeFromLabels(nodeId,labels);
+      host.labels.removeAll(labels);
+    for (    Node node : host.nms.values()) {
+      if (node.labels != null) {
+        node.labels.removeAll(labels);
       }
-    break;
+      removeNodeFromLabels(node.nodeId,labels);
+    }
+  break;
 case ADD:
-  host.labels.addAll(labels);
+addNodeToLabels(nodeId,labels);
+host.labels.addAll(labels);
 for (Node node : host.nms.values()) {
-  if (node.labels != null) {
-    node.labels.addAll(labels);
-  }
+if (node.labels != null) {
+node.labels.addAll(labels);
+}
+addNodeToLabels(node.nodeId,labels);
 }
 break;
 case REPLACE:
+replaceNodeForLabels(nodeId,host.labels,labels);
 host.labels.clear();
 host.labels.addAll(labels);
 for (Node node : host.nms.values()) {
+replaceNodeForLabels(node.nodeId,node.labels,labels);
 node.labels=null;
 }
 break;
@@ -39,14 +46,20 @@ newNMToLabels.put(nodeId,host.labels);
 if (EnumSet.of(NodeLabelUpdateOperation.ADD,NodeLabelUpdateOperation.REPLACE).contains(op)) {
 createNodeIfNonExisted(nodeId);
 Node nm=getNMInNodeSet(nodeId);
+switch (op) {
+case ADD:
+addNodeToLabels(nodeId,labels);
 if (nm.labels == null) {
 nm.labels=new HashSet<String>();
 }
-switch (op) {
-case ADD:
 nm.labels.addAll(labels);
 break;
 case REPLACE:
+oldLabels=getLabelsByNode(nodeId);
+replaceNodeForLabels(nodeId,oldLabels,labels);
+if (nm.labels == null) {
+nm.labels=new HashSet<String>();
+}
 nm.labels.clear();
 nm.labels.addAll(labels);
 break;
@@ -56,6 +69,7 @@ break;
 newNMToLabels.put(nodeId,nm.labels);
 }
  else {
+removeNodeFromLabels(nodeId,labels);
 Node nm=getNMInNodeSet(nodeId);
 if (nm.labels != null) {
 nm.labels.removeAll(labels);
