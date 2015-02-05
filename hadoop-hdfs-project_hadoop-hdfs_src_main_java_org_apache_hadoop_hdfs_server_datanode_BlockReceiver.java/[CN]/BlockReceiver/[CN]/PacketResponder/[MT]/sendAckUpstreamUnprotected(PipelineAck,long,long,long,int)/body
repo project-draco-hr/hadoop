@@ -1,20 +1,21 @@
 {
-  Status[] replies=null;
+  final int[] replies;
   if (ack == null) {
-    replies=new Status[1];
-    replies[0]=myStatus;
+    replies=new int[]{myHeader};
   }
  else   if (mirrorError) {
-    replies=MIRROR_ERROR_STATUS;
+    int h=PipelineAck.combineHeader(datanode.getECN(),Status.SUCCESS);
+    int h1=PipelineAck.combineHeader(datanode.getECN(),Status.ERROR);
+    replies=new int[]{h,h1};
   }
  else {
     short ackLen=type == PacketResponderType.LAST_IN_PIPELINE ? 0 : ack.getNumOfReplies();
-    replies=new Status[1 + ackLen];
-    replies[0]=myStatus;
-    for (int i=0; i < ackLen; i++) {
+    replies=new int[ackLen + 1];
+    replies[0]=myHeader;
+    for (int i=0; i < ackLen; ++i) {
       replies[i + 1]=ack.getReply(i);
     }
-    if (ackLen > 0 && replies[1] == Status.ERROR_CHECKSUM) {
+    if (ackLen > 0 && PipelineAck.getStatusFromHeader(replies[1]) == Status.ERROR_CHECKSUM) {
       throw new IOException("Shutting down writer and responder " + "since the down streams reported the data sent by this " + "thread is corrupt");
     }
   }
@@ -32,6 +33,7 @@
  else   if (LOG.isDebugEnabled()) {
     LOG.debug(myString + ", replyAck=" + replyAck);
   }
+  Status myStatus=PipelineAck.getStatusFromHeader(myHeader);
   if (myStatus == Status.ERROR_CHECKSUM) {
     throw new IOException("Shutting down writer and responder " + "due to a checksum error in received data. The error " + "response has been sent upstream.");
   }
