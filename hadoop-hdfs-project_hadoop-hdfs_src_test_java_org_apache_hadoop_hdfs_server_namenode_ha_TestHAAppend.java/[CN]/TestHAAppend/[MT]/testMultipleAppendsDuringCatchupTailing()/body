@@ -8,21 +8,35 @@
     cluster.transitionToActive(0);
     fs=HATestUtil.configureFailoverFs(cluster,conf);
     Path fileToAppend=new Path("/FileToAppend");
-    FSDataOutputStream out=fs.create(fileToAppend);
-    out.writeBytes("/data");
-    out.hflush();
+    Path fileToTruncate=new Path("/FileToTruncate");
+    final byte[] data=new byte[1 << 16];
+    DFSUtil.getRandom().nextBytes(data);
+    final int[] appendPos=AppendTestUtil.randomFilePartition(data.length,COUNT);
+    final int[] truncatePos=AppendTestUtil.randomFilePartition(data.length,1);
+    FSDataOutputStream out=createAndHflush(fs,fileToAppend,data,appendPos[0]);
+    FSDataOutputStream out4Truncate=createAndHflush(fs,fileToTruncate,data,data.length);
     cluster.getNameNode(0).getRpcServer().rollEditLog();
     cluster.getNameNode(1).getNamesystem().getEditLogTailer().doTailEdits();
     out.close();
-    for (int i=0; i < 5; i++) {
-      DFSTestUtil.appendFile(fs,fileToAppend,"data");
+    out4Truncate.close();
+    for (int i=0; i < COUNT; i++) {
+      int end=i < COUNT - 1 ? appendPos[i + 1] : data.length;
+      out=fs.append(fileToAppend);
+      out.write(data,appendPos[i],end - appendPos[i]);
+      out.close();
     }
+    boolean isTruncateReady=fs.truncate(fileToTruncate,truncatePos[0]);
     cluster.triggerBlockReports();
     cluster.shutdownNameNode(0);
     cluster.transitionToActive(1);
     int rc=ToolRunner.run(new DFSck(cluster.getConfiguration(1)),new String[]{"/","-files","-blocks"});
     assertEquals(0,rc);
     assertEquals("CorruptBlocks should be empty.",0,cluster.getNameNode(1).getNamesystem().getCorruptReplicaBlocks());
+    AppendTestUtil.checkFullFile(fs,fileToAppend,data.length,data,fileToAppend.toString());
+    if (!isTruncateReady) {
+      TestFileTruncate.checkBlockRecovery(fileToTruncate,cluster.getFileSystem(1));
+    }
+    AppendTestUtil.checkFullFile(fs,fileToTruncate,truncatePos[0],data,fileToTruncate.toString());
   }
   finally {
     if (null != cluster) {

@@ -1,0 +1,20 @@
+{
+  Path dir=new Path("/testMultipleTruncate");
+  fs.mkdirs(dir);
+  final Path p=new Path(dir,"file");
+  final byte[] data=new byte[100 * BLOCK_SIZE];
+  DFSUtil.getRandom().nextBytes(data);
+  writeContents(data,data.length,p);
+  for (int n=data.length; n > 0; ) {
+    final int newLength=DFSUtil.getRandom().nextInt(n);
+    final boolean isReady=fs.truncate(p,newLength);
+    LOG.info("newLength=" + newLength + ", isReady="+ isReady);
+    assertEquals("File must be closed for truncating at the block boundary",isReady,newLength % BLOCK_SIZE == 0);
+    if (!isReady) {
+      checkBlockRecovery(p);
+    }
+    checkFullFile(p,newLength,data);
+    n=newLength;
+  }
+  fs.delete(dir,true);
+}
