@@ -1,0 +1,42 @@
+{
+  FSNamesystem fsn=Mockito.mock(FSNamesystem.class);
+  Mockito.when(fsn.hasWriteLock()).thenReturn(true);
+  DatanodeManager dm=new DatanodeManager(Mockito.mock(BlockManager.class),fsn,new Configuration());
+  DatanodeInfo[] locs=new DatanodeInfo[5];
+  String[] storageIDs=new String[5];
+  StorageType[] storageTypes=new StorageType[]{StorageType.ARCHIVE,StorageType.DEFAULT,StorageType.DISK,StorageType.RAM_DISK,StorageType.SSD};
+  for (int i=0; i < 5; i++) {
+    String uuid="UUID-" + i;
+    String ip="IP-" + i;
+    DatanodeRegistration dr=Mockito.mock(DatanodeRegistration.class);
+    Mockito.when(dr.getDatanodeUuid()).thenReturn(uuid);
+    Mockito.when(dr.getIpAddr()).thenReturn(ip);
+    Mockito.when(dr.getXferAddr()).thenReturn(ip + ":9000");
+    Mockito.when(dr.getXferPort()).thenReturn(9000);
+    Mockito.when(dr.getSoftwareVersion()).thenReturn("version1");
+    dm.registerDatanode(dr);
+    locs[i]=dm.getDatanode(uuid);
+    storageIDs[i]="storageID-" + i;
+  }
+  locs[0].setDecommissioned();
+  locs[1].setDecommissioned();
+  ExtendedBlock b=new ExtendedBlock("somePoolID",1234);
+  LocatedBlock block=new LocatedBlock(b,locs,storageIDs,storageTypes);
+  List<LocatedBlock> blocks=new ArrayList<>();
+  blocks.add(block);
+  final String targetIp=locs[4].getIpAddr();
+  dm.sortLocatedBlocks(targetIp,blocks);
+  DatanodeInfoWithStorage[] sortedLocs=block.getLocations();
+  storageIDs=block.getStorageIDs();
+  storageTypes=block.getStorageTypes();
+  assertThat(sortedLocs.length,is(5));
+  assertThat(storageIDs.length,is(5));
+  assertThat(storageTypes.length,is(5));
+  for (int i=0; i < sortedLocs.length; i++) {
+    assertThat(sortedLocs[i].getStorageID(),is(storageIDs[i]));
+    assertThat(sortedLocs[i].getStorageType(),is(storageTypes[i]));
+  }
+  assertThat(sortedLocs[0].getIpAddr(),is(targetIp));
+  assertThat(sortedLocs[sortedLocs.length - 1].getAdminState(),is(DatanodeInfo.AdminStates.DECOMMISSIONED));
+  assertThat(sortedLocs[sortedLocs.length - 2].getAdminState(),is(DatanodeInfo.AdminStates.DECOMMISSIONED));
+}
