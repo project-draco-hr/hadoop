@@ -1,13 +1,17 @@
 {
   boolean isProxyAccess=UserGroupInformation.getCurrentUser().getAuthenticationMethod() == UserGroupInformation.AuthenticationMethod.PROXY;
   final String doAsUser=isProxyAccess ? UserGroupInformation.getCurrentUser().getShortUserName() : null;
+  boolean useHttps=YarnConfiguration.useHttps(this.getConfig());
+  final String scheme=useHttps ? "https" : "http";
+  final InetSocketAddress address=SecurityUtil.getTokenServiceAddr(timelineDT);
   PrivilegedExceptionAction<Long> renewDTAction=new PrivilegedExceptionAction<Long>(){
     @Override public Long run() throws Exception {
       if (!timelineDT.equals(token.getDelegationToken())) {
         token.setDelegationToken((Token)timelineDT);
       }
       DelegationTokenAuthenticatedURL authUrl=new DelegationTokenAuthenticatedURL(authenticator,connConfigurator);
-      return authUrl.renewDelegationToken(resURI.toURL(),token,doAsUser);
+      final URI serviceURI=new URI(scheme,null,address.getHostName(),address.getPort(),RESOURCE_URI_STR,null,null);
+      return authUrl.renewDelegationToken(serviceURI.toURL(),token,doAsUser);
     }
   }
 ;
