@@ -1,0 +1,29 @@
+{
+  final Configuration conf=new HdfsConfiguration();
+  initConf(conf);
+  conf.setBoolean(DFS_DATANODE_BLOCK_PINNING_ENABLED,true);
+  long[] capacities=new long[]{CAPACITY,CAPACITY};
+  String[] racks={RACK0,RACK1};
+  int numOfDatanodes=capacities.length;
+  cluster=new MiniDFSCluster.Builder(conf).numDataNodes(capacities.length).hosts(new String[]{"localhost","localhost"}).racks(racks).simulatedCapacities(capacities).build();
+  try {
+    cluster.waitActive();
+    client=NameNodeProxies.createProxy(conf,cluster.getFileSystem(0).getUri(),ClientProtocol.class).getProxy();
+    long totalCapacity=sum(capacities);
+    long totalUsedSpace=totalCapacity * 8 / 10;
+    InetSocketAddress[] favoredNodes=new InetSocketAddress[numOfDatanodes];
+    for (int i=0; i < favoredNodes.length; i++) {
+      favoredNodes[i]=cluster.getDataNodes().get(i).getXferAddress();
+    }
+    DFSTestUtil.createFile(cluster.getFileSystem(0),filePath,false,1024,totalUsedSpace / numOfDatanodes,DEFAULT_BLOCK_SIZE,(short)numOfDatanodes,0,false,favoredNodes);
+    cluster.startDataNodes(conf,1,true,null,new String[]{RACK2},new long[]{CAPACITY});
+    totalCapacity+=CAPACITY;
+    waitForHeartBeat(totalUsedSpace,totalCapacity,client,cluster);
+    Collection<URI> namenodes=DFSUtil.getNsServiceRpcUris(conf);
+    int r=Balancer.run(namenodes,Balancer.Parameters.DEFAULT,conf);
+    assertEquals(ExitStatus.NO_MOVE_PROGRESS.getExitCode(),r);
+  }
+  finally {
+    cluster.shutdown();
+  }
+}
