@@ -1,0 +1,62 @@
+{
+  DatanodeStorageInfo[] storages=DFSTestUtil.createDatanodeStorageInfos(TOTAL_NUM_BLOCKS);
+  Block[] blocks=createReportedBlocks(TOTAL_NUM_BLOCKS);
+  for (int i=0; i < storages.length; i++) {
+    info.addStorage(storages[i],blocks[i]);
+  }
+  info.removeStorage(storages[0]);
+  info.removeStorage(storages[2]);
+  Assert.assertEquals(TOTAL_NUM_BLOCKS,info.getCapacity());
+  Assert.assertEquals(TOTAL_NUM_BLOCKS - 2,info.numNodes());
+  byte[] indices=(byte[])Whitebox.getInternalState(info,"indices");
+  for (int i=0; i < storages.length; i++) {
+    int index=info.findStorageInfo(storages[i]);
+    if (i != 0 && i != 2) {
+      Assert.assertEquals(i,index);
+      Assert.assertEquals(index,indices[index]);
+    }
+ else {
+      Assert.assertEquals(-1,index);
+      Assert.assertEquals(-1,indices[i]);
+    }
+  }
+  DatanodeStorageInfo[] storages2=DFSTestUtil.createDatanodeStorageInfos(TOTAL_NUM_BLOCKS * 2);
+  for (int i=TOTAL_NUM_BLOCKS; i < storages2.length; i++) {
+    info.addStorage(storages2[i],blocks[i % TOTAL_NUM_BLOCKS]);
+  }
+  Assert.assertEquals(TOTAL_NUM_BLOCKS * 2 - 2,info.numNodes());
+  Assert.assertEquals(TOTAL_NUM_BLOCKS * 2 - 2,info.getCapacity());
+  indices=(byte[])Whitebox.getInternalState(info,"indices");
+  Assert.assertEquals(TOTAL_NUM_BLOCKS * 2 - 2,indices.length);
+  int j=TOTAL_NUM_BLOCKS;
+  for (int i=TOTAL_NUM_BLOCKS; i < storages2.length; i++) {
+    int index=info.findStorageInfo(storages2[i]);
+    if (i == TOTAL_NUM_BLOCKS || i == TOTAL_NUM_BLOCKS + 2) {
+      Assert.assertEquals(i - TOTAL_NUM_BLOCKS,index);
+    }
+ else {
+      Assert.assertEquals(j++,index);
+    }
+  }
+  for (int i=0; i < TOTAL_NUM_BLOCKS; i++) {
+    info.removeStorage(storages2[i + TOTAL_NUM_BLOCKS]);
+  }
+  Assert.assertEquals(TOTAL_NUM_BLOCKS - 2,info.numNodes());
+  Assert.assertEquals(TOTAL_NUM_BLOCKS * 2 - 2,info.getCapacity());
+  indices=(byte[])Whitebox.getInternalState(info,"indices");
+  Assert.assertEquals(TOTAL_NUM_BLOCKS * 2 - 2,indices.length);
+  for (int i=0; i < TOTAL_NUM_BLOCKS; i++) {
+    if (i == 0 || i == 2) {
+      int index=info.findStorageInfo(storages2[i + TOTAL_NUM_BLOCKS]);
+      Assert.assertEquals(-1,index);
+    }
+ else {
+      int index=info.findStorageInfo(storages[i]);
+      Assert.assertEquals(i,index);
+    }
+  }
+  for (int i=TOTAL_NUM_BLOCKS; i < TOTAL_NUM_BLOCKS * 2 - 2; i++) {
+    Assert.assertEquals(-1,indices[i]);
+    Assert.assertNull(info.getDatanode(i));
+  }
+}
