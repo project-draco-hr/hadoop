@@ -1,0 +1,27 @@
+{
+  if (removeReference(this) <= 0) {
+    getReferredINode().destroyAndCollectBlocks(bsps,collectedBlocks,removedINodes);
+  }
+ else {
+    int prior=getPriorSnapshot(this);
+    Preconditions.checkState(prior != Snapshot.NO_SNAPSHOT_ID);
+    int snapshot=getSelfSnapshot(prior);
+    INode referred=getReferredINode().asReference().getReferredINode();
+    if (referred.isFile()) {
+      INodeFile file=referred.asFile();
+      Preconditions.checkState(file.isWithSnapshot());
+      file.getFileWithSnapshotFeature().deleteCurrentFile();
+      referred.cleanSubtree(bsps,snapshot,prior,collectedBlocks,removedINodes);
+    }
+ else     if (referred.isDirectory()) {
+      INodeDirectory dir=referred.asDirectory();
+      Preconditions.checkState(dir.isWithSnapshot());
+      try {
+        DirectoryWithSnapshotFeature.destroyDstSubtree(bsps,dir,snapshot,prior,collectedBlocks,removedINodes);
+      }
+ catch (      QuotaExceededException e) {
+        LOG.error("should not exceed quota while snapshot deletion",e);
+      }
+    }
+  }
+}

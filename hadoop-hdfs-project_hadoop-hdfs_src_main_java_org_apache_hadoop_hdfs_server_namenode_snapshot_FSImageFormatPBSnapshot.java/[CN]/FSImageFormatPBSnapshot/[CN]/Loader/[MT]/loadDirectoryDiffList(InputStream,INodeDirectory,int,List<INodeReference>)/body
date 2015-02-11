@@ -28,8 +28,23 @@
         xAttrs=new XAttrFeature(FSImageFormatPBINode.Loader.loadXAttrs(dirCopyInPb.getXAttrs(),state.getStringTable()));
       }
       long modTime=dirCopyInPb.getModificationTime();
-      boolean noQuota=dirCopyInPb.getNsQuota() == -1 && dirCopyInPb.getDsQuota() == -1;
-      copy=noQuota ? new INodeDirectoryAttributes.SnapshotCopy(name,permission,acl,modTime,xAttrs) : new INodeDirectoryAttributes.CopyWithQuota(name,permission,acl,modTime,dirCopyInPb.getNsQuota(),dirCopyInPb.getDsQuota(),xAttrs);
+      boolean noQuota=dirCopyInPb.getNsQuota() == -1 && dirCopyInPb.getDsQuota() == -1 && (!dirCopyInPb.hasTypeQuotas());
+      if (noQuota) {
+        copy=new INodeDirectoryAttributes.SnapshotCopy(name,permission,acl,modTime,xAttrs);
+      }
+ else {
+        EnumCounters<StorageType> typeQuotas=null;
+        if (dirCopyInPb.hasTypeQuotas()) {
+          ImmutableList<QuotaByStorageTypeEntry> qes=FSImageFormatPBINode.Loader.loadQuotaByStorageTypeEntries(dirCopyInPb.getTypeQuotas());
+          typeQuotas=new EnumCounters<StorageType>(StorageType.class,HdfsConstants.QUOTA_RESET);
+          for (          QuotaByStorageTypeEntry qe : qes) {
+            if (qe.getQuota() >= 0 && qe.getStorageType() != null && qe.getStorageType().supportTypeQuota()) {
+              typeQuotas.set(qe.getStorageType(),qe.getQuota());
+            }
+          }
+        }
+        copy=new INodeDirectoryAttributes.CopyWithQuota(name,permission,acl,modTime,dirCopyInPb.getNsQuota(),dirCopyInPb.getDsQuota(),typeQuotas,xAttrs);
+      }
     }
     List<INode> clist=loadCreatedList(in,dir,diffInPb.getCreatedListSize());
     List<INode> dlist=loadDeletedList(refList,in,dir,diffInPb.getDeletedINodeList(),diffInPb.getDeletedINodeRefList());

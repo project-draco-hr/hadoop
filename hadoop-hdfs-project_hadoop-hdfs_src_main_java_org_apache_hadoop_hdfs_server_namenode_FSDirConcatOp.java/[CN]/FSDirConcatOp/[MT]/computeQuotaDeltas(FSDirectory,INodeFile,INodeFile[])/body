@@ -1,0 +1,27 @@
+{
+  QuotaCounts deltas=new QuotaCounts.Builder().build();
+  short targetRepl=target.getBlockReplication();
+  for (  INodeFile src : srcList) {
+    short srcRepl=src.getBlockReplication();
+    long fileSize=src.computeFileSize();
+    if (targetRepl != srcRepl) {
+      deltas.addDiskSpace(fileSize * (targetRepl - srcRepl));
+      BlockStoragePolicy bsp=fsd.getBlockStoragePolicySuite().getPolicy(src.getStoragePolicyID());
+      if (bsp != null) {
+        List<StorageType> srcTypeChosen=bsp.chooseStorageTypes(srcRepl);
+        for (        StorageType t : srcTypeChosen) {
+          if (t.supportTypeQuota()) {
+            deltas.addTypeSpace(t,-fileSize);
+          }
+        }
+        List<StorageType> targetTypeChosen=bsp.chooseStorageTypes(targetRepl);
+        for (        StorageType t : targetTypeChosen) {
+          if (t.supportTypeQuota()) {
+            deltas.addTypeSpace(t,fileSize);
+          }
+        }
+      }
+    }
+  }
+  return deltas;
+}

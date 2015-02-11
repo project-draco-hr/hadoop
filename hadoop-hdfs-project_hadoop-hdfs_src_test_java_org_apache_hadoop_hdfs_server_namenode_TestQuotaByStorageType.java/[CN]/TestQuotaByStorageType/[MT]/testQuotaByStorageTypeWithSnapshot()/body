@@ -1,0 +1,27 @@
+{
+  final Path sub1=new Path(dir,"Sub1");
+  dfs.mkdirs(sub1);
+  dfs.setStoragePolicy(sub1,HdfsConstants.ONESSD_STORAGE_POLICY_NAME);
+  dfs.setQuotaByStorageType(sub1,StorageType.SSD,4 * BLOCKSIZE);
+  INode sub1Node=fsdir.getINode4Write(sub1.toString());
+  assertTrue(sub1Node.isDirectory());
+  assertTrue(sub1Node.isQuotaSet());
+  Path file1=new Path(sub1,"file1");
+  long file1Len=2 * BLOCKSIZE;
+  DFSTestUtil.createFile(dfs,file1,file1Len,REPLICATION,seed);
+  SnapshotTestHelper.createSnapshot(dfs,sub1,"s1");
+  long ssdConsumed=sub1Node.asDirectory().getDirectoryWithQuotaFeature().getSpaceConsumed().getTypeSpaces().get(StorageType.SSD);
+  assertEquals(file1Len,ssdConsumed);
+  dfs.delete(file1,false);
+  ssdConsumed=sub1Node.asDirectory().getDirectoryWithQuotaFeature().getSpaceConsumed().getTypeSpaces().get(StorageType.SSD);
+  assertEquals(file1Len,ssdConsumed);
+  QuotaCounts counts1=new QuotaCounts.Builder().build();
+  sub1Node.computeQuotaUsage(fsn.getBlockManager().getStoragePolicySuite(),counts1,true);
+  assertEquals(sub1Node.dumpTreeRecursively().toString(),file1Len,counts1.getTypeSpaces().get(StorageType.SSD));
+  dfs.deleteSnapshot(sub1,"s1");
+  ssdConsumed=sub1Node.asDirectory().getDirectoryWithQuotaFeature().getSpaceConsumed().getTypeSpaces().get(StorageType.SSD);
+  assertEquals(0,ssdConsumed);
+  QuotaCounts counts2=new QuotaCounts.Builder().build();
+  sub1Node.computeQuotaUsage(fsn.getBlockManager().getStoragePolicySuite(),counts2,true);
+  assertEquals(sub1Node.dumpTreeRecursively().toString(),0,counts2.getTypeSpaces().get(StorageType.SSD));
+}

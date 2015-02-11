@@ -1,0 +1,36 @@
+{
+  final long parentNamespace=counts.getNameSpace();
+  final long parentDiskspace=counts.getDiskSpace();
+  final EnumCounters<StorageType> parentTypeSpaces=counts.getTypeSpaces();
+  dir.computeQuotaUsage4CurrentDirectory(bsps,counts);
+  for (  INode child : dir.getChildrenList(Snapshot.CURRENT_STATE_ID)) {
+    if (child.isDirectory()) {
+      updateCountForQuotaRecursively(bsps,child.asDirectory(),counts);
+    }
+ else {
+      child.computeQuotaUsage(bsps,counts,false);
+    }
+  }
+  if (dir.isQuotaSet()) {
+    final QuotaCounts q=dir.getQuotaCounts();
+    final long namespace=counts.getNameSpace() - parentNamespace;
+    final long nsQuota=q.getNameSpace();
+    if (Quota.isViolated(nsQuota,namespace)) {
+      LOG.error("BUG: Namespace quota violation in image for " + dir.getFullPathName() + " quota = "+ nsQuota+ " < consumed = "+ namespace);
+    }
+    final long diskspace=counts.getDiskSpace() - parentDiskspace;
+    final long dsQuota=q.getDiskSpace();
+    if (Quota.isViolated(dsQuota,diskspace)) {
+      LOG.error("BUG: Diskspace quota violation in image for " + dir.getFullPathName() + " quota = "+ dsQuota+ " < consumed = "+ diskspace);
+    }
+    final EnumCounters<StorageType> typeSpaces=new EnumCounters<StorageType>(StorageType.class);
+    for (    StorageType t : StorageType.getTypesSupportingQuota()) {
+      final long typeSpace=counts.getTypeSpaces().get(t) - parentTypeSpaces.get(t);
+      final long typeQuota=q.getTypeSpaces().get(t);
+      if (Quota.isViolated(typeQuota,typeSpace)) {
+        LOG.error("BUG Disk quota by storage type violation in image for " + dir.getFullPathName() + " type = "+ t.toString()+ " quota = "+ typeQuota+ " < consumed "+ typeSpace);
+      }
+    }
+    dir.getDirectoryWithQuotaFeature().setSpaceConsumed(namespace,diskspace,typeSpaces);
+  }
+}

@@ -1,0 +1,22 @@
+{
+  final Path foo=new Path(dir,"foo");
+  dfs.mkdirs(foo);
+  dfs.setQuota(foo,Long.MAX_VALUE - 1,REPLICATION * BLOCKSIZE * 10);
+  INode fnode=fsdir.getINode4Write(foo.toString());
+  assertTrue(fnode.isDirectory());
+  assertTrue(fnode.isQuotaSet());
+  Path createdFile=new Path(foo,"created_file.data");
+  long fileLen=BLOCKSIZE * 2 + BLOCKSIZE / 2;
+  DFSTestUtil.createFile(dfs,createdFile,BLOCKSIZE / 16,fileLen,BLOCKSIZE,REPLICATION,seed);
+  QuotaCounts cnt=fnode.asDirectory().getDirectoryWithQuotaFeature().getSpaceConsumed();
+  assertEquals(2,cnt.getNameSpace());
+  assertEquals(fileLen * REPLICATION,cnt.getDiskSpace());
+  dfs.delete(createdFile,true);
+  QuotaCounts cntAfterDelete=fnode.asDirectory().getDirectoryWithQuotaFeature().getSpaceConsumed();
+  assertEquals(1,cntAfterDelete.getNameSpace());
+  assertEquals(0,cntAfterDelete.getDiskSpace());
+  QuotaCounts counts=new QuotaCounts.Builder().build();
+  fnode.computeQuotaUsage(fsn.getBlockManager().getStoragePolicySuite(),counts,true);
+  assertEquals(fnode.dumpTreeRecursively().toString(),1,counts.getNameSpace());
+  assertEquals(fnode.dumpTreeRecursively().toString(),0,counts.getDiskSpace());
+}
