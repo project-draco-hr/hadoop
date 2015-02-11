@@ -1,5 +1,6 @@
 {
   Path nmPrivateCTokensPath=null;
+  Throwable exception=null;
   try {
     nmPrivateCTokensPath=dirsHandler.getLocalPathForWrite(NM_PRIVATE_DIR + Path.SEPARATOR + String.format(ContainerLocalizer.TOKEN_FILE_NAME_FMT,localizerId));
     writeCredentials(nmPrivateCTokensPath);
@@ -12,12 +13,18 @@
       throw new IOException("All disks failed. " + dirsHandler.getDisksHealthReport(false));
     }
   }
- catch (  Exception e) {
-    LOG.info("Localizer failed",e);
-    ContainerId cId=context.getContainerId();
-    dispatcher.getEventHandler().handle(new ContainerResourceFailedEvent(cId,null,e.getMessage()));
+ catch (  FSError fe) {
+    exception=fe;
+  }
+catch (  Exception e) {
+    exception=e;
   }
  finally {
+    if (exception != null) {
+      LOG.info("Localizer failed",exception);
+      ContainerId cId=context.getContainerId();
+      dispatcher.getEventHandler().handle(new ContainerResourceFailedEvent(cId,null,exception.getMessage()));
+    }
     for (    LocalizerResourceRequestEvent event : scheduled.values()) {
       event.getResource().unlock();
     }
