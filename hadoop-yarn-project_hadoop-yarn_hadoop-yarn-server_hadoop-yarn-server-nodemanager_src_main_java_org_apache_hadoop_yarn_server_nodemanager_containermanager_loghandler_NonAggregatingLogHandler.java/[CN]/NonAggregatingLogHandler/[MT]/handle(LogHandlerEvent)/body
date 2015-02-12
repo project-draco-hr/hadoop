@@ -9,8 +9,22 @@ case CONTAINER_FINISHED:
 break;
 case APPLICATION_FINISHED:
 LogHandlerAppFinishedEvent appFinishedEvent=(LogHandlerAppFinishedEvent)event;
-LOG.info("Scheduling Log Deletion for application: " + appFinishedEvent.getApplicationId() + ", with delay of "+ this.deleteDelaySeconds+ " seconds");
-LogDeleterRunnable logDeleter=new LogDeleterRunnable(appOwners.remove(appFinishedEvent.getApplicationId()),appFinishedEvent.getApplicationId());
+ApplicationId appId=appFinishedEvent.getApplicationId();
+LOG.info("Scheduling Log Deletion for application: " + appId + ", with delay of "+ this.deleteDelaySeconds+ " seconds");
+String user=appOwners.remove(appId);
+if (user == null) {
+LOG.error("Unable to locate user for " + appId);
+break;
+}
+LogDeleterRunnable logDeleter=new LogDeleterRunnable(user,appId);
+long deletionTimestamp=System.currentTimeMillis() + this.deleteDelaySeconds * 1000;
+LogDeleterProto deleterProto=LogDeleterProto.newBuilder().setUser(user).setDeletionTime(deletionTimestamp).build();
+try {
+stateStore.storeLogDeleter(appId,deleterProto);
+}
+ catch (IOException e) {
+LOG.error("Unable to record log deleter state",e);
+}
 try {
 sched.schedule(logDeleter,this.deleteDelaySeconds,TimeUnit.SECONDS);
 }

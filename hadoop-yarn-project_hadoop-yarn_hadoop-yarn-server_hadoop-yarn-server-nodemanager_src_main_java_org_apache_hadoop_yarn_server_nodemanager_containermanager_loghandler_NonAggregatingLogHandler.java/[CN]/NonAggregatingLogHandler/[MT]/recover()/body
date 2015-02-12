@@ -1,0 +1,21 @@
+{
+  if (stateStore.canRecover()) {
+    RecoveredLogDeleterState state=stateStore.loadLogDeleterState();
+    long now=System.currentTimeMillis();
+    for (    Map.Entry<ApplicationId,LogDeleterProto> entry : state.getLogDeleterMap().entrySet()) {
+      ApplicationId appId=entry.getKey();
+      LogDeleterProto proto=entry.getValue();
+      long deleteDelayMsec=proto.getDeletionTime() - now;
+      if (LOG.isDebugEnabled()) {
+        LOG.debug("Scheduling deletion of " + appId + " logs in "+ deleteDelayMsec+ " msec");
+      }
+      LogDeleterRunnable logDeleter=new LogDeleterRunnable(proto.getUser(),appId);
+      try {
+        sched.schedule(logDeleter,deleteDelayMsec,TimeUnit.MILLISECONDS);
+      }
+ catch (      RejectedExecutionException e) {
+        logDeleter.run();
+      }
+    }
+  }
+}
