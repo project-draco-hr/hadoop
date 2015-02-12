@@ -2,13 +2,13 @@
   try {
     String userApprovedParamS=req.getParameter(ProxyUriUtils.PROXY_APPROVAL_PARAM);
     boolean userWasWarned=false;
-    boolean userApproved=(userApprovedParamS != null && Boolean.valueOf(userApprovedParamS));
+    boolean userApproved=Boolean.valueOf(userApprovedParamS);
     boolean securityEnabled=isSecurityEnabled();
     final String remoteUser=req.getRemoteUser();
     final String pathInfo=req.getPathInfo();
-    String parts[]=pathInfo.split("/",3);
+    String[] parts=pathInfo.split("/",3);
     if (parts.length < 2) {
-      LOG.warn(remoteUser + " Gave an invalid proxy path " + pathInfo);
+      LOG.warn("{} gave an invalid proxy path {}",remoteUser,pathInfo);
       notFound(resp,"Your path appears to be formatted incorrectly.");
       return;
     }
@@ -16,7 +16,7 @@
     String rest=parts.length > 2 ? parts[2] : "";
     ApplicationId id=Apps.toAppID(appId);
     if (id == null) {
-      LOG.warn(req.getRemoteUser() + " Attempting to access " + appId+ " that is invalid");
+      LOG.warn("{} attempting to access {} that is invalid",remoteUser,appId);
       notFound(resp,appId + " appears to be formatted incorrectly.");
       return;
     }
@@ -34,7 +34,7 @@
       }
     }
     boolean checkUser=securityEnabled && (!userWasWarned || !userApproved);
-    ApplicationReport applicationReport=null;
+    ApplicationReport applicationReport;
     try {
       applicationReport=getApplicationReport(id);
     }
@@ -42,19 +42,19 @@
       applicationReport=null;
     }
     if (applicationReport == null) {
-      LOG.warn(req.getRemoteUser() + " Attempting to access " + id+ " that was not found");
+      LOG.warn("{} attempting to access {} that was not found",remoteUser,id);
       URI toFetch=ProxyUriUtils.getUriFromTrackingPlugins(id,this.trackingUriPlugins);
       if (toFetch != null) {
-        resp.sendRedirect(resp.encodeRedirectURL(toFetch.toString()));
+        ProxyUtils.sendRedirect(req,resp,toFetch.toString());
         return;
       }
       notFound(resp,"Application " + appId + " could not be found, "+ "please try the history server");
       return;
     }
     String original=applicationReport.getOriginalTrackingUrl();
-    URI trackingUri=null;
+    URI trackingUri;
     if (original == null || original.equals("N/A")) {
-      resp.sendRedirect(resp.encodeRedirectURL(StringHelper.pjoin(rmAppPageUrlBase,id.toString())));
+      ProxyUtils.sendRedirect(req,resp,StringHelper.pjoin(rmAppPageUrlBase,id.toString()));
       return;
     }
  else {
@@ -67,18 +67,19 @@
     }
     String runningUser=applicationReport.getUser();
     if (checkUser && !runningUser.equals(remoteUser)) {
-      LOG.info("Asking " + remoteUser + " if they want to connect to the "+ "app master GUI of "+ appId+ " owned by "+ runningUser);
+      LOG.info("Asking {} if they want to connect to the " + "app master GUI of {} owned by {}",remoteUser,appId,runningUser);
       warnUserPage(resp,ProxyUriUtils.getPathAndQuery(id,rest,req.getQueryString(),true),runningUser,id);
       return;
     }
     URI toFetch=new URI(trackingUri.getScheme(),trackingUri.getAuthority(),StringHelper.ujoin(trackingUri.getPath(),rest),req.getQueryString(),null);
-    LOG.info(req.getRemoteUser() + " is accessing unchecked " + toFetch+ " which is the app master GUI of "+ appId+ " owned by "+ runningUser);
+    LOG.info("{} is accessing unchecked {}" + " which is the app master GUI of {} owned by {}",remoteUser,toFetch,appId,runningUser);
 switch (applicationReport.getYarnApplicationState()) {
 case KILLED:
 case FINISHED:
 case FAILED:
-      resp.sendRedirect(resp.encodeRedirectURL(toFetch.toString()));
+      ProxyUtils.sendRedirect(req,resp,toFetch.toString());
     return;
+default :
 }
 Cookie c=null;
 if (userWasWarned && userApproved) {
@@ -86,10 +87,7 @@ if (userWasWarned && userApproved) {
 }
 proxyLink(req,resp,toFetch,c,getProxyHost());
 }
- catch (URISyntaxException e) {
-throw new IOException(e);
-}
-catch (YarnException e) {
+ catch (URISyntaxException|YarnException e) {
 throw new IOException(e);
 }
 }
