@@ -1,0 +1,33 @@
+{
+  super.setupQueueConfigs(clusterResource);
+  this.lastClusterResource=clusterResource;
+  updateAbsoluteCapacityResource(clusterResource);
+  updateHeadroomInfo(clusterResource,queueCapacities.getAbsoluteMaximumCapacity());
+  CapacitySchedulerConfiguration conf=csContext.getConfiguration();
+  userLimit=conf.getUserLimit(getQueuePath());
+  userLimitFactor=conf.getUserLimitFactor(getQueuePath());
+  maxApplications=conf.getMaximumApplicationsPerQueue(getQueuePath());
+  if (maxApplications < 0) {
+    int maxSystemApps=conf.getMaximumSystemApplications();
+    maxApplications=(int)(maxSystemApps * queueCapacities.getAbsoluteCapacity());
+  }
+  maxApplicationsPerUser=(int)(maxApplications * (userLimit / 100.0f) * userLimitFactor);
+  maxAMResourcePerQueuePercent=conf.getMaximumApplicationMasterResourcePerQueuePercent(getQueuePath());
+  if (!SchedulerUtils.checkQueueLabelExpression(this.accessibleLabels,this.defaultLabelExpression)) {
+    throw new IOException("Invalid default label expression of " + " queue=" + getQueueName() + " doesn't have permission to access all labels "+ "in default label expression. labelExpression of resource request="+ (this.defaultLabelExpression == null ? "" : this.defaultLabelExpression)+ ". Queue labels="+ (getAccessibleNodeLabels() == null ? "" : StringUtils.join(getAccessibleNodeLabels().iterator(),',')));
+  }
+  nodeLocalityDelay=conf.getNodeLocalityDelay();
+  this.minimumAllocationFactor=Resources.ratio(resourceCalculator,Resources.subtract(maximumAllocation,minimumAllocation),maximumAllocation);
+  StringBuilder aclsString=new StringBuilder();
+  for (  Map.Entry<AccessType,AccessControlList> e : acls.entrySet()) {
+    aclsString.append(e.getKey() + ":" + e.getValue().getAclString());
+  }
+  StringBuilder labelStrBuilder=new StringBuilder();
+  if (accessibleLabels != null) {
+    for (    String s : accessibleLabels) {
+      labelStrBuilder.append(s);
+      labelStrBuilder.append(",");
+    }
+  }
+  LOG.info("Initializing " + queueName + "\n"+ "capacity = "+ queueCapacities.getCapacity()+ " [= (float) configuredCapacity / 100 ]"+ "\n"+ "asboluteCapacity = "+ queueCapacities.getAbsoluteCapacity()+ " [= parentAbsoluteCapacity * capacity ]"+ "\n"+ "maxCapacity = "+ queueCapacities.getMaximumCapacity()+ " [= configuredMaxCapacity ]"+ "\n"+ "absoluteMaxCapacity = "+ queueCapacities.getAbsoluteMaximumCapacity()+ " [= 1.0 maximumCapacity undefined, "+ "(parentAbsoluteMaxCapacity * maximumCapacity) / 100 otherwise ]"+ "\n"+ "userLimit = "+ userLimit+ " [= configuredUserLimit ]"+ "\n"+ "userLimitFactor = "+ userLimitFactor+ " [= configuredUserLimitFactor ]"+ "\n"+ "maxApplications = "+ maxApplications+ " [= configuredMaximumSystemApplicationsPerQueue or"+ " (int)(configuredMaximumSystemApplications * absoluteCapacity)]"+ "\n"+ "maxApplicationsPerUser = "+ maxApplicationsPerUser+ " [= (int)(maxApplications * (userLimit / 100.0f) * "+ "userLimitFactor) ]"+ "\n"+ "usedCapacity = "+ queueCapacities.getUsedCapacity()+ " [= usedResourcesMemory / "+ "(clusterResourceMemory * absoluteCapacity)]"+ "\n"+ "absoluteUsedCapacity = "+ absoluteUsedCapacity+ " [= usedResourcesMemory / clusterResourceMemory]"+ "\n"+ "maxAMResourcePerQueuePercent = "+ maxAMResourcePerQueuePercent+ " [= configuredMaximumAMResourcePercent ]"+ "\n"+ "minimumAllocationFactor = "+ minimumAllocationFactor+ " [= (float)(maximumAllocationMemory - minimumAllocationMemory) / "+ "maximumAllocationMemory ]"+ "\n"+ "maximumAllocation = "+ maximumAllocation+ " [= configuredMaxAllocation ]"+ "\n"+ "numContainers = "+ numContainers+ " [= currentNumContainers ]"+ "\n"+ "state = "+ state+ " [= configuredState ]"+ "\n"+ "acls = "+ aclsString+ " [= configuredAcls ]"+ "\n"+ "nodeLocalityDelay = "+ nodeLocalityDelay+ "\n"+ "labels="+ labelStrBuilder.toString()+ "\n"+ "nodeLocalityDelay = "+ nodeLocalityDelay+ "\n"+ "reservationsContinueLooking = "+ reservationsContinueLooking+ "\n"+ "preemptionDisabled = "+ getPreemptionDisabled()+ "\n");
+}
