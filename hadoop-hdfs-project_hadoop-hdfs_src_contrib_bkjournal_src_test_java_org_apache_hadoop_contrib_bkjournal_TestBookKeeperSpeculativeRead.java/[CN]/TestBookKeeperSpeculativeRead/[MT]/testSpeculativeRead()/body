@@ -1,0 +1,37 @@
+{
+  for (int i=1; i < 10; i++) {
+    bks.add(bkutil.newBookie());
+  }
+  NamespaceInfo nsi=newNSInfo();
+  Configuration conf=new Configuration();
+  int ensembleSize=numLocalBookies + 9;
+  conf.setInt(BookKeeperJournalManager.BKJM_BOOKKEEPER_ENSEMBLE_SIZE,ensembleSize);
+  conf.setInt(BookKeeperJournalManager.BKJM_BOOKKEEPER_QUORUM_SIZE,ensembleSize);
+  conf.setInt(BookKeeperJournalManager.BKJM_BOOKKEEPER_SPECULATIVE_READ_TIMEOUT_MS,100);
+  conf.setInt(BookKeeperJournalManager.BKJM_BOOKKEEPER_READ_ENTRY_TIMEOUT_SEC,3600);
+  BookKeeperJournalManager bkjm=new BookKeeperJournalManager(conf,BKJMUtil.createJournalURI("/hdfsjournal-specread"),nsi);
+  bkjm.format(nsi);
+  final long numTransactions=1000;
+  EditLogOutputStream out=bkjm.startLogSegment(1,NameNodeLayoutVersion.CURRENT_LAYOUT_VERSION);
+  for (long i=1; i <= numTransactions; i++) {
+    FSEditLogOp op=FSEditLogTestUtil.getNoOpInstance();
+    op.setTransactionId(i);
+    out.write(op);
+  }
+  out.close();
+  bkjm.finalizeLogSegment(1,numTransactions);
+  List<EditLogInputStream> in=new ArrayList<EditLogInputStream>();
+  bkjm.selectInputStreams(in,1,true);
+  CountDownLatch sleepLatch=new CountDownLatch(1);
+  for (  final BookieServer bookie : bks) {
+    sleepBookie(sleepLatch,bookie);
+  }
+  try {
+    assertEquals(numTransactions,FSEditLogTestUtil.countTransactionsInStream(in.get(0)));
+  }
+  finally {
+    in.get(0).close();
+    sleepLatch.countDown();
+    bkjm.close();
+  }
+}
