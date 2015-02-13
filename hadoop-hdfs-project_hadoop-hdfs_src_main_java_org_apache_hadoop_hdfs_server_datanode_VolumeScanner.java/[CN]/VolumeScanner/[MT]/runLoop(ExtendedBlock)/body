@@ -8,33 +8,38 @@
     if (!calculateShouldScan(volume.getStorageID(),conf.targetBytesPerSec,scannedBytesSum,startMinute,curMinute)) {
       return 30000L;
     }
-    if ((curBlockIter == null) || curBlockIter.atEnd()) {
-      long timeout=findNextUsableBlockIter();
-      if (timeout > 0) {
-        LOG.trace("{}: no block pools are ready to scan yet.  Waiting " + "{} ms.",this,timeout);
+    if (suspectBlock != null) {
+      block=suspectBlock;
+    }
+ else {
+      if ((curBlockIter == null) || curBlockIter.atEnd()) {
+        long timeout=findNextUsableBlockIter();
+        if (timeout > 0) {
+          LOG.trace("{}: no block pools are ready to scan yet.  Waiting " + "{} ms.",this,timeout);
 synchronized (stats) {
-          stats.nextBlockPoolScanStartMs=Time.monotonicNow() + timeout;
+            stats.nextBlockPoolScanStartMs=Time.monotonicNow() + timeout;
+          }
+          return timeout;
         }
-        return timeout;
-      }
 synchronized (stats) {
-        stats.scansSinceRestart++;
-        stats.blocksScannedInCurrentPeriod=0;
-        stats.nextBlockPoolScanStartMs=-1;
+          stats.scansSinceRestart++;
+          stats.blocksScannedInCurrentPeriod=0;
+          stats.nextBlockPoolScanStartMs=-1;
+        }
+        return 0L;
       }
-      return 0L;
-    }
-    try {
-      block=curBlockIter.nextBlock();
-    }
- catch (    IOException e) {
-      LOG.warn("{}: nextBlock error on {}",this,curBlockIter);
-      return 0L;
-    }
-    if (block == null) {
-      LOG.info("{}: finished scanning block pool {}",this,curBlockIter.getBlockPoolId());
-      saveBlockIterator(curBlockIter);
-      return 0;
+      try {
+        block=curBlockIter.nextBlock();
+      }
+ catch (      IOException e) {
+        LOG.warn("{}: nextBlock error on {}",this,curBlockIter);
+        return 0L;
+      }
+      if (block == null) {
+        LOG.info("{}: finished scanning block pool {}",this,curBlockIter.getBlockPoolId());
+        saveBlockIterator(curBlockIter);
+        return 0;
+      }
     }
     long saveDelta=monotonicMs - curBlockIter.getLastSavedMs();
     if (saveDelta >= conf.cursorSaveMs) {
@@ -54,7 +59,7 @@ synchronized (stats) {
   finally {
 synchronized (stats) {
       stats.bytesScannedInPastHour=scannedBytesSum;
-      if (bytesScanned >= 0) {
+      if (bytesScanned > 0) {
         stats.blocksScannedInCurrentPeriod++;
         stats.blocksScannedSinceRestart++;
       }
