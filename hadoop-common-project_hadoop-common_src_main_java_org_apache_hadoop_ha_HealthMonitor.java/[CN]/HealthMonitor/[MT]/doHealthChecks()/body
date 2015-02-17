@@ -7,17 +7,19 @@
       proxy.monitorHealth();
       healthy=true;
     }
- catch (    HealthCheckFailedException e) {
-      LOG.warn("Service health check failed for " + targetToMonitor + ": "+ e.getMessage());
-      enterState(State.SERVICE_UNHEALTHY);
-    }
-catch (    Throwable t) {
-      LOG.warn("Transport-level exception trying to monitor health of " + targetToMonitor + ": "+ t.getLocalizedMessage());
-      RPC.stopProxy(proxy);
-      proxy=null;
-      enterState(State.SERVICE_NOT_RESPONDING);
-      Thread.sleep(sleepAfterDisconnectMillis);
-      return;
+ catch (    Throwable t) {
+      if (isHealthCheckFailedException(t)) {
+        LOG.warn("Service health check failed for " + targetToMonitor + ": "+ t.getMessage());
+        enterState(State.SERVICE_UNHEALTHY);
+      }
+ else {
+        LOG.warn("Transport-level exception trying to monitor health of " + targetToMonitor + ": "+ t.getCause()+ " "+ t.getLocalizedMessage());
+        RPC.stopProxy(proxy);
+        proxy=null;
+        enterState(State.SERVICE_NOT_RESPONDING);
+        Thread.sleep(sleepAfterDisconnectMillis);
+        return;
+      }
     }
     if (status != null) {
       setLastServiceStatus(status);
