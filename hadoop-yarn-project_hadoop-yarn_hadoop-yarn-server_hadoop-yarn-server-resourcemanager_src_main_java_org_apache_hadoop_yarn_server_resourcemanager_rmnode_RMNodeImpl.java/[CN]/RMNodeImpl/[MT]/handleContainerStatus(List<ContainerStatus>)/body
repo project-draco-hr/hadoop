@@ -1,0 +1,28 @@
+{
+  List<ContainerStatus> newlyLaunchedContainers=new ArrayList<ContainerStatus>();
+  List<ContainerStatus> completedContainers=new ArrayList<ContainerStatus>();
+  for (  ContainerStatus remoteContainer : containerStatuses) {
+    ContainerId containerId=remoteContainer.getContainerId();
+    if (containersToClean.contains(containerId)) {
+      LOG.info("Container " + containerId + " already scheduled for "+ "cleanup, no further processing");
+      continue;
+    }
+    if (finishedApplications.contains(containerId.getApplicationAttemptId().getApplicationId())) {
+      LOG.info("Container " + containerId + " belongs to an application that is already killed,"+ " no further processing");
+      continue;
+    }
+    if (remoteContainer.getState() == ContainerState.RUNNING) {
+      if (!launchedContainers.contains(containerId)) {
+        launchedContainers.add(containerId);
+        newlyLaunchedContainers.add(remoteContainer);
+      }
+    }
+ else {
+      launchedContainers.remove(containerId);
+      completedContainers.add(remoteContainer);
+    }
+  }
+  if (newlyLaunchedContainers.size() != 0 || completedContainers.size() != 0) {
+    nodeUpdateQueue.add(new UpdatedContainerInfo(newlyLaunchedContainers,completedContainers));
+  }
+}
