@@ -1,0 +1,31 @@
+{
+  int startingFileSize=3 * BLOCK_SIZE;
+  byte[] contents=AppendTestUtil.initBuffer(startingFileSize);
+  final Path parent=new Path("/test");
+  final Path p=new Path(parent,"testTruncateWithDataNodesRestartImmediately");
+  writeContents(contents,startingFileSize,p);
+  LocatedBlock oldBlock=getLocatedBlocks(p).getLastLocatedBlock();
+  int dn0=0;
+  int dn1=1;
+  int toTruncateLength=1;
+  int newLength=startingFileSize - toTruncateLength;
+  boolean isReady=fs.truncate(p,newLength);
+  assertFalse(isReady);
+  cluster.restartDataNode(dn0);
+  cluster.restartDataNode(dn1);
+  cluster.waitActive();
+  cluster.triggerBlockReports();
+  LocatedBlock newBlock=getLocatedBlocks(p).getLastLocatedBlock();
+  assertEquals(newBlock.getBlock().getBlockId(),oldBlock.getBlock().getBlockId());
+  assertEquals(newBlock.getBlock().getGenerationStamp(),oldBlock.getBlock().getGenerationStamp() + 1);
+  checkBlockRecovery(p);
+  DFSTestUtil.waitReplication(fs,p,REPLICATION);
+  assertEquals(cluster.getBlockFile(dn0,newBlock.getBlock()).length(),newBlock.getBlockSize());
+  assertTrue(cluster.getBlockMetadataFile(dn0,newBlock.getBlock()).getName().endsWith(newBlock.getBlock().getGenerationStamp() + ".meta"));
+  assertEquals(cluster.getBlockFile(dn1,newBlock.getBlock()).length(),newBlock.getBlockSize());
+  assertTrue(cluster.getBlockMetadataFile(dn1,newBlock.getBlock()).getName().endsWith(newBlock.getBlock().getGenerationStamp() + ".meta"));
+  FileStatus fileStatus=fs.getFileStatus(p);
+  assertThat(fileStatus.getLen(),is((long)newLength));
+  checkFullFile(p,newLength,contents);
+  fs.delete(parent,true);
+}
