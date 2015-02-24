@@ -9,18 +9,26 @@
   UserGroupInformation ugi=UserGroupInformation.getCurrentUser();
   RPC.setProtocolEngine(conf,xface,ProtobufRpcEngine.class);
   GenericRefreshProtocolPB proxy=(GenericRefreshProtocolPB)RPC.getProxy(xface,RPC.getProtocolVersion(xface),address,ugi,conf,NetUtils.getDefaultSocketFactory(conf),0);
-  GenericRefreshProtocol xlator=new GenericRefreshProtocolClientSideTranslatorPB(proxy);
-  Collection<RefreshResponse> responses=xlator.refresh(identifier,args);
-  int returnCode=0;
-  System.out.println("Refresh Responses:\n");
-  for (  RefreshResponse response : responses) {
-    System.out.println(response.toString());
-    if (returnCode == 0 && response.getReturnCode() != 0) {
-      returnCode=response.getReturnCode();
+  Collection<RefreshResponse> responses=null;
+  try (GenericRefreshProtocolClientSideTranslatorPB xlator=new GenericRefreshProtocolClientSideTranslatorPB(proxy)){
+    responses=xlator.refresh(identifier,args);
+    int returnCode=0;
+    System.out.println("Refresh Responses:\n");
+    for (    RefreshResponse response : responses) {
+      System.out.println(response.toString());
+      if (returnCode == 0 && response.getReturnCode() != 0) {
+        returnCode=response.getReturnCode();
+      }
+ else       if (returnCode != 0 && response.getReturnCode() != 0) {
+        returnCode=-1;
+      }
     }
- else     if (returnCode != 0 && response.getReturnCode() != 0) {
-      returnCode=-1;
+    return returnCode;
+  }
+  finally {
+    if (responses == null) {
+      System.out.println("Failed to get response.\n");
+      return -1;
     }
   }
-  return returnCode;
 }
