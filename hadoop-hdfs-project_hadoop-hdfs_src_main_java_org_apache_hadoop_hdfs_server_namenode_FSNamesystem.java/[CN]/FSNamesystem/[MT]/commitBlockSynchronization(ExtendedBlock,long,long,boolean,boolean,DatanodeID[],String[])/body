@@ -5,11 +5,11 @@
   waitForLoadingFSImage();
   writeLock();
   boolean copyTruncate=false;
-  BlockInfoContiguousUnderConstruction truncatedBlock=null;
+  BlockInfo truncatedBlock=null;
   try {
     checkOperation(OperationCategory.WRITE);
     checkNameNodeSafeMode("Cannot commitBlockSynchronization while in safe mode");
-    final BlockInfoContiguous storedBlock=getStoredBlock(ExtendedBlock.getLocalBlock(oldBlock));
+    final BlockInfo storedBlock=getStoredBlock(ExtendedBlock.getLocalBlock(oldBlock));
     if (storedBlock == null) {
       if (deleteblock) {
         if (LOG.isDebugEnabled()) {
@@ -36,8 +36,8 @@
       }
       return;
     }
-    truncatedBlock=(BlockInfoContiguousUnderConstruction)iFile.getLastBlock();
-    long recoveryId=truncatedBlock.getBlockRecoveryId();
+    truncatedBlock=iFile.getLastBlock();
+    long recoveryId=BlockInfo.getBlockRecoveryId(truncatedBlock);
     copyTruncate=truncatedBlock.getBlockId() != storedBlock.getBlockId();
     if (recoveryId != newgenerationstamp) {
       throw new IOException("The recovery id " + newgenerationstamp + " does not match current recovery id "+ recoveryId+ " for block "+ oldBlock);
@@ -83,10 +83,10 @@
       }
       DatanodeStorageInfo[] trimmedStorageInfos=blockManager.getDatanodeManager().getDatanodeStorageInfos(trimmedTargets.toArray(new DatanodeID[trimmedTargets.size()]),trimmedStorages.toArray(new String[trimmedStorages.size()]));
       if (copyTruncate) {
-        iFile.setLastBlock(truncatedBlock,trimmedStorageInfos);
+        iFile.convertLastBlockToUC(truncatedBlock,trimmedStorageInfos);
       }
  else {
-        iFile.setLastBlock(storedBlock,trimmedStorageInfos);
+        iFile.convertLastBlockToUC(storedBlock,trimmedStorageInfos);
         if (closeFile) {
           blockManager.markBlockReplicasAsCorrupt(storedBlock,oldGenerationStamp,oldNumBytes,trimmedStorageInfos);
         }
@@ -95,7 +95,7 @@
     if (closeFile) {
       if (copyTruncate) {
         src=closeFileCommitBlocks(iFile,truncatedBlock);
-        if (!iFile.isBlockInLatestSnapshot(storedBlock)) {
+        if (!iFile.isBlockInLatestSnapshot((BlockInfoContiguous)storedBlock)) {
           blockManager.removeBlock(storedBlock);
         }
       }
