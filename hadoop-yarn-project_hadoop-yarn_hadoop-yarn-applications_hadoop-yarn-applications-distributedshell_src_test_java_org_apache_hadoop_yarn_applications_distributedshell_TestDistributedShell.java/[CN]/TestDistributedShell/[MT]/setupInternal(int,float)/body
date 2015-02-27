@@ -4,6 +4,8 @@
   conf.setInt(YarnConfiguration.RM_SCHEDULER_MINIMUM_ALLOCATION_MB,128);
   conf.set("yarn.log.dir","target");
   conf.setBoolean(YarnConfiguration.TIMELINE_SERVICE_ENABLED,true);
+  boolean enableATSServer=true;
+  conf.set(YarnConfiguration.NM_AUX_SERVICES,"");
   conf.set(YarnConfiguration.RM_SCHEDULER,CapacityScheduler.class.getName());
   conf.setBoolean(YarnConfiguration.NODE_LABELS_ENABLED,true);
   conf.set("mapreduce.jobhistory.address","0.0.0.0:" + ServerSocketUtil.getPort(10021,10));
@@ -21,11 +23,16 @@
     PluginStoreTestUtils.prepareConfiguration(conf,hdfsCluster);
     conf.set(YarnConfiguration.TIMELINE_SERVICE_ENTITY_GROUP_PLUGIN_CLASSES,DistributedShellTimelinePlugin.class.getName());
   }
+ else   if (timelineVersion == 2.0f) {
+    enableATSServer=false;
+    conf.set(YarnConfiguration.NM_AUX_SERVICES,TIMELINE_AUX_SERVICE_NAME);
+    conf.set(YarnConfiguration.NM_AUX_SERVICES + "." + TIMELINE_AUX_SERVICE_NAME+ ".class",PerNodeAggregatorServer.class.getName());
+  }
  else {
     Assert.fail("Wrong timeline version number: " + timelineVersion);
   }
   if (yarnCluster == null) {
-    yarnCluster=new MiniYARNCluster(TestDistributedShell.class.getSimpleName(),1,numNodeManager,1,1);
+    yarnCluster=new MiniYARNCluster(TestDistributedShell.class.getSimpleName(),1,numNodeManager,1,1,enableATSServer);
     yarnCluster.init(conf);
     yarnCluster.start();
     conf.set(YarnConfiguration.TIMELINE_SERVICE_WEBAPP_ADDRESS,MiniYARNCluster.getHostname() + ":" + yarnCluster.getApplicationHistoryServer().getPort());
