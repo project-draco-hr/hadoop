@@ -1,9 +1,15 @@
 {
   Resource assigned=Resources.none();
+  NodeType requestType=null;
+  MutableObject allocatedContainer=new MutableObject();
   ResourceRequest nodeLocalResourceRequest=application.getResourceRequest(priority,node.getNodeName());
   if (nodeLocalResourceRequest != null) {
-    assigned=assignNodeLocalContainers(clusterResource,nodeLocalResourceRequest,node,application,priority,reservedContainer,needToUnreserve);
+    requestType=NodeType.NODE_LOCAL;
+    assigned=assignNodeLocalContainers(clusterResource,nodeLocalResourceRequest,node,application,priority,reservedContainer,needToUnreserve,allocatedContainer);
     if (Resources.greaterThan(resourceCalculator,clusterResource,assigned,Resources.none())) {
+      if (allocatedContainer.getValue() != null) {
+        application.incNumAllocatedContainers(NodeType.NODE_LOCAL,requestType);
+      }
       return new CSAssignment(assigned,NodeType.NODE_LOCAL);
     }
   }
@@ -12,8 +18,14 @@
     if (!rackLocalResourceRequest.getRelaxLocality()) {
       return SKIP_ASSIGNMENT;
     }
-    assigned=assignRackLocalContainers(clusterResource,rackLocalResourceRequest,node,application,priority,reservedContainer,needToUnreserve);
+    if (requestType != NodeType.NODE_LOCAL) {
+      requestType=NodeType.RACK_LOCAL;
+    }
+    assigned=assignRackLocalContainers(clusterResource,rackLocalResourceRequest,node,application,priority,reservedContainer,needToUnreserve,allocatedContainer);
     if (Resources.greaterThan(resourceCalculator,clusterResource,assigned,Resources.none())) {
+      if (allocatedContainer.getValue() != null) {
+        application.incNumAllocatedContainers(NodeType.RACK_LOCAL,requestType);
+      }
       return new CSAssignment(assigned,NodeType.RACK_LOCAL);
     }
   }
@@ -22,7 +34,14 @@
     if (!offSwitchResourceRequest.getRelaxLocality()) {
       return SKIP_ASSIGNMENT;
     }
-    return new CSAssignment(assignOffSwitchContainers(clusterResource,offSwitchResourceRequest,node,application,priority,reservedContainer,needToUnreserve),NodeType.OFF_SWITCH);
+    if (requestType != NodeType.NODE_LOCAL && requestType != NodeType.RACK_LOCAL) {
+      requestType=NodeType.OFF_SWITCH;
+    }
+    assigned=assignOffSwitchContainers(clusterResource,offSwitchResourceRequest,node,application,priority,reservedContainer,needToUnreserve,allocatedContainer);
+    if (allocatedContainer.getValue() != null) {
+      application.incNumAllocatedContainers(NodeType.OFF_SWITCH,requestType);
+    }
+    return new CSAssignment(assigned,NodeType.OFF_SWITCH);
   }
   return SKIP_ASSIGNMENT;
 }
