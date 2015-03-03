@@ -1,0 +1,30 @@
+{
+  final TimelineAggregatorsCollection aggregatorCollection=spy(new TimelineAggregatorsCollection());
+  doReturn(new Configuration()).when(aggregatorCollection).getConfig();
+  final int NUM_APPS=5;
+  List<Callable<Boolean>> tasks=new ArrayList<Callable<Boolean>>();
+  for (int i=0; i < NUM_APPS; i++) {
+    final String appId=String.valueOf(i);
+    Callable<Boolean> task=new Callable<Boolean>(){
+      public Boolean call(){
+        AppLevelTimelineAggregator aggregator=new AppLevelTimelineAggregator(appId);
+        return (aggregatorCollection.putIfAbsent(appId,aggregator) == aggregator);
+      }
+    }
+;
+    tasks.add(task);
+  }
+  ExecutorService executor=Executors.newFixedThreadPool(NUM_APPS);
+  try {
+    List<Future<Boolean>> futures=executor.invokeAll(tasks);
+    for (    Future<Boolean> future : futures) {
+      assertTrue(future.get());
+    }
+  }
+  finally {
+    executor.shutdownNow();
+  }
+  for (int i=0; i < NUM_APPS; i++) {
+    assertTrue(aggregatorCollection.containsKey(String.valueOf(i)));
+  }
+}
