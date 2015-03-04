@@ -1,0 +1,26 @@
+{
+  if (LOG.isDebugEnabled()) {
+    LOG.debug("Executing regular upload for bucket '{}' key '{}'",bucket,key);
+  }
+  final ObjectMetadata om=createDefaultMetadata();
+  om.setContentLength(buffer.size());
+  final PutObjectRequest putObjectRequest=new PutObjectRequest(bucket,key,new ByteArrayInputStream(buffer.toByteArray()),om);
+  putObjectRequest.setCannedAcl(cannedACL);
+  putObjectRequest.setGeneralProgressListener(progressListener);
+  ListenableFuture<PutObjectResult> putObjectResult=executorService.submit(new Callable<PutObjectResult>(){
+    @Override public PutObjectResult call() throws Exception {
+      return client.putObject(putObjectRequest);
+    }
+  }
+);
+  try {
+    putObjectResult.get();
+  }
+ catch (  InterruptedException ie) {
+    LOG.warn("Interrupted object upload:" + ie,ie);
+    Thread.currentThread().interrupt();
+  }
+catch (  ExecutionException ee) {
+    throw new IOException("Regular upload failed",ee.getCause());
+  }
+}
