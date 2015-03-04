@@ -1,0 +1,37 @@
+{
+  List<Path> sourcePaths=inputOptions.getSourcePaths();
+  if (sourcePaths.size() != 1) {
+    DistCp.LOG.warn(sourcePaths.size() + " source paths are provided");
+    return false;
+  }
+  final Path sourceDir=sourcePaths.get(0);
+  final Path targetDir=inputOptions.getTargetPath();
+  final FileSystem sfs=sourceDir.getFileSystem(conf);
+  final FileSystem tfs=targetDir.getFileSystem(conf);
+  if (!(sfs instanceof DistributedFileSystem) || !(tfs instanceof DistributedFileSystem)) {
+    DistCp.LOG.warn("To use diff-based distcp, the FileSystems needs to" + " be DistributedFileSystem");
+    return false;
+  }
+  final DistributedFileSystem sourceFs=(DistributedFileSystem)sfs;
+  final DistributedFileSystem targetFs=(DistributedFileSystem)tfs;
+  if (!checkNoChange(inputOptions,targetFs,targetDir)) {
+    return false;
+  }
+  Path tmpDir=null;
+  try {
+    tmpDir=createTargetTmpDir(targetFs,targetDir);
+    DiffInfo[] diffs=getDiffs(inputOptions,sourceFs,sourceDir,targetDir);
+    if (diffs == null) {
+      return false;
+    }
+    syncDiff(diffs,targetFs,tmpDir);
+    return true;
+  }
+ catch (  Exception e) {
+    DistCp.LOG.warn("Failed to use snapshot diff for distcp",e);
+    return false;
+  }
+ finally {
+    deleteTargetTmpDir(targetFs,tmpDir);
+  }
+}

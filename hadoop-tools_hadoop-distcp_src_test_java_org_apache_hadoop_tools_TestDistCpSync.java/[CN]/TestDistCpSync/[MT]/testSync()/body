@@ -1,0 +1,25 @@
+{
+  initData(source);
+  initData(target);
+  dfs.allowSnapshot(source);
+  dfs.allowSnapshot(target);
+  dfs.createSnapshot(source,"s1");
+  dfs.createSnapshot(target,"s1");
+  changeData(source);
+  dfs.createSnapshot(source,"s2");
+  Assert.assertTrue(DistCpSync.sync(options,conf));
+  final Path listingPath=new Path("/tmp/META/fileList.seq");
+  CopyListing listing=new GlobbedCopyListing(conf,new Credentials());
+  listing.buildListing(listingPath,options);
+  Map<Text,CopyListingFileStatus> copyListing=getListing(listingPath);
+  CopyMapper copyMapper=new CopyMapper();
+  StubContext stubContext=new StubContext(conf,null,0);
+  Mapper<Text,CopyListingFileStatus,Text,Text>.Context context=stubContext.getContext();
+  context.getConfiguration().setBoolean(DistCpOptionSwitch.APPEND.getConfigLabel(),true);
+  copyMapper.setup(context);
+  for (  Map.Entry<Text,CopyListingFileStatus> entry : copyListing.entrySet()) {
+    copyMapper.map(entry.getKey(),entry.getValue(),context);
+  }
+  Assert.assertEquals(BLOCK_SIZE * 3,stubContext.getReporter().getCounter(CopyMapper.Counter.BYTESCOPIED).getValue());
+  verifyCopy(dfs.getFileStatus(source),dfs.getFileStatus(target),false);
+}
