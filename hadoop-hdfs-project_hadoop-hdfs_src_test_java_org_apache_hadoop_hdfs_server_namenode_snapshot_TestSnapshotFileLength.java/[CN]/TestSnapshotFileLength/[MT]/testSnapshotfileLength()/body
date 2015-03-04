@@ -12,15 +12,23 @@
   hdfs.allowSnapshot(sub);
   hdfs.createSnapshot(sub,snapshot1);
   Path file1snap1=SnapshotTestHelper.getSnapshotPath(sub,snapshot1,file1Name);
+  final FileChecksum snapChksum1=hdfs.getFileChecksum(file1snap1);
+  assertThat("file and snapshot file checksums are not equal",hdfs.getFileChecksum(file1),is(snapChksum1));
   FSDataOutputStream out=hdfs.append(file1);
+  assertThat("file and snapshot checksums (open for append) are not equal",hdfs.getFileChecksum(file1),is(snapChksum1));
+  assertThat("snapshot checksum (post-open for append) has changed",hdfs.getFileChecksum(file1snap1),is(snapChksum1));
   try {
     AppendTestUtil.write(out,0,toAppend);
     byte[] dataFromSnapshot=DFSTestUtil.readFileBuffer(hdfs,file1snap1);
     assertThat("Wrong data size in snapshot.",dataFromSnapshot.length,is(origLen));
+    assertThat("snapshot file checksum (pre-close) has changed",hdfs.getFileChecksum(file1),is(snapChksum1));
+    assertThat("snapshot checksum (post-append) has changed",hdfs.getFileChecksum(file1snap1),is(snapChksum1));
   }
   finally {
     out.close();
   }
+  assertThat("file and snapshot file checksums (post-close) are equal",hdfs.getFileChecksum(file1),not(snapChksum1));
+  assertThat("snapshot file checksum (post-close) has changed",hdfs.getFileChecksum(file1snap1),is(snapChksum1));
   fileStatus=hdfs.getFileStatus(file1);
   assertThat(fileStatus.getLen(),is((long)origLen + toAppend));
   fis=hdfs.open(file1);
