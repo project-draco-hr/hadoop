@@ -1,0 +1,29 @@
+{
+  Iterator<FSAppAttempt> iter=new MultiListStartTimeIterator(appsNowMaybeRunnable);
+  FSAppAttempt prev=null;
+  List<FSAppAttempt> noLongerPendingApps=new ArrayList<FSAppAttempt>();
+  while (iter.hasNext()) {
+    FSAppAttempt next=iter.next();
+    if (next == prev) {
+      continue;
+    }
+    if (canAppBeRunnable(next.getQueue(),next.getUser())) {
+      trackRunnableApp(next);
+      FSAppAttempt appSched=next;
+      next.getQueue().addApp(appSched,true);
+      noLongerPendingApps.add(appSched);
+      if (noLongerPendingApps.size() >= maxRunnableApps) {
+        break;
+      }
+    }
+    prev=next;
+  }
+  for (  FSAppAttempt appSched : noLongerPendingApps) {
+    if (!appSched.getQueue().removeNonRunnableApp(appSched)) {
+      LOG.error("Can't make app runnable that does not already exist in queue" + " as non-runnable: " + appSched + ". This should never happen.");
+    }
+    if (!usersNonRunnableApps.remove(appSched.getUser(),appSched)) {
+      LOG.error("Waiting app " + appSched + " expected to be in "+ "usersNonRunnableApps, but was not. This should never happen.");
+    }
+  }
+}
