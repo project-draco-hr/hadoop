@@ -1,5 +1,7 @@
 {
   String[] pids={"100","200","300","400"};
+  ControlledClock testClock=new ControlledClock(new SystemClock());
+  testClock.setTime(0);
   File procfsRootDir=new File(TEST_ROOT_DIR,"proc");
   try {
     setupProcfsRootDir(procfsRootDir);
@@ -17,7 +19,7 @@
     createMemoryMappingInfo(memInfo);
     writeStatFiles(procfsRootDir,pids,procInfos,memInfo);
     Configuration conf=new Configuration();
-    ProcfsBasedProcessTree processTree=createProcessTree("100",procfsRootDir.getAbsolutePath());
+    ProcfsBasedProcessTree processTree=createProcessTree("100",procfsRootDir.getAbsolutePath(),testClock);
     processTree.setConf(conf);
     processTree.updateProcessTree();
     Assert.assertEquals("Cumulative virtual memory does not match",600000L,processTree.getCumulativeVmem());
@@ -25,14 +27,21 @@
     Assert.assertEquals("Cumulative rss memory does not match",cumuRssMem,processTree.getCumulativeRssmem());
     long cumuCpuTime=ProcfsBasedProcessTree.JIFFY_LENGTH_IN_MILLIS > 0 ? 7200L * ProcfsBasedProcessTree.JIFFY_LENGTH_IN_MILLIS : 0L;
     Assert.assertEquals("Cumulative cpu time does not match",cumuCpuTime,processTree.getCumulativeCpuTime());
+    Assert.assertEquals("Percent CPU time should be set to -1 initially",-1.0,processTree.getCpuUsagePercent(),0.01);
     setSmapsInProceTree(processTree,true);
     Assert.assertEquals("Cumulative rss memory does not match",(100 * KB_TO_BYTES * 3),processTree.getCumulativeRssmem());
     procInfos[0]=new ProcessStatInfo(new String[]{"100","proc1","1","100","100","100000","100","2000","300"});
     procInfos[1]=new ProcessStatInfo(new String[]{"200","proc2","100","100","100","200000","200","3000","500"});
     writeStatFiles(procfsRootDir,pids,procInfos,memInfo);
+    long elapsedTimeBetweenUpdatesMsec=200000;
+    testClock.setTime(elapsedTimeBetweenUpdatesMsec);
     processTree.updateProcessTree();
+    long prevCumuCpuTime=cumuCpuTime;
     cumuCpuTime=ProcfsBasedProcessTree.JIFFY_LENGTH_IN_MILLIS > 0 ? 9400L * ProcfsBasedProcessTree.JIFFY_LENGTH_IN_MILLIS : 0L;
     Assert.assertEquals("Cumulative cpu time does not match",cumuCpuTime,processTree.getCumulativeCpuTime());
+    double expectedCpuUsagePercent=(ProcfsBasedProcessTree.JIFFY_LENGTH_IN_MILLIS > 0) ? (cumuCpuTime - prevCumuCpuTime) * 100.0 / elapsedTimeBetweenUpdatesMsec : 0;
+    Assert.assertEquals(11,expectedCpuUsagePercent,0.001);
+    Assert.assertEquals("Percent CPU time is not correct expected " + expectedCpuUsagePercent,expectedCpuUsagePercent,processTree.getCpuUsagePercent(),0.01);
   }
   finally {
     FileUtil.fullyDelete(procfsRootDir);
