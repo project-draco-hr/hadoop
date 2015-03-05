@@ -8,18 +8,18 @@
     throw new IOException("writeChunk() checksum size is supposed to be " + getChecksumSize() + " but found to be "+ cklen);
   }
   if (currentPacket == null) {
-    currentPacket=createPacket(packetSize,chunksPerPacket,bytesCurBlock,currentSeqno++);
+    currentPacket=createPacket(packetSize,chunksPerPacket,bytesCurBlock,currentSeqno++,false);
     if (DFSClient.LOG.isDebugEnabled()) {
-      DFSClient.LOG.debug("DFSClient writeChunk allocating new packet seqno=" + currentPacket.seqno + ", src="+ src+ ", packetSize="+ packetSize+ ", chunksPerPacket="+ chunksPerPacket+ ", bytesCurBlock="+ bytesCurBlock);
+      DFSClient.LOG.debug("DFSClient writeChunk allocating new packet seqno=" + currentPacket.getSeqno() + ", src="+ src+ ", packetSize="+ packetSize+ ", chunksPerPacket="+ chunksPerPacket+ ", bytesCurBlock="+ bytesCurBlock);
     }
   }
   currentPacket.writeChecksum(checksum,ckoff,cklen);
   currentPacket.writeData(b,offset,len);
-  currentPacket.numChunks++;
+  currentPacket.incNumChunks();
   bytesCurBlock+=len;
-  if (currentPacket.numChunks == currentPacket.maxChunks || bytesCurBlock == blockSize) {
+  if (currentPacket.getNumChunks() == currentPacket.getMaxChunks() || bytesCurBlock == blockSize) {
     if (DFSClient.LOG.isDebugEnabled()) {
-      DFSClient.LOG.debug("DFSClient writeChunk packet full seqno=" + currentPacket.seqno + ", src="+ src+ ", bytesCurBlock="+ bytesCurBlock+ ", blockSize="+ blockSize+ ", appendChunk="+ appendChunk);
+      DFSClient.LOG.debug("DFSClient writeChunk packet full seqno=" + currentPacket.getSeqno() + ", src="+ src+ ", bytesCurBlock="+ bytesCurBlock+ ", blockSize="+ blockSize+ ", appendChunk="+ appendChunk);
     }
     waitAndQueueCurrentPacket();
     if (appendChunk && bytesCurBlock % bytesPerChecksum == 0) {
@@ -31,9 +31,8 @@
       computePacketChunkSize(psize,bytesPerChecksum);
     }
     if (bytesCurBlock == blockSize) {
-      currentPacket=createPacket(0,0,bytesCurBlock,currentSeqno++);
-      currentPacket.lastPacketInBlock=true;
-      currentPacket.syncBlock=shouldSyncBlock;
+      currentPacket=createPacket(0,0,bytesCurBlock,currentSeqno++,true);
+      currentPacket.setSyncBlock(shouldSyncBlock);
       waitAndQueueCurrentPacket();
       bytesCurBlock=0;
       lastFlushOffset=0;
