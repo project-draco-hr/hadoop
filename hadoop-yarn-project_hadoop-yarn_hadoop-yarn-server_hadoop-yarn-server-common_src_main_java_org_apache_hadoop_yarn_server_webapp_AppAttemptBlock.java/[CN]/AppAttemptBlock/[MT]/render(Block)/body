@@ -12,17 +12,17 @@
     puts("Invalid application attempt ID: " + attemptid);
     return;
   }
-  final ApplicationAttemptId appAttemptIdFinal=appAttemptId;
   UserGroupInformation callerUGI=getCallerUGI();
-  ApplicationAttemptReport appAttemptReport;
+  ApplicationAttemptReport appAttemptReport=null;
   try {
+    final GetApplicationAttemptReportRequest request=GetApplicationAttemptReportRequest.newInstance(appAttemptId);
     if (callerUGI == null) {
-      appAttemptReport=appContext.getApplicationAttempt(appAttemptId);
+      appAttemptReport=appBaseProt.getApplicationAttemptReport(request).getApplicationAttemptReport();
     }
  else {
       appAttemptReport=callerUGI.doAs(new PrivilegedExceptionAction<ApplicationAttemptReport>(){
         @Override public ApplicationAttemptReport run() throws Exception {
-          return appContext.getApplicationAttempt(appAttemptIdFinal);
+          return appBaseProt.getApplicationAttemptReport(request).getApplicationAttemptReport();
         }
       }
 );
@@ -38,33 +38,37 @@
     puts("Application Attempt not found: " + attemptid);
     return;
   }
-  AppAttemptInfo appAttempt=new AppAttemptInfo(appAttemptReport);
-  setTitle(join("Application Attempt ",attemptid));
-  String node="N/A";
-  if (appAttempt.getHost() != null && appAttempt.getRpcPort() >= 0 && appAttempt.getRpcPort() < 65536) {
-    node=appAttempt.getHost() + ":" + appAttempt.getRpcPort();
-  }
-  info("Application Attempt Overview")._("State",appAttempt.getAppAttemptState())._("Master Container",appAttempt.getAmContainerId() == null ? "#" : root_url("container",appAttempt.getAmContainerId()),String.valueOf(appAttempt.getAmContainerId()))._("Node:",node)._("Tracking URL:",appAttempt.getTrackingUrl() == null ? "#" : root_url(appAttempt.getTrackingUrl()),"History")._("Diagnostics Info:",appAttempt.getDiagnosticsInfo());
-  html._(InfoBlock.class);
-  Collection<ContainerReport> containers;
+  boolean exceptionWhenGetContainerReports=false;
+  Collection<ContainerReport> containers=null;
   try {
+    final GetContainersRequest request=GetContainersRequest.newInstance(appAttemptId);
     if (callerUGI == null) {
-      containers=appContext.getContainers(appAttemptId).values();
+      containers=appBaseProt.getContainers(request).getContainerList();
     }
  else {
       containers=callerUGI.doAs(new PrivilegedExceptionAction<Collection<ContainerReport>>(){
         @Override public Collection<ContainerReport> run() throws Exception {
-          return appContext.getContainers(appAttemptIdFinal).values();
+          return appBaseProt.getContainers(request).getContainerList();
         }
       }
 );
     }
   }
  catch (  RuntimeException e) {
-    html.p()._("Sorry, Failed to get containers for application attempt" + attemptid + ".")._();
-    return;
+    exceptionWhenGetContainerReports=true;
   }
 catch (  Exception e) {
+    exceptionWhenGetContainerReports=true;
+  }
+  AppAttemptInfo appAttempt=new AppAttemptInfo(appAttemptReport);
+  setTitle(join("Application Attempt ",attemptid));
+  String node="N/A";
+  if (appAttempt.getHost() != null && appAttempt.getRpcPort() >= 0 && appAttempt.getRpcPort() < 65536) {
+    node=appAttempt.getHost() + ":" + appAttempt.getRpcPort();
+  }
+  info("Application Attempt Overview")._("Application Attempt State:",appAttempt.getAppAttemptState() == null ? UNAVAILABLE : appAttempt.getAppAttemptState())._("AM Container:",appAttempt.getAmContainerId() == null || containers == null || !hasAMContainer(appAttemptReport.getAMContainerId(),containers) ? null : root_url("container",appAttempt.getAmContainerId()),String.valueOf(appAttempt.getAmContainerId()))._("Node:",node)._("Tracking URL:",appAttempt.getTrackingUrl() == null || appAttempt.getTrackingUrl() == UNAVAILABLE ? null : root_url(appAttempt.getTrackingUrl()),appAttempt.getTrackingUrl() == null || appAttempt.getTrackingUrl() == UNAVAILABLE ? "Unassigned" : appAttempt.getAppAttemptState() == YarnApplicationAttemptState.FINISHED || appAttempt.getAppAttemptState() == YarnApplicationAttemptState.FAILED || appAttempt.getAppAttemptState() == YarnApplicationAttemptState.KILLED ? "History" : "ApplicationMaster")._("Diagnostics Info:",appAttempt.getDiagnosticsInfo() == null ? "" : appAttempt.getDiagnosticsInfo());
+  html._(InfoBlock.class);
+  if (exceptionWhenGetContainerReports) {
     html.p()._("Sorry, Failed to get containers for application attempt" + attemptid + ".")._();
     return;
   }
@@ -72,7 +76,7 @@ catch (  Exception e) {
   StringBuilder containersTableData=new StringBuilder("[\n");
   for (  ContainerReport containerReport : containers) {
     ContainerInfo container=new ContainerInfo(containerReport);
-    containersTableData.append("[\"<a href='").append(url("container",container.getContainerId())).append("'>").append(container.getContainerId()).append("</a>\",\"<a href='").append(container.getAssignedNodeId()).append("'>").append(StringEscapeUtils.escapeJavaScript(StringEscapeUtils.escapeHtml(container.getAssignedNodeId()))).append("</a>\",\"").append(container.getContainerExitStatus()).append("\",\"<a href='").append(container.getLogUrl() == null ? "#" : container.getLogUrl()).append("'>").append(container.getLogUrl() == null ? "N/A" : "Logs").append("</a>\"],\n");
+    containersTableData.append("[\"<a href='").append(url("container",container.getContainerId())).append("'>").append(container.getContainerId()).append("</a>\",\"<a href='").append("#").append("'>").append(container.getAssignedNodeId() == null ? "N/A" : StringEscapeUtils.escapeJavaScript(StringEscapeUtils.escapeHtml(container.getAssignedNodeId()))).append("</a>\",\"").append(container.getContainerExitStatus()).append("\",\"<a href='").append(container.getLogUrl() == null ? "#" : container.getLogUrl()).append("'>").append(container.getLogUrl() == null ? "N/A" : "Logs").append("</a>\"],\n");
   }
   if (containersTableData.charAt(containersTableData.length() - 2) == ',') {
     containersTableData.delete(containersTableData.length() - 2,containersTableData.length() - 1);

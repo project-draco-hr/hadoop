@@ -1,4 +1,5 @@
 {
+  String webUiType=$(WEB_UI_TYPE);
   String aid=$(APPLICATION_ID);
   if (aid.isEmpty()) {
     puts("Bad request: requires Application ID");
@@ -12,17 +13,17 @@
     puts("Invalid Application ID: " + aid);
     return;
   }
-  final ApplicationId appIDFinal=appID;
   UserGroupInformation callerUGI=getCallerUGI();
-  ApplicationReport appReport;
+  ApplicationReport appReport=null;
   try {
+    final GetApplicationReportRequest request=GetApplicationReportRequest.newInstance(appID);
     if (callerUGI == null) {
-      appReport=appContext.getApplication(appID);
+      appReport=appBaseProt.getApplicationReport(request).getApplicationReport();
     }
  else {
       appReport=callerUGI.doAs(new PrivilegedExceptionAction<ApplicationReport>(){
         @Override public ApplicationReport run() throws Exception {
-          return appContext.getApplication(appIDFinal);
+          return appBaseProt.getApplicationReport(request).getApplicationReport();
         }
       }
 );
@@ -40,17 +41,23 @@
   }
   AppInfo app=new AppInfo(appReport);
   setTitle(join("Application ",aid));
-  info("Application Overview")._("User:",app.getUser())._("Name:",app.getName())._("Application Type:",app.getType())._("State:",app.getAppState())._("FinalStatus:",app.getFinalAppStatus())._("Started:",Times.format(app.getStartedTime()))._("Elapsed:",StringUtils.formatTime(Times.elapsed(app.getStartedTime(),app.getFinishedTime())))._("Tracking URL:",app.getTrackingUrl() == null ? "#" : root_url(app.getTrackingUrl()),"History")._("Diagnostics:",app.getDiagnosticsInfo());
-  html._(InfoBlock.class);
+  if (webUiType != null && webUiType.equals(YarnWebParams.RM_WEB_UI) && conf.getBoolean(YarnConfiguration.RM_WEBAPP_UI_ACTIONS_ENABLED,YarnConfiguration.DEFAULT_RM_WEBAPP_UI_ACTIONS_ENABLED)) {
+    html.div().button().$onclick("confirmAction()").b("Kill Application")._()._();
+    StringBuilder script=new StringBuilder();
+    script.append("function confirmAction() {").append(" b = confirm(\"Are you sure?\");").append(" if (b == true) {").append(" $.ajax({").append(" type: 'PUT',").append(" url: '/ws/v1/cluster/apps/").append(aid).append("/state',").append(" contentType: 'application/json',").append(" data: '{\"state\":\"KILLED\"}',").append(" dataType: 'json'").append(" }).done(function(data){").append(" setTimeout(function(){").append(" location.href = '/cluster/app/").append(aid).append("';").append(" }, 1000);").append(" }).fail(function(data){").append(" console.log(data);").append(" });").append(" }").append("}");
+    html.script().$type("text/javascript")._(script.toString())._();
+  }
+  info("Application Overview")._("User:",app.getUser())._("Name:",app.getName())._("Application Type:",app.getType())._("Application Tags:",app.getApplicationTags() == null ? "" : app.getApplicationTags())._("YarnApplicationState:",app.getAppState() == null ? UNAVAILABLE : clarifyAppState(app.getAppState()))._("FinalStatus Reported by AM:",clairfyAppFinalStatus(app.getFinalAppStatus()))._("Started:",Times.format(app.getStartedTime()))._("Elapsed:",StringUtils.formatTime(Times.elapsed(app.getStartedTime(),app.getFinishedTime())))._("Tracking URL:",app.getTrackingUrl() == null || app.getTrackingUrl() == UNAVAILABLE ? null : root_url(app.getTrackingUrl()),app.getTrackingUrl() == null || app.getTrackingUrl() == UNAVAILABLE ? "Unassigned" : app.getAppState() == YarnApplicationState.FINISHED || app.getAppState() == YarnApplicationState.FAILED || app.getAppState() == YarnApplicationState.KILLED ? "History" : "ApplicationMaster")._("Diagnostics:",app.getDiagnosticsInfo() == null ? "" : app.getDiagnosticsInfo());
   Collection<ApplicationAttemptReport> attempts;
   try {
+    final GetApplicationAttemptsRequest request=GetApplicationAttemptsRequest.newInstance(appID);
     if (callerUGI == null) {
-      attempts=appContext.getApplicationAttempts(appID).values();
+      attempts=appBaseProt.getApplicationAttempts(request).getApplicationAttemptList();
     }
  else {
       attempts=callerUGI.doAs(new PrivilegedExceptionAction<Collection<ApplicationAttemptReport>>(){
         @Override public Collection<ApplicationAttemptReport> run() throws Exception {
-          return appContext.getApplicationAttempts(appIDFinal).values();
+          return appBaseProt.getApplicationAttempts(request).getApplicationAttemptList();
         }
       }
 );
@@ -62,19 +69,33 @@
     html.p()._(message)._();
     return;
   }
+  ApplicationResourceUsageReport usageReport=appReport.getApplicationResourceUsageReport();
+  DIV<Hamlet> pdiv=html._(InfoBlock.class).div(_INFO_WRAP);
+  info("Application Overview").clear();
+  info("Application Metrics")._("Total Resource Preempted:",Resources.none())._("Total Number of Non-AM Containers Preempted:",String.valueOf(0))._("Total Number of AM Containers Preempted:",String.valueOf(0))._("Resource Preempted from Current Attempt:",Resources.none())._("Number of Non-AM Containers Preempted from Current Attempt:",0)._("Aggregate Resource Allocation:",String.format("%d MB-seconds, %d vcore-seconds",usageReport == null ? 0 : usageReport.getMemorySeconds(),usageReport == null ? 0 : usageReport.getVcoreSeconds()));
+  pdiv._();
+  html._(InfoBlock.class);
   TBODY<TABLE<Hamlet>> tbody=html.table("#attempts").thead().tr().th(".id","Attempt ID").th(".started","Started").th(".node","Node").th(".logs","Logs")._()._().tbody();
   StringBuilder attemptsTableData=new StringBuilder("[\n");
   for (  final ApplicationAttemptReport appAttemptReport : attempts) {
     AppAttemptInfo appAttempt=new AppAttemptInfo(appAttemptReport);
-    ContainerReport containerReport;
+    ContainerReport containerReport=null;
     try {
+      final GetContainerReportRequest request=GetContainerReportRequest.newInstance(ContainerId.newContainerId(appAttemptReport.getApplicationAttemptId(),1));
       if (callerUGI == null) {
-        containerReport=appContext.getAMContainer(appAttemptReport.getApplicationAttemptId());
+        containerReport=appBaseProt.getContainerReport(request).getContainerReport();
       }
  else {
         containerReport=callerUGI.doAs(new PrivilegedExceptionAction<ContainerReport>(){
           @Override public ContainerReport run() throws Exception {
-            return appContext.getAMContainer(appAttemptReport.getApplicationAttemptId());
+            ContainerReport report=null;
+            try {
+              report=appBaseProt.getContainerReport(request).getContainerReport();
+            }
+ catch (            ContainerNotFoundException ex) {
+              LOG.warn(ex.getMessage());
+            }
+            return report;
           }
         }
 );
@@ -86,7 +107,7 @@
       html.p()._(message)._();
       return;
     }
-    long startTime=Long.MAX_VALUE;
+    long startTime=0L;
     String logsLink=null;
     if (containerReport != null) {
       ContainerInfo container=new ContainerInfo(containerReport);
@@ -97,7 +118,7 @@
     if (appAttempt.getHost() != null && appAttempt.getRpcPort() >= 0 && appAttempt.getRpcPort() < 65536) {
       nodeLink=appAttempt.getHost() + ":" + appAttempt.getRpcPort();
     }
-    attemptsTableData.append("[\"<a href='").append(url("appattempt",appAttempt.getAppAttemptId())).append("'>").append(appAttempt.getAppAttemptId()).append("</a>\",\"").append(startTime).append("\",\"<a href='").append(nodeLink == null ? "#" : url("//",nodeLink)).append("'>").append(nodeLink == null ? "N/A" : StringEscapeUtils.escapeJavaScript(StringEscapeUtils.escapeHtml(nodeLink))).append("</a>\",\"<a href='").append(logsLink == null ? "#" : logsLink).append("'>").append(logsLink == null ? "N/A" : "Logs").append("</a>\"],\n");
+    attemptsTableData.append("[\"<a href='").append(url("appattempt",appAttempt.getAppAttemptId())).append("'>").append(appAttempt.getAppAttemptId()).append("</a>\",\"").append(startTime).append("\",\"<a href='").append("#").append("'>").append(nodeLink == null ? "N/A" : StringEscapeUtils.escapeJavaScript(StringEscapeUtils.escapeHtml(nodeLink))).append("</a>\",\"<a ").append(logsLink == null ? "#" : "href='" + logsLink).append("'>").append(logsLink == null ? "N/A" : "Logs").append("</a>\"],\n");
   }
   if (attemptsTableData.charAt(attemptsTableData.length() - 2) == ',') {
     attemptsTableData.delete(attemptsTableData.length() - 2,attemptsTableData.length() - 1);
@@ -105,4 +126,6 @@
   attemptsTableData.append("]");
   html.script().$type("text/javascript")._("var attemptsTableData=" + attemptsTableData)._();
   tbody._()._();
+  createContainerLocalityTable(html);
+  createResourceRequestsTable(html,null);
 }
