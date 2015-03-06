@@ -1,0 +1,38 @@
+{
+  boolean containerSchedPriorityIsSet=false;
+  int containerSchedPriorityAdjustment=YarnConfiguration.DEFAULT_NM_CONTAINER_EXECUTOR_SCHED_PRIORITY;
+  if (conf.get(YarnConfiguration.NM_CONTAINER_EXECUTOR_SCHED_PRIORITY) != null) {
+    containerSchedPriorityIsSet=true;
+    containerSchedPriorityAdjustment=conf.getInt(YarnConfiguration.NM_CONTAINER_EXECUTOR_SCHED_PRIORITY,YarnConfiguration.DEFAULT_NM_CONTAINER_EXECUTOR_SCHED_PRIORITY);
+  }
+  if (Shell.WINDOWS) {
+    int cpuRate=-1;
+    int memory=-1;
+    if (resource != null) {
+      if (conf.getBoolean(YarnConfiguration.NM_WINDOWS_CONTAINER_MEMORY_LIMIT_ENABLED,YarnConfiguration.DEFAULT_NM_WINDOWS_CONTAINER_MEMORY_LIMIT_ENABLED)) {
+        memory=resource.getMemory();
+      }
+      if (conf.getBoolean(YarnConfiguration.NM_WINDOWS_CONTAINER_CPU_LIMIT_ENABLED,YarnConfiguration.DEFAULT_NM_WINDOWS_CONTAINER_CPU_LIMIT_ENABLED)) {
+        int containerVCores=resource.getVirtualCores();
+        int nodeVCores=conf.getInt(YarnConfiguration.NM_VCORES,YarnConfiguration.DEFAULT_NM_VCORES);
+        int nodeCpuPercentage=Math.min(conf.getInt(YarnConfiguration.NM_RESOURCE_PERCENTAGE_PHYSICAL_CPU_LIMIT,YarnConfiguration.DEFAULT_NM_RESOURCE_PERCENTAGE_PHYSICAL_CPU_LIMIT),100);
+        nodeCpuPercentage=Math.max(0,nodeCpuPercentage);
+        if (nodeCpuPercentage == 0) {
+          String message="Illegal value for " + YarnConfiguration.NM_RESOURCE_PERCENTAGE_PHYSICAL_CPU_LIMIT + ". Value cannot be less than or equal to 0.";
+          throw new IllegalArgumentException(message);
+        }
+        float yarnVCores=(nodeCpuPercentage * nodeVCores) / 100.0f;
+        cpuRate=Math.min(10000,(int)((containerVCores * 10000) / yarnVCores));
+      }
+    }
+    return new String[]{Shell.WINUTILS,"task","create","-m",String.valueOf(memory),"-c",String.valueOf(cpuRate),groupId,"cmd /c " + command};
+  }
+ else {
+    List<String> retCommand=new ArrayList<String>();
+    if (containerSchedPriorityIsSet) {
+      retCommand.addAll(Arrays.asList("nice","-n",Integer.toString(containerSchedPriorityAdjustment)));
+    }
+    retCommand.addAll(Arrays.asList("bash",command));
+    return retCommand.toArray(new String[retCommand.size()]);
+  }
+}
