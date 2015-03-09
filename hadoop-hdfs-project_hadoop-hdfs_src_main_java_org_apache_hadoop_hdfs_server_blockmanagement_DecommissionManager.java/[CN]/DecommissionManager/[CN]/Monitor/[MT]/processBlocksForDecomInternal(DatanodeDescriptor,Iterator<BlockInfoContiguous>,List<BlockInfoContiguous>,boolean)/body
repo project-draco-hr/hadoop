@@ -1,0 +1,48 @@
+{
+  boolean firstReplicationLog=true;
+  int underReplicatedBlocks=0;
+  int decommissionOnlyReplicas=0;
+  int underReplicatedInOpenFiles=0;
+  while (it.hasNext()) {
+    numBlocksChecked++;
+    final BlockInfoContiguous block=it.next();
+    if (blockManager.blocksMap.getStoredBlock(block) == null) {
+      LOG.trace("Removing unknown block {}",block);
+      it.remove();
+      continue;
+    }
+    BlockCollection bc=blockManager.blocksMap.getBlockCollection(block);
+    if (bc == null) {
+      continue;
+    }
+    final NumberReplicas num=blockManager.countNodes(block);
+    final int liveReplicas=num.liveReplicas();
+    final int curReplicas=liveReplicas;
+    if (blockManager.isNeededReplication(block,bc.getBlockReplication(),liveReplicas)) {
+      if (!blockManager.neededReplications.contains(block) && blockManager.pendingReplications.getNumReplicas(block) == 0 && namesystem.isPopulatingReplQueues()) {
+        blockManager.neededReplications.add(block,curReplicas,num.decommissionedReplicas(),bc.getBlockReplication());
+      }
+    }
+    if (isSufficientlyReplicated(block,bc,num)) {
+      if (pruneSufficientlyReplicated) {
+        it.remove();
+      }
+      continue;
+    }
+    if (insufficientlyReplicated != null) {
+      insufficientlyReplicated.add(block);
+    }
+    if (firstReplicationLog) {
+      logBlockReplicationInfo(block,bc,datanode,num,blockManager.blocksMap.getStorages(block));
+      firstReplicationLog=false;
+    }
+    underReplicatedBlocks++;
+    if (bc.isUnderConstruction()) {
+      underReplicatedInOpenFiles++;
+    }
+    if ((curReplicas == 0) && (num.decommissionedReplicas() > 0)) {
+      decommissionOnlyReplicas++;
+    }
+  }
+  datanode.decommissioningStatus.set(underReplicatedBlocks,decommissionOnlyReplicas,underReplicatedInOpenFiles);
+}

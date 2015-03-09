@@ -1,0 +1,32 @@
+{
+  Configuration newConf=new Configuration(conf);
+  org.apache.log4j.Logger.getLogger(DecommissionManager.class).setLevel(Level.TRACE);
+  newConf.setInt(DFSConfigKeys.DFS_NAMENODE_DECOMMISSION_MAX_CONCURRENT_TRACKED_NODES,1);
+  newConf.setInt(DFSConfigKeys.DFS_NAMENODE_DECOMMISSION_INTERVAL_KEY,Integer.MAX_VALUE);
+  startCluster(1,3,newConf);
+  final FileSystem fs=cluster.getFileSystem();
+  final DatanodeManager datanodeManager=cluster.getNamesystem().getBlockManager().getDatanodeManager();
+  final DecommissionManager decomManager=datanodeManager.getDecomManager();
+  HdfsDataOutputStream open1=(HdfsDataOutputStream)fs.create(new Path("/openFile1"),(short)3);
+  open1.write(123);
+  open1.hflush();
+  for (  DataNode d : cluster.getDataNodes()) {
+    DataNodeTestUtils.triggerBlockReport(d);
+  }
+  ArrayList<DatanodeInfo> decommissionedNodes=Lists.newArrayList();
+  for (int i=0; i < 2; i++) {
+    final DataNode d=cluster.getDataNodes().get(i);
+    DatanodeInfo dn=decommissionNode(0,d.getDatanodeUuid(),decommissionedNodes,AdminStates.DECOMMISSION_INPROGRESS);
+    decommissionedNodes.add(dn);
+  }
+  for (int i=2; i >= 0; i--) {
+    assertTrackedAndPending(decomManager,0,i);
+    BlockManagerTestUtil.recheckDecommissionState(datanodeManager);
+  }
+  open1.close();
+  final DataNode d=cluster.getDataNodes().get(2);
+  DatanodeInfo dn=decommissionNode(0,d.getDatanodeUuid(),decommissionedNodes,AdminStates.DECOMMISSION_INPROGRESS);
+  decommissionedNodes.add(dn);
+  BlockManagerTestUtil.recheckDecommissionState(datanodeManager);
+  assertTrackedAndPending(decomManager,1,0);
+}
