@@ -1,0 +1,62 @@
+{
+  final Path file=new Path("/file1");
+  final List<String> storageIDs=new ArrayList<>();
+  FSDataOutputStream out=null;
+  try {
+    out=dfs.create(file,(short)1);
+    FSDirectory fsdir=cluster.getNamesystem().getFSDirectory();
+    INodeFile fileNode=fsdir.getINode4Write(file.toString()).asFile();
+    cluster.getNamesystem().getAdditionalBlock(file.toString(),fileNode.getId(),dfs.getClient().getClientName(),null,null,null);
+    BlockInfo lastBlock=fileNode.getLastBlock();
+    BlockInfoStripedUnderConstruction ucBlock=(BlockInfoStripedUnderConstruction)lastBlock;
+    DatanodeStorageInfo[] locs=ucBlock.getExpectedStorageLocations();
+    int[] indices=ucBlock.getBlockIndices();
+    Assert.assertEquals(GROUP_SIZE,locs.length);
+    Assert.assertEquals(GROUP_SIZE,indices.length);
+    int i=0;
+    for (    DataNode dn : cluster.getDataNodes()) {
+      final Block block=new Block(lastBlock.getBlockId() + i++,lastBlock.getGenerationStamp(),0);
+      DatanodeStorage storage=new DatanodeStorage(UUID.randomUUID().toString());
+      storageIDs.add(storage.getStorageID());
+      StorageReceivedDeletedBlocks[] reports=DFSTestUtil.makeReportForReceivedBlock(block,BlockStatus.RECEIVING_BLOCK,storage);
+      for (      StorageReceivedDeletedBlocks report : reports) {
+        cluster.getNamesystem().processIncrementalBlockReport(dn.getDatanodeId(),report);
+      }
+    }
+    locs=ucBlock.getExpectedStorageLocations();
+    indices=ucBlock.getBlockIndices();
+    Assert.assertEquals(GROUP_SIZE,locs.length);
+    Assert.assertEquals(GROUP_SIZE,indices.length);
+    for (    DatanodeStorageInfo newstorage : locs) {
+      Assert.assertTrue(storageIDs.contains(newstorage.getStorageID()));
+    }
+  }
+  finally {
+    IOUtils.cleanup(null,out);
+  }
+  cluster.restartNameNode(true);
+  final String bpId=cluster.getNamesystem().getBlockPoolId();
+  INodeFile fileNode=cluster.getNamesystem().getFSDirectory().getINode4Write(file.toString()).asFile();
+  BlockInfo lastBlock=fileNode.getLastBlock();
+  int i=GROUP_SIZE - 1;
+  for (  DataNode dn : cluster.getDataNodes()) {
+    String storageID=storageIDs.get(i);
+    final Block block=new Block(lastBlock.getBlockId() + i--,lastBlock.getGenerationStamp(),0);
+    DatanodeStorage storage=new DatanodeStorage(storageID);
+    List<ReplicaBeingWritten> blocks=new ArrayList<>();
+    ReplicaBeingWritten replica=new ReplicaBeingWritten(block,null,null,null);
+    blocks.add(replica);
+    BlockListAsLongs bll=new BlockListAsLongs(null,blocks);
+    StorageBlockReport[] reports={new StorageBlockReport(storage,bll.getBlockListAsLongs())};
+    cluster.getNameNodeRpc().blockReport(dn.getDNRegistrationForBP(bpId),bpId,reports);
+  }
+  BlockInfoStripedUnderConstruction ucBlock=(BlockInfoStripedUnderConstruction)lastBlock;
+  DatanodeStorageInfo[] locs=ucBlock.getExpectedStorageLocations();
+  int[] indices=ucBlock.getBlockIndices();
+  Assert.assertEquals(GROUP_SIZE,locs.length);
+  Assert.assertEquals(GROUP_SIZE,indices.length);
+  for (i=0; i < GROUP_SIZE; i++) {
+    Assert.assertEquals(storageIDs.get(i),locs[GROUP_SIZE - 1 - i].getStorageID());
+    Assert.assertEquals(GROUP_SIZE - i - 1,indices[i]);
+  }
+}
