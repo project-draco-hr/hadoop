@@ -1,0 +1,50 @@
+{
+  Job job=Job.getInstance();
+  FileOutputFormat.setOutputPath(job,outDir);
+  Configuration conf=job.getConfiguration();
+  conf.set(MRJobConfig.TASK_ATTEMPT_ID,attempt);
+  conf.setInt(MRJobConfig.APPLICATION_ATTEMPT_ID,1);
+  conf.setInt(FileOutputCommitter.FILEOUTPUTCOMMITTER_ALGORITHM_VERSION,commitVersion);
+  JobContext jContext=new JobContextImpl(conf,taskID.getJobID());
+  TaskAttemptContext tContext=new TaskAttemptContextImpl(conf,taskID);
+  FileOutputCommitter committer=new FileOutputCommitter(outDir,tContext);
+  committer.setupJob(jContext);
+  committer.setupTask(tContext);
+  TextOutputFormat theOutputFormat=new TextOutputFormat();
+  RecordWriter theRecordWriter=theOutputFormat.getRecordWriter(tContext);
+  writeOutput(theRecordWriter,tContext);
+  committer.commitTask(tContext);
+  Path jobTempDir1=committer.getCommittedTaskPath(tContext);
+  File jtd=new File(jobTempDir1.toUri().getPath());
+  if (commitVersion == 1) {
+    assertTrue("Version 1 commits to temporary dir " + jtd,jtd.exists());
+    validateContent(jtd);
+  }
+ else {
+    assertFalse("Version 2 commits to output dir " + jtd,jtd.exists());
+  }
+  Configuration conf2=job.getConfiguration();
+  conf2.set(MRJobConfig.TASK_ATTEMPT_ID,attempt);
+  conf2.setInt(MRJobConfig.APPLICATION_ATTEMPT_ID,2);
+  conf2.setInt(FileOutputCommitter.FILEOUTPUTCOMMITTER_ALGORITHM_VERSION,recoveryVersion);
+  JobContext jContext2=new JobContextImpl(conf2,taskID.getJobID());
+  TaskAttemptContext tContext2=new TaskAttemptContextImpl(conf2,taskID);
+  FileOutputCommitter committer2=new FileOutputCommitter(outDir,tContext2);
+  committer2.setupJob(tContext2);
+  Path jobTempDir2=committer2.getCommittedTaskPath(tContext2);
+  File jtd2=new File(jobTempDir2.toUri().getPath());
+  committer2.recoverTask(tContext2);
+  if (recoveryVersion == 1) {
+    assertTrue("Version 1 recovers to " + jtd2,jtd2.exists());
+    validateContent(jtd2);
+  }
+ else {
+    assertFalse("Version 2 commits to output dir " + jtd2,jtd2.exists());
+    if (commitVersion == 1) {
+      assertTrue("Version 2  recovery moves to output dir from " + jtd,jtd.list().length == 0);
+    }
+  }
+  committer2.commitJob(jContext2);
+  validateContent(outDir);
+  FileUtil.fullyDelete(new File(outDir.toString()));
+}

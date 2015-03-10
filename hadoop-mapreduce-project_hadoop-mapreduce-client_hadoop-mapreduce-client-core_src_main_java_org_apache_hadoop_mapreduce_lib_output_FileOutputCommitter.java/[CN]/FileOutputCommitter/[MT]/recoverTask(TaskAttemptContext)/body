@@ -6,25 +6,34 @@
     if (previousAttempt < 0) {
       throw new IOException("Cannot recover task output for first attempt...");
     }
-    Path committedTaskPath=getCommittedTaskPath(context);
     Path previousCommittedTaskPath=getCommittedTaskPath(previousAttempt,context);
-    FileSystem fs=committedTaskPath.getFileSystem(context.getConfiguration());
-    LOG.debug("Trying to recover task from " + previousCommittedTaskPath + " into "+ committedTaskPath);
-    if (fs.exists(previousCommittedTaskPath)) {
-      if (fs.exists(committedTaskPath)) {
-        if (!fs.delete(committedTaskPath,true)) {
-          throw new IOException("Could not delete " + committedTaskPath);
+    FileSystem fs=previousCommittedTaskPath.getFileSystem(context.getConfiguration());
+    LOG.debug("Trying to recover task from " + previousCommittedTaskPath);
+    if (algorithmVersion == 1) {
+      if (fs.exists(previousCommittedTaskPath)) {
+        Path committedTaskPath=getCommittedTaskPath(context);
+        if (fs.exists(committedTaskPath)) {
+          if (!fs.delete(committedTaskPath,true)) {
+            throw new IOException("Could not delete " + committedTaskPath);
+          }
+        }
+        Path committedParent=committedTaskPath.getParent();
+        fs.mkdirs(committedParent);
+        if (!fs.rename(previousCommittedTaskPath,committedTaskPath)) {
+          throw new IOException("Could not rename " + previousCommittedTaskPath + " to "+ committedTaskPath);
         }
       }
-      Path committedParent=committedTaskPath.getParent();
-      fs.mkdirs(committedParent);
-      if (!fs.rename(previousCommittedTaskPath,committedTaskPath)) {
-        throw new IOException("Could not rename " + previousCommittedTaskPath + " to "+ committedTaskPath);
+ else {
+        LOG.warn(attemptId + " had no output to recover.");
       }
-      LOG.info("Saved output of " + attemptId + " to "+ committedTaskPath);
     }
  else {
-      LOG.warn(attemptId + " had no output to recover.");
+      if (fs.exists(previousCommittedTaskPath)) {
+        LOG.info("Recovering task for upgrading scenario, moving files from " + previousCommittedTaskPath + " to "+ outputPath);
+        FileStatus from=fs.getFileStatus(previousCommittedTaskPath);
+        mergePaths(fs,from,outputPath);
+      }
+      LOG.info("Done recovering task " + attemptId);
     }
   }
  else {

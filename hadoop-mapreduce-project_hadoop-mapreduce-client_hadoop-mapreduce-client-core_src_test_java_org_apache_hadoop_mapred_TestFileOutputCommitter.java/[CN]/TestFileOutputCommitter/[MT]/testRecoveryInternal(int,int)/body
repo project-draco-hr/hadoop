@@ -1,0 +1,51 @@
+{
+  JobConf conf=new JobConf();
+  FileOutputFormat.setOutputPath(conf,outDir);
+  conf.set(JobContext.TASK_ATTEMPT_ID,attempt);
+  conf.setInt(MRConstants.APPLICATION_ATTEMPT_ID,1);
+  conf.setInt(org.apache.hadoop.mapreduce.lib.output.FileOutputCommitter.FILEOUTPUTCOMMITTER_ALGORITHM_VERSION,commitVersion);
+  JobContext jContext=new JobContextImpl(conf,taskID.getJobID());
+  TaskAttemptContext tContext=new TaskAttemptContextImpl(conf,taskID);
+  FileOutputCommitter committer=new FileOutputCommitter();
+  committer.setupJob(jContext);
+  committer.setupTask(tContext);
+  TextOutputFormat theOutputFormat=new TextOutputFormat();
+  RecordWriter theRecordWriter=theOutputFormat.getRecordWriter(null,conf,partFile,null);
+  writeOutput(theRecordWriter,tContext);
+  if (committer.needsTaskCommit(tContext)) {
+    committer.commitTask(tContext);
+  }
+  Path jobTempDir1=committer.getCommittedTaskPath(tContext);
+  File jtd1=new File(jobTempDir1.toUri().getPath());
+  if (commitVersion == 1) {
+    assertTrue("Version 1 commits to temporary dir " + jtd1,jtd1.exists());
+    validateContent(jobTempDir1);
+  }
+ else {
+    assertFalse("Version 2 commits to output dir " + jtd1,jtd1.exists());
+  }
+  JobConf conf2=new JobConf(conf);
+  conf2.set(JobContext.TASK_ATTEMPT_ID,attempt);
+  conf2.setInt(MRConstants.APPLICATION_ATTEMPT_ID,2);
+  conf2.setInt(org.apache.hadoop.mapreduce.lib.output.FileOutputCommitter.FILEOUTPUTCOMMITTER_ALGORITHM_VERSION,recoveryVersion);
+  JobContext jContext2=new JobContextImpl(conf2,taskID.getJobID());
+  TaskAttemptContext tContext2=new TaskAttemptContextImpl(conf2,taskID);
+  FileOutputCommitter committer2=new FileOutputCommitter();
+  committer2.setupJob(jContext2);
+  committer2.recoverTask(tContext2);
+  Path jobTempDir2=committer2.getCommittedTaskPath(tContext2);
+  File jtd2=new File(jobTempDir2.toUri().getPath());
+  if (recoveryVersion == 1) {
+    assertTrue("Version 1 recovers to " + jtd2,jtd2.exists());
+    validateContent(jobTempDir2);
+  }
+ else {
+    assertFalse("Version 2 commits to output dir " + jtd2,jtd2.exists());
+    if (commitVersion == 1) {
+      assertTrue("Version 2  recovery moves to output dir from " + jtd1,jtd1.list().length == 0);
+    }
+  }
+  committer2.commitJob(jContext2);
+  validateContent(outDir);
+  FileUtil.fullyDelete(new File(outDir.toString()));
+}

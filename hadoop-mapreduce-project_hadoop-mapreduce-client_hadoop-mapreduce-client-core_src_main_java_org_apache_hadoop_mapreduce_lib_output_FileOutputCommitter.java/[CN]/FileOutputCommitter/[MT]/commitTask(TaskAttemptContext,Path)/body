@@ -5,18 +5,31 @@
     if (taskAttemptPath == null) {
       taskAttemptPath=getTaskAttemptPath(context);
     }
-    Path committedTaskPath=getCommittedTaskPath(context);
     FileSystem fs=taskAttemptPath.getFileSystem(context.getConfiguration());
-    if (fs.exists(taskAttemptPath)) {
-      if (fs.exists(committedTaskPath)) {
-        if (!fs.delete(committedTaskPath,true)) {
-          throw new IOException("Could not delete " + committedTaskPath);
+    FileStatus taskAttemptDirStatus;
+    try {
+      taskAttemptDirStatus=fs.getFileStatus(taskAttemptPath);
+    }
+ catch (    FileNotFoundException e) {
+      taskAttemptDirStatus=null;
+    }
+    if (taskAttemptDirStatus != null) {
+      if (algorithmVersion == 1) {
+        Path committedTaskPath=getCommittedTaskPath(context);
+        if (fs.exists(committedTaskPath)) {
+          if (!fs.delete(committedTaskPath,true)) {
+            throw new IOException("Could not delete " + committedTaskPath);
+          }
         }
+        if (!fs.rename(taskAttemptPath,committedTaskPath)) {
+          throw new IOException("Could not rename " + taskAttemptPath + " to "+ committedTaskPath);
+        }
+        LOG.info("Saved output of task '" + attemptId + "' to "+ committedTaskPath);
       }
-      if (!fs.rename(taskAttemptPath,committedTaskPath)) {
-        throw new IOException("Could not rename " + taskAttemptPath + " to "+ committedTaskPath);
+ else {
+        mergePaths(fs,taskAttemptDirStatus,outputPath);
+        LOG.info("Saved output of task '" + attemptId + "' to "+ outputPath);
       }
-      LOG.info("Saved output of task '" + attemptId + "' to "+ committedTaskPath);
     }
  else {
       LOG.warn("No Output found for " + attemptId);
