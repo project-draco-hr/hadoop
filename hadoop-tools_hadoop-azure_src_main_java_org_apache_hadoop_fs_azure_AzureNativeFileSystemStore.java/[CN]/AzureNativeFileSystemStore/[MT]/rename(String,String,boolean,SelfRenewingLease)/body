@@ -24,11 +24,30 @@
     }
     CloudBlobWrapper dstBlob=getBlobReference(dstKey);
     URI srcUri=new URI(srcBlob.getUri().toASCIIString());
-    dstBlob.startCopyFromBlob(srcUri,getInstrumentedContext());
+    try {
+      dstBlob.startCopyFromBlob(srcUri,null,getInstrumentedContext());
+    }
+ catch (    StorageException se) {
+      if (se.getErrorCode().equals(StorageErrorCode.SERVER_BUSY.toString())) {
+        int copyBlobMinBackoff=sessionConfiguration.getInt(KEY_COPYBLOB_MIN_BACKOFF_INTERVAL,DEFAULT_COPYBLOB_MIN_BACKOFF_INTERVAL);
+        int copyBlobMaxBackoff=sessionConfiguration.getInt(KEY_COPYBLOB_MAX_BACKOFF_INTERVAL,DEFAULT_COPYBLOB_MAX_BACKOFF_INTERVAL);
+        int copyBlobDeltaBackoff=sessionConfiguration.getInt(KEY_COPYBLOB_BACKOFF_INTERVAL,DEFAULT_COPYBLOB_BACKOFF_INTERVAL);
+        int copyBlobMaxRetries=sessionConfiguration.getInt(KEY_COPYBLOB_MAX_IO_RETRIES,DEFAULT_COPYBLOB_MAX_RETRY_ATTEMPTS);
+        BlobRequestOptions options=new BlobRequestOptions();
+        options.setRetryPolicyFactory(new RetryExponentialRetry(copyBlobMinBackoff,copyBlobDeltaBackoff,copyBlobMaxBackoff,copyBlobMaxRetries));
+        dstBlob.startCopyFromBlob(srcUri,options,getInstrumentedContext());
+      }
+ else {
+        throw se;
+      }
+    }
     waitForCopyToComplete(dstBlob,getInstrumentedContext());
     safeDelete(srcBlob,lease);
   }
- catch (  Exception e) {
+ catch (  StorageException e) {
+    throw new AzureException(e);
+  }
+catch (  URISyntaxException e) {
     throw new AzureException(e);
   }
 }
