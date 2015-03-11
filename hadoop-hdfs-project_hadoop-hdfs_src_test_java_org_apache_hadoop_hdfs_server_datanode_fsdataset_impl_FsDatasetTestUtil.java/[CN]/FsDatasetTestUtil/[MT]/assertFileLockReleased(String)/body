@@ -1,0 +1,20 @@
+{
+  StorageLocation sl=StorageLocation.parse(dir);
+  File lockFile=new File(sl.getFile(),Storage.STORAGE_FILE_LOCK);
+  try (RandomAccessFile raf=new RandomAccessFile(lockFile,"rws");FileChannel channel=raf.getChannel()){
+    FileLock lock=channel.tryLock();
+    assertNotNull(String.format("Lock file at %s appears to be held by a different process.",lockFile.getAbsolutePath()),lock);
+    if (lock != null) {
+      try {
+        lock.release();
+      }
+ catch (      IOException e) {
+        FsDatasetImpl.LOG.warn(String.format("I/O error releasing file lock %s.",lockFile.getAbsolutePath()),e);
+        throw e;
+      }
+    }
+  }
+ catch (  OverlappingFileLockException e) {
+    fail(String.format("Must release lock file at %s.",lockFile.getAbsolutePath()));
+  }
+}
