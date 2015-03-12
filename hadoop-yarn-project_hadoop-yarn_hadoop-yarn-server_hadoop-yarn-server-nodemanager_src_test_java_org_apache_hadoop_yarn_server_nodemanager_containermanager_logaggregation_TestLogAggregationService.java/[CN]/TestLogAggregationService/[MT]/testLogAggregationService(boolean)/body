@@ -1,5 +1,7 @@
 {
   LogAggregationContext logAggregationContextWithInterval=Records.newRecord(LogAggregationContext.class);
+  logAggregationContextWithInterval.setRolledLogsIncludePattern(".*");
+  logAggregationContextWithInterval.setRolledLogsExcludePattern("std_final");
   this.conf.set(YarnConfiguration.NM_LOG_DIRS,localLogDir.getAbsolutePath());
   this.conf.set(YarnConfiguration.NM_REMOTE_APP_LOG_DIR,this.remoteRootLogDir.getAbsolutePath());
   this.conf.setLong(YarnConfiguration.NM_LOG_AGGREGATION_ROLL_MONITORING_INTERVAL_SECONDS,3600);
@@ -24,8 +26,10 @@
   File appLogDir=new File(localLogDir,ConverterUtils.toString(application));
   appLogDir.mkdir();
   logAggregationService.handle(new LogHandlerAppStartedEvent(application,this.user,null,ContainerLogsRetentionPolicy.ALL_CONTAINERS,this.acls,logAggregationContextWithInterval));
+  LogFileStatusInLastCycle logFileStatusInLastCycle=null;
+  String[] logFiles1WithFinalLog=new String[]{"stdout","stderr","syslog","std_final"};
   String[] logFiles1=new String[]{"stdout","stderr","syslog"};
-  writeContainerLogs(appLogDir,container,logFiles1);
+  writeContainerLogs(appLogDir,container,logFiles1WithFinalLog);
   AppLogAggregatorImpl aggregator=(AppLogAggregatorImpl)logAggregationService.getAppLogAggregators().get(application);
   aggregator.doLogAggregationOutOfBand();
   if (retentionSizeLimitation) {
@@ -34,8 +38,11 @@
  else {
     Assert.assertTrue(waitAndCheckLogNum(logAggregationService,application,50,1,false,null));
   }
-  String logFileInLastCycle=null;
-  logFileInLastCycle=verifyContainerLogs(logAggregationService,application,new ContainerId[]{container},logFiles1,3,true);
+  logFileStatusInLastCycle=verifyContainerLogs(logAggregationService,application,new ContainerId[]{container},logFiles1,3,true);
+  for (  String logFile : logFiles1) {
+    Assert.assertTrue(logFileStatusInLastCycle.getLogFileTypesInLastCycle().contains(logFile));
+  }
+  Assert.assertFalse(logFileStatusInLastCycle.getLogFileTypesInLastCycle().contains("std_final"));
   Thread.sleep(2000);
   aggregator.doLogAggregationOutOfBand();
   Assert.assertEquals(numOfLogsAvailable(logAggregationService,application,true,null),1);
@@ -44,12 +51,16 @@
   writeContainerLogs(appLogDir,container,logFiles2);
   aggregator.doLogAggregationOutOfBand();
   if (retentionSizeLimitation) {
-    Assert.assertTrue(waitAndCheckLogNum(logAggregationService,application,50,1,true,logFileInLastCycle));
+    Assert.assertTrue(waitAndCheckLogNum(logAggregationService,application,50,1,true,logFileStatusInLastCycle.getLogFilePathInLastCycle()));
   }
  else {
     Assert.assertTrue(waitAndCheckLogNum(logAggregationService,application,50,2,false,null));
   }
-  logFileInLastCycle=verifyContainerLogs(logAggregationService,application,new ContainerId[]{container},logFiles2,3,true);
+  logFileStatusInLastCycle=verifyContainerLogs(logAggregationService,application,new ContainerId[]{container},logFiles2,3,true);
+  for (  String logFile : logFiles2) {
+    Assert.assertTrue(logFileStatusInLastCycle.getLogFileTypesInLastCycle().contains(logFile));
+  }
+  Assert.assertFalse(logFileStatusInLastCycle.getLogFileTypesInLastCycle().contains("std_final"));
   Thread.sleep(2000);
   String[] logFiles3=new String[]{"stdout_2","stderr_2","syslog_2"};
   writeContainerLogs(appLogDir,container,logFiles3);
@@ -57,12 +68,13 @@
   dispatcher.await();
   logAggregationService.handle(new LogHandlerAppFinishedEvent(application));
   if (retentionSizeLimitation) {
-    Assert.assertTrue(waitAndCheckLogNum(logAggregationService,application,50,1,true,logFileInLastCycle));
+    Assert.assertTrue(waitAndCheckLogNum(logAggregationService,application,50,1,true,logFileStatusInLastCycle.getLogFilePathInLastCycle()));
   }
  else {
     Assert.assertTrue(waitAndCheckLogNum(logAggregationService,application,50,3,false,null));
   }
-  verifyContainerLogs(logAggregationService,application,new ContainerId[]{container},logFiles3,3,true);
+  String[] logFiles3WithFinalLog=new String[]{"stdout_2","stderr_2","syslog_2","std_final"};
+  verifyContainerLogs(logAggregationService,application,new ContainerId[]{container},logFiles3WithFinalLog,4,true);
   logAggregationService.stop();
   assertEquals(0,logAggregationService.getNumAggregators());
 }
