@@ -1,0 +1,44 @@
+{
+  MiniDFSCluster cluster=new MiniDFSCluster.Builder(new HdfsConfiguration()).build();
+  try {
+    cluster.waitActive();
+    DataNode dn=cluster.getDataNodes().get(0);
+    FsDatasetImpl ds=(FsDatasetImpl)DataNodeTestUtils.getFSDataset(dn);
+    FsVolumeImpl vol=ds.getVolumes().get(0);
+    ExtendedBlock eb;
+    ReplicaInfo info;
+    List<Block> blockList=new ArrayList<Block>();
+    for (int i=1; i <= 63; i++) {
+      eb=new ExtendedBlock(BLOCKPOOL,i,1,1000 + i);
+      info=new FinalizedReplica(eb.getLocalBlock(),vol,vol.getCurrentDir().getParentFile());
+      ds.volumeMap.add(BLOCKPOOL,info);
+      info.getBlockFile().createNewFile();
+      info.getMetaFile().createNewFile();
+      blockList.add(info);
+    }
+    ds.invalidate(BLOCKPOOL,blockList.toArray(new Block[0]));
+    try {
+      Thread.sleep(1000);
+    }
+ catch (    InterruptedException e) {
+    }
+    assertTrue(ds.isDeletingBlock(BLOCKPOOL,blockList.get(0).getBlockId()));
+    blockList.clear();
+    eb=new ExtendedBlock(BLOCKPOOL,64,1,1064);
+    info=new FinalizedReplica(eb.getLocalBlock(),vol,vol.getCurrentDir().getParentFile());
+    ds.volumeMap.add(BLOCKPOOL,info);
+    info.getBlockFile().createNewFile();
+    info.getMetaFile().createNewFile();
+    blockList.add(info);
+    ds.invalidate(BLOCKPOOL,blockList.toArray(new Block[0]));
+    try {
+      Thread.sleep(1000);
+    }
+ catch (    InterruptedException e) {
+    }
+    assertFalse(ds.isDeletingBlock(BLOCKPOOL,blockList.get(0).getBlockId()));
+  }
+  finally {
+    cluster.shutdown();
+  }
+}
