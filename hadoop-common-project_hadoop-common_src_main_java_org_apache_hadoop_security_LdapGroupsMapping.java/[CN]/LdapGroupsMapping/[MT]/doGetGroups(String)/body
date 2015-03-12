@@ -5,11 +5,31 @@
   if (results.hasMoreElements()) {
     SearchResult result=results.nextElement();
     String userDn=result.getNameInNamespace();
-    NamingEnumeration<SearchResult> groupResults=ctx.search(baseDN,"(&" + groupSearchFilter + "("+ groupMemberAttr+ "={0}))",new Object[]{userDn},SEARCH_CONTROLS);
-    while (groupResults.hasMoreElements()) {
-      SearchResult groupResult=groupResults.nextElement();
-      Attribute groupName=groupResult.getAttributes().get(groupNameAttr);
-      groups.add(groupName.get().toString());
+    NamingEnumeration<SearchResult> groupResults=null;
+    if (isPosix) {
+      String gidNumber=null;
+      String uidNumber=null;
+      Attribute gidAttribute=result.getAttributes().get(POSIX_GIDNUMBER);
+      Attribute uidAttribute=result.getAttributes().get(POSIX_UIDNUMBER);
+      if (gidAttribute != null) {
+        gidNumber=gidAttribute.get().toString();
+      }
+      if (uidAttribute != null) {
+        uidNumber=uidAttribute.get().toString();
+      }
+      if (uidNumber != null && gidNumber != null) {
+        groupResults=ctx.search(baseDN,"(&" + groupSearchFilter + "(|("+ POSIX_GIDNUMBER+ "={0})"+ "("+ groupMemberAttr+ "={1})))",new Object[]{gidNumber,uidNumber},SEARCH_CONTROLS);
+      }
+    }
+ else {
+      groupResults=ctx.search(baseDN,"(&" + groupSearchFilter + "("+ groupMemberAttr+ "={0}))",new Object[]{userDn},SEARCH_CONTROLS);
+    }
+    if (groupResults != null) {
+      while (groupResults.hasMoreElements()) {
+        SearchResult groupResult=groupResults.nextElement();
+        Attribute groupName=groupResult.getAttributes().get(groupNameAttr);
+        groups.add(groupName.get().toString());
+      }
     }
   }
   return groups;
