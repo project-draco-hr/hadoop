@@ -1,23 +1,20 @@
 {
-  Set<String> volumeSet=new HashSet<>();
-  for (  StorageLocation sl : volumes) {
-    volumeSet.add(sl.getFile().getAbsolutePath());
+  for (  File vol : volumesToRemove) {
+    Preconditions.checkArgument(vol.isAbsolute(),String.format("%s is not absolute path.",vol.getPath()));
   }
   for (int idx=0; idx < dataStorage.getNumStorageDirs(); idx++) {
     Storage.StorageDirectory sd=dataStorage.getStorageDir(idx);
-    String volume=sd.getRoot().getAbsolutePath();
-    if (volumeSet.contains(volume)) {
-      LOG.info("Removing " + volume + " from FsDataset.");
+    final File absRoot=sd.getRoot().getAbsoluteFile();
+    if (volumesToRemove.contains(absRoot)) {
+      LOG.info("Removing " + absRoot + " from FsDataset.");
       asyncDiskService.removeVolume(sd.getCurrentDir());
-      this.volumes.removeVolume(sd.getRoot());
+      volumes.removeVolume(absRoot,clearFailure);
       for (      String bpid : volumeMap.getBlockPoolList()) {
-        List<Block> blocks=new ArrayList<Block>();
         for (Iterator<ReplicaInfo> it=volumeMap.replicas(bpid).iterator(); it.hasNext(); ) {
           ReplicaInfo block=it.next();
-          String absBasePath=new File(block.getVolume().getBasePath()).getAbsolutePath();
-          if (absBasePath.equals(volume)) {
+          final File absBasePath=new File(block.getVolume().getBasePath()).getAbsoluteFile();
+          if (absBasePath.equals(absRoot)) {
             invalidate(bpid,block);
-            blocks.add(block);
             it.remove();
           }
         }

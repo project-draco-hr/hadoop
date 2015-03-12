@@ -1,0 +1,29 @@
+{
+  startDFSCluster(1,2);
+  createFile(new Path("/test"),32,(short)2);
+  DataNode dn=cluster.getDataNodes().get(0);
+  final String oldDataDir=dn.getConf().get(DFS_DATANODE_DATA_DIR_KEY);
+  File dirToFail=new File(cluster.getDataDirectory(),"data1");
+  FsVolumeImpl failedVolume=getVolume(dn,dirToFail);
+  assertTrue("No FsVolume was found for " + dirToFail,failedVolume != null);
+  long used=failedVolume.getDfsUsed();
+  try {
+    assertTrue("Couldn't chmod local vol: " + dirToFail,FileUtil.setExecutable(dirToFail,false));
+    long lastDiskErrorCheck=dn.getLastDiskErrorCheck();
+    dn.checkDiskErrorAsync();
+    while (dn.getLastDiskErrorCheck() == lastDiskErrorCheck) {
+      Thread.sleep(100);
+    }
+    createFile(new Path("/test1"),32,(short)2);
+    assertEquals(used,failedVolume.getDfsUsed());
+  }
+  finally {
+    assertTrue("Couldn't restore executable for: " + dirToFail,FileUtil.setExecutable(dirToFail,true));
+  }
+  dn.reconfigurePropertyImpl(DFS_DATANODE_DATA_DIR_KEY,oldDataDir);
+  createFile(new Path("/test2"),32,(short)2);
+  FsVolumeImpl restoredVolume=getVolume(dn,dirToFail);
+  assertTrue(restoredVolume != null);
+  assertTrue(restoredVolume != failedVolume);
+  assertTrue(restoredVolume.getDfsUsed() > used);
+}

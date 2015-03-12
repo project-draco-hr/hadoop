@@ -1,6 +1,6 @@
 {
 synchronized (checkDirsMutex) {
-    ArrayList<FsVolumeImpl> removedVols=null;
+    Set<File> failedVols=null;
     final List<FsVolumeImpl> volumeList=getVolumes();
     for (Iterator<FsVolumeImpl> i=volumeList.iterator(); i.hasNext(); ) {
       final FsVolumeImpl fsv=i.next();
@@ -9,12 +9,12 @@ synchronized (checkDirsMutex) {
       }
  catch (      DiskErrorException e) {
         FsDatasetImpl.LOG.warn("Removing failed volume " + fsv + ": ",e);
-        if (removedVols == null) {
-          removedVols=new ArrayList<>(1);
+        if (failedVols == null) {
+          failedVols=new HashSet<>(1);
         }
-        removedVols.add(fsv);
-        removeVolume(fsv);
+        failedVols.add(new File(fsv.getBasePath()).getAbsoluteFile());
         addVolumeFailureInfo(fsv);
+        removeVolume(fsv);
       }
 catch (      ClosedChannelException e) {
         FsDatasetImpl.LOG.debug("Caught exception when obtaining " + "reference count on closed volume",e);
@@ -23,9 +23,9 @@ catch (      IOException e) {
         FsDatasetImpl.LOG.error("Unexpected IOException",e);
       }
     }
-    if (removedVols != null && removedVols.size() > 0) {
-      FsDatasetImpl.LOG.warn("Completed checkDirs. Removed " + removedVols.size() + " volumes. Current volumes: "+ this);
+    if (failedVols != null && failedVols.size() > 0) {
+      FsDatasetImpl.LOG.warn("Completed checkDirs. Found " + failedVols.size() + " failure volumes.");
     }
-    return removedVols;
+    return failedVols;
   }
 }
