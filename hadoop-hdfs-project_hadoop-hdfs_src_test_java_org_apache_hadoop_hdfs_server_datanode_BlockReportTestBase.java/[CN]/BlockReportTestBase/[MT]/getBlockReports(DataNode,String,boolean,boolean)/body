@@ -7,22 +7,33 @@
   for (  Map.Entry<DatanodeStorage,BlockListAsLongs> kvPair : perVolumeBlockLists.entrySet()) {
     DatanodeStorage dnStorage=kvPair.getKey();
     BlockListAsLongs blockList=kvPair.getValue();
-    for (int i=0; i < blockList.getNumberOfBlocks(); ++i) {
+    BlockListAsLongs.Builder builder=BlockListAsLongs.builder();
+    for (    BlockReportReplica block : blockList) {
       if (corruptOneBlockGs && !corruptedGs) {
-        blockList.corruptBlockGSForTesting(i,rand);
-        LOG.info("Corrupted the GS for block ID " + i);
+        long gsOld=block.getGenerationStamp();
+        long gsNew;
+        do {
+          gsNew=rand.nextInt();
+        }
+ while (gsNew == gsOld);
+        block.setGenerationStamp(gsNew);
+        LOG.info("Corrupted the GS for block ID " + block);
         corruptedGs=true;
       }
  else       if (corruptOneBlockLen && !corruptedLen) {
-        blockList.corruptBlockLengthForTesting(i,rand);
-        LOG.info("Corrupted the length for block ID " + i);
+        long lenOld=block.getNumBytes();
+        long lenNew;
+        do {
+          lenNew=rand.nextInt((int)lenOld - 1);
+        }
+ while (lenNew == lenOld);
+        block.setNumBytes(lenNew);
+        LOG.info("Corrupted the length for block ID " + block);
         corruptedLen=true;
       }
- else {
-        break;
-      }
+      builder.add(new BlockReportReplica(block));
     }
-    reports[reportIndex++]=new StorageBlockReport(dnStorage,blockList.getBlockListAsLongs());
+    reports[reportIndex++]=new StorageBlockReport(dnStorage,builder.build());
   }
   return reports;
 }
