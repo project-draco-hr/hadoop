@@ -2,10 +2,11 @@
   ShortCircuitCache cache=clientContext.getShortCircuitCache();
   final DataOutputStream out=new DataOutputStream(new BufferedOutputStream(peer.getOutputStream()));
   SlotId slotId=slot == null ? null : slot.getSlotId();
-  new Sender(out).requestShortCircuitFds(block,token,slotId,1);
+  new Sender(out).requestShortCircuitFds(block,token,slotId,1,true);
   DataInputStream in=new DataInputStream(peer.getInputStream());
   BlockOpResponseProto resp=BlockOpResponseProto.parseFrom(PBHelper.vintPrefixed(in));
   DomainSocket sock=peer.getDomainSocket();
+  failureInjector.injectRequestFileDescriptorsFailure();
 switch (resp.getStatus()) {
 case SUCCESS:
     byte buf[]=new byte[1];
@@ -14,7 +15,12 @@ sock.recvFileInputStreams(fis,buf,0,buf.length);
 ShortCircuitReplica replica=null;
 try {
 ExtendedBlockId key=new ExtendedBlockId(block.getBlockId(),block.getBlockPoolId());
+if (buf[0] == USE_RECEIPT_VERIFICATION.getNumber()) {
+LOG.trace("Sending receipt verification byte for slot " + slot);
+sock.getOutputStream().write(0);
+}
 replica=new ShortCircuitReplica(key,fis[0],fis[1],cache,Time.monotonicNow(),slot);
+return new ShortCircuitReplicaInfo(replica);
 }
  catch (IOException e) {
 LOG.warn(this + ": error creating ShortCircuitReplica.",e);
@@ -25,7 +31,6 @@ if (replica == null) {
 IOUtils.cleanup(DFSClient.LOG,fis[0],fis[1]);
 }
 }
-return new ShortCircuitReplicaInfo(replica);
 case ERROR_UNSUPPORTED:
 if (!resp.hasShortCircuitAccessVersion()) {
 LOG.warn("short-circuit read access is disabled for " + "DataNode " + datanode + ".  reason: "+ resp.getMessage());
