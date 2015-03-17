@@ -1,0 +1,31 @@
+{
+  Set<String> labelCanAccess;
+  if (null == nodeLabels || nodeLabels.isEmpty()) {
+    labelCanAccess=new HashSet<String>();
+    labelCanAccess.add(RMNodeLabelsManager.NO_LABEL);
+  }
+ else {
+    labelCanAccess=new HashSet<String>(accessibleLabels.contains(CommonNodeLabelsManager.ANY) ? nodeLabels : Sets.intersection(accessibleLabels,nodeLabels));
+  }
+  for (  String label : labelCanAccess) {
+    Resource newTotalResource=Resources.add(queueUsage.getUsed(label),nowRequired);
+    Resource currentLimitResource=getCurrentLimitResource(label,clusterResource,currentResourceLimits);
+    if (this.reservationsContinueLooking && label.equals(RMNodeLabelsManager.NO_LABEL) && Resources.greaterThan(resourceCalculator,clusterResource,resourceCouldBeUnreserved,Resources.none())) {
+      Resource newTotalWithoutReservedResource=Resources.subtract(newTotalResource,resourceCouldBeUnreserved);
+      if (Resources.lessThan(resourceCalculator,clusterResource,newTotalWithoutReservedResource,currentLimitResource)) {
+        if (LOG.isDebugEnabled()) {
+          LOG.debug("try to use reserved: " + getQueueName() + " usedResources: "+ queueUsage.getUsed()+ ", clusterResources: "+ clusterResource+ ", reservedResources: "+ resourceCouldBeUnreserved+ ", capacity-without-reserved: "+ newTotalWithoutReservedResource+ ", maxLimitCapacity: "+ currentLimitResource);
+        }
+        return true;
+      }
+    }
+    if (Resources.greaterThan(resourceCalculator,clusterResource,newTotalResource,currentLimitResource)) {
+      return false;
+    }
+    if (LOG.isDebugEnabled()) {
+      LOG.debug(getQueueName() + "Check assign to queue, label=" + label+ " usedResources: "+ queueUsage.getUsed(label)+ " clusterResources: "+ clusterResource+ " currentUsedCapacity "+ Resources.divide(resourceCalculator,clusterResource,queueUsage.getUsed(label),labelManager.getResourceByLabel(label,clusterResource))+ " max-capacity: "+ queueCapacities.getAbsoluteMaximumCapacity(label)+ ")");
+    }
+    return true;
+  }
+  return false;
+}
