@@ -1,0 +1,25 @@
+{
+  final Path dir=new Path("/TestAppendOverTypeQuota");
+  final Path file=new Path(dir,"file");
+  dfs.mkdirs(dir);
+  dfs.setStoragePolicy(dir,HdfsConstants.ONESSD_STORAGE_POLICY_NAME);
+  DFSTestUtil.createFile(dfs,file,BLOCKSIZE / 2,REPLICATION,seed);
+  dfs.setQuotaByStorageType(dir,StorageType.SSD,1L);
+  final INodeDirectory dirNode=fsdir.getINode4Write(dir.toString()).asDirectory();
+  final long spaceUsed=dirNode.getDirectoryWithQuotaFeature().getSpaceConsumed().getStorageSpace();
+  try {
+    DFSTestUtil.appendFile(dfs,file,BLOCKSIZE);
+    Assert.fail("append didn't fail");
+  }
+ catch (  RemoteException e) {
+    assertTrue(e.getClassName().contains("QuotaByStorageTypeExceededException"));
+  }
+  INodeFile inode=fsdir.getINode(file.toString()).asFile();
+  Assert.assertNotNull(inode);
+  Assert.assertFalse("should not be UC",inode.isUnderConstruction());
+  Assert.assertNull("should not have a lease",cluster.getNamesystem().getLeaseManager().getLeaseByPath(file.toString()));
+  final long newSpaceUsed=dirNode.getDirectoryWithQuotaFeature().getSpaceConsumed().getStorageSpace();
+  assertEquals(spaceUsed,newSpaceUsed);
+  dfs.recoverLease(file);
+  cluster.restartNameNodes();
+}

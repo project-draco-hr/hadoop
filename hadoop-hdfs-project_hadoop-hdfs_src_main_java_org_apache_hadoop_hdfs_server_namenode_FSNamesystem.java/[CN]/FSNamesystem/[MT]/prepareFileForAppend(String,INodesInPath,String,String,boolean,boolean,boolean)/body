@@ -1,14 +1,21 @@
 {
   final INodeFile file=iip.getLastINode().asFile();
+  final QuotaCounts delta=verifyQuotaForUCBlock(file,iip);
   file.recordModification(iip.getLatestSnapshotId());
   file.toUnderConstruction(leaseHolder,clientMachine);
   leaseManager.addLease(file.getFileUnderConstructionFeature().getClientName(),src);
   LocatedBlock ret=null;
   if (!newBlock) {
     ret=blockManager.convertLastBlockToUnderConstruction(file,0);
-    if (ret != null) {
-      final long diff=file.getPreferredBlockSize() - ret.getBlockSize();
-      dir.updateSpaceConsumed(iip,0,diff,file.getBlockReplication());
+    if (ret != null && delta != null) {
+      Preconditions.checkState(delta.getStorageSpace() >= 0,"appending to a block with size larger than the preferred block size");
+      dir.writeLock();
+      try {
+        dir.updateCountNoQuotaCheck(iip,iip.length() - 1,delta);
+      }
+  finally {
+        dir.writeUnlock();
+      }
     }
   }
  else {
