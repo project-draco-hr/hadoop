@@ -1,0 +1,36 @@
+{
+  LOG.info("Starting upgrade of storage directory " + sd.getRoot());
+  File curDir=sd.getCurrentDir();
+  File prevDir=sd.getPreviousDir();
+  final File tmpDir=sd.getPreviousTmp();
+  Preconditions.checkState(curDir.exists(),"Current directory must exist for preupgrade.");
+  Preconditions.checkState(!prevDir.exists(),"Previous directory must not exist for preupgrade.");
+  Preconditions.checkState(!tmpDir.exists(),"Previous.tmp directory must not exist for preupgrade." + "Consider restarting for recovery.");
+  NNStorage.rename(curDir,tmpDir);
+  if (!curDir.mkdir()) {
+    throw new IOException("Cannot create directory " + curDir);
+  }
+  List<String> fileNameList=IOUtils.listDirectory(tmpDir,new FilenameFilter(){
+    @Override public boolean accept(    File dir,    String name){
+      return dir.equals(tmpDir) && name.startsWith(NNStorage.NameNodeFile.EDITS.getName());
+    }
+  }
+);
+  for (  String s : fileNameList) {
+    File prevFile=new File(tmpDir,s);
+    Preconditions.checkState(prevFile.canRead(),"Edits log file " + s + " is not readable.");
+    File newFile=new File(curDir,prevFile.getName());
+    Preconditions.checkState(newFile.createNewFile(),"Cannot create new edits log file in " + curDir);
+    EditLogFileInputStream in=new EditLogFileInputStream(prevFile);
+    EditLogFileOutputStream out=new EditLogFileOutputStream(conf,newFile,512 * 1024);
+    FSEditLogOp logOp=in.nextValidOp();
+    while (logOp != null) {
+      out.write(logOp);
+      logOp=in.nextOp();
+    }
+    out.setReadyToFlush();
+    out.flushAndSync(true);
+    out.close();
+    in.close();
+  }
+}
