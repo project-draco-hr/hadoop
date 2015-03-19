@@ -1,29 +1,35 @@
 {
-  if (DFSClient.LOG.isDebugEnabled()) {
-    DFSClient.LOG.debug("Waiting for ack for: " + seqno);
-  }
-  long begin=Time.monotonicNow();
+  TraceScope scope=Trace.startSpan("waitForAckedSeqno",Sampler.NEVER);
   try {
+    if (DFSClient.LOG.isDebugEnabled()) {
+      DFSClient.LOG.debug("Waiting for ack for: " + seqno);
+    }
+    long begin=Time.monotonicNow();
+    try {
 synchronized (dataQueue) {
-      while (!isClosed()) {
-        checkClosed();
-        if (lastAckedSeqno >= seqno) {
-          break;
-        }
-        try {
-          dataQueue.wait(1000);
-        }
- catch (        InterruptedException ie) {
-          throw new InterruptedIOException("Interrupted while waiting for data to be acknowledged by pipeline");
+        while (!isClosed()) {
+          checkClosed();
+          if (lastAckedSeqno >= seqno) {
+            break;
+          }
+          try {
+            dataQueue.wait(1000);
+          }
+ catch (          InterruptedException ie) {
+            throw new InterruptedIOException("Interrupted while waiting for data to be acknowledged by pipeline");
+          }
         }
       }
+      checkClosed();
     }
-    checkClosed();
+ catch (    ClosedChannelException e) {
+    }
+    long duration=Time.monotonicNow() - begin;
+    if (duration > dfsclientSlowLogThresholdMs) {
+      DFSClient.LOG.warn("Slow waitForAckedSeqno took " + duration + "ms (threshold="+ dfsclientSlowLogThresholdMs+ "ms)");
+    }
   }
- catch (  ClosedChannelException e) {
-  }
-  long duration=Time.monotonicNow() - begin;
-  if (duration > dfsclientSlowLogThresholdMs) {
-    DFSClient.LOG.warn("Slow waitForAckedSeqno took " + duration + "ms (threshold="+ dfsclientSlowLogThresholdMs+ "ms)");
+  finally {
+    scope.close();
   }
 }
