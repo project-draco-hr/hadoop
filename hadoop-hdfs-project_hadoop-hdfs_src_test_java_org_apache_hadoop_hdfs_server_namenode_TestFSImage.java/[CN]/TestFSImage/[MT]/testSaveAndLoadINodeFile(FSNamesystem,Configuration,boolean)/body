@@ -1,0 +1,63 @@
+{
+  long id=123456789;
+  byte[] name="testSaveAndLoadInodeFile_testfile".getBytes();
+  PermissionStatus permissionStatus=new PermissionStatus("testuser_a","testuser_groups",new FsPermission((short)0x755));
+  long mtime=1426222916 - 3600;
+  long atime=1426222916;
+  BlockInfoContiguous[] blks=new BlockInfoContiguous[0];
+  short replication=3;
+  long preferredBlockSize=128 * 1024 * 1024;
+  byte storagePolicyID=HdfsConstants.EC_STORAGE_POLICY_ID;
+  INodeFile file=new INodeFile(id,name,permissionStatus,mtime,atime,blks,replication,preferredBlockSize,storagePolicyID);
+  ByteArrayOutputStream bs=new ByteArrayOutputStream();
+  file.addStripedBlocksFeature();
+  BlockInfoStriped[] stripedBlks=new BlockInfoStriped[3];
+  long stripedBlkId=10000001;
+  long timestamp=mtime + 3600;
+  for (int i=0; i < stripedBlks.length; i++) {
+    stripedBlks[i]=new BlockInfoStriped(new Block(stripedBlkId + i,preferredBlockSize,timestamp),(short)6,(short)3);
+    file.getStripedBlocksFeature().addBlock(stripedBlks[i]);
+  }
+  final String client="testClient";
+  final String clientMachine="testClientMachine";
+  final String path="testUnderConstructionPath";
+  DataOutput out=new DataOutputStream(bs);
+  if (isUC) {
+    file.toUnderConstruction(client,clientMachine);
+    FSImageSerialization.writeINodeUnderConstruction((DataOutputStream)out,file,path);
+  }
+ else {
+    FSImageSerialization.writeINodeFile(file,out,false);
+  }
+  DataInput in=new DataInputStream(new ByteArrayInputStream(bs.toByteArray()));
+  INodeFile fileByLoaded;
+  if (isUC) {
+    fileByLoaded=FSImageSerialization.readINodeUnderConstruction(in,fsn,fsn.getFSImage().getLayoutVersion());
+  }
+ else {
+    fileByLoaded=(INodeFile)new FSImageFormat.Loader(conf,fsn).loadINodeWithLocalName(false,in,false);
+  }
+  assertEquals(id,fileByLoaded.getId());
+  assertArrayEquals(isUC ? path.getBytes() : name,fileByLoaded.getLocalName().getBytes());
+  assertEquals(permissionStatus.getUserName(),fileByLoaded.getPermissionStatus().getUserName());
+  assertEquals(permissionStatus.getGroupName(),fileByLoaded.getPermissionStatus().getGroupName());
+  assertEquals(permissionStatus.getPermission(),fileByLoaded.getPermissionStatus().getPermission());
+  assertEquals(mtime,fileByLoaded.getModificationTime());
+  assertEquals(isUC ? mtime : atime,fileByLoaded.getAccessTime());
+  assertEquals(0,fileByLoaded.getContiguousBlocks().length);
+  assertEquals(0,fileByLoaded.getBlockReplication());
+  assertEquals(preferredBlockSize,fileByLoaded.getPreferredBlockSize());
+  BlockInfoStriped[] stripedBlksByLoaded=fileByLoaded.getStripedBlocksFeature().getBlocks();
+  assertEquals(3,stripedBlksByLoaded.length);
+  for (int i=0; i < 3; i++) {
+    assertEquals(stripedBlks[i].getBlockId(),stripedBlksByLoaded[i].getBlockId());
+    assertEquals(stripedBlks[i].getNumBytes(),stripedBlksByLoaded[i].getNumBytes());
+    assertEquals(stripedBlks[i].getGenerationStamp(),stripedBlksByLoaded[i].getGenerationStamp());
+    assertEquals(stripedBlks[i].getDataBlockNum(),stripedBlksByLoaded[i].getDataBlockNum());
+    assertEquals(stripedBlks[i].getParityBlockNum(),stripedBlksByLoaded[i].getParityBlockNum());
+  }
+  if (isUC) {
+    assertEquals(client,fileByLoaded.getFileUnderConstructionFeature().getClientName());
+    assertEquals(clientMachine,fileByLoaded.getFileUnderConstructionFeature().getClientMachine());
+  }
+}
