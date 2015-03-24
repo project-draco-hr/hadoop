@@ -1,0 +1,43 @@
+{
+  boolean foundMatch=false;
+  if (getUser().equals(inode.getUserName())) {
+    if (mode.getUserAction().implies(access)) {
+      return;
+    }
+    foundMatch=true;
+  }
+  if (!foundMatch) {
+    for (int pos=0, entry; pos < aclFeature.getEntriesSize(); pos++) {
+      entry=aclFeature.getEntryAt(pos);
+      if (AclEntryStatusFormat.getScope(entry) == AclEntryScope.DEFAULT) {
+        break;
+      }
+      AclEntryType type=AclEntryStatusFormat.getType(entry);
+      String name=AclEntryStatusFormat.getName(entry);
+      if (type == AclEntryType.USER) {
+        if (getUser().equals(name)) {
+          FsAction masked=AclEntryStatusFormat.getPermission(entry).and(mode.getGroupAction());
+          if (masked.implies(access)) {
+            return;
+          }
+          foundMatch=true;
+          break;
+        }
+      }
+ else       if (type == AclEntryType.GROUP) {
+        String group=name == null ? inode.getGroupName() : name;
+        if (getGroups().contains(group)) {
+          FsAction masked=AclEntryStatusFormat.getPermission(entry).and(mode.getGroupAction());
+          if (masked.implies(access)) {
+            return;
+          }
+          foundMatch=true;
+        }
+      }
+    }
+  }
+  if (!foundMatch && mode.getOtherAction().implies(access)) {
+    return;
+  }
+  throw new AccessControlException(toAccessControlString(inode,path,access,mode));
+}

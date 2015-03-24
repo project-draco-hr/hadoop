@@ -3,29 +3,17 @@
     LOG.debug("ACCESS CHECK: " + this + ", doCheckOwner="+ doCheckOwner+ ", ancestorAccess="+ ancestorAccess+ ", parentAccess="+ parentAccess+ ", access="+ access+ ", subAccess="+ subAccess+ ", ignoreEmptyDir="+ ignoreEmptyDir);
   }
   final int snapshotId=inodesInPath.getPathSnapshotId();
-  final int length=inodesInPath.length();
-  final INode last=length > 0 ? inodesInPath.getLastINode() : null;
-  final INode parent=length > 1 ? inodesInPath.getINode(-2) : null;
-  checkTraverse(inodesInPath,snapshotId);
-  if (parentAccess != null && parentAccess.implies(FsAction.WRITE) && length > 1 && last != null) {
-    checkStickyBit(parent,last,snapshotId);
+  final INode[] inodes=inodesInPath.getINodesArray();
+  final INodeAttributes[] inodeAttrs=new INodeAttributes[inodes.length];
+  final byte[][] pathByNameArr=new byte[inodes.length][];
+  for (int i=0; i < inodes.length && inodes[i] != null; i++) {
+    if (inodes[i] != null) {
+      pathByNameArr[i]=inodes[i].getLocalNameBytes();
+      inodeAttrs[i]=getINodeAttrs(pathByNameArr,i,inodes[i],snapshotId);
+    }
   }
-  if (ancestorAccess != null && length > 1) {
-    List<INode> inodes=inodesInPath.getReadOnlyINodes();
-    INode ancestor=null;
-    for (int i=inodes.size() - 2; i >= 0 && (ancestor=inodes.get(i)) == null; i--)     ;
-    check(ancestor,snapshotId,ancestorAccess);
-  }
-  if (parentAccess != null && length > 1 && parent != null) {
-    check(parent,snapshotId,parentAccess);
-  }
-  if (access != null) {
-    check(last,snapshotId,access);
-  }
-  if (subAccess != null) {
-    checkSubAccess(last,snapshotId,subAccess,ignoreEmptyDir);
-  }
-  if (doCheckOwner) {
-    checkOwner(last,snapshotId);
-  }
+  String path=inodesInPath.getPath();
+  int ancestorIndex=inodes.length - 2;
+  AccessControlEnforcer enforcer=getAttributesProvider().getExternalAccessControlEnforcer(this);
+  enforcer.checkPermission(fsOwner,supergroup,callerUgi,inodeAttrs,inodes,pathByNameArr,snapshotId,path,ancestorIndex,doCheckOwner,ancestorAccess,parentAccess,access,subAccess,ignoreEmptyDir);
 }
