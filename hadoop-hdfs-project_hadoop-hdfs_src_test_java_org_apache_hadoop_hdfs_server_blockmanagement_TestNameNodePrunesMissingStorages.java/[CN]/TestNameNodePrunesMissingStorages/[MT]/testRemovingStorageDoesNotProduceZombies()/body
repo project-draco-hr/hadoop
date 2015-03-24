@@ -1,0 +1,88 @@
+{
+  Configuration conf=new HdfsConfiguration();
+  conf.setInt(DFSConfigKeys.DFS_DATANODE_FAILED_VOLUMES_TOLERATED_KEY,1);
+  final int NUM_STORAGES_PER_DN=2;
+  final MiniDFSCluster cluster=new MiniDFSCluster.Builder(conf).numDataNodes(3).storagesPerDatanode(NUM_STORAGES_PER_DN).build();
+  try {
+    cluster.waitActive();
+    for (    DataNode dn : cluster.getDataNodes()) {
+      assertEquals(NUM_STORAGES_PER_DN,cluster.getNamesystem().getBlockManager().getDatanodeManager().getDatanode(dn.getDatanodeId()).getStorageInfos().length);
+    }
+    final Path TEST_PATH=new Path("/foo1");
+    DistributedFileSystem fs=cluster.getFileSystem();
+    DFSTestUtil.createFile(fs,TEST_PATH,1024,(short)3,0xcafecafe);
+    for (    DataNode dn : cluster.getDataNodes()) {
+      DataNodeTestUtils.triggerBlockReport(dn);
+    }
+    ExtendedBlock block=DFSTestUtil.getFirstBlock(fs,new Path("/foo1"));
+    cluster.getNamesystem().writeLock();
+    final String storageIdToRemove;
+    String datanodeUuid;
+    try {
+      Iterator<DatanodeStorageInfo> storageInfoIter=cluster.getNamesystem().getBlockManager().getStorages(block.getLocalBlock()).iterator();
+      assertTrue(storageInfoIter.hasNext());
+      DatanodeStorageInfo info=storageInfoIter.next();
+      storageIdToRemove=info.getStorageID();
+      datanodeUuid=info.getDatanodeDescriptor().getDatanodeUuid();
+    }
+  finally {
+      cluster.getNamesystem().writeUnlock();
+    }
+    final DataNode datanodeToRemoveStorageFrom;
+    int datanodeToRemoveStorageFromIdx=0;
+    while (true) {
+      if (datanodeToRemoveStorageFromIdx >= cluster.getDataNodes().size()) {
+        Assert.fail("failed to find datanode with uuid " + datanodeUuid);
+        datanodeToRemoveStorageFrom=null;
+        break;
+      }
+      DataNode dn=cluster.getDataNodes().get(datanodeToRemoveStorageFromIdx);
+      if (dn.getDatanodeUuid().equals(datanodeUuid)) {
+        datanodeToRemoveStorageFrom=dn;
+        break;
+      }
+      datanodeToRemoveStorageFromIdx++;
+    }
+    List<? extends FsVolumeSpi> volumes=datanodeToRemoveStorageFrom.getFSDataset().getVolumes();
+    assertEquals(NUM_STORAGES_PER_DN,volumes.size());
+    String volumeDirectoryToRemove=null;
+    for (    FsVolumeSpi volume : volumes) {
+      if (volume.getStorageID().equals(storageIdToRemove)) {
+        volumeDirectoryToRemove=volume.getBasePath();
+      }
+    }
+    assertNotNull(volumeDirectoryToRemove);
+    datanodeToRemoveStorageFrom.shutdown();
+    FileUtil.fullyDelete(new File(volumeDirectoryToRemove));
+    FileOutputStream fos=new FileOutputStream(volumeDirectoryToRemove);
+    try {
+      fos.write(1);
+    }
+  finally {
+      fos.close();
+    }
+    cluster.restartDataNode(datanodeToRemoveStorageFromIdx);
+    LOG.info("waiting for the datanode to remove " + storageIdToRemove);
+    GenericTestUtils.waitFor(new Supplier<Boolean>(){
+      @Override public Boolean get(){
+        final DatanodeDescriptor dnDescriptor=cluster.getNamesystem().getBlockManager().getDatanodeManager().getDatanode(datanodeToRemoveStorageFrom.getDatanodeUuid());
+        assertNotNull(dnDescriptor);
+        DatanodeStorageInfo[] infos=dnDescriptor.getStorageInfos();
+        for (        DatanodeStorageInfo info : infos) {
+          if (info.getStorageID().equals(storageIdToRemove)) {
+            LOG.info("Still found storage " + storageIdToRemove + " on "+ info+ ".");
+            return false;
+          }
+        }
+        assertEquals(NUM_STORAGES_PER_DN - 1,infos.length);
+        return true;
+      }
+    }
+,10,30000);
+  }
+  finally {
+    if (cluster != null) {
+      cluster.shutdown();
+    }
+  }
+}
