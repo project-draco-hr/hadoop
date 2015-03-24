@@ -8,33 +8,35 @@
     throw new IOException("writeChunk() checksum size is supposed to be " + getChecksumSize() + " but found to be "+ cklen);
   }
   if (currentPacket == null) {
-    currentPacket=createPacket(packetSize,chunksPerPacket,bytesCurBlock,currentSeqno++,false);
+    currentPacket=createPacket(packetSize,chunksPerPacket,streamer.getBytesCurBlock(),streamer.getAndIncCurrentSeqno(),false);
     if (DFSClient.LOG.isDebugEnabled()) {
-      DFSClient.LOG.debug("DFSClient writeChunk allocating new packet seqno=" + currentPacket.getSeqno() + ", src="+ src+ ", packetSize="+ packetSize+ ", chunksPerPacket="+ chunksPerPacket+ ", bytesCurBlock="+ bytesCurBlock);
+      DFSClient.LOG.debug("DFSClient writeChunk allocating new packet seqno=" + currentPacket.getSeqno() + ", src="+ src+ ", packetSize="+ packetSize+ ", chunksPerPacket="+ chunksPerPacket+ ", bytesCurBlock="+ streamer.getBytesCurBlock());
     }
   }
   currentPacket.writeChecksum(checksum,ckoff,cklen);
   currentPacket.writeData(b,offset,len);
   currentPacket.incNumChunks();
-  bytesCurBlock+=len;
-  if (currentPacket.getNumChunks() == currentPacket.getMaxChunks() || bytesCurBlock == blockSize) {
+  streamer.incBytesCurBlock(len);
+  if (currentPacket.getNumChunks() == currentPacket.getMaxChunks() || streamer.getBytesCurBlock() == blockSize) {
     if (DFSClient.LOG.isDebugEnabled()) {
-      DFSClient.LOG.debug("DFSClient writeChunk packet full seqno=" + currentPacket.getSeqno() + ", src="+ src+ ", bytesCurBlock="+ bytesCurBlock+ ", blockSize="+ blockSize+ ", appendChunk="+ appendChunk);
+      DFSClient.LOG.debug("DFSClient writeChunk packet full seqno=" + currentPacket.getSeqno() + ", src="+ src+ ", bytesCurBlock="+ streamer.getBytesCurBlock()+ ", blockSize="+ blockSize+ ", appendChunk="+ streamer.getAppendChunk());
     }
-    waitAndQueueCurrentPacket();
-    if (appendChunk && bytesCurBlock % bytesPerChecksum == 0) {
-      appendChunk=false;
+    streamer.waitAndQueuePacket(currentPacket);
+    currentPacket=null;
+    if (streamer.getAppendChunk() && streamer.getBytesCurBlock() % bytesPerChecksum == 0) {
+      streamer.setAppendChunk(false);
       resetChecksumBufSize();
     }
-    if (!appendChunk) {
-      int psize=Math.min((int)(blockSize - bytesCurBlock),dfsClient.getConf().writePacketSize);
+    if (!streamer.getAppendChunk()) {
+      int psize=Math.min((int)(blockSize - streamer.getBytesCurBlock()),dfsClient.getConf().writePacketSize);
       computePacketChunkSize(psize,bytesPerChecksum);
     }
-    if (bytesCurBlock == blockSize) {
-      currentPacket=createPacket(0,0,bytesCurBlock,currentSeqno++,true);
+    if (streamer.getBytesCurBlock() == blockSize) {
+      currentPacket=createPacket(0,0,streamer.getBytesCurBlock(),streamer.getAndIncCurrentSeqno(),true);
       currentPacket.setSyncBlock(shouldSyncBlock);
-      waitAndQueueCurrentPacket();
-      bytesCurBlock=0;
+      streamer.waitAndQueuePacket(currentPacket);
+      currentPacket=null;
+      streamer.setBytesCurBlock(0);
       lastFlushOffset=0;
     }
   }

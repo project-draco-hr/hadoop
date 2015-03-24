@@ -1,0 +1,35 @@
+{
+synchronized (dataQueue) {
+    try {
+      boolean firstWait=true;
+      try {
+        while (!streamerClosed && dataQueue.size() + ackQueue.size() > dfsClient.getConf().writeMaxPackets) {
+          if (firstWait) {
+            Span span=Trace.currentSpan();
+            if (span != null) {
+              span.addTimelineAnnotation("dataQueue.wait");
+            }
+            firstWait=false;
+          }
+          try {
+            dataQueue.wait();
+          }
+ catch (          InterruptedException e) {
+            Thread.currentThread().interrupt();
+            break;
+          }
+        }
+      }
+  finally {
+        Span span=Trace.currentSpan();
+        if ((span != null) && (!firstWait)) {
+          span.addTimelineAnnotation("end.wait");
+        }
+      }
+      checkClosed();
+      queuePacket(packet);
+    }
+ catch (    ClosedChannelException e) {
+    }
+  }
+}

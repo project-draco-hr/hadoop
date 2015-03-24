@@ -1,0 +1,36 @@
+{
+  LocatedBlock lb=null;
+  DatanodeInfo[] nodes=null;
+  StorageType[] storageTypes=null;
+  int count=dfsClient.getConf().nBlockWriteRetry;
+  boolean success=false;
+  ExtendedBlock oldBlock=block;
+  do {
+    hasError=false;
+    lastException.set(null);
+    errorIndex=-1;
+    success=false;
+    DatanodeInfo[] excluded=excludedNodes.getAllPresent(excludedNodes.asMap().keySet()).keySet().toArray(new DatanodeInfo[0]);
+    block=oldBlock;
+    lb=locateFollowingBlock(excluded.length > 0 ? excluded : null);
+    block=lb.getBlock();
+    block.setNumBytes(0);
+    bytesSent=0;
+    accessToken=lb.getBlockToken();
+    nodes=lb.getLocations();
+    storageTypes=lb.getStorageTypes();
+    success=createBlockOutputStream(nodes,storageTypes,0L,false);
+    if (!success) {
+      DFSClient.LOG.info("Abandoning " + block);
+      dfsClient.namenode.abandonBlock(block,stat.getFileId(),src,dfsClient.clientName);
+      block=null;
+      DFSClient.LOG.info("Excluding datanode " + nodes[errorIndex]);
+      excludedNodes.put(nodes[errorIndex],nodes[errorIndex]);
+    }
+  }
+ while (!success && --count >= 0);
+  if (!success) {
+    throw new IOException("Unable to create new block.");
+  }
+  return lb;
+}
