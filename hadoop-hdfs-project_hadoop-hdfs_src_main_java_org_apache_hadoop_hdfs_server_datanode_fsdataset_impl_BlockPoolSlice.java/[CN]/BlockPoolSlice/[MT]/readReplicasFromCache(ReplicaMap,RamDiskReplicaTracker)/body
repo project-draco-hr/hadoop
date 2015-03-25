@@ -1,0 +1,53 @@
+{
+  ReplicaMap tmpReplicaMap=new ReplicaMap(this);
+  File replicaFile=new File(currentDir,REPLICA_CACHE_FILE);
+  if (!replicaFile.exists()) {
+    LOG.info("Replica Cache file: " + replicaFile.getPath() + " doesn't exist ");
+    return false;
+  }
+  long fileLastModifiedTime=replicaFile.lastModified();
+  if (System.currentTimeMillis() > fileLastModifiedTime + replicaCacheExpiry) {
+    LOG.info("Replica Cache file: " + replicaFile.getPath() + " has gone stale");
+    if (!replicaFile.delete()) {
+      LOG.info("Replica Cache file: " + replicaFile.getPath() + " cannot be deleted");
+    }
+    return false;
+  }
+  FileInputStream inputStream=null;
+  try {
+    inputStream=new FileInputStream(replicaFile);
+    BlockListAsLongs blocksList=BlockListAsLongs.readFrom(inputStream);
+    Iterator<BlockReportReplica> iterator=blocksList.iterator();
+    while (iterator.hasNext()) {
+      BlockReportReplica replica=iterator.next();
+switch (replica.getState()) {
+case FINALIZED:
+        addReplicaToReplicasMap(replica,tmpReplicaMap,lazyWriteReplicaMap,true);
+      break;
+case RUR:
+case RBW:
+case RWR:
+    addReplicaToReplicasMap(replica,tmpReplicaMap,lazyWriteReplicaMap,false);
+  break;
+default :
+break;
+}
+}
+inputStream.close();
+for (ReplicaInfo info : tmpReplicaMap.replicas(bpid)) {
+volumeMap.add(bpid,info);
+}
+LOG.info("Successfully read replica from cache file : " + replicaFile.getPath());
+return true;
+}
+ catch (Exception e) {
+LOG.info("Exception occured while reading the replicas cache file: " + replicaFile.getPath(),e);
+return false;
+}
+ finally {
+if (!replicaFile.delete()) {
+LOG.info("Failed to delete replica cache file: " + replicaFile.getPath());
+}
+IOUtils.closeStream(inputStream);
+}
+}

@@ -1,0 +1,25 @@
+{
+  for (  String bpid : bpidList) {
+    for (    ReplicaInfo info : newReplicaMap.replicas(bpid)) {
+      assertNotNull("Volume map before restart didn't contain the " + "blockpool: " + bpid,oldReplicaMap.replicas(bpid));
+      ReplicaInfo oldReplicaInfo=oldReplicaMap.get(bpid,info.getBlockId());
+      assertNotNull("Old Replica Map didnt't contain block with blockId: " + info.getBlockId(),oldReplicaInfo);
+      ReplicaState oldState=oldReplicaInfo.getState();
+      if (info.getState() == ReplicaState.RWR) {
+        if (oldState == ReplicaState.RWR || oldState == ReplicaState.RBW || oldState == ReplicaState.RUR) {
+          oldReplicaMap.remove(bpid,oldReplicaInfo);
+        }
+      }
+ else       if (info.getState() == ReplicaState.FINALIZED && oldState == ReplicaState.FINALIZED) {
+        oldReplicaMap.remove(bpid,oldReplicaInfo);
+      }
+    }
+  }
+  for (  String bpid : bpidList) {
+    for (    ReplicaInfo replicaInfo : oldReplicaMap.replicas(bpid)) {
+      if (replicaInfo.getState() != ReplicaState.TEMPORARY) {
+        Assert.fail("After datanode restart we lost the block with blockId: " + replicaInfo.getBlockId());
+      }
+    }
+  }
+}
