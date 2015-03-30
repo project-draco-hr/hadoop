@@ -1,0 +1,37 @@
+{
+  String name=config.getProperty(SIGNER_SECRET_PROVIDER,"file");
+  long validity=Long.parseLong(config.getProperty(AUTH_TOKEN_VALIDITY,"36000")) * 1000;
+  if (!disallowFallbackToRandomSecretProvider && "file".equals(name) && config.getProperty(SIGNATURE_SECRET_FILE) == null) {
+    name="random";
+  }
+  SignerSecretProvider provider;
+  if ("file".equals(name)) {
+    provider=new FileSignerSecretProvider();
+    try {
+      provider.init(config,ctx,validity);
+    }
+ catch (    Exception e) {
+      if (!disallowFallbackToRandomSecretProvider) {
+        LOG.info("Unable to initialize FileSignerSecretProvider, " + "falling back to use random secrets.");
+        provider=new RandomSignerSecretProvider();
+        provider.init(config,ctx,validity);
+      }
+ else {
+        throw e;
+      }
+    }
+  }
+ else   if ("random".equals(name)) {
+    provider=new RandomSignerSecretProvider();
+    provider.init(config,ctx,validity);
+  }
+ else   if ("zookeeper".equals(name)) {
+    provider=new ZKSignerSecretProvider();
+    provider.init(config,ctx,validity);
+  }
+ else {
+    provider=(SignerSecretProvider)Thread.currentThread().getContextClassLoader().loadClass(name).newInstance();
+    provider.init(config,ctx,validity);
+  }
+  return provider;
+}
