@@ -1,0 +1,43 @@
+{
+  final ResourceTrackerForLabels resourceTracker=new ResourceTrackerForLabels();
+  nm=new NodeManager(){
+    @Override protected NodeLabelsProvider createNodeLabelsProvider(    Configuration conf) throws IOException {
+      return dummyLabelsProviderRef;
+    }
+    @Override protected NodeStatusUpdater createNodeStatusUpdater(    Context context,    Dispatcher dispatcher,    NodeHealthCheckerService healthChecker,    NodeLabelsProvider labelsProvider){
+      return new NodeStatusUpdaterImpl(context,dispatcher,healthChecker,metrics,labelsProvider){
+        @Override protected ResourceTracker getRMClient(){
+          return resourceTracker;
+        }
+        @Override protected void stopRMProxy(){
+          return;
+        }
+      }
+;
+    }
+  }
+;
+  YarnConfiguration conf=createNMConfigForDistributeNodeLabels();
+  nm.init(conf);
+  resourceTracker.resetNMHeartbeatReceiveFlag();
+  nm.start();
+  resourceTracker.waitTillRegister();
+  assertCollectionEquals(resourceTracker.labels,dummyLabelsProviderRef.getNodeLabels());
+  resourceTracker.waitTillHeartbeat();
+  resourceTracker.resetNMHeartbeatReceiveFlag();
+  dummyLabelsProviderRef.setNodeLabels(toSet("P"));
+  nm.getNodeStatusUpdater().sendOutofBandHeartBeat();
+  resourceTracker.waitTillHeartbeat();
+  assertCollectionEquals(resourceTracker.labels,dummyLabelsProviderRef.getNodeLabels());
+  resourceTracker.resetNMHeartbeatReceiveFlag();
+  nm.getNodeStatusUpdater().sendOutofBandHeartBeat();
+  resourceTracker.waitTillHeartbeat();
+  resourceTracker.resetNMHeartbeatReceiveFlag();
+  assertNull("If no change in labels then null should be sent as part of request",resourceTracker.labels);
+  dummyLabelsProviderRef.setNodeLabels(null);
+  nm.getNodeStatusUpdater().sendOutofBandHeartBeat();
+  resourceTracker.waitTillHeartbeat();
+  assertTrue("If provider sends null then empty labels should be sent",resourceTracker.labels.isEmpty());
+  resourceTracker.resetNMHeartbeatReceiveFlag();
+  nm.stop();
+}

@@ -1,6 +1,11 @@
 {
   List<NMContainerStatus> containerReports=getNMContainerStatuses();
-  RegisterNodeManagerRequest request=RegisterNodeManagerRequest.newInstance(nodeId,httpPort,totalResource,nodeManagerVersionId,containerReports,getRunningApplications());
+  Set<String> nodeLabels=null;
+  if (hasNodeLabelsProvider) {
+    nodeLabels=nodeLabelsProvider.getNodeLabels();
+    nodeLabels=(null == nodeLabels) ? CommonNodeLabelsManager.EMPTY_STRING_SET : nodeLabels;
+  }
+  RegisterNodeManagerRequest request=RegisterNodeManagerRequest.newInstance(nodeId,httpPort,totalResource,nodeManagerVersionId,containerReports,getRunningApplications(),nodeLabels);
   if (containerReports != null) {
     LOG.info("Registering with RM using containers :" + containerReports);
   }
@@ -8,7 +13,7 @@
   this.rmIdentifier=regNMResponse.getRMIdentifier();
   if (NodeAction.SHUTDOWN.equals(regNMResponse.getNodeAction())) {
     String message="Message from ResourceManager: " + regNMResponse.getDiagnosticsMessage();
-    throw new YarnRuntimeException("Recieved SHUTDOWN signal from Resourcemanager ,Registration of NodeManager failed, " + message);
+    throw new YarnRuntimeException("Recieved SHUTDOWN signal from Resourcemanager, Registration of NodeManager failed, " + message);
   }
   if (!minimumResourceManagerVersion.equals("NONE")) {
     if (minimumResourceManagerVersion.equals("EqualToNM")) {
@@ -32,7 +37,15 @@
   if (masterKey != null) {
     this.context.getNMTokenSecretManager().setMasterKey(masterKey);
   }
-  LOG.info("Registered with ResourceManager as " + this.nodeId + " with total resource of "+ this.totalResource);
+  StringBuilder successfullRegistrationMsg=new StringBuilder();
+  successfullRegistrationMsg.append("Registered with ResourceManager as ").append(this.nodeId).append(" with total resource of ").append(this.totalResource);
+  if (regNMResponse.getAreNodeLabelsAcceptedByRM()) {
+    successfullRegistrationMsg.append(" and with following Node label(s) : {").append(StringUtils.join(",",nodeLabels)).append("}");
+  }
+ else   if (hasNodeLabelsProvider) {
+    LOG.error(regNMResponse.getDiagnosticsMessage());
+  }
+  LOG.info(successfullRegistrationMsg);
   LOG.info("Notifying ContainerManager to unblock new container-requests");
   ((ContainerManagerImpl)this.context.getContainerManager()).setBlockNewContainerRequests(false);
 }
