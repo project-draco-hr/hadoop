@@ -1,19 +1,16 @@
 {
   containingNodes.clear();
   nodesContainingLiveReplicas.clear();
-  LinkedList<DatanodeDescriptor> srcNodes=new LinkedList<>();
+  List<DatanodeDescriptor> srcNodes=new ArrayList<>();
   int live=0;
   int decommissioned=0;
   int decommissioning=0;
   int corrupt=0;
   int excess=0;
-  missingBlockIndices.clear();
-  Set<Short> healthyIndices=new HashSet<>();
+  liveBlockIndices.clear();
+  final boolean isStriped=block.isStriped();
   Collection<DatanodeDescriptor> nodesCorrupt=corruptReplicas.getNodes(block);
   for (  DatanodeStorageInfo storage : blocksMap.getStorages(block)) {
-    if (block.isStriped()) {
-      healthyIndices.add((short)((BlockInfoStriped)block).getStorageBlockIndex(storage));
-    }
     final DatanodeDescriptor node=storage.getDatanodeDescriptor();
     LightWeightLinkedSet<BlockInfo> excessBlocks=excessReplicateMap.get(node.getDatanodeUuid());
     int countableReplica=storage.getState() == State.NORMAL ? 1 : 0;
@@ -41,22 +38,15 @@
     }
     if (excessBlocks != null && excessBlocks.contains(block))     continue;
     if (node.isDecommissioned())     continue;
-    if (srcNodes.size() < numSourceNodes) {
+    if (isStriped || srcNodes.isEmpty()) {
       srcNodes.add(node);
+      if (isStriped) {
+        liveBlockIndices.add((short)((BlockInfoStriped)block).getStorageBlockIndex(storage));
+      }
       continue;
     }
-    if (ThreadLocalRandom.current().nextBoolean()) {
-      int pos=ThreadLocalRandom.current().nextInt(numSourceNodes);
-      if (!srcNodes.get(pos).isDecommissionInProgress()) {
-        srcNodes.set(pos,node);
-      }
-    }
-  }
-  if (block.isStriped()) {
-    for (short i=0; i < HdfsConstants.NUM_DATA_BLOCKS + HdfsConstants.NUM_PARITY_BLOCKS; i++) {
-      if (!healthyIndices.contains(i)) {
-        missingBlockIndices.add(i);
-      }
+    if (!isStriped && ThreadLocalRandom.current().nextBoolean()) {
+      srcNodes.set(0,node);
     }
   }
   if (numReplicas != null)   numReplicas.initialize(live,decommissioned,decommissioning,corrupt,excess,0);
