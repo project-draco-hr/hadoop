@@ -1,0 +1,52 @@
+{
+  Configuration conf=new HdfsConfiguration();
+  MiniDFSCluster cluster=null;
+  try {
+    cluster=new MiniDFSCluster.Builder(conf).numDataNodes(9).build();
+    cluster.waitActive();
+    DistributedFileSystem fs=cluster.getFileSystem();
+    FSNamesystem fns=cluster.getNamesystem();
+    String testDir="/ec";
+    String testFile="testfile_001";
+    String testFilePath=testDir + "/" + testFile;
+    String clientName="testUser1";
+    String clientMachine="testMachine1";
+    long blkId=1;
+    long blkNumBytes=1024;
+    long timestamp=1426222918;
+    short blockNum=HdfsConstants.NUM_DATA_BLOCKS;
+    short parityNum=HdfsConstants.NUM_PARITY_BLOCKS;
+    fs.mkdir(new Path(testDir),new FsPermission("755"));
+    fs.setStoragePolicy(new Path(testDir),HdfsConstants.EC_STORAGE_POLICY_NAME);
+    Path p=new Path(testFilePath);
+    DFSTestUtil.createFile(fs,p,0,(short)1,1);
+    fns.enterSafeMode(false);
+    fns.saveNamespace(0,0);
+    fns.leaveSafeMode();
+    BlockInfoStriped stripedBlk=new BlockInfoStriped(new Block(blkId,blkNumBytes,timestamp),blockNum,parityNum);
+    INodeFile file=(INodeFile)fns.getFSDirectory().getINode(testFilePath);
+    file.toUnderConstruction(clientName,clientMachine);
+    file.getStripedBlocksFeature().addBlock(stripedBlk);
+    fns.getEditLog().logAddBlock(testFilePath,file);
+    file.toCompleteFile(System.currentTimeMillis());
+    cluster.restartNameNodes();
+    cluster.waitActive();
+    fns=cluster.getNamesystem();
+    INodeFile inodeLoaded=(INodeFile)fns.getFSDirectory().getINode(testFilePath);
+    assertTrue(inodeLoaded.isWithStripedBlocks());
+    BlockInfoStriped[] blks=(BlockInfoStriped[])inodeLoaded.getBlocks();
+    assertEquals(1,blks.length);
+    assertEquals(blkId,blks[0].getBlockId());
+    assertEquals(blkNumBytes,blks[0].getNumBytes());
+    assertEquals(timestamp,blks[0].getGenerationStamp());
+    assertEquals(blockNum,blks[0].getDataBlockNum());
+    assertEquals(parityNum,blks[0].getParityBlockNum());
+    cluster.shutdown();
+    cluster=null;
+  }
+  finally {
+    if (cluster != null) {
+      cluster.shutdown();
+    }
+  }
+}
