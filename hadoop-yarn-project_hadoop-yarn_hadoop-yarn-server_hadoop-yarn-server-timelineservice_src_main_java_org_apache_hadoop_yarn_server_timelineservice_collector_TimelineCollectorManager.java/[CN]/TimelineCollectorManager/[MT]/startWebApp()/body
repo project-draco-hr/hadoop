@@ -1,12 +1,10 @@
 {
   Configuration conf=getConfig();
-  String bindAddress=WebAppUtils.getWebAppBindURL(conf,YarnConfiguration.TIMELINE_SERVICE_BIND_HOST,WebAppUtils.getAHSWebAppURLWithoutScheme(conf));
-  this.timelineRestServerBindAddress=WebAppUtils.getResolvedAddress(NetUtils.createSocketAddr(bindAddress));
-  LOG.info("Instantiating the per-node collector webapp at " + timelineRestServerBindAddress);
+  String bindAddress=conf.get(YarnConfiguration.TIMELINE_SERVICE_BIND_HOST,YarnConfiguration.DEFAULT_TIMELINE_SERVICE_BIND_HOST) + ":0";
   try {
     Configuration confForInfoServer=new Configuration(conf);
     confForInfoServer.setInt(HttpServer2.HTTP_MAX_THREADS,10);
-    HttpServer2.Builder builder=new HttpServer2.Builder().setName("timeline").setConf(conf).addEndpoint(URI.create("http://" + bindAddress));
+    HttpServer2.Builder builder=new HttpServer2.Builder().setName("timeline").setConf(conf).addEndpoint(URI.create((YarnConfiguration.useHttps(conf) ? "https://" : "http://") + bindAddress));
     timelineRestServer=builder.build();
     HashMap<String,String> options=new HashMap<>();
     String username=conf.get(HADOOP_HTTP_STATIC_USER,DEFAULT_HADOOP_HTTP_STATIC_USER);
@@ -21,4 +19,6 @@
     LOG.error(msg,e);
     throw new YarnRuntimeException(msg,e);
   }
+  this.timelineRestServerBindAddress=WebAppUtils.getResolvedAddress(timelineRestServer.getConnectorAddress(0));
+  LOG.info("Instantiated the per-node collector webapp at " + timelineRestServerBindAddress);
 }
