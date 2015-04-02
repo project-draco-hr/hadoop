@@ -2,6 +2,15 @@
   if (LOG.isDebugEnabled()) {
     LOG.debug("Node offered to app: " + getName() + " reserved: "+ reserved);
   }
+  if (!isAmRunning() && !getUnmanagedAM()) {
+    List<ResourceRequest> ask=appSchedulingInfo.getAllResourceRequests();
+    if (ask.isEmpty() || !getQueue().canRunAppAM(ask.get(0).getCapability())) {
+      if (LOG.isDebugEnabled()) {
+        LOG.debug("Skipping allocation because maxAMShare limit would " + "be exceeded");
+      }
+      return Resources.none();
+    }
+  }
   Collection<Priority> prioritiesToTry=(reserved) ? Arrays.asList(node.getReservedContainer().getReservedPriority()) : getPriorities();
 synchronized (this) {
     for (    Priority priority : prioritiesToTry) {
@@ -9,14 +18,6 @@ synchronized (this) {
         continue;
       }
       addSchedulingOpportunity(priority);
-      if (getLiveContainers().size() == 0 && !getUnmanagedAM()) {
-        if (!getQueue().canRunAppAM(getAMResource())) {
-          if (LOG.isDebugEnabled()) {
-            LOG.debug("Skipping allocation because maxAMShare limit would " + "be exceeded");
-          }
-          return Resources.none();
-        }
-      }
       ResourceRequest rackLocalRequest=getResourceRequest(priority,node.getRackName());
       ResourceRequest localRequest=getResourceRequest(priority,node.getNodeName());
       if (localRequest != null && !localRequest.getRelaxLocality()) {
