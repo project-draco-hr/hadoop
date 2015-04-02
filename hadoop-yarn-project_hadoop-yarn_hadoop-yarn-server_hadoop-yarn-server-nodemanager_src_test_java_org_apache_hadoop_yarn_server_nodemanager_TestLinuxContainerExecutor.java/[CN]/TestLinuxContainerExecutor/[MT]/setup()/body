@@ -11,7 +11,11 @@
   if (exec_path != null && !exec_path.isEmpty()) {
     conf=new Configuration(false);
     conf.setClass("fs.AbstractFileSystem.file.impl",org.apache.hadoop.fs.local.LocalFs.class,org.apache.hadoop.fs.AbstractFileSystem.class);
-    conf.set(YarnConfiguration.NM_NONSECURE_MODE_LOCAL_USER_KEY,"xuan");
+    appSubmitter=System.getProperty("application.submitter");
+    if (appSubmitter == null || appSubmitter.isEmpty()) {
+      appSubmitter="nobody";
+    }
+    conf.set(YarnConfiguration.NM_NONSECURE_MODE_LOCAL_USER_KEY,appSubmitter);
     LOG.info("Setting " + YarnConfiguration.NM_LINUX_CONTAINER_EXECUTOR_PATH + "="+ exec_path);
     conf.set(YarnConfiguration.NM_LINUX_CONTAINER_EXECUTOR_PATH,exec_path);
     exec=new LinuxContainerExecutor();
@@ -20,9 +24,12 @@
     conf.set(YarnConfiguration.NM_LOG_DIRS,logDir.getAbsolutePath());
     dirsHandler=new LocalDirsHandlerService();
     dirsHandler.init(conf);
-  }
-  appSubmitter=System.getProperty("application.submitter");
-  if (appSubmitter == null || appSubmitter.isEmpty()) {
-    appSubmitter="nobody";
+    List<String> localDirs=dirsHandler.getLocalDirs();
+    for (    String dir : localDirs) {
+      Path userDir=new Path(dir,ContainerLocalizer.USERCACHE);
+      files.mkdir(userDir,new FsPermission("777"),false);
+      Path fileDir=new Path(dir,ContainerLocalizer.FILECACHE);
+      files.mkdir(fileDir,new FsPermission("777"),false);
+    }
   }
 }
