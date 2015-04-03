@@ -1,0 +1,50 @@
+{
+  Log log=LogFactory.getLog(ErrorsAndWarningsBlock.class);
+  if (log instanceof Log4JLogger) {
+    html._(ErrorMetrics.class);
+    html._(WarningMetrics.class);
+    html.div().button().$onclick("reloadPage()").b("View data for the last ")._().select().$id("cutoff").option().$value("60")._("1 min")._().option().$value("300")._("5 min")._().option().$value("900")._("15 min")._().option().$value("3600")._("1 hour")._().option().$value("21600")._("6 hours")._().option().$value("43200")._("12 hours")._().option().$value("86400")._("24 hours")._()._()._();
+    String script="function reloadPage() {" + " var timePeriod = $(\"#cutoff\").val();" + " document.location.href = '/cluster/errors-and-warnings?cutoff=' + timePeriod"+ "}";
+    script=script + "; function toggleContent(element) {" + "  $(element).parent().siblings('.toggle-content').fadeToggle();"+ "}";
+    html.script().$type("text/javascript")._(script)._();
+    html.style(".toggle-content { display: none; }");
+    Log4jWarningErrorMetricsAppender appender=Log4jWarningErrorMetricsAppender.findAppender();
+    if (appender == null) {
+      return;
+    }
+    List<Long> cutoff=new ArrayList<>();
+    Hamlet.TBODY<Hamlet.TABLE<Hamlet>> errorsTable=html.table("#messages").thead().tr().th(".message","Message").th(".type","Type").th(".count","Count").th(".lasttime","Latest Message Time")._()._().tbody();
+    cutoff.add((Time.now() - cutoffPeriodSeconds * 1000) / 1000);
+    List<Map<String,Log4jWarningErrorMetricsAppender.Element>> errorsData=appender.getErrorMessagesAndCounts(cutoff);
+    List<Map<String,Log4jWarningErrorMetricsAppender.Element>> warningsData=appender.getWarningMessagesAndCounts(cutoff);
+    Map<String,List<Map<String,Log4jWarningErrorMetricsAppender.Element>>> sources=new HashMap<>();
+    sources.put("Error",errorsData);
+    sources.put("Warning",warningsData);
+    int maxDisplayLength=80;
+    for (    Map.Entry<String,List<Map<String,Log4jWarningErrorMetricsAppender.Element>>> source : sources.entrySet()) {
+      String type=source.getKey();
+      List<Map<String,Log4jWarningErrorMetricsAppender.Element>> data=source.getValue();
+      if (data.size() > 0) {
+        Map<String,Log4jWarningErrorMetricsAppender.Element> map=data.get(0);
+        for (        Map.Entry<String,Log4jWarningErrorMetricsAppender.Element> entry : map.entrySet()) {
+          String message=entry.getKey();
+          Hamlet.TR<Hamlet.TBODY<Hamlet.TABLE<Hamlet>>> row=errorsTable.tr();
+          Hamlet.TD<Hamlet.TR<Hamlet.TBODY<Hamlet.TABLE<Hamlet>>>> cell=row.td();
+          if (message.length() > maxDisplayLength || message.contains("\n")) {
+            String displayMessage=entry.getKey().split("\n")[0];
+            if (displayMessage.length() > maxDisplayLength) {
+              displayMessage=displayMessage.substring(0,maxDisplayLength);
+            }
+            cell.pre().a().$href("#").$onclick("toggleContent(this);").$style("white-space: pre")._(displayMessage)._()._().div().$class("toggle-content").pre()._(message)._()._()._();
+          }
+ else {
+            cell.pre()._(message)._()._();
+          }
+          Log4jWarningErrorMetricsAppender.Element ele=entry.getValue();
+          row.td(type).td(String.valueOf(ele.count)).td(Times.format(ele.timestampSeconds * 1000))._();
+        }
+      }
+    }
+    errorsTable._()._();
+  }
+}

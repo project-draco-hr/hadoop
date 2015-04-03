@@ -1,0 +1,30 @@
+{
+synchronized (lock) {
+    if (map.containsKey(message)) {
+      SortedMap<Long,Integer> tmp=map.get(message);
+      Long lastMessageTime=tmp.lastKey();
+      int value=1;
+      if (tmp.containsKey(eventTimeSeconds)) {
+        value=tmp.get(eventTimeSeconds) + 1;
+      }
+      tmp.put(eventTimeSeconds,value);
+      purgeInformation.remove(new PurgeElement(message,lastMessageTime));
+    }
+ else {
+      SortedMap<Long,Integer> value=new TreeMap<>();
+      value.put(eventTimeSeconds,1);
+      map.put(message,value);
+      if (map.size() > maxUniqueMessages * 2) {
+        cleanupTimer.cancel();
+        cleanupTimer=new Timer();
+        cleanupTimer.schedule(new ErrorAndWarningsCleanup(),0);
+      }
+    }
+    purgeInformation.add(new PurgeElement(message,eventTimeSeconds));
+    int newValue=1;
+    if (timestampsCount.containsKey(eventTimeSeconds)) {
+      newValue=timestampsCount.get(eventTimeSeconds) + 1;
+    }
+    timestampsCount.put(eventTimeSeconds,newValue);
+  }
+}
