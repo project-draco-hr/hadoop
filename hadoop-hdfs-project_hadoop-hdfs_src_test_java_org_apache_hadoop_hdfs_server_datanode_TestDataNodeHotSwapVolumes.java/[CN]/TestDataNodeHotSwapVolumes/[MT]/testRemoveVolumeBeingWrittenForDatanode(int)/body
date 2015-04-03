@@ -4,12 +4,23 @@
   final DataNode dn=cluster.getDataNodes().get(dataNodeIdx);
   final FileSystem fs=cluster.getFileSystem();
   final Path testFile=new Path("/test");
+  final long lastTimeDiskErrorCheck=dn.getLastDiskErrorCheck();
   FSDataOutputStream out=fs.create(testFile,REPLICATION);
   Random rb=new Random(0);
   byte[] writeBuf=new byte[BLOCK_SIZE / 2];
   rb.nextBytes(writeBuf);
   out.write(writeBuf);
   out.hflush();
+  final FsDatasetSpi<? extends FsVolumeSpi> data=dn.data;
+  dn.data=Mockito.spy(data);
+  doAnswer(new Answer<Object>(){
+    public Object answer(    InvocationOnMock invocation) throws IOException, InterruptedException {
+      Thread.sleep(1000);
+      data.finalizeBlock((ExtendedBlock)invocation.getArguments()[0]);
+      return null;
+    }
+  }
+).when(dn.data).finalizeBlock(any(ExtendedBlock.class));
   final CyclicBarrier barrier=new CyclicBarrier(2);
   List<String> oldDirs=getDataDirs(dn);
   final String newDirs=oldDirs.get(1);
@@ -32,10 +43,11 @@
   out.write(writeBuf);
   out.hflush();
   out.close();
+  reconfigThread.join();
   DFSTestUtil.waitReplication(fs,testFile,REPLICATION);
   byte[] content=DFSTestUtil.readFileBuffer(fs,testFile);
   assertEquals(BLOCK_SIZE,content.length);
-  reconfigThread.join();
+  assertEquals(lastTimeDiskErrorCheck,dn.getLastDiskErrorCheck());
   if (!exceptions.isEmpty()) {
     throw new IOException(exceptions.get(0).getCause());
   }
