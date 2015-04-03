@@ -1,0 +1,26 @@
+{
+  String src=srcArg;
+  HdfsFileStatus resultingStat=null;
+  checkSuperuserPrivilege();
+  checkOperation(OperationCategory.WRITE);
+  final byte[][] pathComponents=FSDirectory.getPathComponentsForReservedPath(src);
+  FSPermissionChecker pc=getPermissionChecker();
+  writeLock();
+  try {
+    checkSuperuserPrivilege();
+    checkOperation(OperationCategory.WRITE);
+    checkNameNodeSafeMode("Cannot create erasure coding zone on " + src);
+    src=dir.resolvePath(pc,src,pathComponents);
+    final XAttr ecXAttr=dir.createErasureCodingZone(src);
+    List<XAttr> xAttrs=Lists.newArrayListWithCapacity(1);
+    xAttrs.add(ecXAttr);
+    getEditLog().logSetXAttrs(src,xAttrs,logRetryCache);
+    final INodesInPath iip=dir.getINodesInPath4Write(src,false);
+    resultingStat=dir.getAuditFileInfo(iip);
+  }
+  finally {
+    writeUnlock();
+  }
+  getEditLog().logSync();
+  logAuditEvent(true,"createErasureCodingZone",srcArg,null,resultingStat);
+}
