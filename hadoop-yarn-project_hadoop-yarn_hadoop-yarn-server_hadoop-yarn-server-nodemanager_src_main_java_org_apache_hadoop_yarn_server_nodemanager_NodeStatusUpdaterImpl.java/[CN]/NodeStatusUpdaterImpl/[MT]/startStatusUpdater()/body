@@ -55,8 +55,9 @@
               LOG.debug("Node's resource is updated to " + newResource.toString());
             }
           }
-          Map<ApplicationId,String> knownCollectors=response.getAppCollectorsMap();
-          ((NodeManager.NMContext)context).addKnownCollectors(knownCollectors);
+          if (YarnConfiguration.systemMetricsPublisherEnabled(context.getConf())) {
+            updateTimelineClientsAddress(response);
+          }
         }
  catch (        ConnectException e) {
           dispatcher.getEventHandler().handle(new NodeManagerEvent(NodeManagerEventType.SHUTDOWN));
@@ -75,6 +76,34 @@ synchronized (heartbeatMonitor) {
  catch (            InterruptedException e) {
             }
           }
+        }
+      }
+    }
+    /** 
+ * Caller should take care of sending non null nodelabels for both
+ * arguments
+ * @param nodeLabelsNew
+ * @param nodeLabelsOld
+ * @return if the New node labels are diff from the older one.
+ */
+    private boolean areNodeLabelsUpdated(    Set<NodeLabel> nodeLabelsNew,    Set<NodeLabel> nodeLabelsOld){
+      if (nodeLabelsNew.size() != nodeLabelsOld.size() || !nodeLabelsOld.containsAll(nodeLabelsNew)) {
+        return true;
+      }
+      return false;
+    }
+    private void updateTimelineClientsAddress(    NodeHeartbeatResponse response){
+      Set<Map.Entry<ApplicationId,String>> rmKnownCollectors=response.getAppCollectorsMap().entrySet();
+      for (      Map.Entry<ApplicationId,String> entry : rmKnownCollectors) {
+        ApplicationId appId=entry.getKey();
+        String collectorAddr=entry.getValue();
+        Application application=context.getApplications().get(appId);
+        if (application != null && !context.getRegisteredCollectors().containsKey(appId)) {
+          if (LOG.isDebugEnabled()) {
+            LOG.debug("Sync a new collector address: " + collectorAddr + " for application: "+ appId+ " from RM.");
+          }
+          TimelineClient client=application.getTimelineClient();
+          client.setTimelineServiceAddress(collectorAddr);
         }
       }
     }
