@@ -1,0 +1,17 @@
+{
+  final int numBlocks=4;
+  DFSTestUtil.createECFile(cluster,filePath,dirPath,numBlocks,NUM_STRIPE_PER_BLOCK);
+  LocatedBlocks lbs=fs.getClient().namenode.getBlockLocations(filePath.toString(),0,BLOCKSIZE * numBlocks);
+  final DFSStripedInputStream in=new DFSStripedInputStream(fs.getClient(),filePath.toString(),false);
+  List<LocatedBlock> lbList=lbs.getLocatedBlocks();
+  for (  LocatedBlock aLbList : lbList) {
+    LocatedStripedBlock lsb=(LocatedStripedBlock)aLbList;
+    LocatedBlock[] blks=DFSStripedInputStream.parseStripedBlockGroup(lsb,GROUP_SIZE,CELLSIZE);
+    for (int j=0; j < GROUP_SIZE; j++) {
+      LocatedBlock refreshed=in.getBlockAt(blks[j].getStartOffset());
+      assertEquals(blks[j].getBlock(),refreshed.getBlock());
+      assertEquals(blks[j].getStartOffset(),refreshed.getStartOffset());
+      assertArrayEquals(blks[j].getLocations(),refreshed.getLocations());
+    }
+  }
+}

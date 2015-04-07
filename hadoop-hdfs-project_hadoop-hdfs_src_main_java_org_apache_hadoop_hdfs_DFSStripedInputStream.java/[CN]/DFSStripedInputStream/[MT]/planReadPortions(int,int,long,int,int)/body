@@ -1,0 +1,31 @@
+{
+  ReadPortion[] results=new ReadPortion[groupSize];
+  for (int i=0; i < groupSize; i++) {
+    results[i]=new ReadPortion();
+  }
+  int cellIdxInBlk=(int)(startInBlk / (cellSize * groupSize));
+  final int blkIdxInGroup=(int)(startInBlk / cellSize % groupSize);
+  results[blkIdxInGroup].startOffsetInBlock=cellSize * cellIdxInBlk + startInBlk % cellSize;
+  boolean crossStripe=false;
+  for (int i=1; i < groupSize; i++) {
+    if (blkIdxInGroup + i >= groupSize && !crossStripe) {
+      cellIdxInBlk++;
+      crossStripe=true;
+    }
+    results[(blkIdxInGroup + i) % groupSize].startOffsetInBlock=cellSize * cellIdxInBlk;
+  }
+  int firstCellLen=Math.min(cellSize - (int)(startInBlk % cellSize),len);
+  results[blkIdxInGroup].offsetsInBuf.add(bufOffset);
+  results[blkIdxInGroup].lengths.add(firstCellLen);
+  results[blkIdxInGroup].readLength+=firstCellLen;
+  int i=(blkIdxInGroup + 1) % groupSize;
+  for (int done=firstCellLen; done < len; done+=cellSize) {
+    ReadPortion rp=results[i];
+    rp.offsetsInBuf.add(done + bufOffset);
+    final int readLen=Math.min(len - done,cellSize);
+    rp.lengths.add(readLen);
+    rp.readLength+=readLen;
+    i=(i + 1) % groupSize;
+  }
+  return results;
+}
