@@ -1,0 +1,43 @@
+{
+synchronized (lock) {
+    if (logFlag) {
+      LOG.info("Attempt to dump logs when appender is already running");
+      throw new YarnRuntimeException("Appender is already dumping logs");
+    }
+    Level targetLevel=Level.toLevel(level);
+    Log log=LogFactory.getLog(name);
+    appenderLevels.clear();
+    if (log instanceof Log4JLogger) {
+      Logger packageLogger=((Log4JLogger)log).getLogger();
+      currentLogLevel=packageLogger.getLevel();
+      Level currentEffectiveLevel=packageLogger.getEffectiveLevel();
+      Layout layout=new PatternLayout("%d{ISO8601} %p %c: %m%n");
+      FileAppender fApp;
+      File file=new File(System.getProperty("yarn.log.dir"),targetFilename);
+      try {
+        fApp=new FileAppender(layout,file.getAbsolutePath(),false);
+      }
+ catch (      IOException ie) {
+        LOG.warn("Error creating file, can't dump logs to " + file.getAbsolutePath(),ie);
+        throw ie;
+      }
+      fApp.setName(AdHocLogDumper.AD_HOC_DUMPER_APPENDER);
+      fApp.setThreshold(targetLevel);
+      for (Enumeration appenders=Logger.getRootLogger().getAllAppenders(); appenders.hasMoreElements(); ) {
+        Object obj=appenders.nextElement();
+        if (obj instanceof AppenderSkeleton) {
+          AppenderSkeleton appender=(AppenderSkeleton)obj;
+          appenderLevels.put(appender.getName(),appender.getThreshold());
+          appender.setThreshold(currentEffectiveLevel);
+        }
+      }
+      packageLogger.addAppender(fApp);
+      LOG.info("Dumping adhoc logs for " + name + " to "+ file.getAbsolutePath()+ " for "+ timePeriod+ " milliseconds");
+      packageLogger.setLevel(targetLevel);
+      logFlag=true;
+      TimerTask restoreLogLevel=new RestoreLogLevel();
+      Timer restoreLogLevelTimer=new Timer();
+      restoreLogLevelTimer.schedule(restoreLogLevel,timePeriod);
+    }
+  }
+}
