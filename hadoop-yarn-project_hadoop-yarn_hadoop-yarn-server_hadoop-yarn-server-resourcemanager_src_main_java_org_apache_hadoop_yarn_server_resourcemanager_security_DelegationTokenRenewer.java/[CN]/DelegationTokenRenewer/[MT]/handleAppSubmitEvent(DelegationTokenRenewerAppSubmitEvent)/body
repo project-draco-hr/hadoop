@@ -20,32 +20,32 @@
         hasHdfsToken=true;
       }
       DelegationTokenToRenew dttr=allTokens.get(token);
-      if (dttr != null) {
-        if (!evt.shouldCancelAtEnd) {
-          dttr.shouldCancelAtEnd=evt.shouldCancelAtEnd;
-          LOG.info("Set shouldCancelAtEnd=" + shouldCancelAtEnd + " for token "+ dttr.token);
+      if (dttr == null) {
+        dttr=new DelegationTokenToRenew(Arrays.asList(applicationId),token,getConfig(),now,shouldCancelAtEnd,evt.getUser());
+        try {
+          renewToken(dttr);
         }
-        continue;
+ catch (        IOException ioe) {
+          throw new IOException("Failed to renew token: " + dttr.token,ioe);
+        }
       }
-      tokenList.add(new DelegationTokenToRenew(applicationId,token,getConfig(),now,shouldCancelAtEnd,evt.getUser()));
+      tokenList.add(dttr);
     }
   }
   if (!tokenList.isEmpty()) {
     for (    DelegationTokenToRenew dtr : tokenList) {
-      try {
-        renewToken(dtr);
+      DelegationTokenToRenew currentDtr=allTokens.putIfAbsent(dtr.token,dtr);
+      if (currentDtr != null) {
+        currentDtr.referringAppIds.add(applicationId);
+        appTokens.get(applicationId).add(currentDtr);
       }
- catch (      IOException ioe) {
-        throw new IOException("Failed to renew token: " + dtr.token,ioe);
+ else {
+        appTokens.get(applicationId).add(dtr);
+        setTimerForTokenRenewal(dtr);
       }
-    }
-    for (    DelegationTokenToRenew dtr : tokenList) {
-      appTokens.get(applicationId).add(dtr);
-      allTokens.put(dtr.token,dtr);
-      setTimerForTokenRenewal(dtr);
     }
   }
   if (!hasHdfsToken) {
-    requestNewHdfsDelegationToken(applicationId,evt.getUser(),shouldCancelAtEnd);
+    requestNewHdfsDelegationToken(Arrays.asList(applicationId),evt.getUser(),shouldCancelAtEnd);
   }
 }
