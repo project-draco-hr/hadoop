@@ -1,0 +1,31 @@
+{
+  if (isLeadingStreamer()) {
+    for (int i=1; i < HdfsConstants.NUM_DATA_BLOCKS; i++) {
+      try {
+        LocatedBlock finishedLocatedBlock=stripedBlocks.get(0).poll(30,TimeUnit.SECONDS);
+        if (finishedLocatedBlock == null) {
+          throw new IOException("Fail to get finished LocatedBlock " + "from streamer, i=" + i);
+        }
+        ExtendedBlock finishedBlock=finishedLocatedBlock.getBlock();
+        long bytes=finishedBlock == null ? 0 : finishedBlock.getNumBytes();
+        if (block != null) {
+          block.setNumBytes(block.getNumBytes() + bytes);
+        }
+      }
+ catch (      InterruptedException ie) {
+        DFSClient.LOG.info("InterruptedException received when " + "putting a block to stripeBlocks, ie = " + ie);
+      }
+    }
+  }
+ else   if (!isParityStreamer()) {
+    if (block == null || block.getNumBytes() == 0) {
+      LocatedBlock finishedBlock=new LocatedBlock(null,null);
+      try {
+        boolean offSuccess=stripedBlocks.get(0).offer(finishedBlock,30,TimeUnit.SECONDS);
+      }
+ catch (      InterruptedException ie) {
+        ie.printStackTrace();
+      }
+    }
+  }
+}

@@ -1,0 +1,34 @@
+{
+  if (currentBlockGroupBytes == 0 || currentBlockGroupBytes % stripeDataSize() == 0)   return;
+  int lastStripeLen=(int)(currentBlockGroupBytes % stripeDataSize());
+  int parityCellSize=cellSize;
+  int index=lastStripeLen / cellSize;
+  if (lastStripeLen < cellSize) {
+    parityCellSize=lastStripeLen;
+    index++;
+  }
+  for (int i=0; i < blockGroupBlocks; i++) {
+    if (i >= index) {
+      int position=cellBuffers[i].position();
+      for (int j=0; j < parityCellSize - position; j++) {
+        cellBuffers[i].put((byte)0);
+      }
+    }
+    cellBuffers[i].flip();
+  }
+  encode(cellBuffers);
+  curIdx=blockGroupDataBlocks;
+  refreshStreamer();
+  for (int i=blockGroupDataBlocks; i < blockGroupBlocks; i++) {
+    ByteBuffer parityBuffer=cellBuffers[i];
+    List<DFSPacket> packets=generatePackets(parityBuffer);
+    for (    DFSPacket p : packets) {
+      currentPacket=p;
+      streamer.waitAndQueuePacket(currentPacket);
+      currentPacket=null;
+    }
+    endBlock();
+    moveToNextStreamer();
+  }
+  clearCellBuffers();
+}

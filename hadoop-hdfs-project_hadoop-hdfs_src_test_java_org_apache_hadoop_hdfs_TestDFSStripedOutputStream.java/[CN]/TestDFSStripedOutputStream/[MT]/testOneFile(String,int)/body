@@ -1,0 +1,93 @@
+{
+  Path TestPath=new Path(src);
+  int allBlocks=dataBlocks + parityBlocks;
+  byte[] bytes=generateBytes(writeBytes);
+  DFSTestUtil.writeFile(fs,TestPath,new String(bytes));
+  FileStatus status=fs.getFileStatus(TestPath);
+  long fileLength=status.getLen();
+  if (fileLength != writeBytes) {
+    Assert.fail("File Length error: expect=" + writeBytes + ", actual="+ fileLength);
+  }
+  List<List<LocatedBlock>> blockGroupList=new ArrayList<>();
+  LocatedBlocks lbs=fs.getClient().getLocatedBlocks(src,0L);
+  for (  LocatedBlock firstBlock : lbs.getLocatedBlocks()) {
+    LocatedBlock[] blocks=StripedDataStreamer.unwrapBlockGroup(firstBlock);
+    List<LocatedBlock> oneGroup=Arrays.asList(blocks);
+    blockGroupList.add(oneGroup);
+  }
+  for (int group=0; group < blockGroupList.size(); group++) {
+    List<LocatedBlock> blockList=blockGroupList.get(group);
+    byte[][] dataBlockBytes=new byte[dataBlocks][];
+    byte[][] parityBlockBytes=new byte[allBlocks - dataBlocks][];
+    int lenOfBlockGroup=group < blockGroupList.size() - 1 ? blockSize * dataBlocks : writeBytes - blockSize * (blockGroupList.size() - 1) * dataBlocks;
+    int intactStripes=lenOfBlockGroup / stripeDataSize();
+    int lastStripeLen=lenOfBlockGroup % stripeDataSize();
+    for (int i=0; i < blockList.size(); i++) {
+      LocatedBlock lblock=blockList.get(i);
+      if (lblock == null) {
+        continue;
+      }
+      DatanodeInfo[] nodes=lblock.getLocations();
+      ExtendedBlock block=lblock.getBlock();
+      InetSocketAddress targetAddr=NetUtils.createSocketAddr(nodes[0].getXferAddr());
+      int lenOfCell=cellSize;
+      if (i == lastStripeLen / cellSize) {
+        lenOfCell=lastStripeLen % cellSize;
+      }
+ else       if (i > lastStripeLen / cellSize) {
+        lenOfCell=0;
+      }
+      int lenOfBlock=cellSize * intactStripes + lenOfCell;
+      byte[] blockBytes=new byte[lenOfBlock];
+      if (i < dataBlocks) {
+        dataBlockBytes[i]=blockBytes;
+      }
+ else {
+        parityBlockBytes[i - dataBlocks]=blockBytes;
+      }
+      if (lenOfBlock == 0) {
+        continue;
+      }
+      block.setNumBytes(lenOfBlock);
+      BlockReader blockReader=new BlockReaderFactory(new DFSClient.Conf(conf)).setFileName(src).setBlock(block).setBlockToken(lblock.getBlockToken()).setInetSocketAddress(targetAddr).setStartOffset(0).setLength(block.getNumBytes()).setVerifyChecksum(true).setClientName("TestStripeLayoutWrite").setDatanodeInfo(nodes[0]).setCachingStrategy(CachingStrategy.newDefaultStrategy()).setClientCacheContext(ClientContext.getFromConf(conf)).setConfiguration(conf).setRemotePeerFactory(new RemotePeerFactory(){
+        @Override public Peer newConnectedPeer(        InetSocketAddress addr,        Token<BlockTokenIdentifier> blockToken,        DatanodeID datanodeId) throws IOException {
+          Peer peer=null;
+          Socket sock=NetUtils.getDefaultSocketFactory(conf).createSocket();
+          try {
+            sock.connect(addr,HdfsServerConstants.READ_TIMEOUT);
+            sock.setSoTimeout(HdfsServerConstants.READ_TIMEOUT);
+            peer=TcpPeerServer.peerFromSocket(sock);
+          }
+  finally {
+            if (peer == null) {
+              IOUtils.closeSocket(sock);
+            }
+          }
+          return peer;
+        }
+      }
+).build();
+      blockReader.readAll(blockBytes,0,lenOfBlock);
+      blockReader.close();
+    }
+    for (int i=0; i < dataBlockBytes.length; i++) {
+      byte[] cells=dataBlockBytes[i];
+      if (cells == null) {
+        continue;
+      }
+      for (int j=0; j < cells.length; j++) {
+        byte expected;
+        long pos=group * dataBlocks * blockSize + (i * cellSize + j / cellSize * cellSize * dataBlocks) + j % cellSize;
+        if (pos >= writeBytes) {
+          expected=0;
+        }
+ else {
+          expected=getByte(pos);
+        }
+        if (expected != cells[j]) {
+          Assert.fail("Unexpected byte " + cells[j] + ", expect "+ expected+ ". Block group index is "+ group+ ", stripe index is "+ j / cellSize + ", cell index is " + i + ", byte index is " + j % cellSize);
+        }
+      }
+    }
+  }
+}

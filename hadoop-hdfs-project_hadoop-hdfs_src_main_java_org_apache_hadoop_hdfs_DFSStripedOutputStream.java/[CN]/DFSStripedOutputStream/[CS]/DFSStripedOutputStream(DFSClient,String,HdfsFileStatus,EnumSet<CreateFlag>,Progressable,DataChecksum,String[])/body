@@ -1,0 +1,31 @@
+{
+  super(dfsClient,src,stat,flag,progress,checksum,favoredNodes);
+  DFSClient.LOG.info("Creating striped output stream");
+  if (blockGroupBlocks <= 1) {
+    throw new IOException("The block group must contain more than one block.");
+  }
+  cellBuffers=new ByteBuffer[blockGroupBlocks];
+  List<BlockingQueue<LocatedBlock>> stripeBlocks=new ArrayList<>();
+  for (int i=0; i < blockGroupBlocks; i++) {
+    stripeBlocks.add(new LinkedBlockingQueue<LocatedBlock>(blockGroupBlocks));
+    try {
+      cellBuffers[i]=ByteBuffer.wrap(byteArrayManager.newByteArray(cellSize));
+    }
+ catch (    InterruptedException ie) {
+      final InterruptedIOException iioe=new InterruptedIOException("create cell buffers");
+      iioe.initCause(ie);
+      throw iioe;
+    }
+  }
+  encoder=new RSRawEncoder();
+  encoder.initialize(blockGroupDataBlocks,blockGroupBlocks - blockGroupDataBlocks,cellSize);
+  streamers=new ArrayList<>(blockGroupBlocks);
+  for (short i=0; i < blockGroupBlocks; i++) {
+    StripedDataStreamer streamer=new StripedDataStreamer(stat,null,dfsClient,src,progress,checksum,cachingStrategy,byteArrayManager,i,stripeBlocks);
+    if (favoredNodes != null && favoredNodes.length != 0) {
+      streamer.setFavoredNodes(favoredNodes);
+    }
+    streamers.add(streamer);
+  }
+  refreshStreamer();
+}

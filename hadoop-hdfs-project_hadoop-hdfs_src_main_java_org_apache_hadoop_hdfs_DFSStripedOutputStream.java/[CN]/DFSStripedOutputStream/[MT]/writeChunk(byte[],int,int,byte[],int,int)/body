@@ -1,0 +1,41 @@
+{
+  super.writeChunk(b,offset,len,checksum,ckoff,cklen);
+  if (getSizeOfCellnBuffer(curIdx) <= cellSize) {
+    addToCellBuffer(b,offset,len);
+  }
+ else {
+    String msg="Writing a chunk should not overflow the cell buffer.";
+    DFSClient.LOG.info(msg);
+    throw new IOException(msg);
+  }
+  if (currentPacket != null && getSizeOfCellnBuffer(curIdx) == cellSize) {
+    if (DFSClient.LOG.isDebugEnabled()) {
+      DFSClient.LOG.debug("DFSClient writeChunk cell buffer full seqno=" + currentPacket.getSeqno() + ", curIdx="+ curIdx+ ", src="+ src+ ", bytesCurBlock="+ streamer.getBytesCurBlock()+ ", blockSize="+ blockSize+ ", appendChunk="+ streamer.getAppendChunk());
+    }
+    streamer.waitAndQueuePacket(currentPacket);
+    currentPacket=null;
+    adjustChunkBoundary();
+    endBlock();
+  }
+  if (getSizeOfCellnBuffer(curIdx) == cellSize) {
+    moveToNextStreamer();
+    if (curIdx == blockGroupDataBlocks) {
+      for (int k=0; k < blockGroupDataBlocks; k++) {
+        cellBuffers[k].flip();
+      }
+      encode(cellBuffers);
+      for (int i=blockGroupDataBlocks; i < blockGroupBlocks; i++) {
+        ByteBuffer parityBuffer=cellBuffers[i];
+        List<DFSPacket> packets=generatePackets(parityBuffer);
+        for (        DFSPacket p : packets) {
+          currentPacket=p;
+          streamer.waitAndQueuePacket(currentPacket);
+          currentPacket=null;
+        }
+        endBlock();
+        moveToNextStreamer();
+      }
+      clearCellBuffers();
+    }
+  }
+}
