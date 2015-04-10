@@ -1,0 +1,42 @@
+{
+  final long blockSize;
+  final int replication;
+  final byte storagePolicyID;
+  Node clientNode=null;
+  String clientMachine=null;
+  if (NameNode.stateChangeLog.isDebugEnabled()) {
+    NameNode.stateChangeLog.debug("BLOCK* getAdditionalBlock: " + src + " inodeId "+ fileId+ " for "+ clientName);
+  }
+  checkOperation(OperationCategory.READ);
+  byte[][] pathComponents=FSDirectory.getPathComponentsForReservedPath(src);
+  FSPermissionChecker pc=getPermissionChecker();
+  readLock();
+  try {
+    checkOperation(OperationCategory.READ);
+    src=dir.resolvePath(pc,src,pathComponents);
+    FileState fileState=analyzeFileState(src,fileId,clientName,previous,onRetryBlock);
+    final INodeFile pendingFile=fileState.inode;
+    if (!checkFileProgress(src,pendingFile,false)) {
+      throw new NotReplicatedYetException("Not replicated yet: " + src);
+    }
+    src=fileState.path;
+    if (onRetryBlock[0] != null && onRetryBlock[0].getLocations().length > 0) {
+      return null;
+    }
+    if (pendingFile.getBlocks().length >= maxBlocksPerFile) {
+      throw new IOException("File has reached the limit on maximum number of" + " blocks (" + DFSConfigKeys.DFS_NAMENODE_MAX_BLOCKS_PER_FILE_KEY + "): "+ pendingFile.getBlocks().length+ " >= "+ maxBlocksPerFile);
+    }
+    blockSize=pendingFile.getPreferredBlockSize();
+    clientMachine=pendingFile.getFileUnderConstructionFeature().getClientMachine();
+    clientNode=blockManager.getDatanodeManager().getDatanodeByHost(clientMachine);
+    replication=pendingFile.getFileReplication();
+    storagePolicyID=pendingFile.getStoragePolicyID();
+  }
+  finally {
+    readUnlock();
+  }
+  if (clientNode == null) {
+    clientNode=getClientNode(clientMachine);
+  }
+  return getBlockManager().chooseTarget4NewBlock(src,replication,clientNode,excludedNodes,blockSize,favoredNodes,storagePolicyID);
+}
