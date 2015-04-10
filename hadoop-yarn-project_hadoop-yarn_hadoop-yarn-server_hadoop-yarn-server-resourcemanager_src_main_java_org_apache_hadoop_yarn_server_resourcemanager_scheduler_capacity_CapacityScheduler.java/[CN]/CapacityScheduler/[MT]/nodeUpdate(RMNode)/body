@@ -2,6 +2,7 @@
   if (LOG.isDebugEnabled()) {
     LOG.debug("nodeUpdate: " + nm + " clusterResources: "+ clusterResource);
   }
+  Resource releaseResources=Resource.newInstance(0,0);
   FiCaSchedulerNode node=getNode(nm.getNodeID());
   List<UpdatedContainerInfo> containerInfoList=nm.pullContainerUpdates();
   List<ContainerStatus> newlyLaunchedContainers=new ArrayList<ContainerStatus>();
@@ -13,11 +14,26 @@
   for (  ContainerStatus launchedContainer : newlyLaunchedContainers) {
     containerLaunchedOnNode(launchedContainer.getContainerId(),node);
   }
+  int releasedContainers=0;
   for (  ContainerStatus completedContainer : completedContainers) {
     ContainerId containerId=completedContainer.getContainerId();
+    RMContainer container=getRMContainer(containerId);
     LOG.debug("Container FINISHED: " + containerId);
-    completedContainer(getRMContainer(containerId),completedContainer,RMContainerEventType.FINISHED);
+    completedContainer(container,completedContainer,RMContainerEventType.FINISHED);
+    if (container != null) {
+      releasedContainers++;
+      Resource rs=container.getAllocatedResource();
+      if (rs != null) {
+        Resources.addTo(releaseResources,rs);
+      }
+      rs=container.getReservedResource();
+      if (rs != null) {
+        Resources.addTo(releaseResources,rs);
+      }
+    }
   }
+  schedulerHealth.updateSchedulerReleaseDetails(lastNodeUpdateTime,releaseResources);
+  schedulerHealth.updateSchedulerReleaseCounts(releasedContainers);
   if (LOG.isDebugEnabled()) {
     LOG.debug("Node being looked for scheduling " + nm + " availableResource: "+ node.getAvailableResource());
   }

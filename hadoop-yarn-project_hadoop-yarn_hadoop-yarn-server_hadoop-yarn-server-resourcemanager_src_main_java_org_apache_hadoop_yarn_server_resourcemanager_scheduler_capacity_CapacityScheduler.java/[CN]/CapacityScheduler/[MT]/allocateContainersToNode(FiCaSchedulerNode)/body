@@ -2,12 +2,22 @@
   if (rmContext.isWorkPreservingRecoveryEnabled() && !rmContext.isSchedulerReadyForAllocatingContainers()) {
     return;
   }
+  updateSchedulerHealth(lastNodeUpdateTime,node,new CSAssignment(Resources.none(),NodeType.NODE_LOCAL));
+  CSAssignment assignment;
   RMContainer reservedContainer=node.getReservedContainer();
   if (reservedContainer != null) {
     FiCaSchedulerApp reservedApplication=getCurrentAttemptForContainer(reservedContainer.getContainerId());
     LOG.info("Trying to fulfill reservation for application " + reservedApplication.getApplicationId() + " on node: "+ node.getNodeID());
     LeafQueue queue=((LeafQueue)reservedApplication.getQueue());
-    CSAssignment assignment=queue.assignContainers(clusterResource,node,new ResourceLimits(labelManager.getResourceByLabel(RMNodeLabelsManager.NO_LABEL,clusterResource)));
+    assignment=queue.assignContainers(clusterResource,node,new ResourceLimits(labelManager.getResourceByLabel(RMNodeLabelsManager.NO_LABEL,clusterResource)));
+    if (assignment.isFulfilledReservation()) {
+      CSAssignment tmp=new CSAssignment(reservedContainer.getReservedResource(),assignment.getType());
+      Resources.addTo(assignment.getAssignmentInformation().getAllocated(),reservedContainer.getReservedResource());
+      tmp.getAssignmentInformation().addAllocationDetails(reservedContainer.getContainerId(),queue.getQueuePath());
+      tmp.getAssignmentInformation().incrAllocations();
+      updateSchedulerHealth(lastNodeUpdateTime,node,tmp);
+      schedulerHealth.updateSchedulerFulfilledReservationCounts(1);
+    }
     RMContainer excessReservation=assignment.getExcessReservation();
     if (excessReservation != null) {
       Container container=excessReservation.getContainer();
@@ -19,7 +29,8 @@
       if (LOG.isDebugEnabled()) {
         LOG.debug("Trying to schedule on node: " + node.getNodeName() + ", available: "+ node.getAvailableResource());
       }
-      root.assignContainers(clusterResource,node,new ResourceLimits(labelManager.getResourceByLabel(RMNodeLabelsManager.NO_LABEL,clusterResource)));
+      assignment=root.assignContainers(clusterResource,node,new ResourceLimits(labelManager.getResourceByLabel(RMNodeLabelsManager.NO_LABEL,clusterResource)));
+      updateSchedulerHealth(lastNodeUpdateTime,node,assignment);
     }
   }
  else {
