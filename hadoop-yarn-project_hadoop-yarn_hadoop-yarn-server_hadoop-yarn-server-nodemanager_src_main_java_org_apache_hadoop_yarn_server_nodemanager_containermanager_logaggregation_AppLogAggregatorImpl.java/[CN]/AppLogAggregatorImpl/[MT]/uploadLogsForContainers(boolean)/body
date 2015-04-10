@@ -57,7 +57,9 @@
     if (writer != null) {
       writer.close();
     }
-    final Path renamedPath=this.rollingMonitorInterval <= 0 ? remoteNodeLogFileForApp : new Path(remoteNodeLogFileForApp.getParent(),remoteNodeLogFileForApp.getName() + "_" + System.currentTimeMillis());
+    long currentTime=System.currentTimeMillis();
+    final Path renamedPath=this.rollingMonitorInterval <= 0 ? remoteNodeLogFileForApp : new Path(remoteNodeLogFileForApp.getParent(),remoteNodeLogFileForApp.getName() + "_" + currentTime);
+    String diagnosticMessage="";
     final boolean rename=uploadedLogsInThisCycle;
     try {
       userUgi.doAs(new PrivilegedExceptionAction<Object>(){
@@ -75,10 +77,24 @@
         }
       }
 );
+      diagnosticMessage="Log uploaded successfully for Application: " + appId + " in NodeManager: "+ LogAggregationUtils.getNodeString(nodeId)+ " at "+ Times.format(currentTime)+ "\n";
     }
  catch (    Exception e) {
       LOG.error("Failed to move temporary log file to final location: [" + remoteNodeTmpLogFileForApp + "] to ["+ renamedPath+ "]",e);
+      diagnosticMessage="Log uploaded failed for Application: " + appId + " in NodeManager: "+ LogAggregationUtils.getNodeString(nodeId)+ " at "+ Times.format(currentTime)+ "\n";
+      renameTemporaryLogFileFailed=true;
     }
+    LogAggregationReport report=Records.newRecord(LogAggregationReport.class);
+    report.setApplicationId(appId);
+    report.setNodeId(nodeId);
+    report.setDiagnosticMessage(diagnosticMessage);
+    if (appFinished) {
+      report.setLogAggregationStatus(renameTemporaryLogFileFailed ? LogAggregationStatus.FAILED : LogAggregationStatus.FINISHED);
+    }
+ else {
+      report.setLogAggregationStatus(LogAggregationStatus.RUNNING);
+    }
+    this.context.getLogAggregationStatusForApps().add(report);
   }
   finally {
     if (writer != null) {
