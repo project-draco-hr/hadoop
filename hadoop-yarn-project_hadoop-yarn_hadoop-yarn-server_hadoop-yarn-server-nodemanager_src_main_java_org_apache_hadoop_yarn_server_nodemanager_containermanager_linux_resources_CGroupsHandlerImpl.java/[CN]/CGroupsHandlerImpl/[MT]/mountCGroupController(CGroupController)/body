@@ -1,0 +1,33 @@
+{
+  if (!enableCGroupMount) {
+    LOG.warn("CGroup mounting is disabled - ignoring mount request for: " + controller.getName());
+    return;
+  }
+  String path=getControllerPath(controller);
+  if (path == null) {
+    try {
+      rwLock.writeLock().lock();
+      String hierarchy=cGroupPrefix;
+      StringBuffer controllerPath=new StringBuffer().append(cGroupMountPath).append('/').append(controller.getName());
+      StringBuffer cGroupKV=new StringBuffer().append(controller.getName()).append('=').append(controllerPath);
+      PrivilegedOperation.OperationType opType=PrivilegedOperation.OperationType.MOUNT_CGROUPS;
+      PrivilegedOperation op=new PrivilegedOperation(opType,(String)null);
+      op.appendArgs(hierarchy,cGroupKV.toString());
+      LOG.info("Mounting controller " + controller.getName() + " at "+ controllerPath);
+      privilegedOperationExecutor.executePrivilegedOperation(op,false);
+      controllerPaths.put(controller,controllerPath.toString());
+      return;
+    }
+ catch (    PrivilegedOperationException e) {
+      LOG.error("Failed to mount controller: " + controller.getName());
+      throw new ResourceHandlerException("Failed to mount controller: " + controller.getName());
+    }
+ finally {
+      rwLock.writeLock().unlock();
+    }
+  }
+ else {
+    LOG.info("CGroup controller already mounted at: " + path);
+    return;
+  }
+}

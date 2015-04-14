@@ -1,0 +1,38 @@
+{
+  verifyZeroInteractions(privilegedOperationExecutorMock);
+  CGroupsHandler cGroupsHandler=null;
+  try {
+    cGroupsHandler=new CGroupsHandlerImpl(conf,privilegedOperationExecutorMock);
+    cGroupsHandler.mountCGroupController(controller);
+  }
+ catch (  ResourceHandlerException e) {
+    LOG.error("Caught exception: " + e);
+    Assert.assertTrue("Unexpected ResourceHandlerException when mounting controller!",false);
+  }
+  new File(controllerPath).mkdirs();
+  String testCGroup="container_01";
+  String expectedPath=new StringBuffer(controllerPath).append('/').append(testCGroup).toString();
+  try {
+    String path=cGroupsHandler.createCGroup(controller,testCGroup);
+    Assert.assertTrue(new File(expectedPath).exists());
+    Assert.assertEquals(expectedPath,path);
+    String param="test_param";
+    String paramValue="test_param_value";
+    cGroupsHandler.updateCGroupParam(controller,testCGroup,param,paramValue);
+    String paramPath=new StringBuffer(expectedPath).append('/').append(controller.getName()).append('.').append(param).toString();
+    File paramFile=new File(paramPath);
+    Assert.assertTrue(paramFile.exists());
+    try {
+      Assert.assertEquals(paramValue,new String(Files.readAllBytes(paramFile.toPath())));
+    }
+ catch (    IOException e) {
+      LOG.error("Caught exception: " + e);
+      Assert.assertTrue("Unexpected IOException trying to read cgroup param!",false);
+    }
+    Assert.assertEquals(paramValue,cGroupsHandler.getCGroupParam(controller,testCGroup,param));
+  }
+ catch (  ResourceHandlerException e) {
+    LOG.error("Caught exception: " + e);
+    Assert.assertTrue("Unexpected ResourceHandlerException during cgroup operations!",false);
+  }
+}
