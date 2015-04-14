@@ -1,2 +1,39 @@
 {
+  NamenodeProtocol proxy=createNNProtocolProxy();
+  NamespaceInfo nsInfo;
+  boolean isUpgradeFinalized;
+  try {
+    nsInfo=proxy.versionRequest();
+    isUpgradeFinalized=proxy.isUpgradeFinalized();
+  }
+ catch (  IOException ioe) {
+    LOG.fatal("Unable to fetch namespace information from active NN at " + otherIpcAddr + ": "+ ioe.getMessage());
+    if (LOG.isDebugEnabled()) {
+      LOG.debug("Full exception trace",ioe);
+    }
+    return ERR_CODE_FAILED_CONNECT;
+  }
+  if (!checkLayoutVersion(nsInfo)) {
+    LOG.fatal("Layout version on remote node (" + nsInfo.getLayoutVersion() + ") does not match "+ "this node's layout version ("+ HdfsConstants.NAMENODE_LAYOUT_VERSION+ ")");
+    return ERR_CODE_INVALID_VERSION;
+  }
+  System.out.println("=====================================================\n" + "About to bootstrap Standby ID " + nnId + " from:\n"+ "           Nameservice ID: "+ nsId+ "\n"+ "        Other Namenode ID: "+ otherNNId+ "\n"+ "  Other NN's HTTP address: "+ otherHttpAddr+ "\n"+ "  Other NN's IPC  address: "+ otherIpcAddr+ "\n"+ "             Namespace ID: "+ nsInfo.getNamespaceID()+ "\n"+ "            Block pool ID: "+ nsInfo.getBlockPoolID()+ "\n"+ "               Cluster ID: "+ nsInfo.getClusterID()+ "\n"+ "           Layout version: "+ nsInfo.getLayoutVersion()+ "\n"+ "       isUpgradeFinalized: "+ isUpgradeFinalized+ "\n"+ "=====================================================");
+  NNStorage storage=new NNStorage(conf,dirsToFormat,editUrisToFormat);
+  if (!isUpgradeFinalized) {
+    LOG.info("The active NameNode is in Upgrade. " + "Prepare the upgrade for the standby NameNode as well.");
+    if (!doPreUpgrade(storage,nsInfo)) {
+      return ERR_CODE_ALREADY_FORMATTED;
+    }
+  }
+ else   if (!format(storage,nsInfo)) {
+    return ERR_CODE_ALREADY_FORMATTED;
+  }
+  int download=downloadImage(storage,proxy);
+  if (download != 0) {
+    return download;
+  }
+  if (!isUpgradeFinalized) {
+    doUpgrade(storage);
+  }
+  return 0;
 }
