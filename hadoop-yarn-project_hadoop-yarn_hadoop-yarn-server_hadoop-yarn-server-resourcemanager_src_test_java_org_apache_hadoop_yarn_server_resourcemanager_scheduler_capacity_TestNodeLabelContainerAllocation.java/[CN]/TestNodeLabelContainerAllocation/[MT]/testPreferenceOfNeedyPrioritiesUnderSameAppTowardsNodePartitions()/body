@@ -1,0 +1,25 @@
+{
+  mgr.addToCluserNodeLabels(ImmutableSet.of("x","y"));
+  mgr.updateNodeLabels(Arrays.asList(NodeLabel.newInstance("y",false)));
+  mgr.addLabelsToNode(ImmutableMap.of(NodeId.newInstance("h1",0),toSet("y")));
+  MockRM rm1=new MockRM(TestUtils.getConfigurationWithQueueLabels(conf)){
+    @Override public RMNodeLabelsManager createNodeLabelManager(){
+      return mgr;
+    }
+  }
+;
+  rm1.getRMContext().setNodeLabelManager(mgr);
+  rm1.start();
+  MockNM nm1=rm1.registerNode("h1:1234",8 * GB);
+  MockNM nm2=rm1.registerNode("h2:1234",100 * GB);
+  ContainerId nextContainerId;
+  RMApp app1=rm1.submitApp(1 * GB,"app","user",null,"b1");
+  MockAM am1=MockRM.launchAndRegisterAM(app1,rm1,nm2);
+  nextContainerId=ContainerId.newContainerId(am1.getApplicationAttemptId(),2);
+  am1.allocate("*",1 * GB,1,1,new ArrayList<ContainerId>(),"");
+  am1.allocate("*",1 * GB,1,2,new ArrayList<ContainerId>(),"y");
+  Assert.assertTrue(rm1.waitForState(nm1,nextContainerId,RMContainerState.ALLOCATED,10 * 1000));
+  checkPendingResource(rm1,1,am1.getApplicationAttemptId(),1 * GB);
+  checkPendingResource(rm1,2,am1.getApplicationAttemptId(),0 * GB);
+  rm1.close();
+}

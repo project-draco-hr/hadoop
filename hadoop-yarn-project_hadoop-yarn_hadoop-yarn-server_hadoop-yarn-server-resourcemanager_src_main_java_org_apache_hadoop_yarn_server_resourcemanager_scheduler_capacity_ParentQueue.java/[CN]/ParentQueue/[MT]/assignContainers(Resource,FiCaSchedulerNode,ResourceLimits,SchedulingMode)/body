@@ -1,0 +1,48 @@
+{
+  if (schedulingMode == SchedulingMode.RESPECT_PARTITION_EXCLUSIVITY && !accessibleToPartition(node.getPartition())) {
+    return NULL_ASSIGNMENT;
+  }
+  if (!super.hasPendingResourceRequest(node.getPartition(),clusterResource,schedulingMode)) {
+    if (LOG.isDebugEnabled()) {
+      LOG.debug("Skip this queue=" + getQueuePath() + ", because it doesn't need more resource, schedulingMode="+ schedulingMode.name()+ " node-partition="+ node.getPartition());
+    }
+    return NULL_ASSIGNMENT;
+  }
+  CSAssignment assignment=new CSAssignment(Resources.createResource(0,0),NodeType.NODE_LOCAL);
+  while (canAssign(clusterResource,node)) {
+    if (LOG.isDebugEnabled()) {
+      LOG.debug("Trying to assign containers to child-queue of " + getQueueName());
+    }
+    if (!super.canAssignToThisQueue(clusterResource,node.getPartition(),resourceLimits,minimumAllocation,Resources.createResource(getMetrics().getReservedMB(),getMetrics().getReservedVirtualCores()),schedulingMode)) {
+      break;
+    }
+    CSAssignment assignedToChild=assignContainersToChildQueues(clusterResource,node,resourceLimits,schedulingMode);
+    assignment.setType(assignedToChild.getType());
+    if (Resources.greaterThan(resourceCalculator,clusterResource,assignedToChild.getResource(),Resources.none())) {
+      super.allocateResource(clusterResource,assignedToChild.getResource(),node.getPartition());
+      Resources.addTo(assignment.getResource(),assignedToChild.getResource());
+      Resources.addTo(assignment.getAssignmentInformation().getAllocated(),assignedToChild.getAssignmentInformation().getAllocated());
+      Resources.addTo(assignment.getAssignmentInformation().getReserved(),assignedToChild.getAssignmentInformation().getReserved());
+      assignment.getAssignmentInformation().incrAllocations(assignedToChild.getAssignmentInformation().getNumAllocations());
+      assignment.getAssignmentInformation().incrReservations(assignedToChild.getAssignmentInformation().getNumReservations());
+      assignment.getAssignmentInformation().getAllocationDetails().addAll(assignedToChild.getAssignmentInformation().getAllocationDetails());
+      assignment.getAssignmentInformation().getReservationDetails().addAll(assignedToChild.getAssignmentInformation().getReservationDetails());
+      LOG.info("assignedContainer" + " queue=" + getQueueName() + " usedCapacity="+ getUsedCapacity()+ " absoluteUsedCapacity="+ getAbsoluteUsedCapacity()+ " used="+ queueUsage.getUsed()+ " cluster="+ clusterResource);
+    }
+ else {
+      break;
+    }
+    if (LOG.isDebugEnabled()) {
+      LOG.debug("ParentQ=" + getQueueName() + " assignedSoFarInThisIteration="+ assignment.getResource()+ " usedCapacity="+ getUsedCapacity()+ " absoluteUsedCapacity="+ getAbsoluteUsedCapacity());
+    }
+    if (!rootQueue || assignment.getType() == NodeType.OFF_SWITCH) {
+      if (LOG.isDebugEnabled()) {
+        if (rootQueue && assignment.getType() == NodeType.OFF_SWITCH) {
+          LOG.debug("Not assigning more than one off-switch container," + " assignments so far: " + assignment);
+        }
+      }
+      break;
+    }
+  }
+  return assignment;
+}

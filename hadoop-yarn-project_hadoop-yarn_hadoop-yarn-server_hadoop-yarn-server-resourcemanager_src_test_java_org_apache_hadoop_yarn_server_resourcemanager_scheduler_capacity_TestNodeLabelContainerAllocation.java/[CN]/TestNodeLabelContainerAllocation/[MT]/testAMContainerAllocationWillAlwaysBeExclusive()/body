@@ -1,0 +1,22 @@
+{
+  mgr.addToCluserNodeLabels(ImmutableSet.of("x","y"));
+  mgr.updateNodeLabels(Arrays.asList(NodeLabel.newInstance("x",false)));
+  mgr.addLabelsToNode(ImmutableMap.of(NodeId.newInstance("h1",0),toSet("x")));
+  MockRM rm1=new MockRM(TestUtils.getConfigurationWithQueueLabels(conf)){
+    @Override public RMNodeLabelsManager createNodeLabelManager(){
+      return mgr;
+    }
+  }
+;
+  rm1.getRMContext().setNodeLabelManager(mgr);
+  rm1.start();
+  MockNM nm1=rm1.registerNode("h1:1234",8 * GB);
+  rm1.submitApp(1 * GB,"app","user",null,"b1");
+  CapacityScheduler cs=(CapacityScheduler)rm1.getResourceScheduler();
+  RMNode rmNode1=rm1.getRMContext().getRMNodes().get(nm1.getNodeId());
+  for (int i=0; i < 50; i++) {
+    cs.handle(new NodeUpdateSchedulerEvent(rmNode1));
+  }
+  Assert.assertEquals(0,cs.getSchedulerNode(nm1.getNodeId()).getNumContainers());
+  rm1.close();
+}
