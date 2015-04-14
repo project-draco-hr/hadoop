@@ -1,0 +1,64 @@
+{
+  List<JSONObject> amContainersList=null;
+  List<AMLogsRequest> requests=new ArrayList<AMLogsRequest>();
+  boolean getAMContainerLists=false;
+  String errorMessage="";
+  try {
+    amContainersList=getAMContainerInfoForRMWebService(conf,appId);
+    if (amContainersList != null && !amContainersList.isEmpty()) {
+      getAMContainerLists=true;
+      for (      JSONObject amContainer : amContainersList) {
+        AMLogsRequest request=new AMLogsRequest(applicationFinished);
+        request.setAmContainerId(amContainer.getString("containerId"));
+        request.setNodeHttpAddress(amContainer.getString("nodeHttpAddress"));
+        request.setNodeId(amContainer.getString("nodeId"));
+        requests.add(request);
+      }
+    }
+  }
+ catch (  Exception ex) {
+    errorMessage=ex.getMessage();
+    if (applicationFinished) {
+      try {
+        amContainersList=getAMContainerInfoForAHSWebService(conf,appId);
+        if (amContainersList != null && !amContainersList.isEmpty()) {
+          getAMContainerLists=true;
+          for (          JSONObject amContainer : amContainersList) {
+            AMLogsRequest request=new AMLogsRequest(applicationFinished);
+            request.setAmContainerId(amContainer.getString("amContainerId"));
+            requests.add(request);
+          }
+        }
+      }
+ catch (      Exception e) {
+        errorMessage=e.getMessage();
+      }
+    }
+  }
+  if (!getAMContainerLists) {
+    System.err.println("Unable to get AM container informations " + "for the application:" + appId);
+    System.err.println(errorMessage);
+    return -1;
+  }
+  if (amContainers.contains("ALL")) {
+    for (    AMLogsRequest request : requests) {
+      outputAMContainerLogs(request,conf,appId,logFiles,logCliHelper,appOwner);
+    }
+    System.out.println();
+    System.out.println("Specified ALL for -am option. " + "Printed logs for all am containers.");
+  }
+ else {
+    for (    String amContainer : amContainers) {
+      int amContainerId=Integer.parseInt(amContainer.trim());
+      if (amContainerId == -1) {
+        outputAMContainerLogs(requests.get(requests.size() - 1),conf,appId,logFiles,logCliHelper,appOwner);
+      }
+ else {
+        if (amContainerId <= requests.size()) {
+          outputAMContainerLogs(requests.get(amContainerId - 1),conf,appId,logFiles,logCliHelper,appOwner);
+        }
+      }
+    }
+  }
+  return 0;
+}
