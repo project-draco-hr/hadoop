@@ -1,0 +1,22 @@
+{
+  String clientMachine="client.foo.com";
+  String src="/testfile_1_";
+  HdfsFileStatus fileStatus=namesystem.startFile(src,perm,clientMachine,clientMachine,EnumSet.of(CreateFlag.CREATE),true,(short)20,DEFAULT_BLOCK_SIZE,null,false);
+  LocatedBlock locatedBlock=nameNodeRpc.addBlock(src,clientMachine,null,null,fileStatus.getFileId(),null);
+  doTestLocatedBlock(20,locatedBlock);
+  DatanodeInfo[] locs=locatedBlock.getLocations();
+  String[] storageIDs=locatedBlock.getStorageIDs();
+  for (int time=0; time < 5; time++) {
+    shuffle(locs,storageIDs);
+    for (int i=1; i < locs.length; i++) {
+      DatanodeInfo[] partLocs=new DatanodeInfo[i];
+      String[] partStorageIDs=new String[i];
+      System.arraycopy(locs,0,partLocs,0,i);
+      System.arraycopy(storageIDs,0,partStorageIDs,0,i);
+      for (int j=1; j < 20 - i; j++) {
+        LocatedBlock additionalLocatedBlock=nameNodeRpc.getAdditionalDatanode(src,fileStatus.getFileId(),locatedBlock.getBlock(),partLocs,partStorageIDs,new DatanodeInfo[0],j,clientMachine);
+        doTestLocatedBlock(i + j,additionalLocatedBlock);
+      }
+    }
+  }
+}
