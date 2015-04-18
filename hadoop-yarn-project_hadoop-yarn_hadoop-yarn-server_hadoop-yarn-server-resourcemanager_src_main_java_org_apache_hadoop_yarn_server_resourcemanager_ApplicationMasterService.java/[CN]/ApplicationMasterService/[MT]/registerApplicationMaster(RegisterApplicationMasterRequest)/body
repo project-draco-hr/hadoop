@@ -30,25 +30,27 @@ synchronized (lock) {
       LOG.info("Setting client token master key");
       response.setClientToAMTokenMasterKey(java.nio.ByteBuffer.wrap(rmContext.getClientToAMTokenSecretManager().getMasterKey(applicationAttemptId).getEncoded()));
     }
-    List<Container> transferredContainers=((AbstractYarnScheduler)rScheduler).getTransferredContainers(applicationAttemptId);
-    if (!transferredContainers.isEmpty()) {
-      response.setContainersFromPreviousAttempts(transferredContainers);
-      List<NMToken> nmTokens=new ArrayList<NMToken>();
-      for (      Container container : transferredContainers) {
-        try {
-          NMToken token=rmContext.getNMTokenSecretManager().createAndGetNMToken(app.getUser(),applicationAttemptId,container);
-          if (null != token) {
-            nmTokens.add(token);
+    if (app.getApplicationSubmissionContext().getKeepContainersAcrossApplicationAttempts()) {
+      List<Container> transferredContainers=((AbstractYarnScheduler)rScheduler).getTransferredContainers(applicationAttemptId);
+      if (!transferredContainers.isEmpty()) {
+        response.setContainersFromPreviousAttempts(transferredContainers);
+        List<NMToken> nmTokens=new ArrayList<NMToken>();
+        for (        Container container : transferredContainers) {
+          try {
+            NMToken token=rmContext.getNMTokenSecretManager().createAndGetNMToken(app.getUser(),applicationAttemptId,container);
+            if (null != token) {
+              nmTokens.add(token);
+            }
+          }
+ catch (          IllegalArgumentException e) {
+            if (e.getCause() instanceof UnknownHostException) {
+              throw (UnknownHostException)e.getCause();
+            }
           }
         }
- catch (        IllegalArgumentException e) {
-          if (e.getCause() instanceof UnknownHostException) {
-            throw (UnknownHostException)e.getCause();
-          }
-        }
+        response.setNMTokensFromPreviousAttempts(nmTokens);
+        LOG.info("Application " + appID + " retrieved "+ transferredContainers.size()+ " containers from previous"+ " attempts and "+ nmTokens.size()+ " NM tokens.");
       }
-      response.setNMTokensFromPreviousAttempts(nmTokens);
-      LOG.info("Application " + appID + " retrieved "+ transferredContainers.size()+ " containers from previous"+ " attempts and "+ nmTokens.size()+ " NM tokens.");
     }
     response.setSchedulerResourceTypes(rScheduler.getSchedulingResourceTypes());
     return response;
