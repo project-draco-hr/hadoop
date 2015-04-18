@@ -1,2 +1,120 @@
 {
+  Path testPath=new Path(src);
+  byte[] bytes=generateBytes(writeBytes);
+  DFSTestUtil.writeFile(fs,testPath,new String(bytes));
+  FileStatus status=fs.getFileStatus(testPath);
+  long fileLength=status.getLen();
+  Assert.assertEquals(writeBytes,fileLength);
+  List<List<LocatedBlock>> blockGroupList=new ArrayList<>();
+  LocatedBlocks lbs=fs.getClient().getLocatedBlocks(src,0L);
+  for (  LocatedBlock firstBlock : lbs.getLocatedBlocks()) {
+    Assert.assertTrue(firstBlock instanceof LocatedStripedBlock);
+    LocatedBlock[] blocks=StripedBlockUtil.parseStripedBlockGroup((LocatedStripedBlock)firstBlock,cellSize,dataBlocks,parityBlocks);
+    List<LocatedBlock> oneGroup=Arrays.asList(blocks);
+    blockGroupList.add(oneGroup);
+  }
+  for (int group=0; group < blockGroupList.size(); group++) {
+    List<LocatedBlock> blockList=blockGroupList.get(group);
+    byte[][] dataBlockBytes=new byte[dataBlocks][];
+    byte[][] parityBlockBytes=new byte[parityBlocks][];
+    for (int i=0; i < blockList.size(); i++) {
+      LocatedBlock lblock=blockList.get(i);
+      if (lblock == null) {
+        continue;
+      }
+      DatanodeInfo[] nodes=lblock.getLocations();
+      ExtendedBlock block=lblock.getBlock();
+      InetSocketAddress targetAddr=NetUtils.createSocketAddr(nodes[0].getXferAddr());
+      byte[] blockBytes=new byte[(int)block.getNumBytes()];
+      if (i < dataBlocks) {
+        dataBlockBytes[i]=blockBytes;
+      }
+ else {
+        parityBlockBytes[i - dataBlocks]=blockBytes;
+      }
+      if (block.getNumBytes() == 0) {
+        continue;
+      }
+      BlockReader blockReader=new BlockReaderFactory(new DfsClientConf(conf)).setFileName(src).setBlock(block).setBlockToken(lblock.getBlockToken()).setInetSocketAddress(targetAddr).setStartOffset(0).setLength(block.getNumBytes()).setVerifyChecksum(true).setClientName("TestStripeLayoutWrite").setDatanodeInfo(nodes[0]).setCachingStrategy(CachingStrategy.newDefaultStrategy()).setClientCacheContext(ClientContext.getFromConf(conf)).setConfiguration(conf).setRemotePeerFactory(new RemotePeerFactory(){
+        @Override public Peer newConnectedPeer(        InetSocketAddress addr,        Token<BlockTokenIdentifier> blockToken,        DatanodeID datanodeId) throws IOException {
+          Peer peer=null;
+          Socket sock=NetUtils.getDefaultSocketFactory(conf).createSocket();
+          try {
+            sock.connect(addr,HdfsServerConstants.READ_TIMEOUT);
+            sock.setSoTimeout(HdfsServerConstants.READ_TIMEOUT);
+            peer=TcpPeerServer.peerFromSocket(sock);
+          }
+  finally {
+            if (peer == null) {
+              IOUtils.closeSocket(sock);
+            }
+          }
+          return peer;
+        }
+      }
+).build();
+      blockReader.readAll(blockBytes,0,(int)block.getNumBytes());
+      blockReader.close();
+    }
+    for (int blkIdxInGroup=0; blkIdxInGroup < dataBlockBytes.length; blkIdxInGroup++) {
+      final byte[] actualBlkBytes=dataBlockBytes[blkIdxInGroup];
+      if (actualBlkBytes == null) {
+        continue;
+      }
+      for (int posInBlk=0; posInBlk < actualBlkBytes.length; posInBlk++) {
+        byte expected;
+        long posInFile=StripedBlockUtil.offsetInBlkToOffsetInBG(cellSize,dataBlocks,posInBlk,blkIdxInGroup) + group * blockSize * dataBlocks;
+        if (posInFile >= writeBytes) {
+          expected=0;
+        }
+ else {
+          expected=getByte(posInFile);
+        }
+        String s="Unexpected byte " + actualBlkBytes[posInBlk] + ", expect "+ expected+ ". Block group index is "+ group+ ", stripe index is "+ posInBlk / cellSize + ", cell index is " + blkIdxInGroup + ", byte index is " + posInBlk % cellSize;
+        Assert.assertEquals(s,expected,actualBlkBytes[posInBlk]);
+      }
+    }
+    final ByteBuffer[] parityBuffers=new ByteBuffer[parityBlocks];
+    final long groupSize=lbs.getLocatedBlocks().get(group).getBlockSize();
+    int parityBlkSize=(int)StripedBlockUtil.getInternalBlockLength(groupSize,cellSize,dataBlocks,dataBlocks);
+    for (int i=0; i < parityBlocks; i++) {
+      parityBuffers[i]=ByteBuffer.allocate(parityBlkSize);
+    }
+    final int numStripes=(int)(groupSize - 1) / stripeDataSize() + 1;
+    for (int i=0; i < numStripes; i++) {
+      final int parityCellSize=i < numStripes - 1 || parityBlkSize % cellSize == 0 ? cellSize : parityBlkSize % cellSize;
+      ByteBuffer[] stripeBuf=new ByteBuffer[dataBlocks];
+      for (int k=0; k < stripeBuf.length; k++) {
+        stripeBuf[k]=ByteBuffer.allocate(cellSize);
+      }
+      for (int j=0; j < dataBlocks; j++) {
+        if (dataBlockBytes[j] != null) {
+          int length=Math.min(cellSize,dataBlockBytes[j].length - cellSize * i);
+          if (length > 0) {
+            stripeBuf[j].put(dataBlockBytes[j],cellSize * i,length);
+          }
+        }
+        final long pos=stripeBuf[j].position();
+        for (int k=0; k < parityCellSize - pos; k++) {
+          stripeBuf[j].put((byte)0);
+        }
+        stripeBuf[j].flip();
+      }
+      ByteBuffer[] parityBuf=new ByteBuffer[parityBlocks];
+      for (int j=0; j < parityBlocks; j++) {
+        parityBuf[j]=ByteBuffer.allocate(cellSize);
+        for (int k=0; k < parityCellSize; k++) {
+          parityBuf[j].put((byte)0);
+        }
+        parityBuf[j].flip();
+      }
+      encoder.encode(stripeBuf,parityBuf);
+      for (int j=0; j < parityBlocks; j++) {
+        parityBuffers[j].put(parityBuf[j]);
+      }
+    }
+    for (int i=0; i < parityBlocks; i++) {
+      Assert.assertArrayEquals(parityBuffers[i].array(),parityBlockBytes[i]);
+    }
+  }
 }

@@ -1,8 +1,12 @@
 {
   if (isClosed()) {
     IOException e=getLeadingStreamer().getLastException().getAndSet(null);
-    if (e == null)     return;
- else     throw e;
+    if (e != null) {
+      throw e;
+    }
+ else {
+      return;
+    }
   }
   try {
     flushBuffer();
@@ -11,17 +15,17 @@
       currentPacket=null;
     }
     writeParityCellsForLastStripe();
-    for (int i=0; i < blockGroupBlocks; i++) {
+    for (int i=0; i < numAllBlocks; i++) {
       curIdx=i;
       refreshStreamer();
-      if (streamer.getBytesCurBlock() != 0 || currentBlockGroupBytes < getBlockGroupSize()) {
+      if (streamer.getBytesCurBlock() > 0) {
         currentPacket=createPacket(0,0,streamer.getBytesCurBlock(),streamer.getAndIncCurrentSeqno(),true);
         currentPacket.setSyncBlock(shouldSyncBlock);
       }
       flushInternal();
     }
-    ExtendedBlock lastBlock=streamers.get(0).getBlock();
     closeThreads(false);
+    final ExtendedBlock lastBlock=getCommittedBlock();
     TraceScope scope=Trace.startSpan("completeFile",Sampler.NEVER);
     try {
       completeFile(lastBlock);
@@ -31,7 +35,7 @@
     }
     dfsClient.endFileLease(fileId);
   }
- catch (  ClosedChannelException e) {
+ catch (  ClosedChannelException ignored) {
   }
  finally {
     setClosed();
