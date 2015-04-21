@@ -1,0 +1,31 @@
+{
+  FileStatus parent=workRequest.getItem();
+  int retry=workRequest.getRetry();
+  WorkReport<FileStatus[]> result=null;
+  try {
+    if (retry > 0) {
+      int sleepSeconds=2;
+      for (int i=1; i < retry; i++) {
+        sleepSeconds*=2;
+      }
+      try {
+        Thread.sleep(1000 * sleepSeconds);
+      }
+ catch (      InterruptedException ie) {
+        LOG.debug("Interrupted while sleeping in exponential backoff.");
+      }
+    }
+    result=new WorkReport<FileStatus[]>(fileSystem.listStatus(parent.getPath()),0,true);
+  }
+ catch (  FileNotFoundException fnf) {
+    LOG.error("FileNotFoundException exception in listStatus: " + fnf.getMessage());
+    result=new WorkReport<FileStatus[]>(new FileStatus[0],0,true,fnf);
+  }
+catch (  Exception e) {
+    LOG.error("Exception in listStatus. Will send for retry.");
+    FileStatus[] parentList=new FileStatus[1];
+    parentList[0]=parent;
+    result=new WorkReport<FileStatus[]>(parentList,retry + 1,false,e);
+  }
+  return result;
+}
