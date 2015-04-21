@@ -1,0 +1,50 @@
+{
+  LOG.info("testMRNewTimelineServiceEventHandling start.");
+  Configuration conf=new YarnConfiguration();
+  conf.setBoolean(YarnConfiguration.TIMELINE_SERVICE_ENABLED,true);
+  conf.setBoolean(MRJobConfig.MAPREDUCE_JOB_EMIT_TIMELINE_DATA,true);
+  conf.setBoolean(MRJobConfig.MAPREDUCE_JOB_NEW_TIMELINE_SERVICE_ENABLED,true);
+  conf.set(YarnConfiguration.NM_AUX_SERVICES,TIMELINE_AUX_SERVICE_NAME);
+  conf.set(YarnConfiguration.NM_AUX_SERVICES + "." + TIMELINE_AUX_SERVICE_NAME+ ".class",PerNodeTimelineCollectorsAuxService.class.getName());
+  conf.setBoolean(YarnConfiguration.SYSTEM_METRICS_PUBLISHER_ENABLED,true);
+  MiniMRYarnCluster cluster=null;
+  try {
+    cluster=new MiniMRYarnCluster(TestMRTimelineEventHandling.class.getSimpleName(),1,true);
+    cluster.init(conf);
+    cluster.start();
+    LOG.info("A MiniMRYarnCluster get start.");
+    Path inDir=new Path("input");
+    Path outDir=new Path("output");
+    LOG.info("Run 1st job which should be successful.");
+    RunningJob job=UtilsForTests.runJobSucceed(new JobConf(conf),inDir,outDir);
+    Assert.assertEquals(JobStatus.SUCCEEDED,job.getJobStatus().getState().getValue());
+    YarnClient yarnClient=YarnClient.createYarnClient();
+    yarnClient.init(new Configuration(cluster.getConfig()));
+    yarnClient.start();
+    EnumSet<YarnApplicationState> appStates=EnumSet.allOf(YarnApplicationState.class);
+    ApplicationId firstAppId=null;
+    List<ApplicationReport> apps=yarnClient.getApplications(appStates);
+    Assert.assertEquals(apps.size(),1);
+    ApplicationReport appReport=apps.get(0);
+    firstAppId=appReport.getApplicationId();
+    checkNewTimelineEvent(firstAppId);
+    LOG.info("Run 2nd job which should be failed.");
+    job=UtilsForTests.runJobFail(new JobConf(conf),inDir,outDir);
+    Assert.assertEquals(JobStatus.FAILED,job.getJobStatus().getState().getValue());
+    apps=yarnClient.getApplications(appStates);
+    Assert.assertEquals(apps.size(),2);
+    ApplicationId secAppId=null;
+    secAppId=apps.get(0).getApplicationId() == firstAppId ? apps.get(1).getApplicationId() : apps.get(0).getApplicationId();
+    checkNewTimelineEvent(firstAppId);
+  }
+  finally {
+    if (cluster != null) {
+      cluster.stop();
+    }
+    String testRoot=FileSystemTimelineWriterImpl.DEFAULT_TIMELINE_SERVICE_STORAGE_DIR_ROOT;
+    File testRootFolder=new File(testRoot);
+    if (testRootFolder.isDirectory()) {
+      FileUtils.deleteDirectory(testRootFolder);
+    }
+  }
+}
