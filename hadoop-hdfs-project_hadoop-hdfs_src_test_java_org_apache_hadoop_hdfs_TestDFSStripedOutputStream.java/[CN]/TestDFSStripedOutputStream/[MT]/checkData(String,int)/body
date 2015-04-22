@@ -1,0 +1,49 @@
+{
+  List<List<LocatedBlock>> blockGroupList=new ArrayList<>();
+  LocatedBlocks lbs=fs.getClient().getLocatedBlocks(src,0L);
+  for (  LocatedBlock firstBlock : lbs.getLocatedBlocks()) {
+    Assert.assertTrue(firstBlock instanceof LocatedStripedBlock);
+    LocatedBlock[] blocks=StripedBlockUtil.parseStripedBlockGroup((LocatedStripedBlock)firstBlock,cellSize,dataBlocks,parityBlocks);
+    List<LocatedBlock> oneGroup=Arrays.asList(blocks);
+    blockGroupList.add(oneGroup);
+  }
+  for (int group=0; group < blockGroupList.size(); group++) {
+    List<LocatedBlock> blockList=blockGroupList.get(group);
+    byte[][] dataBlockBytes=new byte[dataBlocks][];
+    byte[][] parityBlockBytes=new byte[parityBlocks][];
+    for (int i=0; i < blockList.size(); i++) {
+      LocatedBlock lblock=blockList.get(i);
+      if (lblock == null) {
+        continue;
+      }
+      ExtendedBlock block=lblock.getBlock();
+      byte[] blockBytes=new byte[(int)block.getNumBytes()];
+      if (i < dataBlocks) {
+        dataBlockBytes[i]=blockBytes;
+      }
+ else {
+        parityBlockBytes[i - dataBlocks]=blockBytes;
+      }
+      if (block.getNumBytes() == 0) {
+        continue;
+      }
+      final BlockReader blockReader=BlockReaderTestUtil.getBlockReader(fs,lblock,0,block.getNumBytes());
+      blockReader.readAll(blockBytes,0,(int)block.getNumBytes());
+      blockReader.close();
+    }
+    for (int blkIdxInGroup=0; blkIdxInGroup < dataBlockBytes.length; blkIdxInGroup++) {
+      final byte[] actualBlkBytes=dataBlockBytes[blkIdxInGroup];
+      if (actualBlkBytes == null) {
+        continue;
+      }
+      for (int posInBlk=0; posInBlk < actualBlkBytes.length; posInBlk++) {
+        long posInFile=StripedBlockUtil.offsetInBlkToOffsetInBG(cellSize,dataBlocks,posInBlk,blkIdxInGroup) + group * blockSize * dataBlocks;
+        Assert.assertTrue(posInFile < writeBytes);
+        final byte expected=getByte(posInFile);
+        String s="Unexpected byte " + actualBlkBytes[posInBlk] + ", expect "+ expected+ ". Block group index is "+ group+ ", stripe index is "+ posInBlk / cellSize + ", cell index is " + blkIdxInGroup + ", byte index is " + posInBlk % cellSize;
+        Assert.assertEquals(s,expected,actualBlkBytes[posInBlk]);
+      }
+    }
+    verifyParity(lbs.getLocatedBlocks().get(group).getBlockSize(),cellSize,dataBlockBytes,parityBlockBytes);
+  }
+}
