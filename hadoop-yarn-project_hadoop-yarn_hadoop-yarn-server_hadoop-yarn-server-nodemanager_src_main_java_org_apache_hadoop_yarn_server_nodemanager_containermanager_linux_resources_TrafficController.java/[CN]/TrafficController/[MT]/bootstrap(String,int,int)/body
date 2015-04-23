@@ -1,0 +1,37 @@
+{
+  if (device == null) {
+    throw new ResourceHandlerException("device cannot be null!");
+  }
+  String tmpDirBase=conf.get("hadoop.tmp.dir");
+  if (tmpDirBase == null) {
+    throw new ResourceHandlerException("hadoop.tmp.dir not set!");
+  }
+  tmpDirPath=tmpDirBase + "/nm-tc-rules";
+  File tmpDir=new File(tmpDirPath);
+  if (!(tmpDir.exists() || tmpDir.mkdirs())) {
+    LOG.warn("Unable to create directory: " + tmpDirPath);
+    throw new ResourceHandlerException("Unable to create directory: " + tmpDirPath);
+  }
+  this.device=device;
+  this.rootBandwidthMbit=rootBandwidthMbit;
+  this.yarnBandwidthMbit=yarnBandwidthMbit;
+  defaultClassBandwidthMbit=(rootBandwidthMbit - yarnBandwidthMbit) <= 0 ? rootBandwidthMbit : (rootBandwidthMbit - yarnBandwidthMbit);
+  boolean recoveryEnabled=conf.getBoolean(YarnConfiguration.NM_RECOVERY_ENABLED,YarnConfiguration.DEFAULT_NM_RECOVERY_ENABLED);
+  String state=null;
+  if (!recoveryEnabled) {
+    LOG.info("NM recovery is not enabled. We'll wipe tc state before proceeding.");
+  }
+ else {
+    state=readState();
+    if (checkIfAlreadyBootstrapped(state)) {
+      LOG.info("TC configuration is already in place. Not wiping state.");
+      reacquireContainerClasses(state);
+      return;
+    }
+ else {
+      LOG.info("TC configuration is incomplete. Wiping tc state before proceeding");
+    }
+  }
+  wipeState();
+  initializeState();
+}

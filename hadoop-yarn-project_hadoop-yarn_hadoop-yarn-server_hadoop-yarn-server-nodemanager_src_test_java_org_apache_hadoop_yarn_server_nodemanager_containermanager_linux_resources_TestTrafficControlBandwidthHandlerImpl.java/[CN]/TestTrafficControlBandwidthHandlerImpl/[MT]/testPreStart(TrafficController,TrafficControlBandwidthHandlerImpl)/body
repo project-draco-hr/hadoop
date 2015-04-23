@@ -1,0 +1,21 @@
+{
+  reset(privilegedOperationExecutorMock);
+  doReturn(TEST_CLASSID).when(trafficControllerSpy).getNextClassId();
+  doReturn(TEST_CLASSID_STR).when(trafficControllerSpy).getStringForNetClsClassId(TEST_CLASSID);
+  when(cGroupsHandlerMock.getPathForCGroupTasks(CGroupsHandler.CGroupController.NET_CLS,TEST_CONTAINER_ID_STR)).thenReturn(TEST_TASKS_FILE);
+  List<PrivilegedOperation> ops=handlerImpl.preStart(containerMock);
+  verify(cGroupsHandlerMock).createCGroup(eq(CGroupsHandler.CGroupController.NET_CLS),eq(TEST_CONTAINER_ID_STR));
+  verify(cGroupsHandlerMock).updateCGroupParam(eq(CGroupsHandler.CGroupController.NET_CLS),eq(TEST_CONTAINER_ID_STR),eq(CGroupsHandler.CGROUP_PARAM_CLASSID),eq(TEST_CLASSID_STR));
+  Assert.assertEquals(2,ops.size());
+  PrivilegedOperation addPidOp=ops.get(0);
+  String expectedAddPidOpArg=PrivilegedOperation.CGROUP_ARG_PREFIX + TEST_TASKS_FILE;
+  List<String> addPidOpArgs=addPidOp.getArguments();
+  Assert.assertEquals(PrivilegedOperation.OperationType.ADD_PID_TO_CGROUP,addPidOp.getOperationType());
+  Assert.assertEquals(1,addPidOpArgs.size());
+  Assert.assertEquals(expectedAddPidOpArg,addPidOpArgs.get(0));
+  PrivilegedOperation tcModifyOp=ops.get(1);
+  List<String> tcModifyOpArgs=tcModifyOp.getArguments();
+  Assert.assertEquals(PrivilegedOperation.OperationType.TC_MODIFY_STATE,tcModifyOp.getOperationType());
+  Assert.assertEquals(1,tcModifyOpArgs.size());
+  Assert.assertTrue(new File(tcModifyOpArgs.get(0)).exists());
+}

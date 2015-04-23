@@ -1,0 +1,32 @@
+{
+  String[] lines=Pattern.compile("$",Pattern.MULTILINE).split(stats);
+  Pattern tcClassPattern=Pattern.compile(String.format("class htb %d:(\\d+) .*",ROOT_QDISC_HANDLE));
+  Pattern bytesPattern=Pattern.compile("Sent (\\d+) bytes.*");
+  int currentClassId=-1;
+  Map<Integer,Integer> containerClassIdStats=new HashMap<>();
+  for (  String lineSplit : lines) {
+    String line=lineSplit.trim();
+    if (!line.isEmpty()) {
+      Matcher classMatcher=tcClassPattern.matcher(line);
+      if (classMatcher.matches()) {
+        int classId=Integer.parseInt(classMatcher.group(1));
+        if (classId >= MIN_CONTAINER_CLASS_ID) {
+          currentClassId=classId;
+          continue;
+        }
+      }
+      Matcher bytesMatcher=bytesPattern.matcher(line);
+      if (bytesMatcher.matches()) {
+        if (currentClassId != -1) {
+          int bytes=Integer.parseInt(bytesMatcher.group(1));
+          containerClassIdStats.put(currentClassId,bytes);
+        }
+ else {
+          LOG.warn("Matched a 'bytes sent' line outside of a class stats " + "segment : " + line);
+        }
+        continue;
+      }
+    }
+  }
+  return containerClassIdStats;
+}
