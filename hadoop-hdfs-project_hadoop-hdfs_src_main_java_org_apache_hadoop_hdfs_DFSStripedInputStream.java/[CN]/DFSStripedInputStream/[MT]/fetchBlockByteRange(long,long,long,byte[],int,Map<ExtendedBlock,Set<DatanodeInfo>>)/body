@@ -1,2 +1,28 @@
 {
+  Map<Future<Void>,Integer> futures=new HashMap<>();
+  CompletionService<Void> stripedReadsService=new ExecutorCompletionService<>(dfsClient.getStripedReadsThreadPool());
+  int len=(int)(end - start + 1);
+  LocatedStripedBlock blockGroup=getBlockGroupAt(blockStartOffset);
+  ReadPortion[] readPortions=planReadPortions(dataBlkNum,cellSize,start,len,offset);
+  LocatedBlock[] blks=StripedBlockUtil.parseStripedBlockGroup(blockGroup,cellSize,dataBlkNum,parityBlkNum);
+  for (short i=0; i < dataBlkNum; i++) {
+    ReadPortion rp=readPortions[i];
+    if (rp.readLength <= 0) {
+      continue;
+    }
+    DatanodeInfo loc=blks[i].getLocations()[0];
+    StorageType type=blks[i].getStorageTypes()[0];
+    DNAddrPair dnAddr=new DNAddrPair(loc,NetUtils.createSocketAddr(loc.getXferAddr(dfsClient.getConf().isConnectToDnViaHostname())),type);
+    Callable<Void> readCallable=getFromOneDataNode(dnAddr,blks[i].getStartOffset(),rp.startOffsetInBlock,rp.startOffsetInBlock + rp.readLength - 1,buf,rp.getOffsets(),rp.getLengths(),corruptedBlockMap,i);
+    Future<Void> getFromDNRequest=stripedReadsService.submit(readCallable);
+    DFSClient.LOG.debug("Submitting striped read request for " + blks[i]);
+    futures.put(getFromDNRequest,(int)i);
+  }
+  while (!futures.isEmpty()) {
+    try {
+      waitNextCompletion(stripedReadsService,futures);
+    }
+ catch (    InterruptedException ie) {
+    }
+  }
 }
