@@ -1,0 +1,35 @@
+{
+  String[] queueExprArray=queueExprs.split(";");
+  ParentQueue rootQueue=null;
+  for (int idx=0; idx < queueExprArray.length; idx++) {
+    String q=queueExprArray[idx];
+    CSQueue queue;
+    if (isParent(queueExprArray,idx)) {
+      ParentQueue parentQueue=mock(ParentQueue.class);
+      queue=parentQueue;
+      List<CSQueue> children=new ArrayList<CSQueue>();
+      when(parentQueue.getChildQueues()).thenReturn(children);
+    }
+ else {
+      LeafQueue leafQueue=mock(LeafQueue.class);
+      final TreeSet<FiCaSchedulerApp> apps=new TreeSet<>(CapacityScheduler.applicationComparator);
+      when(leafQueue.getApplications()).thenReturn(apps);
+      OrderingPolicy<FiCaSchedulerApp> so=mock(OrderingPolicy.class);
+      when(so.getPreemptionIterator()).thenAnswer(new Answer(){
+        public Object answer(        InvocationOnMock invocation){
+          return apps.descendingIterator();
+        }
+      }
+);
+      when(leafQueue.getOrderingPolicy()).thenReturn(so);
+      Map<String,TreeSet<RMContainer>> ignorePartitionContainers=new HashMap<>();
+      when(leafQueue.getIgnoreExclusivityRMContainers()).thenReturn(ignorePartitionContainers);
+      queue=leafQueue;
+    }
+    setupQueue(queue,q,queueExprArray,idx);
+    if (queue.getQueueName().equals(ROOT)) {
+      rootQueue=(ParentQueue)queue;
+    }
+  }
+  return rootQueue;
+}

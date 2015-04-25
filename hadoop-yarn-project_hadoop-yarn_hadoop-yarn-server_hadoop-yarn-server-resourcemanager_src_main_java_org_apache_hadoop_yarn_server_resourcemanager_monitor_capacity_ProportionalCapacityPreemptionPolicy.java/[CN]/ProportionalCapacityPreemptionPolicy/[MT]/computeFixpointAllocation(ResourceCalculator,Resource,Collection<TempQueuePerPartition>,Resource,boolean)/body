@@ -1,0 +1,34 @@
+{
+  TQComparator tqComparator=new TQComparator(rc,tot_guarant);
+  PriorityQueue<TempQueuePerPartition> orderedByNeed=new PriorityQueue<TempQueuePerPartition>(10,tqComparator);
+  for (Iterator<TempQueuePerPartition> i=qAlloc.iterator(); i.hasNext(); ) {
+    TempQueuePerPartition q=i.next();
+    if (Resources.greaterThan(rc,tot_guarant,q.current,q.guaranteed)) {
+      q.idealAssigned=Resources.add(q.guaranteed,q.untouchableExtra);
+    }
+ else {
+      q.idealAssigned=Resources.clone(q.current);
+    }
+    Resources.subtractFrom(unassigned,q.idealAssigned);
+    Resource curPlusPend=Resources.add(q.current,q.pending);
+    if (Resources.lessThan(rc,tot_guarant,q.idealAssigned,curPlusPend)) {
+      orderedByNeed.add(q);
+    }
+  }
+  while (!orderedByNeed.isEmpty() && Resources.greaterThan(rc,tot_guarant,unassigned,Resources.none())) {
+    Resource wQassigned=Resource.newInstance(0,0);
+    resetCapacity(rc,unassigned,orderedByNeed,ignoreGuarantee);
+    Collection<TempQueuePerPartition> underserved=getMostUnderservedQueues(orderedByNeed,tqComparator);
+    for (Iterator<TempQueuePerPartition> i=underserved.iterator(); i.hasNext(); ) {
+      TempQueuePerPartition sub=i.next();
+      Resource wQavail=Resources.multiplyAndNormalizeUp(rc,unassigned,sub.normalizedGuarantee,Resource.newInstance(1,1));
+      Resource wQidle=sub.offer(wQavail,rc,tot_guarant);
+      Resource wQdone=Resources.subtract(wQavail,wQidle);
+      if (Resources.greaterThan(rc,tot_guarant,wQdone,Resources.none())) {
+        orderedByNeed.add(sub);
+      }
+      Resources.addTo(wQassigned,wQdone);
+    }
+    Resources.subtractFrom(unassigned,wQassigned);
+  }
+}

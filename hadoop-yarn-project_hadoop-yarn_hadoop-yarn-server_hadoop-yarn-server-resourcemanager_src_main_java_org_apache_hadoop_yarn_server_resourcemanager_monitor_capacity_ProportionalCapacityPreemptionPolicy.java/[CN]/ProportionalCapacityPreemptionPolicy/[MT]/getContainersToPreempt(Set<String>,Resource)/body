@@ -1,0 +1,56 @@
+{
+  Map<ApplicationAttemptId,Set<RMContainer>> preemptMap=new HashMap<ApplicationAttemptId,Set<RMContainer>>();
+  List<RMContainer> skippedAMContainerlist=new ArrayList<RMContainer>();
+  for (  String queueName : leafQueueNames) {
+    if (getQueueByPartition(queueName,RMNodeLabelsManager.NO_LABEL).preemptionDisabled) {
+      if (LOG.isDebugEnabled()) {
+        LOG.debug("skipping from queue=" + queueName + " because it's a non-preemptable queue");
+      }
+      continue;
+    }
+    LeafQueue leafQueue=null;
+    Map<String,Resource> resToObtainByPartition=new HashMap<String,Resource>();
+    for (    TempQueuePerPartition qT : getQueuePartitions(queueName)) {
+      leafQueue=qT.leafQueue;
+      if (Resources.greaterThan(rc,clusterResource,qT.current,Resources.multiply(qT.guaranteed,1.0 + maxIgnoredOverCapacity))) {
+        Resource resToObtain=Resources.multiply(qT.toBePreempted,naturalTerminationFactor);
+        if (Resources.greaterThan(rc,clusterResource,resToObtain,Resources.none())) {
+          resToObtainByPartition.put(qT.partition,resToObtain);
+          if (LOG.isDebugEnabled()) {
+            LOG.debug("Queue=" + queueName + " partition="+ qT.partition+ " resource-to-obtain="+ resToObtain);
+          }
+        }
+        qT.actuallyPreempted=Resources.clone(resToObtain);
+      }
+ else {
+        qT.actuallyPreempted=Resources.none();
+      }
+    }
+synchronized (leafQueue) {
+      Map<String,TreeSet<RMContainer>> ignorePartitionExclusivityContainers=leafQueue.getIgnoreExclusivityRMContainers();
+      for (      String partition : resToObtainByPartition.keySet()) {
+        if (ignorePartitionExclusivityContainers.containsKey(partition)) {
+          TreeSet<RMContainer> rmContainers=ignorePartitionExclusivityContainers.get(partition);
+          for (          RMContainer c : rmContainers.descendingSet()) {
+            boolean preempted=tryPreemptContainerAndDeductResToObtain(resToObtainByPartition,c,clusterResource,preemptMap);
+            if (!preempted) {
+              break;
+            }
+          }
+        }
+      }
+      Resource skippedAMSize=Resource.newInstance(0,0);
+      Iterator<FiCaSchedulerApp> desc=leafQueue.getOrderingPolicy().getPreemptionIterator();
+      while (desc.hasNext()) {
+        FiCaSchedulerApp fc=desc.next();
+        if (resToObtainByPartition.isEmpty()) {
+          break;
+        }
+        preemptFrom(fc,clusterResource,resToObtainByPartition,skippedAMContainerlist,skippedAMSize,preemptMap);
+      }
+      Resource maxAMCapacityForThisQueue=Resources.multiply(Resources.multiply(clusterResource,leafQueue.getAbsoluteCapacity()),leafQueue.getMaxAMResourcePerQueuePercent());
+      preemptAMContainers(clusterResource,preemptMap,skippedAMContainerlist,resToObtainByPartition,skippedAMSize,maxAMCapacityForThisQueue);
+    }
+  }
+  return preemptMap;
+}

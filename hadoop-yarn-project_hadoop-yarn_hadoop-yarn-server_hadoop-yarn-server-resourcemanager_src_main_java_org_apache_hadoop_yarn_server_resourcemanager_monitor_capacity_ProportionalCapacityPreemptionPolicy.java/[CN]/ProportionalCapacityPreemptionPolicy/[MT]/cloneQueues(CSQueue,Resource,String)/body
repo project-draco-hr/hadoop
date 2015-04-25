@@ -1,0 +1,55 @@
+{
+  TempQueuePerPartition ret;
+synchronized (curQueue) {
+    String queueName=curQueue.getQueueName();
+    QueueCapacities qc=curQueue.getQueueCapacities();
+    float absUsed=qc.getAbsoluteUsedCapacity(partitionToLookAt);
+    float absCap=qc.getAbsoluteCapacity(partitionToLookAt);
+    float absMaxCap=qc.getAbsoluteMaximumCapacity(partitionToLookAt);
+    boolean preemptionDisabled=curQueue.getPreemptionDisabled();
+    Resource current=Resources.multiply(partitionResource,absUsed);
+    Resource guaranteed=Resources.multiply(partitionResource,absCap);
+    Resource maxCapacity=Resources.multiply(partitionResource,absMaxCap);
+    try {
+      if (!scheduler.getRMContext().getNodeLabelManager().isExclusiveNodeLabel(partitionToLookAt)) {
+        maxCapacity=Resources.max(rc,partitionResource,maxCapacity,current);
+      }
+    }
+ catch (    IOException e) {
+    }
+    Resource extra=Resource.newInstance(0,0);
+    if (Resources.greaterThan(rc,partitionResource,current,guaranteed)) {
+      extra=Resources.subtract(current,guaranteed);
+    }
+    if (curQueue instanceof LeafQueue) {
+      LeafQueue l=(LeafQueue)curQueue;
+      Resource pending=l.getQueueResourceUsage().getPending(partitionToLookAt);
+      ret=new TempQueuePerPartition(queueName,current,pending,guaranteed,maxCapacity,preemptionDisabled,partitionToLookAt);
+      if (preemptionDisabled) {
+        ret.untouchableExtra=extra;
+      }
+ else {
+        ret.preemptableExtra=extra;
+      }
+      ret.setLeafQueue(l);
+    }
+ else {
+      Resource pending=Resource.newInstance(0,0);
+      ret=new TempQueuePerPartition(curQueue.getQueueName(),current,pending,guaranteed,maxCapacity,false,partitionToLookAt);
+      Resource childrensPreemptable=Resource.newInstance(0,0);
+      for (      CSQueue c : curQueue.getChildQueues()) {
+        TempQueuePerPartition subq=cloneQueues(c,partitionResource,partitionToLookAt);
+        Resources.addTo(childrensPreemptable,subq.preemptableExtra);
+        ret.addChild(subq);
+      }
+      if (Resources.greaterThanOrEqual(rc,partitionResource,childrensPreemptable,extra)) {
+        ret.untouchableExtra=Resource.newInstance(0,0);
+      }
+ else {
+        ret.untouchableExtra=Resources.subtractFrom(extra,childrensPreemptable);
+      }
+    }
+  }
+  addTempQueuePartition(ret);
+  return ret;
+}

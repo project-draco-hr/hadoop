@@ -1,0 +1,29 @@
+{
+  ApplicationAttemptId appId=app.getApplicationAttemptId();
+  if (LOG.isDebugEnabled()) {
+    LOG.debug("Looking at application=" + app.getApplicationAttemptId() + " resourceToObtain="+ resToObtainByPartition);
+  }
+  List<RMContainer> reservedContainers=new ArrayList<RMContainer>(app.getReservedContainers());
+  for (  RMContainer c : reservedContainers) {
+    if (resToObtainByPartition.isEmpty()) {
+      return;
+    }
+    tryPreemptContainerAndDeductResToObtain(resToObtainByPartition,c,clusterResource,preemptMap);
+    if (!observeOnly) {
+      dispatcher.handle(new ContainerPreemptEvent(appId,c,ContainerPreemptEventType.DROP_RESERVATION));
+    }
+  }
+  List<RMContainer> liveContainers=new ArrayList<RMContainer>(app.getLiveContainers());
+  sortContainers(liveContainers);
+  for (  RMContainer c : liveContainers) {
+    if (resToObtainByPartition.isEmpty()) {
+      return;
+    }
+    if (c.isAMContainer()) {
+      skippedAMContainerlist.add(c);
+      Resources.addTo(skippedAMSize,c.getAllocatedResource());
+      continue;
+    }
+    tryPreemptContainerAndDeductResToObtain(resToObtainByPartition,c,clusterResource,preemptMap);
+  }
+}

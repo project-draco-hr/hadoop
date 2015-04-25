@@ -1,19 +1,31 @@
 {
-  TempQueue tRoot;
+  Set<String> allPartitions=new HashSet<>();
+  allPartitions.addAll(scheduler.getRMContext().getNodeLabelManager().getClusterNodeLabelNames());
+  allPartitions.add(RMNodeLabelsManager.NO_LABEL);
 synchronized (scheduler) {
-    tRoot=cloneQueues(root,clusterResources);
+    queueToPartitions.clear();
+    for (    String partitionToLookAt : allPartitions) {
+      cloneQueues(root,nlm.getResourceByLabel(partitionToLookAt,clusterResources),partitionToLookAt);
+    }
   }
-  tRoot.idealAssigned=tRoot.guaranteed;
   Resource totalPreemptionAllowed=Resources.multiply(clusterResources,percentageClusterPreemptionAllowed);
-  List<TempQueue> queues=recursivelyComputeIdealAssignment(tRoot,totalPreemptionAllowed);
-  Map<ApplicationAttemptId,Set<RMContainer>> toPreempt=getContainersToPreempt(queues,clusterResources);
+  Set<String> leafQueueNames=null;
+  for (  String partition : allPartitions) {
+    TempQueuePerPartition tRoot=getQueueByPartition(CapacitySchedulerConfiguration.ROOT,partition);
+    tRoot.idealAssigned=tRoot.guaranteed;
+    leafQueueNames=recursivelyComputeIdealAssignment(tRoot,totalPreemptionAllowed);
+  }
+  Map<ApplicationAttemptId,Set<RMContainer>> toPreempt=getContainersToPreempt(leafQueueNames,clusterResources);
   if (LOG.isDebugEnabled()) {
-    logToCSV(queues);
+    logToCSV(new ArrayList<String>(leafQueueNames));
   }
   if (observeOnly) {
     return;
   }
   for (  Map.Entry<ApplicationAttemptId,Set<RMContainer>> e : toPreempt.entrySet()) {
+    if (LOG.isDebugEnabled()) {
+      LOG.debug("Send to scheduler: in app=" + e.getKey() + " #containers-to-be-preempted="+ e.getValue().size());
+    }
     for (    RMContainer container : e.getValue()) {
       if (preempted.get(container) != null && preempted.get(container) + maxWaitTime < clock.getTime()) {
         dispatcher.handle(new ContainerPreemptEvent(e.getKey(),container,ContainerPreemptEventType.KILL_CONTAINER));

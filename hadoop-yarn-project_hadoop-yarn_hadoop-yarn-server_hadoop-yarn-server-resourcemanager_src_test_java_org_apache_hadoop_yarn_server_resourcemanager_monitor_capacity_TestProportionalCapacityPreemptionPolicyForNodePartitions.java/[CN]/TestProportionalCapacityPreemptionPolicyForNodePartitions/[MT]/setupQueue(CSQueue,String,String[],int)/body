@@ -1,0 +1,42 @@
+{
+  LOG.debug("*** Setup queue, source=" + q);
+  String queuePath=null;
+  int myLevel=getLevel(q);
+  if (0 == myLevel) {
+    when(queue.getQueueName()).thenReturn(ROOT);
+    queuePath=ROOT;
+  }
+  String queueName=getQueueName(q);
+  when(queue.getQueueName()).thenReturn(queueName);
+  ParentQueue parentQueue=getParentQueue(queueExprArray,idx,myLevel);
+  if (null != parentQueue) {
+    when(queue.getParent()).thenReturn(parentQueue);
+    parentQueue.getChildQueues().add(queue);
+    queuePath=parentQueue.getQueuePath() + "." + queueName;
+  }
+  when(queue.getQueuePath()).thenReturn(queuePath);
+  QueueCapacities qc=new QueueCapacities(0 == myLevel);
+  ResourceUsage ru=new ResourceUsage();
+  when(queue.getQueueCapacities()).thenReturn(qc);
+  when(queue.getQueueResourceUsage()).thenReturn(ru);
+  LOG.debug("Setup queue, name=" + queue.getQueueName() + " path="+ queue.getQueuePath());
+  LOG.debug("Parent=" + (parentQueue == null ? "null" : parentQueue.getQueueName()));
+  String capacitySettingStr=q.substring(q.indexOf("(") + 1,q.indexOf(")"));
+  for (  String s : capacitySettingStr.split(",")) {
+    String partitionName=s.substring(0,s.indexOf("="));
+    String[] values=s.substring(s.indexOf("[") + 1,s.indexOf("]")).split(" ");
+    float epsilon=1e-6f;
+    float absGuaranteed=Integer.valueOf(values[0].trim()) / (float)(partitionToResource.get(partitionName).getMemory()) + epsilon;
+    float absMax=Integer.valueOf(values[1].trim()) / (float)(partitionToResource.get(partitionName).getMemory()) + epsilon;
+    float absUsed=Integer.valueOf(values[2].trim()) / (float)(partitionToResource.get(partitionName).getMemory()) + epsilon;
+    Resource pending=Resources.createResource(Integer.valueOf(values[3].trim()));
+    qc.setAbsoluteCapacity(partitionName,absGuaranteed);
+    qc.setAbsoluteMaximumCapacity(partitionName,absMax);
+    qc.setAbsoluteUsedCapacity(partitionName,absUsed);
+    ru.setPending(partitionName,pending);
+    LOG.debug("Setup queue=" + queueName + " partition="+ partitionName+ " [abs_guaranteed="+ absGuaranteed+ ",abs_max="+ absMax+ ",abs_used"+ absUsed+ ",pending_resource="+ pending+ "]");
+  }
+  when(queue.getPreemptionDisabled()).thenReturn(csConf.getPreemptionDisabled(queuePath,false));
+  nameToCSQueues.put(queueName,queue);
+  when(cs.getQueue(eq(queueName))).thenReturn(queue);
+}
