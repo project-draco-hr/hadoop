@@ -2,7 +2,7 @@
   LocalizerHeartbeatResponse response=recordFactory.newRecordInstance(LocalizerHeartbeatResponse.class);
   String user=context.getUser();
   ApplicationId applicationId=context.getContainerId().getApplicationAttemptId().getApplicationId();
-  LocalizerAction action=LocalizerAction.LIVE;
+  boolean fetchFailed=false;
   for (  LocalResourceStatus stat : remoteResourceStatuses) {
     LocalResource rsrc=stat.getResource();
     LocalResourceRequest req=null;
@@ -31,20 +31,20 @@ break;
 case FETCH_FAILURE:
 final String diagnostics=stat.getException().toString();
 LOG.warn(req + " failed: " + diagnostics);
-action=LocalizerAction.DIE;
+fetchFailed=true;
 getLocalResourcesTracker(req.getVisibility(),user,applicationId).handle(new ResourceFailedLocalizationEvent(req,diagnostics));
 assoc.getResource().unlock();
 scheduled.remove(req);
 break;
 default :
 LOG.info("Unknown status: " + stat.getStatus());
-action=LocalizerAction.DIE;
+fetchFailed=true;
 getLocalResourcesTracker(req.getVisibility(),user,applicationId).handle(new ResourceFailedLocalizationEvent(req,stat.getException().getMessage()));
 break;
 }
 }
-if (action == LocalizerAction.DIE) {
-response.setLocalizerAction(action);
+if (fetchFailed || killContainerLocalizer.get()) {
+response.setLocalizerAction(LocalizerAction.DIE);
 return response;
 }
 List<ResourceLocalizationSpec> rsrcs=new ArrayList<ResourceLocalizationSpec>();
@@ -63,10 +63,7 @@ LOG.error("Inorrect path for PRIVATE localization." + next.getResource().getFile
 catch (URISyntaxException e) {
 }
 }
- else if (pending.isEmpty()) {
-action=LocalizerAction.DIE;
-}
-response.setLocalizerAction(action);
+response.setLocalizerAction(LocalizerAction.LIVE);
 response.setResourceSpecs(rsrcs);
 return response;
 }
