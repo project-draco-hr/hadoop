@@ -3,22 +3,12 @@
   int refetchToken=1;
   int refetchEncryptionKey=1;
   while (true) {
-    CachingStrategy curCachingStrategy;
-    boolean allowShortCircuitLocalReads;
     LocatedBlock block=getBlockAt(blockStartOffset);
-synchronized (infoLock) {
-      curCachingStrategy=cachingStrategy;
-      allowShortCircuitLocalReads=!shortCircuitForbidden();
-    }
-    DatanodeInfo chosenNode=datanode.info;
-    InetSocketAddress targetAddr=datanode.addr;
-    StorageType storageType=datanode.storageType;
     BlockReader reader=null;
     try {
       DFSClientFaultInjector.get().fetchFromDatanodeException();
-      Token<BlockTokenIdentifier> blockToken=block.getBlockToken();
       int len=(int)(end - start + 1);
-      reader=new BlockReaderFactory(dfsClient.getConf()).setInetSocketAddress(targetAddr).setRemotePeerFactory(dfsClient).setDatanodeInfo(chosenNode).setStorageType(storageType).setFileName(src).setBlock(block.getBlock()).setBlockToken(blockToken).setStartOffset(start).setVerifyChecksum(verifyChecksum).setClientName(dfsClient.clientName).setLength(len).setCachingStrategy(curCachingStrategy).setAllowShortCircuitLocalReads(allowShortCircuitLocalReads).setClientCacheContext(dfsClient.getClientContext()).setUserGroupInformation(dfsClient.ugi).setConfiguration(dfsClient.getConfiguration()).build();
+      reader=getBlockReader(block,start,len,datanode.addr,datanode.storageType,datanode.info);
       int nread=reader.readAll(buf,offset,len);
       updateReadStatistics(readStatistics,nread,reader);
       if (nread != len) {
@@ -28,32 +18,30 @@ synchronized (infoLock) {
       return;
     }
  catch (    ChecksumException e) {
-      String msg="fetchBlockByteRange(). Got a checksum exception for " + src + " at "+ block.getBlock()+ ":"+ e.getPos()+ " from "+ chosenNode;
+      String msg="fetchBlockByteRange(). Got a checksum exception for " + src + " at "+ block.getBlock()+ ":"+ e.getPos()+ " from "+ datanode.info;
       DFSClient.LOG.warn(msg);
-      addIntoCorruptedBlockMap(block.getBlock(),chosenNode,corruptedBlockMap);
-      addToDeadNodes(chosenNode);
+      addIntoCorruptedBlockMap(block.getBlock(),datanode.info,corruptedBlockMap);
+      addToDeadNodes(datanode.info);
       throw new IOException(msg);
     }
 catch (    IOException e) {
       if (e instanceof InvalidEncryptionKeyException && refetchEncryptionKey > 0) {
-        DFSClient.LOG.info("Will fetch a new encryption key and retry, " + "encryption key was invalid when connecting to " + targetAddr + " : "+ e);
+        DFSClient.LOG.info("Will fetch a new encryption key and retry, " + "encryption key was invalid when connecting to " + datanode.addr + " : "+ e);
         refetchEncryptionKey--;
         dfsClient.clearDataEncryptionKey();
-        continue;
       }
- else       if (refetchToken > 0 && tokenRefetchNeeded(e,targetAddr)) {
+ else       if (refetchToken > 0 && tokenRefetchNeeded(e,datanode.addr)) {
         refetchToken--;
         try {
           fetchBlockAt(block.getStartOffset());
         }
  catch (        IOException fbae) {
         }
-        continue;
       }
  else {
-        String msg="Failed to connect to " + targetAddr + " for file "+ src+ " for block "+ block.getBlock()+ ":"+ e;
+        String msg="Failed to connect to " + datanode.addr + " for file "+ src+ " for block "+ block.getBlock()+ ":"+ e;
         DFSClient.LOG.warn("Connection failure: " + msg,e);
-        addToDeadNodes(chosenNode);
+        addToDeadNodes(datanode.info);
         throw new IOException(msg);
       }
     }

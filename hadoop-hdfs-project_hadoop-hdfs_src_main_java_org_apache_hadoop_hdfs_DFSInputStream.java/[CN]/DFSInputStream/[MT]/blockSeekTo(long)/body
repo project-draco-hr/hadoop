@@ -1,2 +1,44 @@
 {
+  if (target >= getFileLength()) {
+    throw new IOException("Attempted to read past end of file");
+  }
+  closeCurrentBlockReader();
+  DatanodeInfo chosenNode=null;
+  int refetchToken=1;
+  int refetchEncryptionKey=1;
+  boolean connectFailedOnce=false;
+  while (true) {
+    LocatedBlock targetBlock=getBlockAt(target);
+    this.pos=target;
+    this.blockEnd=targetBlock.getStartOffset() + targetBlock.getBlockSize() - 1;
+    this.currentLocatedBlock=targetBlock;
+    long offsetIntoBlock=target - targetBlock.getStartOffset();
+    DNAddrPair retval=chooseDataNode(targetBlock,null);
+    chosenNode=retval.info;
+    InetSocketAddress targetAddr=retval.addr;
+    StorageType storageType=retval.storageType;
+    try {
+      blockReader=getBlockReader(targetBlock,offsetIntoBlock,targetBlock.getBlockSize() - offsetIntoBlock,targetAddr,storageType,chosenNode);
+      if (connectFailedOnce) {
+        DFSClient.LOG.info("Successfully connected to " + targetAddr + " for "+ targetBlock.getBlock());
+      }
+      return chosenNode;
+    }
+ catch (    IOException ex) {
+      if (ex instanceof InvalidEncryptionKeyException && refetchEncryptionKey > 0) {
+        DFSClient.LOG.info("Will fetch a new encryption key and retry, " + "encryption key was invalid when connecting to " + targetAddr + " : "+ ex);
+        refetchEncryptionKey--;
+        dfsClient.clearDataEncryptionKey();
+      }
+ else       if (refetchToken > 0 && tokenRefetchNeeded(ex,targetAddr)) {
+        refetchToken--;
+        fetchBlockAt(target);
+      }
+ else {
+        connectFailedOnce=true;
+        DFSClient.LOG.warn("Failed to connect to " + targetAddr + " for block"+ ", add to deadNodes and continue. "+ ex,ex);
+        addToDeadNodes(chosenNode);
+      }
+    }
+  }
 }
