@@ -1,6 +1,7 @@
 {
   BlockStoragePolicy lpPolicy=blockManager.getStoragePolicy("LAZY_PERSIST");
-  List<BlockCollection> filesToDelete=new ArrayList<BlockCollection>();
+  List<BlockCollection> filesToDelete=new ArrayList<>();
+  boolean changed=false;
   writeLock();
   try {
     final Iterator<Block> it=blockManager.getCorruptReplicaBlockIterator();
@@ -14,6 +15,7 @@
     for (    BlockCollection bc : filesToDelete) {
       LOG.warn("Removing lazyPersist file " + bc.getName() + " with no replicas.");
       BlocksMapUpdateInfo toRemoveBlocks=FSDirDeleteOp.deleteInternal(FSNamesystem.this,bc.getName(),INodesInPath.fromINode((INodeFile)bc),false);
+      changed|=toRemoveBlocks != null;
       if (toRemoveBlocks != null) {
         removeBlocks(toRemoveBlocks);
       }
@@ -21,5 +23,8 @@
   }
   finally {
     writeUnlock();
+  }
+  if (changed) {
+    getEditLog().logSync();
   }
 }
