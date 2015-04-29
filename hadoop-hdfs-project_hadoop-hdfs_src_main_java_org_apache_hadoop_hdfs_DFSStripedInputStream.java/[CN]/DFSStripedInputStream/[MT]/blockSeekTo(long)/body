@@ -3,57 +3,21 @@
     throw new IOException("Attempted to read past end of file");
   }
   closeCurrentBlockReaders();
-  DatanodeInfo[] chosenNodes=new DatanodeInfo[groupSize];
-  int refetchToken=1;
-  int refetchEncryptionKey=1;
   LocatedStripedBlock targetBlockGroup=getBlockGroupAt(target);
   this.pos=target;
   this.blockEnd=targetBlockGroup.getStartOffset() + targetBlockGroup.getBlockSize() - 1;
+  currentLocatedBlock=targetBlockGroup;
   long offsetIntoBlockGroup=target - targetBlockGroup.getStartOffset();
   LocatedBlock[] targetBlocks=StripedBlockUtil.parseStripedBlockGroup(targetBlockGroup,cellSize,dataBlkNum,parityBlkNum);
   ReadPortion[] readPortions=planReadPortions(groupSize,cellSize,offsetIntoBlockGroup,0,0);
-  while (true) {
-    int i=0;
-    InetSocketAddress targetAddr=null;
-    try {
-      blockReaders=new BlockReader[groupSize];
-      for (i=0; i < groupSize; i++) {
-        LocatedBlock targetBlock=targetBlocks[i];
-        if (targetBlock == null) {
-          continue;
-        }
-        long offsetIntoBlock=readPortions[i].startOffsetInBlock;
-        DNAddrPair retval=getBestNodeDNAddrPair(targetBlock,null);
-        chosenNodes[i]=retval.info;
-        targetAddr=retval.addr;
-        StorageType storageType=retval.storageType;
-        ExtendedBlock blk=targetBlock.getBlock();
-        Token<BlockTokenIdentifier> accessToken=targetBlock.getBlockToken();
-        CachingStrategy curCachingStrategy;
-        boolean shortCircuitForbidden;
-synchronized (infoLock) {
-          curCachingStrategy=cachingStrategy;
-          shortCircuitForbidden=shortCircuitForbidden();
-        }
-        blockReaders[i]=new BlockReaderFactory(dfsClient.getConf()).setInetSocketAddress(targetAddr).setRemotePeerFactory(dfsClient).setDatanodeInfo(chosenNodes[i]).setStorageType(storageType).setFileName(src).setBlock(blk).setBlockToken(accessToken).setStartOffset(offsetIntoBlock).setVerifyChecksum(verifyChecksum).setClientName(dfsClient.clientName).setLength(blk.getNumBytes() - offsetIntoBlock).setCachingStrategy(curCachingStrategy).setAllowShortCircuitLocalReads(!shortCircuitForbidden).setClientCacheContext(dfsClient.getClientContext()).setUserGroupInformation(dfsClient.ugi).setConfiguration(dfsClient.getConfiguration()).build();
-      }
-      currentLocatedBlock=targetBlockGroup;
-      return chosenNodes;
-    }
- catch (    IOException ex) {
-      if (ex instanceof InvalidEncryptionKeyException && refetchEncryptionKey > 0) {
-        DFSClient.LOG.info("Will fetch a new encryption key and retry, " + "encryption key was invalid when connecting to " + targetAddr + " : "+ ex);
-        refetchEncryptionKey--;
-        dfsClient.clearDataEncryptionKey();
-      }
- else       if (refetchToken > 0 && tokenRefetchNeeded(ex,targetAddr)) {
-        refetchToken--;
-        fetchBlockAt(target);
-      }
- else {
-        DFSClient.LOG.warn("Failed to connect to " + targetAddr + " for block"+ ", add to deadNodes and continue. "+ ex,ex);
-        addToDeadNodes(chosenNodes[i]);
-        throw ex;
+  final ReaderRetryPolicy retry=new ReaderRetryPolicy();
+  for (int i=0; i < groupSize; i++) {
+    LocatedBlock targetBlock=targetBlocks[i];
+    if (targetBlock != null) {
+      DNAddrPair retval=getBestNodeDNAddrPair(targetBlock,null);
+      if (retval != null) {
+        currentNodes[i]=retval.info;
+        blockReaders[i]=getBlockReaderWithRetry(targetBlock,readPortions[i].startOffsetInBlock,targetBlock.getBlockSize() - readPortions[i].startOffsetInBlock,retval.addr,retval.storageType,retval.info,target,retry);
       }
     }
   }
