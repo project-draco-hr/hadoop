@@ -1,51 +1,27 @@
 {
   Hamlet.TBODY<Hamlet.TABLE<Hamlet>> tbody=html.table("#attempts").thead().tr().th(".id","Attempt ID").th(".started","Started").th(".node","Node").th(".logs","Logs").th(".blacklistednodes","Blacklisted Nodes")._()._().tbody();
+  RMApp rmApp=this.rm.getRMContext().getRMApps().get(this.appID);
+  if (rmApp == null) {
+    return;
+  }
   StringBuilder attemptsTableData=new StringBuilder("[\n");
   for (  final ApplicationAttemptReport appAttemptReport : attempts) {
-    AppAttemptInfo appAttempt=new AppAttemptInfo(appAttemptReport);
-    ContainerReport containerReport=null;
-    try {
-      final GetContainerReportRequest request=GetContainerReportRequest.newInstance(ContainerId.newContainerId(appAttemptReport.getApplicationAttemptId(),1));
-      if (callerUGI == null) {
-        containerReport=appBaseProt.getContainerReport(request).getContainerReport();
-      }
- else {
-        containerReport=callerUGI.doAs(new PrivilegedExceptionAction<ContainerReport>(){
-          @Override public ContainerReport run() throws Exception {
-            ContainerReport report=null;
-            try {
-              report=appBaseProt.getContainerReport(request).getContainerReport();
-            }
- catch (            ContainerNotFoundException ex) {
-              LOG.warn(ex.getMessage());
-            }
-            return report;
-          }
-        }
-);
-      }
+    RMAppAttempt rmAppAttempt=rmApp.getRMAppAttempt(appAttemptReport.getApplicationAttemptId());
+    if (rmAppAttempt == null) {
+      continue;
     }
- catch (    Exception e) {
-      String message="Failed to read the AM container of the application attempt " + appAttemptReport.getApplicationAttemptId() + ".";
-      LOG.error(message,e);
-      html.p()._(message)._();
-      return;
-    }
-    long startTime=0L;
-    String logsLink=null;
-    String nodeLink=null;
-    if (containerReport != null) {
-      ContainerInfo container=new ContainerInfo(containerReport);
-      startTime=container.getStartedTime();
-      logsLink=containerReport.getLogUrl();
-      nodeLink=containerReport.getNodeHttpAddress();
-    }
+    AppAttemptInfo attemptInfo=new AppAttemptInfo(this.rm,rmAppAttempt,rmApp.getUser());
     String blacklistedNodesCount="N/A";
-    Set<String> nodes=RMAppAttemptBlock.getBlacklistedNodes(rm,ConverterUtils.toApplicationAttemptId(appAttempt.getAppAttemptId()));
+    Set<String> nodes=RMAppAttemptBlock.getBlacklistedNodes(rm,rmAppAttempt.getAppAttemptId());
     if (nodes != null) {
       blacklistedNodesCount=String.valueOf(nodes.size());
     }
-    attemptsTableData.append("[\"<a href='").append(url("appattempt",appAttempt.getAppAttemptId())).append("'>").append(appAttempt.getAppAttemptId()).append("</a>\",\"").append(startTime).append("\",\"<a ").append(nodeLink == null ? "#" : "href='" + nodeLink).append("'>").append(nodeLink == null ? "N/A" : StringEscapeUtils.escapeJavaScript(StringEscapeUtils.escapeHtml(nodeLink))).append("</a>\",\"<a ").append(logsLink == null ? "#" : "href='" + logsLink).append("'>").append(logsLink == null ? "N/A" : "Logs").append("</a>\",").append("\"").append(blacklistedNodesCount).append("\"],\n");
+    String nodeLink=attemptInfo.getNodeHttpAddress();
+    if (nodeLink != null) {
+      nodeLink=WebAppUtils.getHttpSchemePrefix(conf) + nodeLink;
+    }
+    String logsLink=attemptInfo.getLogsLink();
+    attemptsTableData.append("[\"<a href='").append(url("appattempt",rmAppAttempt.getAppAttemptId().toString())).append("'>").append(String.valueOf(rmAppAttempt.getAppAttemptId())).append("</a>\",\"").append(attemptInfo.getStartTime()).append("\",\"<a ").append(nodeLink == null ? "#" : "href='" + nodeLink).append("'>").append(nodeLink == null ? "N/A" : StringEscapeUtils.escapeJavaScript(StringEscapeUtils.escapeHtml(nodeLink))).append("</a>\",\"<a ").append(logsLink == null ? "#" : "href='" + logsLink).append("'>").append(logsLink == null ? "N/A" : "Logs").append("</a>\",").append("\"").append(blacklistedNodesCount).append("\"],\n");
   }
   if (attemptsTableData.charAt(attemptsTableData.length() - 2) == ',') {
     attemptsTableData.delete(attemptsTableData.length() - 2,attemptsTableData.length() - 1);
