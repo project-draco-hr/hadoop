@@ -29,18 +29,26 @@
     }
     while (true) {
       outStr=runFsck(conf,1,false,"/");
+      String numMissing=null;
       String numCorrupt=null;
       for (      String line : outStr.split(LINE_SEPARATOR)) {
-        Matcher m=numCorruptBlocksPattern.matcher(line);
+        Matcher m=numMissingBlocksPattern.matcher(line);
+        if (m.matches()) {
+          numMissing=m.group(1);
+        }
+        m=numCorruptBlocksPattern.matcher(line);
         if (m.matches()) {
           numCorrupt=m.group(1);
+        }
+        if (numMissing != null && numCorrupt != null) {
           break;
         }
       }
-      if (numCorrupt == null) {
-        throw new IOException("failed to find number of corrupt " + "blocks in fsck output.");
+      if (numMissing == null || numCorrupt == null) {
+        throw new IOException("failed to find number of missing or corrupt" + " blocks in fsck output.");
       }
-      if (numCorrupt.equals(Integer.toString(totalMissingBlocks))) {
+      if (numMissing.equals(Integer.toString(totalMissingBlocks))) {
+        assertTrue(numCorrupt.equals(Integer.toString(0)));
         assertTrue(outStr.contains(NamenodeFsck.CORRUPT_STATUS));
         break;
       }

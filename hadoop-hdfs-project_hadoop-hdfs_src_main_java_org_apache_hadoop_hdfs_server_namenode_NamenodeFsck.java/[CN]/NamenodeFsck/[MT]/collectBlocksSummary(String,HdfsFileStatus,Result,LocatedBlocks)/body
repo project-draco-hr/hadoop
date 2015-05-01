@@ -4,6 +4,7 @@
   int missing=0;
   int corrupt=0;
   long missize=0;
+  long corruptSize=0;
   int underReplicatedPerFile=0;
   int misReplicatedPerFile=0;
   StringBuilder report=new StringBuilder();
@@ -31,8 +32,9 @@
     }
     boolean isCorrupt=lBlk.isCorrupt();
     if (isCorrupt) {
+      res.addCorrupt(block.getNumBytes());
       corrupt++;
-      res.corruptBlocks++;
+      corruptSize+=block.getNumBytes();
       out.print("\n" + path + ": CORRUPT blockpool "+ block.getBlockPoolId()+ " block "+ block.getBlockName()+ "\n");
     }
     if (totalReplicasPerBlock >= minReplication)     res.numMinReplicatedBlocks++;
@@ -60,7 +62,7 @@
     }
     String blkName=block.toString();
     report.append(blockNumber + ". " + blkName+ " len="+ block.getNumBytes());
-    if (totalReplicasPerBlock == 0) {
+    if (totalReplicasPerBlock == 0 && !isCorrupt) {
       report.append(" MISSING!");
       res.addMissing(block.toString(),block.getNumBytes());
       missing++;
@@ -118,8 +120,13 @@
     blockNumber++;
   }
   if ((missing > 0) || (corrupt > 0)) {
-    if (!showFiles && (missing > 0)) {
-      out.print("\n" + path + ": MISSING "+ missing+ " blocks of total size "+ missize+ " B.");
+    if (!showFiles) {
+      if (missing > 0) {
+        out.print("\n" + path + ": MISSING "+ missing+ " blocks of total size "+ missize+ " B.");
+      }
+      if (corrupt > 0) {
+        out.print("\n" + path + ": CORRUPT "+ corrupt+ " blocks of total size "+ corruptSize+ " B.");
+      }
     }
     res.corruptFiles++;
     if (isOpen) {
@@ -131,8 +138,13 @@
     }
   }
   if (showFiles) {
-    if (missing > 0) {
-      out.print(" MISSING " + missing + " blocks of total size "+ missize+ " B\n");
+    if (missing > 0 || corrupt > 0) {
+      if (missing > 0) {
+        out.print(" MISSING " + missing + " blocks of total size "+ missize+ " B\n");
+      }
+      if (corrupt > 0) {
+        out.print(" CORRUPT " + corrupt + " blocks of total size "+ corruptSize+ " B\n");
+      }
     }
  else     if (underReplicatedPerFile == 0 && misReplicatedPerFile == 0) {
       out.print(" OK\n");
