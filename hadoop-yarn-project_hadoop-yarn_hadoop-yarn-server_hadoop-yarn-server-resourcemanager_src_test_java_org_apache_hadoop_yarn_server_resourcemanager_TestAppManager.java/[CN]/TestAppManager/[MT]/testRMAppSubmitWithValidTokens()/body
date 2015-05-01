@@ -1,0 +1,19 @@
+{
+  DataOutputBuffer dob=new DataOutputBuffer();
+  Credentials credentials=new Credentials();
+  credentials.writeTokenStorageToStream(dob);
+  ByteBuffer securityTokens=ByteBuffer.wrap(dob.getData(),0,dob.getLength());
+  asContext.getAMContainerSpec().setTokens(securityTokens);
+  appMonitor.submitApplication(asContext,"test");
+  RMApp app=rmContext.getRMApps().get(appId);
+  Assert.assertNotNull("app is null",app);
+  Assert.assertEquals("app id doesn't match",appId,app.getApplicationId());
+  Assert.assertEquals("app state doesn't match",RMAppState.NEW,app.getState());
+  verify(metricsPublisher).appACLsUpdated(any(RMApp.class),any(String.class),anyLong());
+  int timeoutSecs=0;
+  while ((getAppEventType() == RMAppEventType.KILL) && timeoutSecs++ < 20) {
+    Thread.sleep(1000);
+  }
+  Assert.assertEquals("app event type sent is wrong",RMAppEventType.START,getAppEventType());
+  asContext.getAMContainerSpec().setTokens(null);
+}
