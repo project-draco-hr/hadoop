@@ -1,0 +1,30 @@
+{
+  fs.setSafeMode(SafeModeAction.SAFEMODE_LEAVE);
+  File orgFsimage=null;
+  Path file=new Path("/eczone/striped");
+  FSDataOutputStream out=fs.create(file,true);
+  byte[] bytes=DFSTestUtil.generateSequentialBytes(0,numBytes);
+  out.write(bytes);
+  out.close();
+  fs.setSafeMode(SafeModeAction.SAFEMODE_ENTER,false);
+  fs.saveNamespace();
+  orgFsimage=FSImageTestUtil.findLatestImageFile(FSImageTestUtil.getFSImage(cluster.getNameNode()).getStorage().getStorageDir(0));
+  if (orgFsimage == null) {
+    throw new RuntimeException("Didn't generate or can't find fsimage");
+  }
+  FSImageLoader loader=FSImageLoader.load(orgFsimage.getAbsolutePath());
+  String fileStatus=loader.getFileStatus("/eczone/striped");
+  long expectedSpaceConsumed=StripedBlockUtil.spaceConsumedByStripedBlock(bytes.length,HdfsConstants.NUM_DATA_BLOCKS,HdfsConstants.NUM_PARITY_BLOCKS,HdfsConstants.BLOCK_STRIPED_CELL_SIZE);
+  FSDirectory fsdir=cluster.getNamesystem().getFSDirectory();
+  INodeFile fileNode=fsdir.getINode4Write(file.toString()).asFile();
+  assertTrue("Invalid block size",fileNode.getBlocks().length > 0);
+  long actualSpaceConsumed=0;
+  for (  BlockInfo blockInfo : fileNode.getBlocks()) {
+    assertTrue("Didn't find block striped information",blockInfo instanceof BlockInfoStriped);
+    BlockInfoStriped b=(BlockInfoStriped)blockInfo;
+    actualSpaceConsumed+=b.spaceConsumed();
+  }
+  assertEquals("Wrongly computed file size contains striped blocks",expectedSpaceConsumed,actualSpaceConsumed);
+  String EXPECTED_FILE_SIZE="\"length\":" + String.valueOf(expectedSpaceConsumed);
+  assertTrue("Wrongly computed file size contains striped blocks, file status:" + fileStatus + ". Expected file size is : "+ EXPECTED_FILE_SIZE,fileStatus.contains(EXPECTED_FILE_SIZE));
+}
