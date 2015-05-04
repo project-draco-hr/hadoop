@@ -1,0 +1,26 @@
+{
+  resetCurStripeBuffer();
+  final long offsetInBlockGroup=getOffsetInBlockGroup();
+  final long stripeLen=cellSize * dataBlkNum;
+  int stripeIndex=(int)(offsetInBlockGroup / stripeLen);
+  curStripeRange=new StripeRange(stripeIndex * stripeLen,Math.min(currentLocatedBlock.getBlockSize() - (stripeIndex * stripeLen),stripeLen));
+  final int numCell=(int)((curStripeRange.length - 1) / cellSize + 1);
+  Map<Future<Integer>,Integer> futures=new HashMap<>();
+  for (int i=0; i < numCell; i++) {
+    curStripeBuf.position(cellSize * i);
+    curStripeBuf.limit((int)Math.min(cellSize * (i + 1),curStripeRange.length));
+    ByteBuffer buf=curStripeBuf.slice();
+    ByteBufferStrategy strategy=new ByteBufferStrategy(buf);
+    final int targetLength=buf.remaining();
+    Callable<Integer> readCallable=readCell(blockReaders[i],currentNodes[i],strategy,targetLength,corruptedBlockMap);
+    Future<Integer> request=readingService.submit(readCallable);
+    futures.put(request,i);
+  }
+  while (!futures.isEmpty()) {
+    try {
+      waitNextCompletion(readingService,futures);
+    }
+ catch (    InterruptedException ignored) {
+    }
+  }
+}
