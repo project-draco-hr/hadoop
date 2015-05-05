@@ -1,0 +1,33 @@
+{
+  QuotaCounts counts=new QuotaCounts.Builder().build();
+  final Iterable<BlockInfoContiguous> blocks;
+  FileWithSnapshotFeature sf=getFileWithSnapshotFeature();
+  if (sf == null) {
+    blocks=Arrays.asList(getBlocks());
+  }
+ else {
+    Set<BlockInfoContiguous> allBlocks=new HashSet<>(Arrays.asList(getBlocks()));
+    List<FileDiff> diffs=sf.getDiffs().asList();
+    for (    FileDiff diff : diffs) {
+      BlockInfoContiguous[] diffBlocks=diff.getBlocks();
+      if (diffBlocks != null) {
+        allBlocks.addAll(Arrays.asList(diffBlocks));
+      }
+    }
+    blocks=allBlocks;
+  }
+  final short replication=getBlockReplication();
+  for (  BlockInfoContiguous b : blocks) {
+    long blockSize=b.isComplete() ? b.getNumBytes() : getPreferredBlockSize();
+    counts.addStorageSpace(blockSize * replication);
+    if (bsp != null) {
+      List<StorageType> types=bsp.chooseStorageTypes(replication);
+      for (      StorageType t : types) {
+        if (t.supportTypeQuota()) {
+          counts.addTypeSpace(t,blockSize);
+        }
+      }
+    }
+  }
+  return counts;
+}

@@ -1,40 +1,23 @@
 {
-  long oldStoragespace=file.storagespaceConsumed();
   byte storagePolicyID=file.getStoragePolicyID();
   BlockStoragePolicy bsp=null;
-  EnumCounters<StorageType> typeSpaces=new EnumCounters<StorageType>(StorageType.class);
   if (storagePolicyID != HdfsConstants.BLOCK_STORAGE_POLICY_ID_UNSPECIFIED) {
     bsp=bsps.getPolicy(file.getStoragePolicyID());
   }
+  QuotaCounts oldCounts=file.storagespaceConsumed(null);
+  long oldStoragespace;
   if (removed.snapshotINode != null) {
     short replication=removed.snapshotINode.getFileReplication();
     short currentRepl=file.getBlockReplication();
-    if (currentRepl == 0) {
-      long oldFileSizeNoRep=file.computeFileSize(true,true);
+    if (replication > currentRepl) {
+      long oldFileSizeNoRep=currentRepl == 0 ? file.computeFileSize(true,true) : oldCounts.getStorageSpace() / file.getBlockReplication();
       oldStoragespace=oldFileSizeNoRep * replication;
+      oldCounts.setStorageSpace(oldStoragespace);
       if (bsp != null) {
         List<StorageType> oldTypeChosen=bsp.chooseStorageTypes(replication);
         for (        StorageType t : oldTypeChosen) {
           if (t.supportTypeQuota()) {
-            typeSpaces.add(t,-oldFileSizeNoRep);
-          }
-        }
-      }
-    }
- else     if (replication > currentRepl) {
-      long oldFileSizeNoRep=file.storagespaceConsumedNoReplication();
-      oldStoragespace=oldFileSizeNoRep * replication;
-      if (bsp != null) {
-        List<StorageType> oldTypeChosen=bsp.chooseStorageTypes(replication);
-        for (        StorageType t : oldTypeChosen) {
-          if (t.supportTypeQuota()) {
-            typeSpaces.add(t,-oldFileSizeNoRep);
-          }
-        }
-        List<StorageType> newTypeChosen=bsp.chooseStorageTypes(currentRepl);
-        for (        StorageType t : newTypeChosen) {
-          if (t.supportTypeQuota()) {
-            typeSpaces.add(t,oldFileSizeNoRep);
+            oldCounts.addTypeSpace(t,oldFileSizeNoRep);
           }
         }
       }
@@ -45,6 +28,7 @@
     }
   }
   getDiffs().combineAndCollectSnapshotBlocks(bsps,file,removed,collectedBlocks,removedINodes);
-  long ssDelta=oldStoragespace - file.storagespaceConsumed();
-  return new QuotaCounts.Builder().storageSpace(ssDelta).typeSpaces(typeSpaces).build();
+  QuotaCounts current=file.storagespaceConsumed(bsp);
+  oldCounts.subtract(current);
+  return oldCounts;
 }

@@ -1,33 +1,34 @@
 {
   long nsDelta=1;
+  counts.addNameSpace(nsDelta);
+  BlockStoragePolicy bsp=null;
+  if (blockStoragePolicyId != BLOCK_STORAGE_POLICY_ID_UNSPECIFIED) {
+    bsp=bsps.getPolicy(blockStoragePolicyId);
+  }
+  FileWithSnapshotFeature sf=getFileWithSnapshotFeature();
+  if (sf == null) {
+    counts.add(storagespaceConsumed(bsp));
+    return counts;
+  }
+  FileDiffList fileDiffList=sf.getDiffs();
+  int last=fileDiffList.getLastSnapshotId();
+  if (lastSnapshotId == Snapshot.CURRENT_STATE_ID || last == Snapshot.CURRENT_STATE_ID) {
+    counts.add(storagespaceConsumed(bsp));
+    return counts;
+  }
   final long ssDeltaNoReplication;
   short replication;
-  FileWithSnapshotFeature sf=getFileWithSnapshotFeature();
-  if (sf != null) {
-    FileDiffList fileDiffList=sf.getDiffs();
-    int last=fileDiffList.getLastSnapshotId();
-    if (lastSnapshotId == Snapshot.CURRENT_STATE_ID || last == Snapshot.CURRENT_STATE_ID) {
-      ssDeltaNoReplication=storagespaceConsumedNoReplication();
-      replication=getBlockReplication();
-    }
- else     if (last < lastSnapshotId) {
-      ssDeltaNoReplication=computeFileSize(true,false);
-      replication=getFileReplication();
-    }
- else {
-      int sid=fileDiffList.getSnapshotById(lastSnapshotId);
-      ssDeltaNoReplication=storagespaceConsumedNoReplication(sid);
-      replication=getReplication(sid);
-    }
+  if (last < lastSnapshotId) {
+    ssDeltaNoReplication=computeFileSize(true,false);
+    replication=getFileReplication();
   }
  else {
-    ssDeltaNoReplication=storagespaceConsumedNoReplication();
-    replication=getBlockReplication();
+    int sid=fileDiffList.getSnapshotById(lastSnapshotId);
+    ssDeltaNoReplication=computeFileSize(sid);
+    replication=getFileReplication(sid);
   }
-  counts.addNameSpace(nsDelta);
   counts.addStorageSpace(ssDeltaNoReplication * replication);
-  if (blockStoragePolicyId != BLOCK_STORAGE_POLICY_ID_UNSPECIFIED) {
-    BlockStoragePolicy bsp=bsps.getPolicy(blockStoragePolicyId);
+  if (bsp != null) {
     List<StorageType> storageTypes=bsp.chooseStorageTypes(replication);
     for (    StorageType t : storageTypes) {
       if (!t.supportTypeQuota()) {

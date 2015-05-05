@@ -1,0 +1,38 @@
+{
+  final BlockInfoContiguous[] blocks=getBlocks();
+  if (blocks == null || blocks.length == 0) {
+    return;
+  }
+  long size=0;
+  for (  BlockInfoContiguous b : blocks) {
+    size+=b.getNumBytes();
+  }
+  BlockInfoContiguous[] sblocks=null;
+  FileWithSnapshotFeature sf=getFileWithSnapshotFeature();
+  if (sf != null) {
+    FileDiff diff=sf.getDiffs().getLast();
+    sblocks=diff != null ? diff.getBlocks() : null;
+  }
+  for (int i=blocks.length - 1; i >= 0 && size > newLength; size-=blocks[i].getNumBytes(), --i) {
+    BlockInfoContiguous bi=blocks[i];
+    long truncatedBytes;
+    if (size - newLength < bi.getNumBytes()) {
+      truncatedBytes=bi.getNumBytes() - getPreferredBlockSize();
+    }
+ else {
+      truncatedBytes=bi.getNumBytes();
+    }
+    if (sblocks != null && i < sblocks.length && bi.equals(sblocks[i])) {
+      truncatedBytes-=bi.getNumBytes();
+    }
+    delta.addStorageSpace(-truncatedBytes * getBlockReplication());
+    if (bsps != null) {
+      List<StorageType> types=bsps.chooseStorageTypes(getBlockReplication());
+      for (      StorageType t : types) {
+        if (t.supportTypeQuota()) {
+          delta.addTypeSpace(t,-truncatedBytes);
+        }
+      }
+    }
+  }
+}
