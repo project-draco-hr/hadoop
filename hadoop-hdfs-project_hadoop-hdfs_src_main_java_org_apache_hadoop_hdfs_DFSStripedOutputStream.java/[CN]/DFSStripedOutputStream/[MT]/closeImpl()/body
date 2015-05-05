@@ -4,20 +4,29 @@
     return;
   }
   try {
-    flushBuffer();
-    if (currentPacket != null) {
-      streamer.waitAndQueuePacket(currentPacket);
-      currentPacket=null;
+    try {
+      flushBuffer();
+      if (currentPacket != null) {
+        enqueueCurrentPacket();
+      }
+    }
+ catch (    Exception e) {
+      handleStreamerFailure("closeImpl",e);
     }
     writeParityCellsForLastStripe();
     for (int i=0; i < numAllBlocks; i++) {
-      curIdx=i;
-      refreshStreamer();
-      if (streamer.getBytesCurBlock() > 0) {
-        currentPacket=createPacket(0,0,streamer.getBytesCurBlock(),streamer.getAndIncCurrentSeqno(),true);
-        currentPacket.setSyncBlock(shouldSyncBlock);
+      final StripedDataStreamer s=setCurrentStreamer(i);
+      if (!s.isFailed()) {
+        try {
+          if (s.getBytesCurBlock() > 0) {
+            setCurrentPacket2Empty();
+          }
+          flushInternal();
+        }
+ catch (        Exception e) {
+          handleStreamerFailure("closeImpl",e);
+        }
       }
-      flushInternal();
     }
     closeThreads(false);
     final ExtendedBlock lastBlock=getCommittedBlock();

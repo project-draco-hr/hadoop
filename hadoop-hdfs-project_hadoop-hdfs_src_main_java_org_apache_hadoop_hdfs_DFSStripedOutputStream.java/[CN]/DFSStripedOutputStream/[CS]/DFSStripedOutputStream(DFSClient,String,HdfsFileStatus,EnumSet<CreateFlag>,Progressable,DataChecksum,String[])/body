@@ -1,32 +1,27 @@
 {
   super(dfsClient,src,stat,flag,progress,checksum,favoredNodes);
-  DFSClient.LOG.info("Creating striped output stream");
-  ecInfo=dfsClient.getErasureCodingInfo(src);
-  cellSize=ecInfo.getSchema().getChunkSize();
-  numAllBlocks=(short)(ecInfo.getSchema().getNumDataUnits() + ecInfo.getSchema().getNumParityUnits());
-  numDataBlocks=(short)ecInfo.getSchema().getNumDataUnits();
-  checkConfiguration();
-  checksumBuf=new byte[getChecksumSize() * (cellSize / bytesPerChecksum)];
-  cellBuffers=new ByteBuffer[numAllBlocks];
-  List<BlockingQueue<LocatedBlock>> stripeBlocks=new ArrayList<>();
-  for (int i=0; i < numAllBlocks; i++) {
-    stripeBlocks.add(new LinkedBlockingQueue<LocatedBlock>(numAllBlocks));
-    try {
-      cellBuffers[i]=ByteBuffer.wrap(byteArrayManager.newByteArray(cellSize));
-    }
- catch (    InterruptedException ie) {
-      final InterruptedIOException iioe=new InterruptedIOException("create cell buffers");
-      iioe.initCause(ie);
-      throw iioe;
-    }
+  if (LOG.isDebugEnabled()) {
+    LOG.debug("Creating DFSStripedOutputStream for " + src);
   }
+  final ECSchema schema=dfsClient.getErasureCodingInfo(src).getSchema();
+  final int numParityBlocks=schema.getNumParityUnits();
+  cellSize=schema.getChunkSize();
+  numDataBlocks=schema.getNumDataUnits();
+  numAllBlocks=numDataBlocks + numParityBlocks;
   encoder=new RSRawEncoder();
-  encoder.initialize(numDataBlocks,numAllBlocks - numDataBlocks,cellSize);
+  encoder.initialize(numDataBlocks,numParityBlocks,cellSize);
+  coordinator=new Coordinator(numDataBlocks,numAllBlocks);
+  try {
+    cellBuffers=new CellBuffers(numParityBlocks);
+  }
+ catch (  InterruptedException ie) {
+    throw DFSUtil.toInterruptedIOException("Failed to create cell buffers",ie);
+  }
   List<StripedDataStreamer> s=new ArrayList<>(numAllBlocks);
   for (short i=0; i < numAllBlocks; i++) {
-    StripedDataStreamer streamer=new StripedDataStreamer(stat,null,dfsClient,src,progress,checksum,cachingStrategy,byteArrayManager,i,stripeBlocks,favoredNodes);
+    StripedDataStreamer streamer=new StripedDataStreamer(stat,dfsClient,src,progress,checksum,cachingStrategy,byteArrayManager,favoredNodes,i,coordinator);
     s.add(streamer);
   }
   streamers=Collections.unmodifiableList(s);
-  refreshStreamer();
+  setCurrentStreamer(0);
 }

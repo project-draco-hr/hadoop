@@ -1,0 +1,31 @@
+{
+  LOG.info("p=" + p + ", length="+ length+ ", dnIndex="+ dnIndex);
+  final String fullPath=p.toString();
+  final AtomicInteger pos=new AtomicInteger();
+  final FSDataOutputStream out=dfs.create(p);
+  final AtomicBoolean killed=new AtomicBoolean();
+  final Thread killer=new Thread(new Runnable(){
+    @Override public void run(){
+      killDatanode(cluster,(DFSStripedOutputStream)out.getWrappedStream(),dnIndex,pos);
+      killed.set(true);
+    }
+  }
+);
+  killer.start();
+  final int mask=(1 << 16) - 1;
+  for (; pos.get() < length; ) {
+    final int i=pos.getAndIncrement();
+    write(out,i);
+    if ((i & mask) == 0) {
+      final long ms=100;
+      LOG.info("i=" + i + " sleep "+ ms);
+      Thread.sleep(ms);
+    }
+  }
+  killer.join(10000);
+  Assert.assertTrue(killed.get());
+  out.close();
+  final FileStatus status=dfs.getFileStatus(p);
+  Assert.assertEquals(length,status.getLen());
+  checkData(dfs,fullPath,length,dnIndex);
+}

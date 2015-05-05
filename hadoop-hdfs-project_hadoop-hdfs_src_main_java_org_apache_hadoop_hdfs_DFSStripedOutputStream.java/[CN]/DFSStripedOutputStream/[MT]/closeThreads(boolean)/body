@@ -1,23 +1,26 @@
 {
-  int index=0;
-  boolean exceptionOccurred=false;
+  final MultipleIOException.Builder b=new MultipleIOException.Builder();
   for (  StripedDataStreamer streamer : streamers) {
     try {
       streamer.close(force);
       streamer.join();
       streamer.closeSocket();
     }
- catch (    InterruptedException|IOException e) {
-      DFSClient.LOG.error("Failed to shutdown streamer: name=" + streamer.getName() + ", index="+ index+ ", file="+ src,e);
-      exceptionOccurred=true;
+ catch (    Exception e) {
+      try {
+        handleStreamerFailure("force=" + force,e);
+      }
+ catch (      IOException ioe) {
+        b.add(ioe);
+      }
     }
  finally {
       streamer.setSocketToNull();
       setClosed();
-      index++;
     }
   }
-  if (exceptionOccurred) {
-    throw new IOException("Failed to shutdown streamer");
+  final IOException ioe=b.build();
+  if (ioe != null) {
+    throw ioe;
   }
 }

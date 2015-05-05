@@ -1,41 +1,32 @@
 {
-  super.writeChunk(b,offset,len,checksum,ckoff,cklen);
-  if (getSizeOfCellnBuffer(curIdx) <= cellSize) {
-    addToCellBuffer(b,offset,len);
-  }
- else {
-    String msg="Writing a chunk should not overflow the cell buffer.";
-    DFSClient.LOG.info(msg);
-    throw new IOException(msg);
-  }
-  if (currentPacket != null && getSizeOfCellnBuffer(curIdx) == cellSize) {
-    if (DFSClient.LOG.isDebugEnabled()) {
-      DFSClient.LOG.debug("DFSClient writeChunk cell buffer full seqno=" + currentPacket.getSeqno() + ", curIdx="+ curIdx+ ", src="+ src+ ", bytesCurBlock="+ streamer.getBytesCurBlock()+ ", blockSize="+ blockSize+ ", appendChunk="+ streamer.getAppendChunk());
-    }
-    streamer.waitAndQueuePacket(currentPacket);
-    currentPacket=null;
-    adjustChunkBoundary();
-    endBlock();
-  }
-  if (getSizeOfCellnBuffer(curIdx) == cellSize) {
-    moveToNextStreamer();
-    if (curIdx == numDataBlocks) {
-      for (int k=0; k < numDataBlocks; k++) {
-        cellBuffers[k].flip();
+  final int index=getCurrentIndex();
+  final StripedDataStreamer current=getCurrentStreamer();
+  final int pos=cellBuffers.addTo(index,bytes,offset,len);
+  final boolean cellFull=pos == cellSize;
+  final long oldBytes=current.getBytesCurBlock();
+  if (!current.isFailed()) {
+    try {
+      super.writeChunk(bytes,offset,len,checksum,ckoff,cklen);
+      if (cellFull && currentPacket != null) {
+        enqueueCurrentPacketFull();
       }
-      encode(cellBuffers);
-      for (int i=numDataBlocks; i < numAllBlocks; i++) {
-        ByteBuffer parityBuffer=cellBuffers[i];
-        List<DFSPacket> packets=generatePackets(parityBuffer);
-        for (        DFSPacket p : packets) {
-          currentPacket=p;
-          streamer.waitAndQueuePacket(currentPacket);
-          currentPacket=null;
-        }
-        endBlock();
-        moveToNextStreamer();
-      }
-      clearCellBuffers();
     }
+ catch (    Exception e) {
+      handleStreamerFailure("offset=" + offset + ", length="+ len,e);
+    }
+  }
+  if (current.isFailed()) {
+    final long newBytes=oldBytes + len;
+    coordinator.setBytesEndBlock(index,newBytes,current.getBlock());
+    current.setBytesCurBlock(newBytes);
+  }
+  if (cellFull) {
+    int next=index + 1;
+    if (next == numDataBlocks) {
+      cellBuffers.flipDataBuffers();
+      writeParityCells();
+      next=0;
+    }
+    setCurrentStreamer(next);
   }
 }
