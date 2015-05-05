@@ -1,0 +1,94 @@
+{
+  if (recovery != 0 && recovery != 1 && recovery != 2) {
+    Assert.fail("Invalid recovery: 0 is to recovery parity blocks," + "1 is to recovery data blocks, 2 is any.");
+  }
+  if (toRecoverBlockNum < 1 || toRecoverBlockNum > parityBlkNum) {
+    Assert.fail("toRecoverBlockNum should be between 1 ~ " + parityBlkNum);
+  }
+  Path file=new Path(fileName);
+  testCreateStripedFile(file,fileLen);
+  LocatedBlocks locatedBlocks=getLocatedBlocks(file);
+  assertEquals(locatedBlocks.getFileLength(),fileLen);
+  LocatedStripedBlock lastBlock=(LocatedStripedBlock)locatedBlocks.getLastLocatedBlock();
+  DatanodeInfo[] storageInfos=lastBlock.getLocations();
+  int[] indices=lastBlock.getBlockIndices();
+  BitSet bitset=new BitSet(dnNum);
+  for (  DatanodeInfo storageInfo : storageInfos) {
+    bitset.set(dnMap.get(storageInfo));
+  }
+  int[] toDead=new int[toRecoverBlockNum];
+  int n=0;
+  for (int i=0; i < indices.length; i++) {
+    if (n < toRecoverBlockNum) {
+      if (recovery == 0) {
+        if (indices[i] >= dataBlkNum) {
+          toDead[n++]=i;
+        }
+      }
+ else       if (recovery == 1) {
+        if (indices[i] < dataBlkNum) {
+          toDead[n++]=i;
+        }
+      }
+ else {
+        toDead[n++]=i;
+      }
+    }
+ else {
+      break;
+    }
+  }
+  DatanodeInfo[] dataDNs=new DatanodeInfo[toRecoverBlockNum];
+  int[] deadDnIndices=new int[toRecoverBlockNum];
+  ExtendedBlock[] blocks=new ExtendedBlock[toRecoverBlockNum];
+  File[] replicas=new File[toRecoverBlockNum];
+  File[] metadatas=new File[toRecoverBlockNum];
+  byte[][] replicaContents=new byte[toRecoverBlockNum][];
+  for (int i=0; i < toRecoverBlockNum; i++) {
+    dataDNs[i]=storageInfos[toDead[i]];
+    deadDnIndices[i]=dnMap.get(dataDNs[i]);
+    blocks[i]=StripedBlockUtil.constructStripedBlock(lastBlock.getBlock(),cellSize,dataBlkNum,indices[toDead[i]]);
+    replicas[i]=cluster.getBlockFile(deadDnIndices[i],blocks[i]);
+    metadatas[i]=cluster.getBlockMetadataFile(deadDnIndices[i],blocks[i]);
+    assertEquals(replicas[i].length(),StripedBlockUtil.getStripedBlockLength(lastBlock.getBlockSize(),cellSize,dataBlkNum,indices[toDead[i]]));
+    assertTrue(metadatas[i].getName().endsWith(blocks[i].getGenerationStamp() + ".meta"));
+    replicaContents[i]=readReplica(replicas[i]);
+  }
+  try {
+    DatanodeID[] dnIDs=new DatanodeID[toRecoverBlockNum];
+    for (int i=0; i < toRecoverBlockNum; i++) {
+      DataNode dn=cluster.getDataNodes().get(deadDnIndices[i]);
+      dn.shutdown();
+      dnIDs[i]=dn.getDatanodeId();
+    }
+    setDataNodesDead(dnIDs);
+    locatedBlocks=getLocatedBlocks(file);
+    lastBlock=(LocatedStripedBlock)locatedBlocks.getLastLocatedBlock();
+    storageInfos=lastBlock.getLocations();
+    assertEquals(storageInfos.length,groupSize - toRecoverBlockNum);
+    int[] targetDNs=new int[dnNum - groupSize];
+    n=0;
+    for (int i=0; i < dnNum; i++) {
+      if (!bitset.get(i)) {
+        targetDNs[n++]=i;
+      }
+    }
+    waitForRecoveryFinished(file);
+    targetDNs=sortTargetsByReplicas(blocks,targetDNs);
+    for (int i=0; i < toRecoverBlockNum; i++) {
+      File replicaAfterRecovery=cluster.getBlockFile(targetDNs[i],blocks[i]);
+      File metadataAfterRecovery=cluster.getBlockMetadataFile(targetDNs[i],blocks[i]);
+      assertEquals(replicaAfterRecovery.length(),replicas[i].length());
+      assertTrue(metadataAfterRecovery.getName().endsWith(blocks[i].getGenerationStamp() + ".meta"));
+      byte[] replicaContentAfterRecovery=readReplica(replicaAfterRecovery);
+      Assert.assertArrayEquals(replicaContents[i],replicaContentAfterRecovery);
+    }
+  }
+  finally {
+    for (int i=0; i < toRecoverBlockNum; i++) {
+      restartDataNode(toDead[i]);
+    }
+    cluster.waitActive();
+  }
+  fs.delete(file,true);
+}

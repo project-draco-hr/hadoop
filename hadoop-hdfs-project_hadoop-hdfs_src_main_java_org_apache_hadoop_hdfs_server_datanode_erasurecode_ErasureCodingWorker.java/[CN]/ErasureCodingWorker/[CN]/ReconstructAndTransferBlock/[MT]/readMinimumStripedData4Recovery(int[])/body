@@ -1,0 +1,38 @@
+{
+  BitSet used=new BitSet(sources.length);
+  for (int i=0; i < dataBlkNum; i++) {
+    StripedReader reader=stripedReaders.get(success[i]);
+    Callable<Void> readCallable=readFromBlock(reader.blockReader,reader.buffer);
+    Future<Void> f=readService.submit(readCallable);
+    futures.put(f,success[i]);
+    used.set(success[i]);
+  }
+  int nsuccess=0;
+  while (!futures.isEmpty()) {
+    try {
+      StripedReadResult result=StripedBlockUtil.getNextCompletedStripedRead(readService,futures,STRIPED_READ_THRESHOLD_MILLIS);
+      if (result.state == StripedReadResult.SUCCESSFUL) {
+        success[nsuccess++]=result.index;
+        if (nsuccess >= dataBlkNum) {
+          cancelReads(futures.keySet());
+          futures.clear();
+          break;
+        }
+      }
+ else       if (result.state == StripedReadResult.FAILED) {
+        StripedReader failedReader=stripedReaders.get(result.index);
+        closeBlockReader(failedReader.blockReader);
+        failedReader.blockReader=null;
+        scheduleNewRead(used);
+      }
+ else       if (result.state == StripedReadResult.TIMEOUT) {
+        scheduleNewRead(used);
+      }
+    }
+ catch (    InterruptedException e) {
+      LOG.info("Read data interrupted.",e);
+      break;
+    }
+  }
+  return nsuccess;
+}

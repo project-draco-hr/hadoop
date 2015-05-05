@@ -1,0 +1,72 @@
+{
+  if (shouldEncode(success)) {
+    initEncoderIfNecessary();
+    ByteBuffer[] dataBuffers=new ByteBuffer[dataBlkNum];
+    ByteBuffer[] parityBuffers=new ByteBuffer[parityBlkNum];
+    for (int i=0; i < dataBlkNum; i++) {
+      StripedReader reader=stripedReaders.get(i);
+      ByteBuffer buffer=reader.buffer;
+      paddingBufferToLen(buffer,toRecoverLen);
+      dataBuffers[i]=(ByteBuffer)buffer.flip();
+    }
+    for (int i=dataBlkNum; i < stripedReaders.size(); i++) {
+      StripedReader reader=stripedReaders.get(i);
+      parityBuffers[reader.index - dataBlkNum]=cleanBuffer(reader.buffer);
+    }
+    for (int i=0; i < targets.length; i++) {
+      parityBuffers[targetIndices[i] - dataBlkNum]=targetBuffers[i];
+    }
+    for (int i=0; i < parityBlkNum; i++) {
+      if (parityBuffers[i] == null) {
+        parityBuffers[i]=ByteBuffer.allocate(toRecoverLen);
+      }
+ else {
+        parityBuffers[i].limit(toRecoverLen);
+      }
+    }
+    encoder.encode(dataBuffers,parityBuffers);
+  }
+ else {
+    initDecoderIfNecessary();
+    ByteBuffer[] inputs=new ByteBuffer[dataBlkNum + parityBlkNum];
+    for (int i=0; i < success.length; i++) {
+      StripedReader reader=stripedReaders.get(success[i]);
+      ByteBuffer buffer=reader.buffer;
+      paddingBufferToLen(buffer,toRecoverLen);
+      int index=reader.index < dataBlkNum ? reader.index + parityBlkNum : reader.index - dataBlkNum;
+      inputs[index]=(ByteBuffer)buffer.flip();
+    }
+    int[] indices4Decode=new int[parityBlkNum];
+    int m=0;
+    for (int i=0; i < dataBlkNum + parityBlkNum; i++) {
+      if (inputs[i] == null) {
+        inputs[i]=ByteBuffer.allocate(toRecoverLen);
+        indices4Decode[m++]=i;
+      }
+    }
+    ByteBuffer[] outputs=new ByteBuffer[parityBlkNum];
+    m=0;
+    for (int i=0; i < parityBlkNum; i++) {
+      if (m < targetIndices.length && (indices4Decode[i] - parityBlkNum) == targetIndices[m]) {
+        outputs[i]=targetBuffers[m++];
+        outputs[i].limit(toRecoverLen);
+      }
+ else {
+        outputs[i]=ByteBuffer.allocate(toRecoverLen);
+      }
+    }
+    decoder.decode(inputs,indices4Decode,outputs);
+    for (int i=0; i < targets.length; i++) {
+      if (targetsStatus[i]) {
+        long blockLen=getBlockLen(blockGroup,targetIndices[i]);
+        long remaining=blockLen - positionInBlock;
+        if (remaining < 0) {
+          targetBuffers[i].limit(0);
+        }
+ else         if (remaining < toRecoverLen) {
+          targetBuffers[i].limit((int)remaining);
+        }
+      }
+    }
+  }
+}
