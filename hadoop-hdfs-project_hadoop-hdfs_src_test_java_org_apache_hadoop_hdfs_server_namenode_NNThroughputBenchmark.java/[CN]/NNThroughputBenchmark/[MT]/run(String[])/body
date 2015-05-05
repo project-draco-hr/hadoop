@@ -4,8 +4,6 @@
   String type=args.get(1);
   boolean runAll=OperationStatsBase.OP_ALL_NAME.equals(type);
   String[] argv=new String[]{};
-  nameNode=NameNode.createNameNode(argv,config);
-  nameNodeProto=nameNode.getRpcServer();
   List<OperationStatsBase> ops=new ArrayList<OperationStatsBase>();
   OperationStatsBase opStat=null;
   try {
@@ -44,6 +42,25 @@
     if (runAll || CleanAllStats.OP_CLEAN_NAME.equals(type)) {
       opStat=new CleanAllStats(args);
       ops.add(opStat);
+    }
+    if (namenodeUri == null) {
+      nameNode=NameNode.createNameNode(argv,config);
+      NamenodeProtocols nnProtos=nameNode.getRpcServer();
+      nameNodeProto=nnProtos;
+      clientProto=nnProtos;
+      dataNodeProto=nnProtos;
+      refreshUserMappingsProto=nnProtos;
+      bpid=nameNode.getNamesystem().getBlockPoolId();
+    }
+ else {
+      FileSystem.setDefaultUri(getConf(),namenodeUri);
+      DistributedFileSystem dfs=(DistributedFileSystem)FileSystem.get(getConf());
+      final URI nnUri=new URI(namenodeUri);
+      nameNodeProto=DFSTestUtil.getNamenodeProtocolProxy(config,nnUri,UserGroupInformation.getCurrentUser());
+      clientProto=dfs.getClient().getNamenode();
+      dataNodeProto=new DatanodeProtocolClientSideTranslatorPB(NameNode.getAddress(nnUri),config);
+      refreshUserMappingsProto=DFSTestUtil.getRefreshUserMappingsProtocolProxy(config,nnUri);
+      getBlockPoolId(dfs);
     }
     if (ops.size() == 0)     printUsage();
     for (    OperationStatsBase op : ops) {
