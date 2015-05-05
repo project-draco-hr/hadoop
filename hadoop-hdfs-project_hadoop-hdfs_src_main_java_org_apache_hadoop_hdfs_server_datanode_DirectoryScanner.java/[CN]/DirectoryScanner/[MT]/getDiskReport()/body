@@ -1,27 +1,30 @@
 {
-  final List<? extends FsVolumeSpi> volumes=dataset.getVolumes();
-  ScanInfoPerBlockPool[] dirReports=new ScanInfoPerBlockPool[volumes.size()];
-  Map<Integer,Future<ScanInfoPerBlockPool>> compilersInProgress=new HashMap<Integer,Future<ScanInfoPerBlockPool>>();
-  for (int i=0; i < volumes.size(); i++) {
-    if (isValid(dataset,volumes.get(i))) {
+  ScanInfoPerBlockPool list=new ScanInfoPerBlockPool();
+  ScanInfoPerBlockPool[] dirReports=null;
+  try (FsDatasetSpi.FsVolumeReferences volumes=dataset.getFsVolumeReferences()){
+    dirReports=new ScanInfoPerBlockPool[volumes.size()];
+    Map<Integer,Future<ScanInfoPerBlockPool>> compilersInProgress=new HashMap<Integer,Future<ScanInfoPerBlockPool>>();
+    for (int i=0; i < volumes.size(); i++) {
       ReportCompiler reportCompiler=new ReportCompiler(datanode,volumes.get(i));
       Future<ScanInfoPerBlockPool> result=reportCompileThreadPool.submit(reportCompiler);
       compilersInProgress.put(i,result);
     }
-  }
-  for (  Entry<Integer,Future<ScanInfoPerBlockPool>> report : compilersInProgress.entrySet()) {
-    try {
-      dirReports[report.getKey()]=report.getValue().get();
+    for (    Entry<Integer,Future<ScanInfoPerBlockPool>> report : compilersInProgress.entrySet()) {
+      try {
+        dirReports[report.getKey()]=report.getValue().get();
+      }
+ catch (      Exception ex) {
+        LOG.error("Error compiling report",ex);
+        throw new RuntimeException(ex);
+      }
     }
- catch (    Exception ex) {
-      LOG.error("Error compiling report",ex);
-      throw new RuntimeException(ex);
-    }
   }
-  ScanInfoPerBlockPool list=new ScanInfoPerBlockPool();
-  for (int i=0; i < volumes.size(); i++) {
-    if (isValid(dataset,volumes.get(i))) {
-      list.addAll(dirReports[i]);
+ catch (  IOException e) {
+    LOG.error("Unexpected IOException by closing FsVolumeReference",e);
+  }
+  if (dirReports != null) {
+    for (    ScanInfoPerBlockPool report : dirReports) {
+      list.addAll(report);
     }
   }
   return list.toSortedArrays();
