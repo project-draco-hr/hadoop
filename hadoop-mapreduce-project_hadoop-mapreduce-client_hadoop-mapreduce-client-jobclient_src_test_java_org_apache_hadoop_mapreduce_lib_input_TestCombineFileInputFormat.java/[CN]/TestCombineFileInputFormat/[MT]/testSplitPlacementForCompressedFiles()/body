@@ -45,21 +45,47 @@
     for (    InputSplit split : splits) {
       System.out.println("File split(Test1): " + split);
     }
-    assertEquals(2,splits.size());
-    fileSplit=(CombineFileSplit)splits.get(0);
-    assertEquals(1,fileSplit.getNumPaths());
-    assertEquals(1,fileSplit.getLocations().length);
-    assertEquals(file2.getName(),fileSplit.getPath(0).getName());
-    assertEquals(0,fileSplit.getOffset(0));
-    assertEquals(f2.getLen(),fileSplit.getLength(0));
-    assertEquals(hosts2[0],fileSplit.getLocations()[0]);
-    fileSplit=(CombineFileSplit)splits.get(1);
-    assertEquals(1,fileSplit.getNumPaths());
-    assertEquals(1,fileSplit.getLocations().length);
-    assertEquals(file1.getName(),fileSplit.getPath(0).getName());
-    assertEquals(0,fileSplit.getOffset(0));
-    assertEquals(f1.getLen(),fileSplit.getLength(0));
-    assertEquals(hosts1[0],fileSplit.getLocations()[0]);
+    Set<Split> expected=new HashSet<>();
+    expected.add(new Split(file1.getName(),f1.getLen(),0));
+    expected.add(new Split(file2.getName(),f2.getLen(),0));
+    List<Split> actual=new ArrayList<>();
+    for (    InputSplit split : splits) {
+      fileSplit=(CombineFileSplit)split;
+      if (splits.size() == 2) {
+        if (split.equals(splits.get(0))) {
+          assertEquals(1,fileSplit.getNumPaths());
+          assertEquals(1,fileSplit.getLocations().length);
+          assertEquals(file2.getName(),fileSplit.getPath(0).getName());
+          assertEquals(0,fileSplit.getOffset(0));
+          assertEquals(f2.getLen(),fileSplit.getLength(0));
+          assertEquals(hosts2[0],fileSplit.getLocations()[0]);
+        }
+        if (split.equals(splits.get(1))) {
+          assertEquals(1,fileSplit.getNumPaths());
+          assertEquals(1,fileSplit.getLocations().length);
+          assertEquals(file1.getName(),fileSplit.getPath(0).getName());
+          assertEquals(0,fileSplit.getOffset(0));
+          assertEquals(f1.getLen(),fileSplit.getLength(0));
+          assertEquals(hosts1[0],fileSplit.getLocations()[0]);
+        }
+      }
+ else       if (splits.size() == 1) {
+        assertEquals(2,fileSplit.getNumPaths());
+        assertEquals(1,fileSplit.getLocations().length);
+        assertEquals(hosts1[0],fileSplit.getLocations()[0]);
+      }
+ else {
+        fail("Split size should be 1 or 2.");
+      }
+      for (int i=0; i < fileSplit.getNumPaths(); i++) {
+        String name=fileSplit.getPath(i).getName();
+        long length=fileSplit.getLength(i);
+        long offset=fileSplit.getOffset(i);
+        actual.add(new Split(name,length,offset));
+      }
+    }
+    assertEquals(2,actual.size());
+    assertTrue(actual.containsAll(expected));
     dfs.startDataNodes(conf,1,true,null,rack3,hosts3,null);
     dfs.waitActive();
     Path file3=new Path(dir3 + "/file3.gz");
@@ -71,28 +97,71 @@
     for (    InputSplit split : splits) {
       System.out.println("File split(Test2): " + split);
     }
-    assertEquals(3,splits.size());
-    fileSplit=(CombineFileSplit)splits.get(0);
-    assertEquals(1,fileSplit.getNumPaths());
-    assertEquals(1,fileSplit.getLocations().length);
-    assertEquals(file3.getName(),fileSplit.getPath(0).getName());
-    assertEquals(0,fileSplit.getOffset(0));
-    assertEquals(f3.getLen(),fileSplit.getLength(0));
-    assertEquals(hosts3[0],fileSplit.getLocations()[0]);
-    fileSplit=(CombineFileSplit)splits.get(1);
-    assertEquals(1,fileSplit.getNumPaths());
-    assertEquals(1,fileSplit.getLocations().length);
-    assertEquals(file2.getName(),fileSplit.getPath(0).getName());
-    assertEquals(0,fileSplit.getOffset(0));
-    assertEquals(f2.getLen(),fileSplit.getLength(0));
-    assertEquals(hosts2[0],fileSplit.getLocations()[0]);
-    fileSplit=(CombineFileSplit)splits.get(2);
-    assertEquals(1,fileSplit.getNumPaths());
-    assertEquals(1,fileSplit.getLocations().length);
-    assertEquals(file1.getName(),fileSplit.getPath(0).getName());
-    assertEquals(0,fileSplit.getOffset(0));
-    assertEquals(f1.getLen(),fileSplit.getLength(0));
-    assertEquals(hosts1[0],fileSplit.getLocations()[0]);
+    expected.add(new Split(file3.getName(),f3.getLen(),0));
+    actual.clear();
+    for (    InputSplit split : splits) {
+      fileSplit=(CombineFileSplit)split;
+      if (splits.size() == 3) {
+        if (split.equals(splits.get(0))) {
+          assertEquals(1,fileSplit.getNumPaths());
+          assertEquals(file3.getName(),fileSplit.getPath(0).getName());
+          assertEquals(f3.getLen(),fileSplit.getLength(0));
+          assertEquals(0,fileSplit.getOffset(0));
+          assertEquals(1,fileSplit.getLocations().length);
+          assertEquals(hosts3[0],fileSplit.getLocations()[0]);
+        }
+        if (split.equals(splits.get(1))) {
+          assertEquals(1,fileSplit.getNumPaths());
+          assertEquals(file2.getName(),fileSplit.getPath(0).getName());
+          assertEquals(f2.getLen(),fileSplit.getLength(0));
+          assertEquals(0,fileSplit.getOffset(0));
+          assertEquals(1,fileSplit.getLocations().length);
+          assertEquals(hosts2[0],fileSplit.getLocations()[0]);
+        }
+        if (split.equals(splits.get(2))) {
+          assertEquals(1,fileSplit.getNumPaths());
+          assertEquals(file1.getName(),fileSplit.getPath(0).getName());
+          assertEquals(f1.getLen(),fileSplit.getLength(0));
+          assertEquals(0,fileSplit.getOffset(0));
+          assertEquals(1,fileSplit.getLocations().length);
+          assertEquals(hosts1[0],fileSplit.getLocations()[0]);
+        }
+      }
+ else       if (splits.size() == 2) {
+        if (split.equals(splits.get(0))) {
+          assertEquals(1,fileSplit.getLocations().length);
+          if (fileSplit.getLocations()[0].equals(hosts2[0])) {
+            assertEquals(2,fileSplit.getNumPaths());
+          }
+ else           if (fileSplit.getLocations()[0].equals(hosts3[0])) {
+            assertEquals(1,fileSplit.getNumPaths());
+          }
+ else {
+            fail("First split should be on rack2 or rack3.");
+          }
+        }
+        if (split.equals(splits.get(1))) {
+          assertEquals(1,fileSplit.getLocations().length);
+          assertEquals(hosts1[0],fileSplit.getLocations()[0]);
+        }
+      }
+ else       if (splits.size() == 1) {
+        assertEquals(1,fileSplit.getLocations().length);
+        assertEquals(3,fileSplit.getNumPaths());
+        assertEquals(hosts1[0],fileSplit.getLocations()[0]);
+      }
+ else {
+        fail("Split size should be 1, 2, or 3.");
+      }
+      for (int i=0; i < fileSplit.getNumPaths(); i++) {
+        String name=fileSplit.getPath(i).getName();
+        long length=fileSplit.getLength(i);
+        long offset=fileSplit.getOffset(i);
+        actual.add(new Split(name,length,offset));
+      }
+    }
+    assertEquals(3,actual.size());
+    assertTrue(actual.containsAll(expected));
     Path file4=new Path(dir4 + "/file4.gz");
     FileStatus f4=writeGzipFile(conf,file4,(short)3,3);
     inFormat=new DummyInputFormat();
@@ -102,31 +171,67 @@
     for (    InputSplit split : splits) {
       System.out.println("File split(Test3): " + split);
     }
-    assertEquals(3,splits.size());
-    fileSplit=(CombineFileSplit)splits.get(0);
-    assertEquals(2,fileSplit.getNumPaths());
-    assertEquals(1,fileSplit.getLocations().length);
-    assertEquals(file3.getName(),fileSplit.getPath(0).getName());
-    assertEquals(0,fileSplit.getOffset(0));
-    assertEquals(f3.getLen(),fileSplit.getLength(0));
-    assertEquals(file4.getName(),fileSplit.getPath(1).getName());
-    assertEquals(0,fileSplit.getOffset(1));
-    assertEquals(f4.getLen(),fileSplit.getLength(1));
-    assertEquals(hosts3[0],fileSplit.getLocations()[0]);
-    fileSplit=(CombineFileSplit)splits.get(1);
-    assertEquals(1,fileSplit.getNumPaths());
-    assertEquals(1,fileSplit.getLocations().length);
-    assertEquals(file2.getName(),fileSplit.getPath(0).getName());
-    assertEquals(0,fileSplit.getOffset(0));
-    assertEquals(f2.getLen(),fileSplit.getLength(0));
-    assertEquals(hosts2[0],fileSplit.getLocations()[0]);
-    fileSplit=(CombineFileSplit)splits.get(2);
-    assertEquals(1,fileSplit.getNumPaths());
-    assertEquals(1,fileSplit.getLocations().length);
-    assertEquals(file1.getName(),fileSplit.getPath(0).getName());
-    assertEquals(0,fileSplit.getOffset(0));
-    assertEquals(f1.getLen(),fileSplit.getLength(0));
-    assertEquals(hosts1[0],fileSplit.getLocations()[0]);
+    expected.add(new Split(file3.getName(),f3.getLen(),0));
+    actual.clear();
+    for (    InputSplit split : splits) {
+      fileSplit=(CombineFileSplit)split;
+      if (splits.size() == 3) {
+        if (split.equals(splits.get(0))) {
+          assertEquals(2,fileSplit.getNumPaths());
+          assertEquals(hosts3[0],fileSplit.getLocations()[0]);
+        }
+        if (split.equals(splits.get(1))) {
+          assertEquals(1,fileSplit.getNumPaths());
+          assertEquals(file2.getName(),fileSplit.getPath(0).getName());
+          assertEquals(f2.getLen(),fileSplit.getLength(0));
+          assertEquals(0,fileSplit.getOffset(0));
+          assertEquals(1,fileSplit.getLocations().length);
+          assertEquals(hosts2[0],fileSplit.getLocations()[0]);
+        }
+        if (split.equals(splits.get(2))) {
+          assertEquals(1,fileSplit.getNumPaths());
+          assertEquals(file1.getName(),fileSplit.getPath(0).getName());
+          assertEquals(f1.getLen(),fileSplit.getLength(0));
+          assertEquals(0,fileSplit.getOffset(0));
+          assertEquals(1,fileSplit.getLocations().length);
+          assertEquals(hosts1[0],fileSplit.getLocations()[0]);
+        }
+      }
+ else       if (splits.size() == 2) {
+        if (split.equals(splits.get(0))) {
+          assertEquals(1,fileSplit.getLocations().length);
+          if (fileSplit.getLocations()[0].equals(hosts2[0])) {
+            assertEquals(3,fileSplit.getNumPaths());
+          }
+ else           if (fileSplit.getLocations()[0].equals(hosts3[0])) {
+            assertEquals(2,fileSplit.getNumPaths());
+          }
+ else {
+            fail("First split should be on rack2 or rack3.");
+          }
+        }
+        if (split.equals(splits.get(1))) {
+          assertEquals(1,fileSplit.getLocations().length);
+          assertEquals(hosts1[0],fileSplit.getLocations()[0]);
+        }
+      }
+ else       if (splits.size() == 1) {
+        assertEquals(1,fileSplit.getLocations().length);
+        assertEquals(4,fileSplit.getNumPaths());
+        assertEquals(hosts1[0],fileSplit.getLocations()[0]);
+      }
+ else {
+        fail("Split size should be 1, 2, or 3.");
+      }
+      for (int i=0; i < fileSplit.getNumPaths(); i++) {
+        String name=fileSplit.getPath(i).getName();
+        long length=fileSplit.getLength(i);
+        long offset=fileSplit.getOffset(i);
+        actual.add(new Split(name,length,offset));
+      }
+    }
+    assertEquals(4,actual.size());
+    assertTrue(actual.containsAll(expected));
     inFormat=new DummyInputFormat();
     inFormat.setMinSplitSizeNode(f1.getLen());
     inFormat.setMaxSplitSize(f1.getLen());
@@ -136,32 +241,22 @@
       System.out.println("File split(Test4): " + split);
     }
     assertEquals(4,splits.size());
-    fileSplit=(CombineFileSplit)splits.get(0);
-    assertEquals(1,fileSplit.getNumPaths());
-    assertEquals(1,fileSplit.getLocations().length);
-    assertEquals(file3.getName(),fileSplit.getPath(0).getName());
-    assertEquals(0,fileSplit.getOffset(0));
-    assertEquals(f3.getLen(),fileSplit.getLength(0));
-    assertEquals(hosts3[0],fileSplit.getLocations()[0]);
-    fileSplit=(CombineFileSplit)splits.get(1);
-    assertEquals(file2.getName(),fileSplit.getPath(0).getName());
-    assertEquals(0,fileSplit.getOffset(0));
-    assertEquals(f2.getLen(),fileSplit.getLength(0));
-    assertEquals(hosts2[0],fileSplit.getLocations()[0]);
-    fileSplit=(CombineFileSplit)splits.get(2);
-    assertEquals(1,fileSplit.getNumPaths());
-    assertEquals(1,fileSplit.getLocations().length);
-    assertEquals(file1.getName(),fileSplit.getPath(0).getName());
-    assertEquals(0,fileSplit.getOffset(0));
-    assertEquals(f1.getLen(),fileSplit.getLength(0));
-    assertEquals(hosts1[0],fileSplit.getLocations()[0]);
-    fileSplit=(CombineFileSplit)splits.get(3);
-    assertEquals(1,fileSplit.getNumPaths());
-    assertEquals(1,fileSplit.getLocations().length);
-    assertEquals(file4.getName(),fileSplit.getPath(0).getName());
-    assertEquals(0,fileSplit.getOffset(0));
-    assertEquals(f4.getLen(),fileSplit.getLength(0));
-    assertEquals(hosts3[0],fileSplit.getLocations()[0]);
+    actual.clear();
+    for (    InputSplit split : splits) {
+      fileSplit=(CombineFileSplit)split;
+      for (int i=0; i < fileSplit.getNumPaths(); i++) {
+        String name=fileSplit.getPath(i).getName();
+        long length=fileSplit.getLength(i);
+        long offset=fileSplit.getOffset(i);
+        actual.add(new Split(name,length,offset));
+      }
+      mockList.add(fileSplit.getLocations()[0]);
+    }
+    assertEquals(4,actual.size());
+    assertTrue(actual.containsAll(expected));
+    verify(mockList,atLeastOnce()).add(hosts1[0]);
+    verify(mockList,atLeastOnce()).add(hosts2[0]);
+    verify(mockList,atLeastOnce()).add(hosts3[0]);
     inFormat=new DummyInputFormat();
     inFormat.setMinSplitSizeNode(f1.getLen());
     inFormat.setMaxSplitSize(2 * f1.getLen());
@@ -170,31 +265,31 @@
     for (    InputSplit split : splits) {
       System.out.println("File split(Test5): " + split);
     }
-    assertEquals(3,splits.size());
-    fileSplit=(CombineFileSplit)splits.get(0);
-    assertEquals(2,fileSplit.getNumPaths());
-    assertEquals(1,fileSplit.getLocations().length);
-    assertEquals(file3.getName(),fileSplit.getPath(0).getName());
-    assertEquals(0,fileSplit.getOffset(0));
-    assertEquals(f3.getLen(),fileSplit.getLength(0));
-    assertEquals(file4.getName(),fileSplit.getPath(1).getName());
-    assertEquals(0,fileSplit.getOffset(1));
-    assertEquals(f4.getLen(),fileSplit.getLength(1));
-    assertEquals(hosts3[0],fileSplit.getLocations()[0]);
-    fileSplit=(CombineFileSplit)splits.get(1);
-    assertEquals(1,fileSplit.getNumPaths());
-    assertEquals(1,fileSplit.getLocations().length);
-    assertEquals(file2.getName(),fileSplit.getPath(0).getName());
-    assertEquals(0,fileSplit.getOffset(0));
-    assertEquals(f2.getLen(),fileSplit.getLength(0));
-    assertEquals(hosts2[0],fileSplit.getLocations()[0]);
-    fileSplit=(CombineFileSplit)splits.get(2);
-    assertEquals(1,fileSplit.getNumPaths());
-    assertEquals(1,fileSplit.getLocations().length);
-    assertEquals(file1.getName(),fileSplit.getPath(0).getName());
-    assertEquals(0,fileSplit.getOffset(0));
-    assertEquals(f1.getLen(),fileSplit.getLength(0));
-    assertEquals(hosts1[0],fileSplit.getLocations()[0]);
+    actual.clear();
+    reset(mockList);
+    for (    InputSplit split : splits) {
+      fileSplit=(CombineFileSplit)split;
+      for (int i=0; i < fileSplit.getNumPaths(); i++) {
+        String name=fileSplit.getPath(i).getName();
+        long length=fileSplit.getLength(i);
+        long offset=fileSplit.getOffset(i);
+        actual.add(new Split(name,length,offset));
+      }
+      mockList.add(fileSplit.getLocations()[0]);
+    }
+    assertEquals(4,actual.size());
+    assertTrue(actual.containsAll(expected));
+    if (splits.size() == 3) {
+      verify(mockList,times(1)).add(hosts1[0]);
+      verify(mockList,times(1)).add(hosts2[0]);
+      verify(mockList,times(1)).add(hosts3[0]);
+    }
+ else     if (splits.size() == 2) {
+      verify(mockList,times(1)).add(hosts1[0]);
+    }
+ else {
+      fail("Split size should be 2 or 3.");
+    }
     inFormat=new DummyInputFormat();
     inFormat.setMinSplitSizeNode(2 * f1.getLen());
     inFormat.setMaxSplitSize(4 * f1.getLen());
@@ -203,26 +298,22 @@
     for (    InputSplit split : splits) {
       System.out.println("File split(Test6): " + split);
     }
-    assertEquals(2,splits.size());
-    fileSplit=(CombineFileSplit)splits.get(0);
-    assertEquals(2,fileSplit.getNumPaths());
-    assertEquals(1,fileSplit.getLocations().length);
-    assertEquals(file3.getName(),fileSplit.getPath(0).getName());
-    assertEquals(0,fileSplit.getOffset(0));
-    assertEquals(f3.getLen(),fileSplit.getLength(0));
-    assertEquals(file4.getName(),fileSplit.getPath(1).getName());
-    assertEquals(0,fileSplit.getOffset(1));
-    assertEquals(f4.getLen(),fileSplit.getLength(1));
-    assertEquals(hosts3[0],fileSplit.getLocations()[0]);
-    fileSplit=(CombineFileSplit)splits.get(1);
-    assertEquals(2,fileSplit.getNumPaths());
-    assertEquals(file1.getName(),fileSplit.getPath(0).getName());
-    assertEquals(0,fileSplit.getOffset(0));
-    assertEquals(f1.getLen(),fileSplit.getLength(0));
-    assertEquals(file2.getName(),fileSplit.getPath(1).getName());
-    assertEquals(0,fileSplit.getOffset(1),BLOCKSIZE);
-    assertEquals(f2.getLen(),fileSplit.getLength(1));
-    assertEquals(hosts1[0],fileSplit.getLocations()[0]);
+    assertTrue("Split size should be 1 or 2.",splits.size() == 1 || splits.size() == 2);
+    actual.clear();
+    reset(mockList);
+    for (    InputSplit split : splits) {
+      fileSplit=(CombineFileSplit)split;
+      for (int i=0; i < fileSplit.getNumPaths(); i++) {
+        String name=fileSplit.getPath(i).getName();
+        long length=fileSplit.getLength(i);
+        long offset=fileSplit.getOffset(i);
+        actual.add(new Split(name,length,offset));
+      }
+      mockList.add(fileSplit.getLocations()[0]);
+    }
+    assertEquals(4,actual.size());
+    assertTrue(actual.containsAll(expected));
+    verify(mockList,times(1)).add(hosts1[0]);
     inFormat=new DummyInputFormat();
     inFormat.setMaxSplitSize(4 * f1.getLen());
     inFormat.setMinSplitSizeRack(4 * f1.getLen());
@@ -256,19 +347,50 @@
     for (    InputSplit split : splits) {
       System.out.println("File split(Test9): " + split);
     }
-    assertEquals(3,splits.size());
-    fileSplit=(CombineFileSplit)splits.get(0);
-    assertEquals(1,fileSplit.getNumPaths());
-    assertEquals(1,fileSplit.getLocations().length);
-    assertEquals(hosts2[0],fileSplit.getLocations()[0]);
-    fileSplit=(CombineFileSplit)splits.get(1);
-    assertEquals(1,fileSplit.getNumPaths());
-    assertEquals(1,fileSplit.getLocations().length);
-    assertEquals(hosts1[0],fileSplit.getLocations()[0]);
-    fileSplit=(CombineFileSplit)splits.get(2);
-    assertEquals(2,fileSplit.getNumPaths());
-    assertEquals(1,fileSplit.getLocations().length);
-    assertEquals(hosts3[0],fileSplit.getLocations()[0]);
+    actual.clear();
+    for (    InputSplit split : splits) {
+      fileSplit=(CombineFileSplit)split;
+      if (splits.size() == 3) {
+        if (split.equals(splits.get(0))) {
+          assertEquals(1,fileSplit.getNumPaths());
+          assertEquals(1,fileSplit.getLocations().length);
+          assertEquals(hosts2[0],fileSplit.getLocations()[0]);
+        }
+        if (split.equals(splits.get(1))) {
+          assertEquals(1,fileSplit.getNumPaths());
+          assertEquals(1,fileSplit.getLocations().length);
+          assertEquals(hosts1[0],fileSplit.getLocations()[0]);
+        }
+        if (split.equals(splits.get(2))) {
+          assertEquals(2,fileSplit.getNumPaths());
+          assertEquals(1,fileSplit.getLocations().length);
+          assertEquals(hosts3[0],fileSplit.getLocations()[0]);
+        }
+      }
+ else       if (splits.size() == 2) {
+        if (split.equals(splits.get(0))) {
+          assertEquals(2,fileSplit.getNumPaths());
+          assertEquals(1,fileSplit.getLocations().length);
+          assertEquals(hosts1[0],fileSplit.getLocations()[0]);
+        }
+        if (split.equals(splits.get(1))) {
+          assertEquals(2,fileSplit.getNumPaths());
+          assertEquals(1,fileSplit.getLocations().length);
+          assertEquals(hosts3[0],fileSplit.getLocations()[0]);
+        }
+      }
+ else {
+        fail("Split size should be 2 or 3.");
+      }
+      for (int i=0; i < fileSplit.getNumPaths(); i++) {
+        String name=fileSplit.getPath(i).getName();
+        long length=fileSplit.getLength(i);
+        long offset=fileSplit.getOffset(i);
+        actual.add(new Split(name,length,offset));
+      }
+    }
+    assertEquals(4,actual.size());
+    assertTrue(actual.containsAll(expected));
     int numPools=100;
     int numFiles=1000;
     DummyInputFormat1 inFormat1=new DummyInputFormat1();
