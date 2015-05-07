@@ -16,19 +16,42 @@
   }
    try (FSDataInputStream fsdis=fs.open(new Path(src))){
     byte[] buf=new byte[writeBytes + 100];
-    int readLen=0;
-    int ret;
-    do {
-      ret=fsdis.read(buf,readLen,buf.length - readLen);
-      if (ret > 0) {
-        readLen+=ret;
-      }
-    }
- while (ret >= 0);
-    readLen=readLen >= 0 ? readLen : 0;
+    int readLen=readAll(fsdis,buf);
     Assert.assertEquals("The length of file should be the same to write size",writeBytes,readLen);
     for (int i=0; i < writeBytes; i++) {
       Assert.assertEquals("Byte at " + i + " should be the same",getByte(i),buf[i]);
+    }
+  }
+   try (FSDataInputStream fsdis=fs.open(new Path(src))){
+    int pos=writeBytes / 2;
+    assertSeekAndRead(fsdis,pos,writeBytes);
+    pos=writeBytes / 3;
+    assertSeekAndRead(fsdis,pos,writeBytes);
+    pos=0;
+    assertSeekAndRead(fsdis,pos,writeBytes);
+    if (writeBytes > cellSize) {
+      pos=cellSize - 1;
+      assertSeekAndRead(fsdis,pos,writeBytes);
+    }
+    if (writeBytes > cellSize * dataBlocks) {
+      pos=cellSize * dataBlocks - 1;
+      assertSeekAndRead(fsdis,pos,writeBytes);
+    }
+    if (writeBytes > blockSize * dataBlocks) {
+      pos=blockSize * dataBlocks - 1;
+      assertSeekAndRead(fsdis,pos,writeBytes);
+    }
+    try {
+      fsdis.seek(-1);
+      Assert.fail("Should be failed if seek to negative offset");
+    }
+ catch (    EOFException e) {
+    }
+    try {
+      fsdis.seek(writeBytes + 1);
+      Assert.fail("Should be failed if seek after EOF");
+    }
+ catch (    EOFException e) {
     }
   }
    try (FSDataInputStream fsdis=fs.open(new Path(src))){

@@ -2,13 +2,17 @@
   resetCurStripeBuffer();
   final long offsetInBlockGroup=getOffsetInBlockGroup();
   final long stripeLen=cellSize * dataBlkNum;
-  int stripeIndex=(int)(offsetInBlockGroup / stripeLen);
-  curStripeRange=new StripeRange(stripeIndex * stripeLen,Math.min(currentLocatedBlock.getBlockSize() - (stripeIndex * stripeLen),stripeLen));
-  final int numCell=(int)((curStripeRange.length - 1) / cellSize + 1);
+  final int stripeIndex=(int)(offsetInBlockGroup / stripeLen);
+  final int stripeBufOffset=(int)(offsetInBlockGroup % stripeLen);
+  final int stripeLimit=(int)Math.min(currentLocatedBlock.getBlockSize() - (stripeIndex * stripeLen),stripeLen);
+  curStripeRange=new StripeRange(offsetInBlockGroup,stripeLimit - stripeBufOffset);
+  final int startCell=stripeBufOffset / cellSize;
+  final int numCell=(stripeLimit - 1) / cellSize + 1;
   Map<Future<Integer>,Integer> futures=new HashMap<>();
-  for (int i=0; i < numCell; i++) {
-    curStripeBuf.position(cellSize * i);
-    curStripeBuf.limit((int)Math.min(cellSize * (i + 1),curStripeRange.length));
+  for (int i=startCell; i < numCell; i++) {
+    int bufPos=i == startCell ? stripeBufOffset : cellSize * i;
+    curStripeBuf.position(bufPos);
+    curStripeBuf.limit(Math.min(cellSize * (i + 1),stripeLimit));
     ByteBuffer buf=curStripeBuf.slice();
     ByteBufferStrategy strategy=new ByteBufferStrategy(buf);
     final int targetLength=buf.remaining();
