@@ -1,0 +1,129 @@
+{
+  DBIterator iterator=null;
+  try {
+    KeyBuilder kb=KeyBuilder.newInstance().add(base).add(entityType);
+    byte[] prefix=kb.getBytesForLookup();
+    if (endtime == null) {
+      endtime=Long.MAX_VALUE;
+    }
+    if (fields == null) {
+      fields=EnumSet.allOf(Field.class);
+    }
+    long firstStartTime=Long.MAX_VALUE;
+    byte[] first=null;
+    if (fromId != null) {
+      Long fromIdStartTime=getStartTimeLong(fromId,entityType);
+      if (fromIdStartTime == null) {
+        return new TimelineEntities();
+      }
+      if (fromIdStartTime <= endtime) {
+        firstStartTime=fromIdStartTime;
+        first=kb.add(writeReverseOrderedLong(fromIdStartTime)).add(fromId).getBytesForLookup();
+      }
+    }
+    if (first == null) {
+      firstStartTime=endtime;
+      first=kb.add(writeReverseOrderedLong(endtime)).getBytesForLookup();
+    }
+    byte[] last=null;
+    if (starttime != null) {
+      last=KeyBuilder.newInstance().add(base).add(entityType).add(writeReverseOrderedLong(starttime)).getBytesForLookup();
+    }
+    if (limit == null) {
+      limit=DEFAULT_LIMIT;
+    }
+    TimelineEntities entities=new TimelineEntities();
+    RollingLevelDB rollingdb=null;
+    if (usingPrimaryFilter) {
+      rollingdb=indexdb;
+    }
+ else {
+      rollingdb=entitydb;
+    }
+    DB db=rollingdb.getDBForStartTime(firstStartTime);
+    while (entities.getEntities().size() < limit && db != null) {
+      iterator=db.iterator();
+      iterator.seek(first);
+      while (entities.getEntities().size() < limit && iterator.hasNext()) {
+        byte[] key=iterator.peekNext().getKey();
+        if (!prefixMatches(prefix,prefix.length,key) || (last != null && WritableComparator.compareBytes(key,0,key.length,last,0,last.length) > 0)) {
+          break;
+        }
+        KeyParser kp=new KeyParser(key,prefix.length);
+        Long startTime=kp.getNextLong();
+        String entityId=kp.getNextString();
+        if (fromTs != null) {
+          long insertTime=readReverseOrderedLong(iterator.peekNext().getValue(),0);
+          if (insertTime > fromTs) {
+            byte[] firstKey=key;
+            while (iterator.hasNext()) {
+              key=iterator.peekNext().getKey();
+              iterator.next();
+              if (!prefixMatches(firstKey,kp.getOffset(),key)) {
+                break;
+              }
+            }
+            continue;
+          }
+        }
+        EnumSet<Field> queryFields=EnumSet.copyOf(fields);
+        boolean addPrimaryFilters=false;
+        boolean addOtherInfo=false;
+        if (secondaryFilters != null && secondaryFilters.size() > 0) {
+          if (!queryFields.contains(Field.PRIMARY_FILTERS)) {
+            queryFields.add(Field.PRIMARY_FILTERS);
+            addPrimaryFilters=true;
+          }
+          if (!queryFields.contains(Field.OTHER_INFO)) {
+            queryFields.add(Field.OTHER_INFO);
+            addOtherInfo=true;
+          }
+        }
+        TimelineEntity entity=null;
+        if (usingPrimaryFilter) {
+          entity=getEntity(entityId,entityType,queryFields);
+          iterator.next();
+        }
+ else {
+          entity=getEntity(entityId,entityType,startTime,queryFields,iterator,key,kp.getOffset());
+        }
+        boolean filterPassed=true;
+        if (secondaryFilters != null) {
+          for (          NameValuePair filter : secondaryFilters) {
+            Object v=entity.getOtherInfo().get(filter.getName());
+            if (v == null) {
+              Set<Object> vs=entity.getPrimaryFilters().get(filter.getName());
+              if (vs == null || !vs.contains(filter.getValue())) {
+                filterPassed=false;
+                break;
+              }
+            }
+ else             if (!v.equals(filter.getValue())) {
+              filterPassed=false;
+              break;
+            }
+          }
+        }
+        if (filterPassed) {
+          if (entity.getDomainId() == null) {
+            entity.setDomainId(DEFAULT_DOMAIN_ID);
+          }
+          if (checkAcl == null || checkAcl.check(entity)) {
+            if (addPrimaryFilters) {
+              entity.setPrimaryFilters(null);
+            }
+            if (addOtherInfo) {
+              entity.setOtherInfo(null);
+            }
+            entities.addEntity(entity);
+          }
+        }
+      }
+      db=rollingdb.getPreviousDB(db);
+    }
+    return entities;
+  }
+  finally {
+    IOUtils.cleanup(LOG,iterator);
+  }
+}

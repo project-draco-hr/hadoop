@@ -1,0 +1,63 @@
+{
+  Preconditions.checkArgument(conf.getLong(TIMELINE_SERVICE_TTL_MS,DEFAULT_TIMELINE_SERVICE_TTL_MS) > 0,"%s property value should be greater than zero",TIMELINE_SERVICE_TTL_MS);
+  Preconditions.checkArgument(conf.getLong(TIMELINE_SERVICE_LEVELDB_TTL_INTERVAL_MS,DEFAULT_TIMELINE_SERVICE_LEVELDB_TTL_INTERVAL_MS) > 0,"%s property value should be greater than zero",TIMELINE_SERVICE_LEVELDB_TTL_INTERVAL_MS);
+  Preconditions.checkArgument(conf.getLong(TIMELINE_SERVICE_LEVELDB_READ_CACHE_SIZE,DEFAULT_TIMELINE_SERVICE_LEVELDB_READ_CACHE_SIZE) >= 0,"%s property value should be greater than or equal to zero",TIMELINE_SERVICE_LEVELDB_READ_CACHE_SIZE);
+  Preconditions.checkArgument(conf.getLong(TIMELINE_SERVICE_LEVELDB_START_TIME_READ_CACHE_SIZE,DEFAULT_TIMELINE_SERVICE_LEVELDB_START_TIME_READ_CACHE_SIZE) > 0," %s property value should be greater than zero",TIMELINE_SERVICE_LEVELDB_START_TIME_READ_CACHE_SIZE);
+  Preconditions.checkArgument(conf.getLong(TIMELINE_SERVICE_LEVELDB_START_TIME_WRITE_CACHE_SIZE,DEFAULT_TIMELINE_SERVICE_LEVELDB_START_TIME_WRITE_CACHE_SIZE) > 0,"%s property value should be greater than zero",TIMELINE_SERVICE_LEVELDB_START_TIME_WRITE_CACHE_SIZE);
+  Preconditions.checkArgument(conf.getLong(TIMELINE_SERVICE_LEVELDB_MAX_OPEN_FILES,DEFAULT_TIMELINE_SERVICE_LEVELDB_MAX_OPEN_FILES) > 0,"%s property value should be greater than zero",TIMELINE_SERVICE_LEVELDB_MAX_OPEN_FILES);
+  Preconditions.checkArgument(conf.getLong(TIMELINE_SERVICE_LEVELDB_WRITE_BUFFER_SIZE,DEFAULT_TIMELINE_SERVICE_LEVELDB_WRITE_BUFFER_SIZE) > 0,"%s property value should be greater than zero",TIMELINE_SERVICE_LEVELDB_WRITE_BUFFER_SIZE);
+  Options options=new Options();
+  options.createIfMissing(true);
+  options.cacheSize(conf.getLong(TIMELINE_SERVICE_LEVELDB_READ_CACHE_SIZE,DEFAULT_TIMELINE_SERVICE_LEVELDB_READ_CACHE_SIZE));
+  JniDBFactory factory=new JniDBFactory();
+  Path dbPath=new Path(conf.get(TIMELINE_SERVICE_LEVELDB_PATH),FILENAME);
+  Path domainDBPath=new Path(dbPath,DOMAIN);
+  Path starttimeDBPath=new Path(dbPath,STARTTIME);
+  Path ownerDBPath=new Path(dbPath,OWNER);
+  FileSystem localFS=null;
+  try {
+    localFS=FileSystem.getLocal(conf);
+    if (!localFS.exists(dbPath)) {
+      if (!localFS.mkdirs(dbPath)) {
+        throw new IOException("Couldn't create directory for leveldb " + "timeline store " + dbPath);
+      }
+      localFS.setPermission(dbPath,LEVELDB_DIR_UMASK);
+    }
+    if (!localFS.exists(domainDBPath)) {
+      if (!localFS.mkdirs(domainDBPath)) {
+        throw new IOException("Couldn't create directory for leveldb " + "timeline store " + domainDBPath);
+      }
+      localFS.setPermission(domainDBPath,LEVELDB_DIR_UMASK);
+    }
+    if (!localFS.exists(starttimeDBPath)) {
+      if (!localFS.mkdirs(starttimeDBPath)) {
+        throw new IOException("Couldn't create directory for leveldb " + "timeline store " + starttimeDBPath);
+      }
+      localFS.setPermission(starttimeDBPath,LEVELDB_DIR_UMASK);
+    }
+    if (!localFS.exists(ownerDBPath)) {
+      if (!localFS.mkdirs(ownerDBPath)) {
+        throw new IOException("Couldn't create directory for leveldb " + "timeline store " + ownerDBPath);
+      }
+      localFS.setPermission(ownerDBPath,LEVELDB_DIR_UMASK);
+    }
+  }
+  finally {
+    IOUtils.cleanup(LOG,localFS);
+  }
+  options.maxOpenFiles(conf.getInt(TIMELINE_SERVICE_LEVELDB_MAX_OPEN_FILES,DEFAULT_TIMELINE_SERVICE_LEVELDB_MAX_OPEN_FILES));
+  options.writeBufferSize(conf.getInt(TIMELINE_SERVICE_LEVELDB_WRITE_BUFFER_SIZE,DEFAULT_TIMELINE_SERVICE_LEVELDB_WRITE_BUFFER_SIZE));
+  LOG.info("Using leveldb path " + dbPath);
+  domaindb=factory.open(new File(domainDBPath.toString()),options);
+  entitydb=new RollingLevelDB(ENTITY);
+  entitydb.init(conf);
+  indexdb=new RollingLevelDB(INDEX);
+  indexdb.init(conf);
+  starttimedb=factory.open(new File(starttimeDBPath.toString()),options);
+  ownerdb=factory.open(new File(ownerDBPath.toString()),options);
+  checkVersion();
+  startTimeWriteCache=Collections.synchronizedMap(new LRUMap(getStartTimeWriteCacheSize(conf)));
+  startTimeReadCache=Collections.synchronizedMap(new LRUMap(getStartTimeReadCacheSize(conf)));
+  writeBatchSize=conf.getInt(TIMELINE_SERVICE_LEVELDB_WRITE_BATCH_SIZE,DEFAULT_TIMELINE_SERVICE_LEVELDB_WRITE_BATCH_SIZE);
+  super.serviceInit(conf);
+}

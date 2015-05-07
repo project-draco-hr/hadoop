@@ -1,0 +1,52 @@
+{
+  LOG.info("Searching for start times to evict earlier than " + minStartTime);
+  long batchSize=0;
+  long totalCount=0;
+  long startTimesCount=0;
+  WriteBatch writeBatch=null;
+  DBIterator iterator=null;
+  try {
+    writeBatch=starttimedb.createWriteBatch();
+    ReadOptions readOptions=new ReadOptions();
+    readOptions.fillCache(false);
+    iterator=starttimedb.iterator(readOptions);
+    iterator.seekToFirst();
+    while (iterator.hasNext()) {
+      Map.Entry<byte[],byte[]> current=iterator.next();
+      byte[] entityKey=current.getKey();
+      byte[] entityValue=current.getValue();
+      long startTime=readReverseOrderedLong(entityValue,0);
+      if (startTime < minStartTime) {
+        ++batchSize;
+        ++startTimesCount;
+        writeBatch.delete(entityKey);
+        if (batchSize >= writeBatchSize) {
+          if (LOG.isDebugEnabled()) {
+            LOG.debug("Preparing to delete a batch of " + batchSize + " old start times");
+          }
+          starttimedb.write(writeBatch);
+          if (LOG.isDebugEnabled()) {
+            LOG.debug("Deleted batch of " + batchSize + ". Total start times deleted so far this cycle: "+ startTimesCount);
+          }
+          IOUtils.cleanup(LOG,writeBatch);
+          writeBatch=starttimedb.createWriteBatch();
+          batchSize=0;
+        }
+      }
+      ++totalCount;
+    }
+    if (LOG.isDebugEnabled()) {
+      LOG.debug("Preparing to delete a batch of " + batchSize + " old start times");
+    }
+    starttimedb.write(writeBatch);
+    if (LOG.isDebugEnabled()) {
+      LOG.debug("Deleted batch of " + batchSize + ". Total start times deleted so far this cycle: "+ startTimesCount);
+    }
+    LOG.info("Deleted " + startTimesCount + "/"+ totalCount+ " start time entities earlier than "+ minStartTime);
+  }
+  finally {
+    IOUtils.cleanup(LOG,writeBatch);
+    IOUtils.cleanup(LOG,iterator);
+  }
+  return startTimesCount;
+}

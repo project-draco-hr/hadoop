@@ -2,44 +2,35 @@
   if (entities == null) {
     return new TimelinePutResponse();
   }
-  List<EntityIdentifier> entityIDs=new ArrayList<EntityIdentifier>();
   TimelineEntities entitiesToPut=new TimelineEntities();
   List<TimelinePutResponse.TimelinePutError> errors=new ArrayList<TimelinePutResponse.TimelinePutError>();
   for (  TimelineEntity entity : entities.getEntities()) {
-    EntityIdentifier entityID=new EntityIdentifier(entity.getEntityId(),entity.getEntityType());
     if (entity.getDomainId() == null || entity.getDomainId().length() == 0) {
       entity.setDomainId(DEFAULT_DOMAIN_ID);
     }
     TimelineEntity existingEntity=null;
     try {
-      existingEntity=store.getEntity(entityID.getId(),entityID.getType(),EnumSet.of(Field.PRIMARY_FILTERS));
+      existingEntity=store.getEntity(entity.getEntityId(),entity.getEntityType(),EnumSet.of(Field.PRIMARY_FILTERS));
       if (existingEntity != null) {
         addDefaultDomainIdIfAbsent(existingEntity);
         if (!existingEntity.getDomainId().equals(entity.getDomainId())) {
-          throw new YarnException("The domain of the timeline entity " + entityID + " is not allowed to be changed.");
+          throw new YarnException("The domain of the timeline entity " + "{ id: " + entity.getEntityId() + ", type: "+ entity.getEntityType()+ " } is not allowed to be changed from "+ existingEntity.getDomainId()+ " to "+ entity.getDomainId());
         }
       }
       if (!timelineACLsManager.checkAccess(callerUGI,ApplicationAccessType.MODIFY_APP,entity)) {
-        throw new YarnException(callerUGI + " is not allowed to put the timeline entity " + entityID+ " into the domain "+ entity.getDomainId()+ ".");
+        throw new YarnException(callerUGI + " is not allowed to put the timeline entity " + "{ id: "+ entity.getEntityId()+ ", type: "+ entity.getEntityType()+ " } into the domain "+ entity.getDomainId()+ ".");
       }
     }
  catch (    Exception e) {
-      LOG.error("Skip the timeline entity: " + entityID,e);
+      LOG.warn("Skip the timeline entity: { id: " + entity.getEntityId() + ", type: "+ entity.getEntityType()+ " }",e);
       TimelinePutResponse.TimelinePutError error=new TimelinePutResponse.TimelinePutError();
-      error.setEntityId(entityID.getId());
-      error.setEntityType(entityID.getType());
+      error.setEntityId(entity.getEntityId());
+      error.setEntityType(entity.getEntityType());
       error.setErrorCode(TimelinePutResponse.TimelinePutError.ACCESS_DENIED);
       errors.add(error);
       continue;
     }
-    entityIDs.add(entityID);
     entitiesToPut.addEntity(entity);
-    if (LOG.isDebugEnabled()) {
-      LOG.debug("Storing the entity " + entityID + ", JSON-style content: "+ TimelineUtils.dumpTimelineRecordtoJSON(entity));
-    }
-  }
-  if (LOG.isDebugEnabled()) {
-    LOG.debug("Storing entities: " + CSV_JOINER.join(entityIDs));
   }
   TimelinePutResponse response=store.put(entitiesToPut);
   response.addErrors(errors);

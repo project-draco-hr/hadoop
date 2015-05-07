@@ -1,0 +1,69 @@
+{
+  TimelineEvents events=new TimelineEvents();
+  if (entityIds == null || entityIds.isEmpty()) {
+    return events;
+  }
+  Map<byte[],List<EntityIdentifier>> startTimeMap=new TreeMap<byte[],List<EntityIdentifier>>(new Comparator<byte[]>(){
+    @Override public int compare(    byte[] o1,    byte[] o2){
+      return WritableComparator.compareBytes(o1,0,o1.length,o2,0,o2.length);
+    }
+  }
+);
+  DBIterator iterator=null;
+  try {
+    for (    String entityId : entityIds) {
+      byte[] startTime=getStartTime(entityId,entityType);
+      if (startTime != null) {
+        List<EntityIdentifier> entities=startTimeMap.get(startTime);
+        if (entities == null) {
+          entities=new ArrayList<EntityIdentifier>();
+          startTimeMap.put(startTime,entities);
+        }
+        entities.add(new EntityIdentifier(entityId,entityType));
+      }
+    }
+    for (    Entry<byte[],List<EntityIdentifier>> entry : startTimeMap.entrySet()) {
+      byte[] revStartTime=entry.getKey();
+      for (      EntityIdentifier entityIdentifier : entry.getValue()) {
+        EventsOfOneEntity entity=new EventsOfOneEntity();
+        entity.setEntityId(entityIdentifier.getId());
+        entity.setEntityType(entityType);
+        events.addEvent(entity);
+        KeyBuilder kb=KeyBuilder.newInstance().add(entityType).add(revStartTime).add(entityIdentifier.getId()).add(EVENTS_COLUMN);
+        byte[] prefix=kb.getBytesForLookup();
+        if (windowEnd == null) {
+          windowEnd=Long.MAX_VALUE;
+        }
+        byte[] revts=writeReverseOrderedLong(windowEnd);
+        kb.add(revts);
+        byte[] first=kb.getBytesForLookup();
+        byte[] last=null;
+        if (windowStart != null) {
+          last=KeyBuilder.newInstance().add(prefix).add(writeReverseOrderedLong(windowStart)).getBytesForLookup();
+        }
+        if (limit == null) {
+          limit=DEFAULT_LIMIT;
+        }
+        DB db=entitydb.getDBForStartTime(readReverseOrderedLong(revStartTime,0));
+        if (db == null) {
+          continue;
+        }
+        iterator=db.iterator();
+        for (iterator.seek(first); entity.getEvents().size() < limit && iterator.hasNext(); iterator.next()) {
+          byte[] key=iterator.peekNext().getKey();
+          if (!prefixMatches(prefix,prefix.length,key) || (last != null && WritableComparator.compareBytes(key,0,key.length,last,0,last.length) > 0)) {
+            break;
+          }
+          TimelineEvent event=getEntityEvent(eventType,key,prefix.length,iterator.peekNext().getValue());
+          if (event != null) {
+            entity.addEvent(event);
+          }
+        }
+      }
+    }
+  }
+  finally {
+    IOUtils.cleanup(LOG,iterator);
+  }
+  return events;
+}

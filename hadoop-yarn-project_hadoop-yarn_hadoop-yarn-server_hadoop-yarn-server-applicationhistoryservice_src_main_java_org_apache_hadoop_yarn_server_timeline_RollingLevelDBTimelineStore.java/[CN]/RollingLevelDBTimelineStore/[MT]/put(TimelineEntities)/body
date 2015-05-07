@@ -1,0 +1,33 @@
+{
+  if (LOG.isDebugEnabled()) {
+    LOG.debug("Starting put");
+  }
+  TimelinePutResponse response=new TimelinePutResponse();
+  TreeMap<Long,RollingWriteBatch> entityUpdates=new TreeMap<Long,RollingWriteBatch>();
+  TreeMap<Long,RollingWriteBatch> indexUpdates=new TreeMap<Long,RollingWriteBatch>();
+  long entityCount=0;
+  long indexCount=0;
+  try {
+    for (    TimelineEntity entity : entities.getEntities()) {
+      entityCount+=putEntities(entityUpdates,indexUpdates,entity,response);
+    }
+    for (    RollingWriteBatch entityUpdate : entityUpdates.values()) {
+      entityUpdate.write();
+    }
+    for (    RollingWriteBatch indexUpdate : indexUpdates.values()) {
+      indexUpdate.write();
+    }
+  }
+  finally {
+    for (    RollingWriteBatch entityRollingWriteBatch : entityUpdates.values()) {
+      entityRollingWriteBatch.close();
+    }
+    for (    RollingWriteBatch indexRollingWriteBatch : indexUpdates.values()) {
+      indexRollingWriteBatch.close();
+    }
+  }
+  if (LOG.isDebugEnabled()) {
+    LOG.debug("Put " + entityCount + " new leveldb entity entries and "+ indexCount+ " new leveldb index entries from "+ entities.getEntities().size()+ " timeline entities");
+  }
+  return response;
+}
