@@ -1,7 +1,27 @@
 {
+  if (!isRollingUpgrade()) {
+    return null;
+  }
   RollingUpgradeInfo upgradeInfo=getRollingUpgradeInfo();
-  if (upgradeInfo != null) {
+  if (upgradeInfo.createdRollbackImages()) {
     return new RollingUpgradeInfo.Bean(upgradeInfo);
   }
-  return null;
+  readLock();
+  try {
+    upgradeInfo=getRollingUpgradeInfo();
+    if (upgradeInfo == null) {
+      return null;
+    }
+    if (!upgradeInfo.createdRollbackImages()) {
+      boolean hasRollbackImage=this.getFSImage().hasRollbackFSImage();
+      upgradeInfo.setCreatedRollbackImages(hasRollbackImage);
+    }
+  }
+ catch (  IOException ioe) {
+    LOG.warn("Encountered exception setting Rollback Image",ioe);
+  }
+ finally {
+    readUnlock();
+  }
+  return new RollingUpgradeInfo.Bean(upgradeInfo);
 }
