@@ -6,7 +6,24 @@
     LOG.debug("local InetAddress for proxy host: {}",localAddress);
   }
   client.getParams().setParameter(ConnRoutePNames.LOCAL_ADDRESS,localAddress);
-  HttpGet httpGet=new HttpGet(link);
+  HttpRequestBase base=null;
+  if (method.equals(HTTP.GET)) {
+    base=new HttpGet(link);
+  }
+ else   if (method.equals(HTTP.PUT)) {
+    base=new HttpPut(link);
+    StringBuilder sb=new StringBuilder();
+    BufferedReader reader=new BufferedReader(new InputStreamReader(req.getInputStream(),"UTF-8"));
+    String line;
+    while ((line=reader.readLine()) != null) {
+      sb.append(line);
+    }
+    ((HttpPut)base).setEntity(new StringEntity(sb.toString()));
+  }
+ else {
+    resp.setStatus(HttpServletResponse.SC_METHOD_NOT_ALLOWED);
+    return;
+  }
   @SuppressWarnings("unchecked") Enumeration<String> names=req.getHeaderNames();
   while (names.hasMoreElements()) {
     String name=names.nextElement();
@@ -15,16 +32,16 @@
       if (LOG.isDebugEnabled()) {
         LOG.debug("REQ HEADER: {} : {}",name,value);
       }
-      httpGet.setHeader(name,value);
+      base.setHeader(name,value);
     }
   }
   String user=req.getRemoteUser();
   if (user != null && !user.isEmpty()) {
-    httpGet.setHeader("Cookie",PROXY_USER_COOKIE_NAME + "=" + URLEncoder.encode(user,"ASCII"));
+    base.setHeader("Cookie",PROXY_USER_COOKIE_NAME + "=" + URLEncoder.encode(user,"ASCII"));
   }
   OutputStream out=resp.getOutputStream();
   try {
-    HttpResponse httpResp=client.execute(httpGet);
+    HttpResponse httpResp=client.execute(base);
     resp.setStatus(httpResp.getStatusLine().getStatusCode());
     for (    Header header : httpResp.getAllHeaders()) {
       resp.setHeader(header.getName(),header.getValue());
@@ -38,6 +55,6 @@
     }
   }
   finally {
-    httpGet.releaseConnection();
+    base.releaseConnection();
   }
 }

@@ -1,0 +1,34 @@
+{
+  Preconditions.checkNotNull(ta,"ta cannot be null");
+  String userName=callerUGI.getUserName();
+  final TaskAttemptId attemptId=ta.getID();
+  try {
+    callerUGI.doAs(new PrivilegedExceptionAction<KillTaskAttemptResponse>(){
+      @Override public KillTaskAttemptResponse run() throws IOException, YarnException {
+        KillTaskAttemptRequest req=new KillTaskAttemptRequestPBImpl();
+        req.setTaskAttemptId(attemptId);
+        return service.forceKillTaskAttempt(req);
+      }
+    }
+);
+  }
+ catch (  UndeclaredThrowableException ue) {
+    if (ue.getCause() instanceof YarnException) {
+      YarnException ye=(YarnException)ue.getCause();
+      if (ye.getCause() instanceof AccessControlException) {
+        String taId=attemptId.toString();
+        String msg="Unauthorized attempt to kill task attempt " + taId + " by remote user "+ userName;
+        return Response.status(Status.FORBIDDEN).entity(msg).build();
+      }
+ else {
+        throw ue;
+      }
+    }
+ else {
+      throw ue;
+    }
+  }
+  JobTaskAttemptState ret=new JobTaskAttemptState();
+  ret.setState(TaskAttemptState.KILLED.toString());
+  return Response.status(Status.OK).entity(ret).build();
+}
