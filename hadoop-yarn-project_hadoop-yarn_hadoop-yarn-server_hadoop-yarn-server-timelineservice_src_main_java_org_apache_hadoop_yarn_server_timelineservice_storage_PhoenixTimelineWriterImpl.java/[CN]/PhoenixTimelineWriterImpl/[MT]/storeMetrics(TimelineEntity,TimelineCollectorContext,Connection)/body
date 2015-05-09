@@ -1,0 +1,40 @@
+{
+  if (entity.getMetrics() == null) {
+    return;
+  }
+  Set<TimelineMetric> metrics=entity.getMetrics();
+  for (  TimelineMetric metric : metrics) {
+    StringBuilder sqlColumns=new StringBuilder(StringUtils.join(PHOENIX_STORAGE_PK_LIST,","));
+    sqlColumns.append(",").append(StringUtils.join(TIMELINE_METRIC_EXTRA_PK_LIST,","));
+    sqlColumns.append(",").append("singledata, time");
+    StringBuilder placeholders=new StringBuilder();
+    placeholders.append(StringUtils.repeat("?,",PHOENIX_STORAGE_PK_LIST.length)).append(StringUtils.repeat("?,",TIMELINE_METRIC_EXTRA_PK_LIST.length));
+    placeholders.append("?, ?");
+    String sqlMetric=new StringBuilder("UPSERT INTO ").append(METRIC_TABLE_NAME).append(" (").append(sqlColumns).append(") VALUES(").append(placeholders).append(")").toString();
+    if (LOG.isDebugEnabled()) {
+      LOG.debug("SQL statement for metric: " + sqlMetric);
+    }
+    try (PreparedStatement psMetrics=conn.prepareStatement(sqlMetric)){
+      if (metric.getType().equals(TimelineMetric.Type.TIME_SERIES)) {
+        LOG.warn("The incoming timeline metric contains time series data, " + "which is currently not supported by Phoenix storage. " + "Time series will be truncated. ");
+      }
+      int idx=setStringsForPrimaryKey(psMetrics,context,entity,1);
+      psMetrics.setString(idx++,metric.getId());
+      Iterator<Map.Entry<Long,Number>> currNumIter=metric.getValues().entrySet().iterator();
+      if (currNumIter.hasNext()) {
+        Map.Entry<Long,Number> currEntry=currNumIter.next();
+        psMetrics.setBytes(idx++,GenericObjectMapper.write(currEntry.getValue()));
+        psMetrics.setLong(idx++,currEntry.getKey());
+      }
+ else {
+        psMetrics.setBytes(idx++,GenericObjectMapper.write(null));
+        LOG.warn("The incoming metric contains an empty value set. ");
+      }
+      psMetrics.execute();
+    }
+ catch (    IOException ie) {
+      LOG.error("Exception on converting single data to bytes: " + ie.getMessage());
+      throw new SQLException(ie);
+    }
+  }
+}

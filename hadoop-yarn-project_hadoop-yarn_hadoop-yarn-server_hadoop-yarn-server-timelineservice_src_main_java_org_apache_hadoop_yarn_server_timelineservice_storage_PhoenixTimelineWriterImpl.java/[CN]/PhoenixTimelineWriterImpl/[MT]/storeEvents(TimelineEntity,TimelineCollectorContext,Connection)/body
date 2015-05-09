@@ -1,0 +1,30 @@
+{
+  if (entity.getEvents() == null) {
+    return;
+  }
+  Set<TimelineEvent> events=entity.getEvents();
+  for (  TimelineEvent event : events) {
+    int numPlaceholders=0;
+    StringBuilder sqlColumns=new StringBuilder(StringUtils.join(PHOENIX_STORAGE_PK_LIST,","));
+    sqlColumns.append(",").append(StringUtils.join(TIMELINE_EVENT_EXTRA_PK_LIST,","));
+    appendColumnsSQL(sqlColumns,new DynamicColumns<>(EVENT_INFO_COLUMN_FAMILY,DynamicColumns.COLUMN_FAMILY_TYPE_BYTES,event.getInfo().keySet()));
+    numPlaceholders+=event.getInfo().keySet().size();
+    if (numPlaceholders == 0) {
+      continue;
+    }
+    StringBuilder placeholders=new StringBuilder();
+    placeholders.append(StringUtils.repeat("?,",PHOENIX_STORAGE_PK_LIST.length)).append(StringUtils.repeat("?,",TIMELINE_EVENT_EXTRA_PK_LIST.length));
+    placeholders.append("?").append(StringUtils.repeat(",?",numPlaceholders - 1));
+    String sqlEvents=new StringBuilder("UPSERT INTO ").append(EVENT_TABLE_NAME).append(" (").append(sqlColumns).append(") VALUES(").append(placeholders).append(")").toString();
+    if (LOG.isDebugEnabled()) {
+      LOG.debug("SQL statement for events: " + sqlEvents);
+    }
+    try (PreparedStatement psEvent=conn.prepareStatement(sqlEvents)){
+      int idx=setStringsForPrimaryKey(psEvent,context,entity,1);
+      psEvent.setLong(idx++,event.getTimestamp());
+      psEvent.setString(idx++,event.getId());
+      setBytesForColumnFamily(psEvent,event.getInfo(),idx);
+      psEvent.execute();
+    }
+   }
+}
