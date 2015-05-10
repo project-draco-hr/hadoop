@@ -1,0 +1,34 @@
+{
+  byte storagePolicyID=file.getStoragePolicyID();
+  BlockStoragePolicy bsp=null;
+  if (storagePolicyID != HdfsConstants.BLOCK_STORAGE_POLICY_ID_UNSPECIFIED) {
+    bsp=reclaimContext.storagePolicySuite().getPolicy(file.getStoragePolicyID());
+  }
+  QuotaCounts oldCounts=file.storagespaceConsumed(null);
+  long oldStoragespace;
+  if (removed.snapshotINode != null) {
+    short replication=removed.snapshotINode.getFileReplication();
+    short currentRepl=file.getBlockReplication();
+    if (replication > currentRepl) {
+      long oldFileSizeNoRep=currentRepl == 0 ? file.computeFileSize(true,true) : oldCounts.getStorageSpace() / file.getBlockReplication();
+      oldStoragespace=oldFileSizeNoRep * replication;
+      oldCounts.setStorageSpace(oldStoragespace);
+      if (bsp != null) {
+        List<StorageType> oldTypeChosen=bsp.chooseStorageTypes(replication);
+        for (        StorageType t : oldTypeChosen) {
+          if (t.supportTypeQuota()) {
+            oldCounts.addTypeSpace(t,oldFileSizeNoRep);
+          }
+        }
+      }
+    }
+    AclFeature aclFeature=removed.getSnapshotINode().getAclFeature();
+    if (aclFeature != null) {
+      AclStorage.removeAclFeature(aclFeature);
+    }
+  }
+  getDiffs().combineAndCollectSnapshotBlocks(reclaimContext,file,removed);
+  QuotaCounts current=file.storagespaceConsumed(bsp);
+  oldCounts.subtract(current);
+  return oldCounts;
+}
