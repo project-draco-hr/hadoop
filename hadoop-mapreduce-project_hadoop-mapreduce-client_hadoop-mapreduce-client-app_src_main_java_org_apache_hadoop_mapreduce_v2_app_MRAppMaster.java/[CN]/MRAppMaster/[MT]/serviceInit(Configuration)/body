@@ -2,7 +2,11 @@
   createJobClassLoader(conf);
   conf.setBoolean(Dispatcher.DISPATCHER_EXIT_ON_ERROR_KEY,true);
   initJobCredentialsAndUGI(conf);
-  context=new RunningAppContext(conf);
+  dispatcher=createDispatcher();
+  addIfService(dispatcher);
+  taskAttemptFinishingMonitor=createTaskAttemptFinishingMonitor(dispatcher.getEventHandler());
+  addIfService(taskAttemptFinishingMonitor);
+  context=new RunningAppContext(conf,taskAttemptFinishingMonitor);
   appName=conf.get(MRJobConfig.JOB_NAME,"<missing app name>");
   conf.setInt(MRJobConfig.APPLICATION_ATTEMPT_ID,appAttemptID.getAttemptId());
   newApiCommitter=false;
@@ -55,8 +59,6 @@
     throw new YarnRuntimeException("Error while initializing",e);
   }
   if (errorHappenedShutDown) {
-    dispatcher=createDispatcher();
-    addIfService(dispatcher);
     NoopEventHandler eater=new NoopEventHandler();
     dispatcher.register(JobEventType.class,eater);
     EventHandler<JobHistoryEvent> historyService=null;
@@ -81,8 +83,6 @@
   }
  else {
     committer=createOutputCommitter(conf);
-    dispatcher=createDispatcher();
-    addIfService(dispatcher);
     clientService=createClientService(context);
     clientService.init(conf);
     containerAllocator=createContainerAllocator(clientService,context);
