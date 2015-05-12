@@ -1,21 +1,26 @@
 {
   Preconditions.checkArgument(!futures.isEmpty());
-  Preconditions.checkArgument(threshold > 0);
   Future<Void> future=null;
   try {
-    future=readService.poll(threshold,TimeUnit.MILLISECONDS);
-    if (future != null) {
-      future.get();
-      return new StripedReadResult(futures.remove(future),StripedReadResult.SUCCESSFUL);
+    if (threshold > 0) {
+      future=readService.poll(threshold,TimeUnit.MILLISECONDS);
     }
  else {
-      return new StripedReadResult(StripedReadResult.TIMEOUT);
+      future=readService.take();
+    }
+    if (future != null) {
+      future.get();
+      return new StripingChunkReadResult(futures.remove(future),StripingChunkReadResult.SUCCESSFUL);
+    }
+ else {
+      return new StripingChunkReadResult(StripingChunkReadResult.TIMEOUT);
     }
   }
  catch (  ExecutionException e) {
-    return new StripedReadResult(futures.remove(future),StripedReadResult.FAILED);
+    DFSClient.LOG.error("ExecutionException " + e);
+    return new StripingChunkReadResult(futures.remove(future),StripingChunkReadResult.FAILED);
   }
 catch (  CancellationException e) {
-    return new StripedReadResult(futures.remove(future),StripedReadResult.CANCELLED);
+    return new StripingChunkReadResult(futures.remove(future),StripingChunkReadResult.CANCELLED);
   }
 }
