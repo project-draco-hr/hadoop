@@ -21,15 +21,33 @@
   if (Shell.WINDOWS) {
     String inputClassPath=environment.get(Environment.CLASSPATH.name());
     if (inputClassPath != null && !inputClassPath.isEmpty()) {
-      StringBuilder newClassPath=new StringBuilder(inputClassPath);
+      boolean preferLocalizedJars=conf.getBoolean(YarnConfiguration.YARN_APPLICATION_CLASSPATH_PREPEND_DISTCACHE,YarnConfiguration.DEFAULT_YARN_APPLICATION_CLASSPATH_PREPEND_DISTCACHE);
+      boolean needsSeparator=false;
+      StringBuilder newClassPath=new StringBuilder();
+      if (!preferLocalizedJars) {
+        newClassPath.append(inputClassPath);
+        needsSeparator=true;
+      }
       for (      Map.Entry<Path,List<String>> entry : resources.entrySet()) {
         boolean targetIsDirectory=new File(entry.getKey().toUri().getPath()).isDirectory();
         for (        String linkName : entry.getValue()) {
-          newClassPath.append(File.pathSeparator).append(pwd.toString()).append(Path.SEPARATOR).append(linkName);
+          if (needsSeparator) {
+            newClassPath.append(File.pathSeparator);
+          }
+ else {
+            needsSeparator=true;
+          }
+          newClassPath.append(pwd.toString()).append(Path.SEPARATOR).append(linkName);
           if (targetIsDirectory) {
             newClassPath.append(Path.SEPARATOR);
           }
         }
+      }
+      if (preferLocalizedJars) {
+        if (needsSeparator) {
+          newClassPath.append(File.pathSeparator);
+        }
+        newClassPath.append(inputClassPath);
       }
       Map<String,String> mergedEnv=new HashMap<String,String>(System.getenv());
       mergedEnv.putAll(environment);
