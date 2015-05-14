@@ -3,25 +3,23 @@
   int taskId=context.getTaskAttemptID().getTaskID().getId();
   long timestamp=conf.getLong(TIMELINE_SERVICE_PERFORMANCE_RUN_ID,0);
   ApplicationId appId=ApplicationId.newInstance(timestamp,taskId);
-  Configuration tlConf=new YarnConfiguration();
   AppLevelTimelineCollector collector=new AppLevelTimelineCollector(appId);
-  collector.init(tlConf);
-  collector.start();
+  manager.putIfAbsent(appId,collector);
   try {
     TimelineCollectorContext tlContext=collector.getTimelineEntityContext();
     tlContext.setFlowName(context.getJobName());
     tlContext.setFlowRunId(timestamp);
     tlContext.setUserId(context.getUser());
-    final int kbs=Integer.parseInt(conf.get(KBS_SENT));
+    final int kbs=conf.getInt(KBS_SENT,KBS_SENT_DEFAULT);
     long totalTime=0;
-    final int testtimes=Integer.parseInt(conf.get(TEST_TIMES));
+    final int testtimes=conf.getInt(TEST_TIMES,TEST_TIMES_DEFAULT);
     final Random rand=new Random();
     final TaskAttemptID taskAttemptId=context.getTaskAttemptID();
     final char[] payLoad=new char[kbs * 1024];
     for (int i=0; i < testtimes; i++) {
       for (int xx=0; xx < kbs * 1024; xx++) {
-        int alphaNumIdx=rand.nextInt(alphaNums.length);
-        payLoad[xx]=alphaNums[alphaNumIdx];
+        int alphaNumIdx=rand.nextInt(TimelineServicePerformanceV2.alphaNums.length);
+        payLoad[xx]=TimelineServicePerformanceV2.alphaNums[alphaNumIdx];
       }
       String entId=taskAttemptId + "_" + Integer.toString(i);
       final TimelineEntity entity=new TimelineEntity();
@@ -46,10 +44,10 @@
       }
  catch (      Exception e) {
         context.getCounter(PerfCounters.TIMELINE_SERVICE_WRITE_FAILURES).increment(1);
-        e.printStackTrace();
+        LOG.error("writing to the timeline service failed",e);
       }
       long endWrite=System.nanoTime();
-      totalTime+=(endWrite - startWrite) / 1000000L;
+      totalTime+=TimeUnit.NANOSECONDS.toMillis(endWrite - startWrite);
     }
     LOG.info("wrote " + testtimes + " entities ("+ kbs * testtimes + " kB) in " + totalTime + " ms");
     context.getCounter(PerfCounters.TIMELINE_SERVICE_WRITE_TIME).increment(totalTime);
@@ -57,6 +55,6 @@
     context.getCounter(PerfCounters.TIMELINE_SERVICE_WRITE_KBS).increment(kbs * testtimes);
   }
   finally {
-    collector.close();
+    manager.remove(appId);
   }
 }

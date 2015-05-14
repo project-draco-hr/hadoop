@@ -1,8 +1,6 @@
 {
   Configuration conf=job.getConfiguration();
   conf.setInt(MRJobConfig.NUM_MAPS,NUM_MAPS_DEFAULT);
-  conf.setInt(KBS_SENT,KBS_SENT_DEFAULT);
-  conf.setInt(TEST_TIMES,TEST_TIMES_DEFAULT);
   for (int i=0; i < args.length; i++) {
     if (args.length == i + 1) {
       System.out.println("ERROR: Required parameter missing from " + args[i]);
@@ -11,41 +9,55 @@
     try {
       if ("-m".equals(args[i])) {
         if (Integer.parseInt(args[++i]) > 0) {
-          job.getConfiguration().setInt(MRJobConfig.NUM_MAPS,(Integer.parseInt(args[i])));
+          job.getConfiguration().setInt(MRJobConfig.NUM_MAPS,Integer.parseInt(args[i]));
         }
       }
  else       if ("-mtype".equals(args[i])) {
         mapperType=Integer.parseInt(args[++i]);
-switch (mapperType) {
-case SIMPLE_ENTITY_WRITER:
-          job.setMapperClass(SimpleEntityWriter.class);
-        break;
-default :
-      job.setMapperClass(SimpleEntityWriter.class);
-  }
-}
- else if ("-s".equals(args[i])) {
-  if (Integer.parseInt(args[++i]) > 0) {
-    conf.setInt(KBS_SENT,(Integer.parseInt(args[i])));
-  }
-}
- else if ("-t".equals(args[i])) {
-  if (Integer.parseInt(args[++i]) > 0) {
-    conf.setInt(TEST_TIMES,(Integer.parseInt(args[i])));
-  }
-}
+      }
+ else       if ("-s".equals(args[i])) {
+        if (Integer.parseInt(args[++i]) > 0) {
+          conf.setInt(SimpleEntityWriter.KBS_SENT,Integer.parseInt(args[i]));
+        }
+      }
+ else       if ("-t".equals(args[i])) {
+        if (Integer.parseInt(args[++i]) > 0) {
+          conf.setInt(SimpleEntityWriter.TEST_TIMES,Integer.parseInt(args[i]));
+        }
+      }
+ else       if ("-d".equals(args[i])) {
+        conf.set(JobHistoryFileReplayMapper.PROCESSING_PATH,args[++i]);
+      }
+ else       if ("-r".equals(args[i])) {
+        conf.setInt(JobHistoryFileReplayMapper.REPLAY_MODE,Integer.parseInt(args[++i]));
+      }
  else {
-  System.out.println("Unexpected argument: " + args[i]);
+        System.out.println("Unexpected argument: " + args[i]);
+        return printUsage() == 0;
+      }
+    }
+ catch (    NumberFormatException except) {
+      System.out.println("ERROR: Integer expected instead of " + args[i]);
+      return printUsage() == 0;
+    }
+catch (    Exception e) {
+      throw (IOException)new IOException().initCause(e);
+    }
+  }
+switch (mapperType) {
+case JOB_HISTORY_FILE_REPLAY_MAPPER:
+    job.setMapperClass(JobHistoryFileReplayMapper.class);
+  String processingPath=conf.get(JobHistoryFileReplayMapper.PROCESSING_PATH);
+if (processingPath == null || processingPath.isEmpty()) {
+  System.out.println("processing path is missing while mtype = 2");
   return printUsage() == 0;
 }
-}
- catch (NumberFormatException except) {
-System.out.println("ERROR: Integer expected instead of " + args[i]);
-return printUsage() == 0;
-}
-catch (Exception e) {
-throw (IOException)new IOException().initCause(e);
-}
+break;
+case SIMPLE_ENTITY_WRITER:
+default :
+job.setMapperClass(SimpleEntityWriter.class);
+conf.setLong(SimpleEntityWriter.TIMELINE_SERVICE_PERFORMANCE_RUN_ID,System.currentTimeMillis());
+break;
 }
 return true;
 }
