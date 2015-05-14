@@ -2,13 +2,15 @@
   Preconditions.checkState(oldDstChild != null);
   List<INode> removedINodes=new ChunkedArrayList<>();
   List<Long> removedUCFiles=new ChunkedArrayList<>();
+  INode.ReclaimContext context=new INode.ReclaimContext(bsps,collectedBlocks,removedINodes,removedUCFiles);
   final boolean filesDeleted;
   if (!oldDstChild.isInLatestSnapshot(dstIIP.getLatestSnapshotId())) {
-    oldDstChild.destroyAndCollectBlocks(new INode.ReclaimContext(bsps,collectedBlocks,removedINodes,removedUCFiles));
+    oldDstChild.destroyAndCollectBlocks(context);
     filesDeleted=true;
   }
  else {
-    filesDeleted=oldDstChild.cleanSubtree(new INode.ReclaimContext(bsps,collectedBlocks,removedINodes,removedUCFiles),Snapshot.CURRENT_STATE_ID,dstIIP.getLatestSnapshotId()).getNameSpace() >= 0;
+    oldDstChild.cleanSubtree(context,Snapshot.CURRENT_STATE_ID,dstIIP.getLatestSnapshotId());
+    filesDeleted=context.quotaDelta().getNsDelta() >= 0;
   }
   fsd.getFSNamesystem().removeLeasesAndINodes(removedUCFiles,removedINodes,false);
   return filesDeleted;

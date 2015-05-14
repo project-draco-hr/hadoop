@@ -1,19 +1,20 @@
 {
   DirectoryWithSnapshotFeature sf=getDirectoryWithSnapshotFeature();
   if (sf != null) {
-    return sf.cleanDirectory(reclaimContext,this,snapshotId,priorSnapshotId);
-  }
-  if (priorSnapshotId == Snapshot.NO_SNAPSHOT_ID && snapshotId == Snapshot.CURRENT_STATE_ID) {
-    QuotaCounts counts=new QuotaCounts.Builder().build();
-    this.computeQuotaUsage(reclaimContext.bsps,counts,true);
-    destroyAndCollectBlocks(reclaimContext);
-    return counts;
+    sf.cleanDirectory(reclaimContext,this,snapshotId,priorSnapshotId);
   }
  else {
-    QuotaCounts counts=cleanSubtreeRecursively(reclaimContext,snapshotId,priorSnapshotId,null);
-    if (isQuotaSet()) {
-      getDirectoryWithQuotaFeature().addSpaceConsumed2Cache(counts.negation());
+    if (priorSnapshotId == Snapshot.NO_SNAPSHOT_ID && snapshotId == Snapshot.CURRENT_STATE_ID) {
+      destroyAndCollectBlocks(reclaimContext);
     }
-    return counts;
+ else {
+      QuotaCounts old=reclaimContext.quotaDelta().getCountsCopy();
+      cleanSubtreeRecursively(reclaimContext,snapshotId,priorSnapshotId,null);
+      QuotaCounts current=reclaimContext.quotaDelta().getCountsCopy();
+      current.subtract(old);
+      if (isQuotaSet()) {
+        reclaimContext.quotaDelta().addQuotaDirUpdate(this,current);
+      }
+    }
   }
 }

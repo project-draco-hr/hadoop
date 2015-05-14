@@ -1,7 +1,8 @@
 {
   int snapshot=getSelfSnapshot();
+  reclaimContext.quotaDelta().add(computeQuotaUsage(reclaimContext.bsps));
   if (removeReference(this) <= 0) {
-    getReferredINode().destroyAndCollectBlocks(reclaimContext);
+    getReferredINode().destroyAndCollectBlocks(reclaimContext.getCopy());
   }
  else {
     int prior=getPriorSnapshot(this);
@@ -10,15 +11,11 @@
       if (prior != Snapshot.NO_SNAPSHOT_ID && snapshot <= prior) {
         return;
       }
-      try {
-        QuotaCounts counts=referred.cleanSubtree(reclaimContext,snapshot,prior);
-        INodeReference ref=getReferredINode().getParentReference();
-        if (ref != null) {
-          ref.addSpaceConsumed(counts.negation(),true);
-        }
-      }
- catch (      QuotaExceededException e) {
-        LOG.error("should not exceed quota while snapshot deletion",e);
+      ReclaimContext newCtx=reclaimContext.getCopy();
+      referred.cleanSubtree(newCtx,snapshot,prior);
+      INodeReference ref=getReferredINode().getParentReference();
+      if (ref != null) {
+        reclaimContext.quotaDelta().addUpdatePath(ref,newCtx.quotaDelta().getCountsCopy());
       }
     }
   }

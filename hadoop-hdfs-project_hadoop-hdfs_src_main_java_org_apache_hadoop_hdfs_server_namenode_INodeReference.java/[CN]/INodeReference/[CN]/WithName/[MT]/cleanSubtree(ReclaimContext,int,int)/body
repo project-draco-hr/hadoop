@@ -4,20 +4,17 @@
     prior=getPriorSnapshot(this);
   }
   if (prior != Snapshot.NO_SNAPSHOT_ID && Snapshot.ID_INTEGER_COMPARATOR.compare(snapshot,prior) <= 0) {
-    return new QuotaCounts.Builder().build();
+    return;
   }
-  QuotaCounts counts=getReferredINode().cleanSubtree(reclaimContext,snapshot,prior);
+  QuotaCounts old=reclaimContext.quotaDelta().getCountsCopy();
+  getReferredINode().cleanSubtree(reclaimContext,snapshot,prior);
   INodeReference ref=getReferredINode().getParentReference();
   if (ref != null) {
-    try {
-      ref.addSpaceConsumed(counts.negation(),true);
-    }
- catch (    QuotaExceededException e) {
-      Log.warn("Should not have QuotaExceededException");
-    }
+    QuotaCounts current=reclaimContext.quotaDelta().getCountsCopy();
+    current.subtract(old);
+    reclaimContext.quotaDelta().addUpdatePath(ref,current);
   }
   if (snapshot < lastSnapshotId) {
-    counts=new QuotaCounts.Builder().build();
+    reclaimContext.quotaDelta().setCounts(old);
   }
-  return counts;
 }

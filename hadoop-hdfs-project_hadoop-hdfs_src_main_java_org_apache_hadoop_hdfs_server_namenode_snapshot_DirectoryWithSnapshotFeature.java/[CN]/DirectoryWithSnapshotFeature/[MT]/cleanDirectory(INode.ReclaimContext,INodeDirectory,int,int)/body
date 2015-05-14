@@ -1,18 +1,18 @@
 {
-  QuotaCounts counts=new QuotaCounts.Builder().build();
   Map<INode,INode> priorCreated=null;
   Map<INode,INode> priorDeleted=null;
+  QuotaCounts old=reclaimContext.quotaDelta().getCountsCopy();
   if (snapshot == Snapshot.CURRENT_STATE_ID) {
     currentINode.recordModification(prior);
     DirectoryDiff lastDiff=diffs.getLast();
     if (lastDiff != null) {
-      counts.add(lastDiff.diff.destroyCreatedList(reclaimContext,currentINode));
+      lastDiff.diff.destroyCreatedList(reclaimContext,currentINode);
     }
-    counts.add(currentINode.cleanSubtreeRecursively(reclaimContext,snapshot,prior,priorDeleted));
+    currentINode.cleanSubtreeRecursively(reclaimContext,snapshot,prior,null);
   }
  else {
     prior=getDiffs().updatePrior(snapshot,prior);
-    if (prior != Snapshot.NO_SNAPSHOT_ID) {
+    if (prior != NO_SNAPSHOT_ID) {
       DirectoryDiff priorDiff=this.getDiffs().getDiffById(prior);
       if (priorDiff != null && priorDiff.getSnapshotId() == prior) {
         List<INode> cList=priorDiff.diff.getList(ListType.CREATED);
@@ -21,28 +21,29 @@
         priorDeleted=cloneDiffList(dList);
       }
     }
-    counts.add(getDiffs().deleteSnapshotDiff(reclaimContext,snapshot,prior,currentINode));
-    counts.add(currentINode.cleanSubtreeRecursively(reclaimContext,snapshot,prior,priorDeleted));
-    if (prior != Snapshot.NO_SNAPSHOT_ID) {
+    getDiffs().deleteSnapshotDiff(reclaimContext,snapshot,prior,currentINode);
+    currentINode.cleanSubtreeRecursively(reclaimContext,snapshot,prior,priorDeleted);
+    if (prior != NO_SNAPSHOT_ID) {
       DirectoryDiff priorDiff=this.getDiffs().getDiffById(prior);
       if (priorDiff != null && priorDiff.getSnapshotId() == prior) {
         if (priorCreated != null) {
           for (          INode cNode : priorDiff.getChildrenDiff().getList(ListType.CREATED)) {
             if (priorCreated.containsKey(cNode)) {
-              counts.add(cNode.cleanSubtree(reclaimContext,snapshot,Snapshot.NO_SNAPSHOT_ID));
+              cNode.cleanSubtree(reclaimContext,snapshot,NO_SNAPSHOT_ID);
             }
           }
         }
         for (        INode dNode : priorDiff.getChildrenDiff().getList(ListType.DELETED)) {
           if (priorDeleted == null || !priorDeleted.containsKey(dNode)) {
-            counts.add(cleanDeletedINode(reclaimContext,dNode,snapshot,prior));
+            cleanDeletedINode(reclaimContext,dNode,snapshot,prior);
           }
         }
       }
     }
   }
+  QuotaCounts current=reclaimContext.quotaDelta().getCountsCopy();
+  current.subtract(old);
   if (currentINode.isQuotaSet()) {
-    currentINode.getDirectoryWithQuotaFeature().addSpaceConsumed2Cache(counts.negation());
+    reclaimContext.quotaDelta().addQuotaDirUpdate(currentINode,current);
   }
-  return counts;
 }
