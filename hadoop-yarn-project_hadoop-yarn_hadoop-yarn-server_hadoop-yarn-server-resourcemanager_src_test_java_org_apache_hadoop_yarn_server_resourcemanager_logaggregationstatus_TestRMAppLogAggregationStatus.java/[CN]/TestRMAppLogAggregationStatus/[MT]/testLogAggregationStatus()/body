@@ -23,15 +23,15 @@
   for (  Entry<NodeId,LogAggregationReport> report : logAggregationStatus.entrySet()) {
     Assert.assertEquals(LogAggregationStatus.NOT_START,report.getValue().getLogAggregationStatus());
   }
-  Map<ApplicationId,LogAggregationReport> node1ReportForApp=new HashMap<ApplicationId,LogAggregationReport>();
+  List<LogAggregationReport> node1ReportForApp=new ArrayList<LogAggregationReport>();
   String messageForNode1_1="node1 logAggregation status updated at " + System.currentTimeMillis();
-  LogAggregationReport report1=LogAggregationReport.newInstance(appId,nodeId1,LogAggregationStatus.RUNNING,messageForNode1_1);
-  node1ReportForApp.put(appId,report1);
+  LogAggregationReport report1=LogAggregationReport.newInstance(appId,LogAggregationStatus.RUNNING,messageForNode1_1);
+  node1ReportForApp.add(report1);
   node1.handle(new RMNodeStatusEvent(node1.getNodeID(),NodeHealthStatus.newInstance(true,null,0),new ArrayList<ContainerStatus>(),null,null,node1ReportForApp));
-  Map<ApplicationId,LogAggregationReport> node2ReportForApp=new HashMap<ApplicationId,LogAggregationReport>();
+  List<LogAggregationReport> node2ReportForApp=new ArrayList<LogAggregationReport>();
   String messageForNode2_1="node2 logAggregation status updated at " + System.currentTimeMillis();
-  LogAggregationReport report2=LogAggregationReport.newInstance(appId,nodeId2,LogAggregationStatus.RUNNING,messageForNode2_1);
-  node2ReportForApp.put(appId,report2);
+  LogAggregationReport report2=LogAggregationReport.newInstance(appId,LogAggregationStatus.RUNNING,messageForNode2_1);
+  node2ReportForApp.add(report2);
   node2.handle(new RMNodeStatusEvent(node2.getNodeID(),NodeHealthStatus.newInstance(true,null,0),new ArrayList<ContainerStatus>(),null,null,node2ReportForApp));
   logAggregationStatus=rmApp.getLogAggregationReportsForApp();
   Assert.assertEquals(2,logAggregationStatus.size());
@@ -50,10 +50,10 @@
       Assert.fail("should not contain log aggregation report for other nodes");
     }
   }
-  Map<ApplicationId,LogAggregationReport> node1ReportForApp2=new HashMap<ApplicationId,LogAggregationReport>();
+  List<LogAggregationReport> node1ReportForApp2=new ArrayList<LogAggregationReport>();
   String messageForNode1_2="node1 logAggregation status updated at " + System.currentTimeMillis();
-  LogAggregationReport report1_2=LogAggregationReport.newInstance(appId,nodeId1,LogAggregationStatus.RUNNING,messageForNode1_2);
-  node1ReportForApp2.put(appId,report1_2);
+  LogAggregationReport report1_2=LogAggregationReport.newInstance(appId,LogAggregationStatus.RUNNING,messageForNode1_2);
+  node1ReportForApp2.add(report1_2);
   node1.handle(new RMNodeStatusEvent(node1.getNodeID(),NodeHealthStatus.newInstance(true,null,0),new ArrayList<ContainerStatus>(),null,null,node1ReportForApp2));
   logAggregationStatus=rmApp.getLogAggregationReportsForApp();
   Assert.assertEquals(2,logAggregationStatus.size());
@@ -62,7 +62,7 @@
   for (  Entry<NodeId,LogAggregationReport> report : logAggregationStatus.entrySet()) {
     if (report.getKey().equals(node1.getNodeID())) {
       Assert.assertEquals(LogAggregationStatus.RUNNING,report.getValue().getLogAggregationStatus());
-      Assert.assertEquals(messageForNode1_1 + messageForNode1_2,report.getValue().getDiagnosticMessage());
+      Assert.assertEquals(messageForNode1_1 + "\n" + messageForNode1_2,report.getValue().getDiagnosticMessage());
     }
  else     if (report.getKey().equals(node2.getNodeID())) {
       Assert.assertEquals(LogAggregationStatus.RUNNING,report.getValue().getLogAggregationStatus());
@@ -84,10 +84,13 @@
   for (  Entry<NodeId,LogAggregationReport> report : logAggregationStatus.entrySet()) {
     Assert.assertEquals(LogAggregationStatus.TIME_OUT,report.getValue().getLogAggregationStatus());
   }
-  Map<ApplicationId,LogAggregationReport> node1ReportForApp3=new HashMap<ApplicationId,LogAggregationReport>();
-  String messageForNode1_3="node1 final logAggregation status updated at " + System.currentTimeMillis();
-  LogAggregationReport report1_3=LogAggregationReport.newInstance(appId,nodeId1,LogAggregationStatus.SUCCEEDED,messageForNode1_3);
-  node1ReportForApp3.put(appId,report1_3);
+  List<LogAggregationReport> node1ReportForApp3=new ArrayList<LogAggregationReport>();
+  LogAggregationReport report1_3;
+  for (int i=0; i < 10; i++) {
+    report1_3=LogAggregationReport.newInstance(appId,LogAggregationStatus.RUNNING,"test_message_" + i);
+    node1ReportForApp3.add(report1_3);
+  }
+  node1ReportForApp3.add(LogAggregationReport.newInstance(appId,LogAggregationStatus.SUCCEEDED,""));
   node1.handle(new RMNodeStatusEvent(node1.getNodeID(),NodeHealthStatus.newInstance(true,null,0),new ArrayList<ContainerStatus>(),null,null,node1ReportForApp3));
   logAggregationStatus=rmApp.getLogAggregationReportsForApp();
   Assert.assertEquals(2,logAggregationStatus.size());
@@ -96,7 +99,13 @@
   for (  Entry<NodeId,LogAggregationReport> report : logAggregationStatus.entrySet()) {
     if (report.getKey().equals(node1.getNodeID())) {
       Assert.assertEquals(LogAggregationStatus.SUCCEEDED,report.getValue().getLogAggregationStatus());
-      Assert.assertEquals(messageForNode1_1 + messageForNode1_2 + messageForNode1_3,report.getValue().getDiagnosticMessage());
+      StringBuilder builder=new StringBuilder();
+      for (int i=0; i < 9; i++) {
+        builder.append("test_message_" + i);
+        builder.append("\n");
+      }
+      builder.append("test_message_" + 9);
+      Assert.assertEquals(builder.toString(),report.getValue().getDiagnosticMessage());
     }
  else     if (report.getKey().equals(node2.getNodeID())) {
       Assert.assertEquals(LogAggregationStatus.TIME_OUT,report.getValue().getLogAggregationStatus());
@@ -105,4 +114,16 @@
       Assert.fail("should not contain log aggregation report for other nodes");
     }
   }
+  List<LogAggregationReport> node2ReportForApp2=new ArrayList<LogAggregationReport>();
+  LogAggregationReport report2_2=LogAggregationReport.newInstance(appId,LogAggregationStatus.RUNNING_WITH_FAILURE,"Fail_Message");
+  LogAggregationReport report2_3=LogAggregationReport.newInstance(appId,LogAggregationStatus.FAILED,"");
+  node2ReportForApp2.add(report2_2);
+  node2ReportForApp2.add(report2_3);
+  node2.handle(new RMNodeStatusEvent(node2.getNodeID(),NodeHealthStatus.newInstance(true,null,0),new ArrayList<ContainerStatus>(),null,null,node2ReportForApp2));
+  Assert.assertEquals(LogAggregationStatus.FAILED,rmApp.getLogAggregationStatusForAppReport());
+  logAggregationStatus=rmApp.getLogAggregationReportsForApp();
+  Assert.assertTrue(logAggregationStatus.size() == 1);
+  Assert.assertTrue(logAggregationStatus.containsKey(node2.getNodeID()));
+  Assert.assertTrue(!logAggregationStatus.containsKey(node1.getNodeID()));
+  Assert.assertEquals("Fail_Message",((RMAppImpl)rmApp).getLogAggregationFailureMessagesForNM(nodeId2));
 }

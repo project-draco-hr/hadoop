@@ -1,23 +1,33 @@
 {
   try {
     this.writeLock.lock();
-    if (this.logAggregationEnabled) {
+    if (this.logAggregationEnabled && !isLogAggregationFinished()) {
       LogAggregationReport curReport=this.logAggregationStatus.get(nodeId);
+      boolean stateChangedToFinal=false;
       if (curReport == null) {
         this.logAggregationStatus.put(nodeId,report);
+        if (isLogAggregationFinishedForNM(report)) {
+          stateChangedToFinal=true;
+        }
       }
  else {
-        if (curReport.getLogAggregationStatus().equals(LogAggregationStatus.TIME_OUT)) {
-          if (report.getLogAggregationStatus().equals(LogAggregationStatus.SUCCEEDED) || report.getLogAggregationStatus().equals(LogAggregationStatus.FAILED)) {
-            curReport.setLogAggregationStatus(report.getLogAggregationStatus());
+        if (isLogAggregationFinishedForNM(report)) {
+          if (!isLogAggregationFinishedForNM(curReport)) {
+            stateChangedToFinal=true;
           }
         }
- else {
+        if (report.getLogAggregationStatus() != LogAggregationStatus.RUNNING || curReport.getLogAggregationStatus() != LogAggregationStatus.RUNNING_WITH_FAILURE) {
+          if (curReport.getLogAggregationStatus() == LogAggregationStatus.TIME_OUT && report.getLogAggregationStatus() == LogAggregationStatus.RUNNING) {
+            if (logAggregationFailureMessagesForNMs.get(nodeId) != null && !logAggregationFailureMessagesForNMs.get(nodeId).isEmpty()) {
+              report.setLogAggregationStatus(LogAggregationStatus.RUNNING_WITH_FAILURE);
+            }
+          }
           curReport.setLogAggregationStatus(report.getLogAggregationStatus());
         }
-        if (report.getDiagnosticMessage() != null && !report.getDiagnosticMessage().isEmpty()) {
-          curReport.setDiagnosticMessage(curReport.getDiagnosticMessage() == null ? report.getDiagnosticMessage() : curReport.getDiagnosticMessage() + report.getDiagnosticMessage());
-        }
+      }
+      updateLogAggregationDiagnosticMessages(nodeId,report);
+      if (isAppInFinalState(this) && stateChangedToFinal) {
+        updateLogAggregationStatus(nodeId);
       }
     }
   }

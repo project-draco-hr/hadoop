@@ -1,28 +1,32 @@
 {
-  if (!logAggregationEnabled) {
-    return LogAggregationStatus.DISABLED;
-  }
-  if (this.logAggregationStatusForAppReport == LogAggregationStatus.FAILED || this.logAggregationStatusForAppReport == LogAggregationStatus.SUCCEEDED) {
-    return this.logAggregationStatusForAppReport;
-  }
   try {
     this.readLock.lock();
+    if (!logAggregationEnabled) {
+      return LogAggregationStatus.DISABLED;
+    }
+    if (isLogAggregationFinished()) {
+      return this.logAggregationStatusForAppReport;
+    }
     Map<NodeId,LogAggregationReport> reports=getLogAggregationReportsForApp();
     if (reports.size() == 0) {
-      return null;
+      return this.logAggregationStatusForAppReport;
     }
     int logNotStartCount=0;
     int logCompletedCount=0;
     int logTimeOutCount=0;
     int logFailedCount=0;
+    int logRunningWithFailure=0;
     for (    Entry<NodeId,LogAggregationReport> report : reports.entrySet()) {
 switch (report.getValue().getLogAggregationStatus()) {
 case NOT_START:
         logNotStartCount++;
       break;
-case SUCCEEDED:
-    logCompletedCount++;
+case RUNNING_WITH_FAILURE:
+    logRunningWithFailure++;
   break;
+case SUCCEEDED:
+logCompletedCount++;
+break;
 case FAILED:
 logFailedCount++;
 logCompletedCount++;
@@ -40,16 +44,17 @@ return LogAggregationStatus.NOT_START;
 }
  else if (logCompletedCount == reports.size()) {
 if (logFailedCount > 0 && isAppInFinalState(this)) {
-this.logAggregationStatusForAppReport=LogAggregationStatus.FAILED;
 return LogAggregationStatus.FAILED;
 }
  else if (logTimeOutCount > 0) {
 return LogAggregationStatus.TIME_OUT;
 }
 if (isAppInFinalState(this)) {
-this.logAggregationStatusForAppReport=LogAggregationStatus.SUCCEEDED;
 return LogAggregationStatus.SUCCEEDED;
 }
+}
+ else if (logRunningWithFailure > 0) {
+return LogAggregationStatus.RUNNING_WITH_FAILURE;
 }
 return LogAggregationStatus.RUNNING;
 }
