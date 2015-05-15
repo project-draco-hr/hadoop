@@ -1,2 +1,31 @@
 {
+  if (nodes == null || nodes.length == 0) {
+    String msg="Could not get block locations. " + "Source file \"" + src + "\" - Aborting...";
+    LOG.warn(msg);
+    lastException.set(new IOException(msg));
+    streamerClosed=true;
+    return false;
+  }
+  boolean success=false;
+  long newGS=0L;
+  while (!success && !streamerClosed && dfsClient.clientRunning) {
+    if (!handleRestartingDatanode()) {
+      return false;
+    }
+    final boolean isRecovery=errorState.hasError();
+    if (!handleBadDatanode()) {
+      return false;
+    }
+    handleDatanodeReplacement();
+    final LocatedBlock lb=updateBlockForPipeline();
+    newGS=lb.getBlock().getGenerationStamp();
+    accessToken=lb.getBlockToken();
+    success=createBlockOutputStream(nodes,storageTypes,newGS,isRecovery);
+    failPacket4Testing();
+    errorState.checkRestartingNodeDeadline(nodes);
+  }
+  if (success) {
+    block=updatePipeline(newGS);
+  }
+  return false;
 }
