@@ -3,26 +3,23 @@
   if (replicaInfo != null) {
     throw new ReplicaAlreadyExistsException("Block " + b + " already exists in state "+ replicaInfo.getState()+ " and thus cannot be created.");
   }
-  FsVolumeReference ref;
-  while (true) {
+  FsVolumeReference ref=null;
+  if (allowLazyPersist && lazyWriter != null && b.getNumBytes() % cacheManager.getOsPageSize() == 0 && (cacheManager.reserve(b.getNumBytes())) > 0) {
     try {
-      if (allowLazyPersist) {
-        ref=volumes.getNextTransientVolume(b.getNumBytes());
-        datanode.getMetrics().incrRamDiskBlocksWrite();
-      }
- else {
-        ref=volumes.getNextVolume(storageType,b.getNumBytes());
-      }
+      ref=volumes.getNextTransientVolume(b.getNumBytes());
+      datanode.getMetrics().incrRamDiskBlocksWrite();
     }
  catch (    DiskOutOfSpaceException de) {
-      if (allowLazyPersist) {
-        datanode.getMetrics().incrRamDiskBlocksWriteFallback();
-        allowLazyPersist=false;
-        continue;
-      }
-      throw de;
+      datanode.getMetrics().incrRamDiskBlocksWriteFallback();
     }
-    break;
+ finally {
+      if (ref == null) {
+        cacheManager.release(b.getNumBytes());
+      }
+    }
+  }
+  if (ref == null) {
+    ref=volumes.getNextVolume(storageType,b.getNumBytes());
   }
   FsVolumeImpl v=(FsVolumeImpl)ref.getVolume();
   File f;
