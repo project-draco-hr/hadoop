@@ -1,0 +1,25 @@
+{
+  long offset;
+  LocatedBlock[] onRetryBlock=new LocatedBlock[1];
+  FileState fileState=analyzeFileState(fsn,src,fileId,clientName,previous,onRetryBlock);
+  final INodeFile pendingFile=fileState.inode;
+  src=fileState.path;
+  if (onRetryBlock[0] != null) {
+    if (onRetryBlock[0].getLocations().length > 0) {
+      return onRetryBlock[0];
+    }
+ else {
+      BlockInfoContiguous lastBlockInFile=pendingFile.getLastBlock();
+      ((BlockInfoContiguousUnderConstruction)lastBlockInFile).setExpectedLocations(targets);
+      offset=pendingFile.computeFileSize();
+      return makeLocatedBlock(fsn,lastBlockInFile,targets,offset);
+    }
+  }
+  fsn.commitOrCompleteLastBlock(pendingFile,fileState.iip,ExtendedBlock.getLocalBlock(previous));
+  Block newBlock=fsn.createNewBlock();
+  INodesInPath inodesInPath=INodesInPath.fromINode(pendingFile);
+  saveAllocatedBlock(fsn,src,inodesInPath,newBlock,targets);
+  persistNewBlock(fsn,src,pendingFile);
+  offset=pendingFile.computeFileSize();
+  return makeLocatedBlock(fsn,newBlock,targets,offset);
+}

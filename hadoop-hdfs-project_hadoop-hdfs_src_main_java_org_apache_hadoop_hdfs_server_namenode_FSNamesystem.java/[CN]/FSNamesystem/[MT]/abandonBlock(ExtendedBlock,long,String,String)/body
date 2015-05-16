@@ -2,41 +2,20 @@
   if (NameNode.stateChangeLog.isDebugEnabled()) {
     NameNode.stateChangeLog.debug("BLOCK* NameSystem.abandonBlock: " + b + "of file "+ src);
   }
-  checkOperation(OperationCategory.WRITE);
-  byte[][] pathComponents=FSDirectory.getPathComponentsForReservedPath(src);
-  FSPermissionChecker pc=getPermissionChecker();
   waitForLoadingFSImage();
+  checkOperation(OperationCategory.WRITE);
+  FSPermissionChecker pc=getPermissionChecker();
   writeLock();
   try {
     checkOperation(OperationCategory.WRITE);
     checkNameNodeSafeMode("Cannot abandon block " + b + " for file"+ src);
-    src=dir.resolvePath(pc,src,pathComponents);
-    final INode inode;
-    final INodesInPath iip;
-    if (fileId == HdfsConstants.GRANDFATHER_INODE_ID) {
-      iip=dir.getINodesInPath(src,true);
-      inode=iip.getLastINode();
-    }
- else {
-      inode=dir.getInode(fileId);
-      iip=INodesInPath.fromINode(inode);
-      if (inode != null) {
-        src=iip.getPath();
-      }
-    }
-    final INodeFile file=checkLease(src,holder,inode,fileId);
-    boolean removed=dir.removeBlock(src,iip,file,ExtendedBlock.getLocalBlock(b));
-    if (!removed) {
-      return true;
-    }
+    FSDirWriteFileOp.abandonBlock(dir,pc,b,fileId,src,holder);
     if (NameNode.stateChangeLog.isDebugEnabled()) {
       NameNode.stateChangeLog.debug("BLOCK* NameSystem.abandonBlock: " + b + " is removed from pendingCreates");
     }
-    persistBlocks(src,file,false);
   }
   finally {
     writeUnlock();
   }
   getEditLog().logSync();
-  return true;
 }

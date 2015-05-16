@@ -1,0 +1,31 @@
+{
+  byte[][] pathComponents=FSDirectory.getPathComponentsForReservedPath(src);
+  src=fsd.resolvePath(pc,src,pathComponents);
+  final INode inode;
+  final INodesInPath iip;
+  if (fileId == HdfsConstants.GRANDFATHER_INODE_ID) {
+    iip=fsd.getINodesInPath(src,true);
+    inode=iip.getLastINode();
+  }
+ else {
+    inode=fsd.getInode(fileId);
+    iip=INodesInPath.fromINode(inode);
+    if (inode != null) {
+      src=iip.getPath();
+    }
+  }
+  FSNamesystem fsn=fsd.getFSNamesystem();
+  final INodeFile file=fsn.checkLease(src,holder,inode,fileId);
+  Preconditions.checkState(file.isUnderConstruction());
+  Block localBlock=ExtendedBlock.getLocalBlock(b);
+  fsd.writeLock();
+  try {
+    if (!unprotectedRemoveBlock(fsd,src,iip,file,localBlock)) {
+      return;
+    }
+  }
+  finally {
+    fsd.writeUnlock();
+  }
+  persistBlocks(fsd,src,file,false);
+}
