@@ -1,0 +1,18 @@
+{
+  AbstractNNFailoverProxyProvider<T> failoverProxyProvider=createFailoverProxyProvider(conf,nameNodeUri,xface,true,fallbackToSimpleAuth);
+  if (failoverProxyProvider == null) {
+    return createNonHAProxy(conf,NameNode.getAddress(nameNodeUri),xface,UserGroupInformation.getCurrentUser(),withRetries,fallbackToSimpleAuth);
+  }
+ else {
+    DfsClientConf config=new DfsClientConf(conf);
+    T proxy=(T)RetryProxy.create(xface,failoverProxyProvider,RetryPolicies.failoverOnNetworkException(RetryPolicies.TRY_ONCE_THEN_FAIL,config.getMaxFailoverAttempts(),config.getMaxRetryAttempts(),config.getFailoverSleepBaseMillis(),config.getFailoverSleepMaxMillis()));
+    Text dtService;
+    if (failoverProxyProvider.useLogicalURI()) {
+      dtService=HAUtilClient.buildTokenServiceForLogicalUri(nameNodeUri,HdfsConstants.HDFS_URI_SCHEME);
+    }
+ else {
+      dtService=SecurityUtil.buildTokenService(NameNode.getAddress(nameNodeUri));
+    }
+    return new ProxyAndInfo<T>(proxy,dtService,NameNode.getAddress(nameNodeUri));
+  }
+}
