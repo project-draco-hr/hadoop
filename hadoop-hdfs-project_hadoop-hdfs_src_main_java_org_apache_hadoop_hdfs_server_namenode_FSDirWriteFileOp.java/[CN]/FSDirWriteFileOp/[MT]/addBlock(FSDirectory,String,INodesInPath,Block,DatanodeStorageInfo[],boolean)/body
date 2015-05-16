@@ -1,0 +1,30 @@
+{
+  fsd.writeLock();
+  try {
+    final INodeFile fileINode=inodesInPath.getLastINode().asFile();
+    Preconditions.checkState(fileINode.isUnderConstruction());
+    final BlockInfo blockInfo;
+    if (isStriped) {
+      ECSchema ecSchema=fsd.getECSchema(inodesInPath);
+      short numDataUnits=(short)ecSchema.getNumDataUnits();
+      short numParityUnits=(short)ecSchema.getNumParityUnits();
+      short numLocations=(short)(numDataUnits + numParityUnits);
+      fsd.updateCount(inodesInPath,0,fileINode.getPreferredBlockSize(),numLocations,true);
+      blockInfo=new BlockInfoStripedUnderConstruction(block,numDataUnits,numParityUnits,HdfsServerConstants.BlockUCState.UNDER_CONSTRUCTION,targets);
+    }
+ else {
+      fsd.updateCount(inodesInPath,0,fileINode.getPreferredBlockSize(),fileINode.getPreferredBlockReplication(),true);
+      short numLocations=fileINode.getFileReplication();
+      blockInfo=new BlockInfoContiguousUnderConstruction(block,numLocations,HdfsServerConstants.BlockUCState.UNDER_CONSTRUCTION,targets);
+    }
+    fsd.getBlockManager().addBlockCollection(blockInfo,fileINode);
+    fileINode.addBlock(blockInfo);
+    if (NameNode.stateChangeLog.isDebugEnabled()) {
+      NameNode.stateChangeLog.debug("DIR* FSDirectory.addBlock: " + path + " with "+ block+ " block is added to the in-memory "+ "file system");
+    }
+    return blockInfo;
+  }
+  finally {
+    fsd.writeUnlock();
+  }
+}
