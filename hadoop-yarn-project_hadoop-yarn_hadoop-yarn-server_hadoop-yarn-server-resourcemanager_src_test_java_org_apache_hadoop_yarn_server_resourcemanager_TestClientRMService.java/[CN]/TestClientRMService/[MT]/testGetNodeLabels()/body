@@ -6,8 +6,10 @@
   }
 ;
   rm.start();
+  NodeLabel labelX=NodeLabel.newInstance("x",false);
+  NodeLabel labelY=NodeLabel.newInstance("y");
   RMNodeLabelsManager labelsMgr=rm.getRMContext().getNodeLabelManager();
-  labelsMgr.addToCluserNodeLabelsWithDefaultExclusivity(ImmutableSet.of("x","y"));
+  labelsMgr.addToCluserNodeLabels(ImmutableSet.of(labelX,labelY));
   NodeId node1=NodeId.newInstance("host1",1234);
   NodeId node2=NodeId.newInstance("host2",1234);
   Map<NodeId,Set<String>> map=new HashMap<NodeId,Set<String>>();
@@ -20,12 +22,19 @@
   LOG.info("Connecting to ResourceManager at " + rmAddress);
   ApplicationClientProtocol client=(ApplicationClientProtocol)rpc.getProxy(ApplicationClientProtocol.class,rmAddress,conf);
   GetClusterNodeLabelsResponse response=client.getClusterNodeLabels(GetClusterNodeLabelsRequest.newInstance());
-  Assert.assertTrue(response.getNodeLabels().containsAll(Arrays.asList(NodeLabel.newInstance("x"),NodeLabel.newInstance("y"))));
+  Assert.assertTrue(response.getNodeLabels().containsAll(Arrays.asList(labelX,labelY)));
   GetNodesToLabelsResponse response1=client.getNodeToLabels(GetNodesToLabelsRequest.newInstance());
-  Map<NodeId,Set<String>> nodeToLabels=response1.getNodeToLabels();
+  Map<NodeId,Set<NodeLabel>> nodeToLabels=response1.getNodeToLabels();
   Assert.assertTrue(nodeToLabels.keySet().containsAll(Arrays.asList(node1,node2)));
-  Assert.assertTrue(nodeToLabels.get(node1).containsAll(Arrays.asList("x")));
-  Assert.assertTrue(nodeToLabels.get(node2).containsAll(Arrays.asList("y")));
+  Assert.assertTrue(nodeToLabels.get(node1).containsAll(Arrays.asList(labelX)));
+  Assert.assertTrue(nodeToLabels.get(node2).containsAll(Arrays.asList(labelY)));
+  for (  NodeLabel x : nodeToLabels.get(node1)) {
+    Assert.assertFalse(x.isExclusive());
+  }
+  for (  NodeLabel y : nodeToLabels.get(node2)) {
+    Assert.assertTrue(y.isExclusive());
+  }
+  Assert.assertFalse(nodeToLabels.get(node1).containsAll(Arrays.asList(NodeLabel.newInstance("x"))));
   rpc.stopProxy(client,conf);
   rm.close();
 }
