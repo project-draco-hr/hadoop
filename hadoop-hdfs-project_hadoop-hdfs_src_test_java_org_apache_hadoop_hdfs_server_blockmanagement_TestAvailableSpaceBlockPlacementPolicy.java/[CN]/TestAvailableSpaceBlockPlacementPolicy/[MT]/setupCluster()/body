@@ -1,0 +1,30 @@
+{
+  conf=new HdfsConfiguration();
+  conf.setFloat(DFSConfigKeys.DFS_NAMENODE_AVAILABLE_SPACE_BLOCK_PLACEMENT_POLICY_BALANCED_SPACE_PREFERENCE_FRACTION_KEY,0.6f);
+  String[] racks=new String[numRacks];
+  for (int i=0; i < numRacks; i++) {
+    racks[i]="/rack" + i;
+  }
+  String[] owerRackOfNodes=new String[numRacks * nodesPerRack];
+  for (int i=0; i < nodesPerRack; i++) {
+    for (int j=0; j < numRacks; j++) {
+      owerRackOfNodes[i * numRacks + j]=racks[j];
+    }
+  }
+  storages=DFSTestUtil.createDatanodeStorageInfos(owerRackOfNodes);
+  dataNodes=DFSTestUtil.toDatanodeDescriptor(storages);
+  FileSystem.setDefaultUri(conf,"hdfs://localhost:0");
+  conf.set(DFSConfigKeys.DFS_NAMENODE_HTTP_ADDRESS_KEY,"0.0.0.0:0");
+  File baseDir=PathUtils.getTestDir(AvailableSpaceBlockPlacementPolicy.class);
+  conf.set(DFSConfigKeys.DFS_NAMENODE_NAME_DIR_KEY,new File(baseDir,"name").getPath());
+  conf.set(DFSConfigKeys.DFS_BLOCK_REPLICATOR_CLASSNAME_KEY,AvailableSpaceBlockPlacementPolicy.class.getName());
+  DFSTestUtil.formatNameNode(conf);
+  namenode=new NameNode(conf);
+  final BlockManager bm=namenode.getNamesystem().getBlockManager();
+  placementPolicy=bm.getBlockPlacementPolicy();
+  cluster=bm.getDatanodeManager().getNetworkTopology();
+  for (int i=0; i < nodesPerRack * numRacks; i++) {
+    cluster.add(dataNodes[i]);
+  }
+  setupDataNodeCapacity();
+}
