@@ -1,0 +1,28 @@
+{
+  Preconditions.checkArgument(rangeStartInBlockGroup < blockGroup.getBlockSize());
+  int dataBlkNum=ecSchema.getNumDataUnits();
+  int parityBlkNum=ecSchema.getNumParityUnits();
+  int cellSize=ecSchema.getChunkSize();
+  long[] startOffsets=new long[dataBlkNum + parityBlkNum];
+  Arrays.fill(startOffsets,-1L);
+  int firstCellIdxInBG=(int)(rangeStartInBlockGroup / cellSize);
+  StripingCell firstCell=new StripingCell(ecSchema,firstCellIdxInBG);
+  firstCell.offset=(int)(rangeStartInBlockGroup % cellSize);
+  startOffsets[firstCell.idxInStripe]=firstCell.idxInInternalBlk * cellSize + firstCell.offset;
+  long earliestStart=startOffsets[firstCell.idxInStripe];
+  for (int i=1; i < dataBlkNum; i++) {
+    int idx=firstCellIdxInBG + i;
+    if (idx * cellSize >= blockGroup.getBlockSize()) {
+      break;
+    }
+    StripingCell cell=new StripingCell(ecSchema,idx);
+    startOffsets[cell.idxInStripe]=cell.idxInInternalBlk * cellSize;
+    if (startOffsets[cell.idxInStripe] < earliestStart) {
+      earliestStart=startOffsets[cell.idxInStripe];
+    }
+  }
+  for (int i=dataBlkNum; i < dataBlkNum + parityBlkNum; i++) {
+    startOffsets[i]=earliestStart;
+  }
+  return startOffsets;
+}

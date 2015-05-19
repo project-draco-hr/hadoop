@@ -8,16 +8,18 @@
   this.blockEnd=targetBlockGroup.getStartOffset() + targetBlockGroup.getBlockSize() - 1;
   currentLocatedBlock=targetBlockGroup;
   final long offsetIntoBlockGroup=getOffsetInBlockGroup();
-  LocatedBlock[] targetBlocks=StripedBlockUtil.parseStripedBlockGroup(targetBlockGroup,cellSize,dataBlkNum,parityBlkNum);
-  ReadPortion[] readPortions=planReadPortions(groupSize,cellSize,offsetIntoBlockGroup,0,0);
+  LocatedBlock[] targetBlocks=parseStripedBlockGroup(targetBlockGroup,cellSize,dataBlkNum,parityBlkNum);
+  long[] offsetsForInternalBlocks=getStartOffsetsForInternalBlocks(schema,targetBlockGroup,offsetIntoBlockGroup);
+  Preconditions.checkNotNull(offsetsForInternalBlocks);
   final ReaderRetryPolicy retry=new ReaderRetryPolicy();
   for (int i=0; i < groupSize; i++) {
     LocatedBlock targetBlock=targetBlocks[i];
     if (targetBlock != null) {
+      long offsetInBlock=offsetsForInternalBlocks[i] < 0 ? 0 : offsetsForInternalBlocks[i];
       DNAddrPair retval=getBestNodeDNAddrPair(targetBlock,null);
       if (retval != null) {
         currentNodes[i]=retval.info;
-        blockReaders[i]=getBlockReaderWithRetry(targetBlock,readPortions[i].getStartOffsetInBlock(),targetBlock.getBlockSize() - readPortions[i].getStartOffsetInBlock(),retval.addr,retval.storageType,retval.info,target,retry);
+        blockReaders[i]=getBlockReaderWithRetry(targetBlock,offsetInBlock,targetBlock.getBlockSize() - offsetInBlock,retval.addr,retval.storageType,retval.info,target,retry);
       }
     }
   }

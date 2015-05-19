@@ -1,0 +1,34 @@
+{
+  byte[] assembled=new byte[BLK_GROUP_STRIPE_NUM * FULL_STRIPE_SIZE];
+  for (  int bgSize : blockGroupSizes) {
+    LocatedStripedBlock blockGroup=createDummyLocatedBlock(bgSize);
+    byte[][] internalBlkBufs=createInternalBlkBuffers(bgSize);
+    for (    int brStart : byteRangeStartOffsets) {
+      for (      int brSize : byteRangeSizes) {
+        if (brStart + brSize > bgSize) {
+          continue;
+        }
+        AlignedStripe[] stripes=divideByteRangeIntoStripes(SCEHMA,blockGroup,brStart,brStart + brSize - 1,assembled,0);
+        for (        AlignedStripe stripe : stripes) {
+          for (int i=0; i < DATA_BLK_NUM; i++) {
+            StripingChunk chunk=stripe.chunks[i];
+            if (chunk == null || chunk.state != StripingChunk.REQUESTED) {
+              continue;
+            }
+            int done=0;
+            for (int j=0; j < chunk.getLengths().length; j++) {
+              System.arraycopy(internalBlkBufs[i],(int)stripe.getOffsetInBlock() + done,assembled,chunk.getOffsets()[j],chunk.getLengths()[j]);
+              done+=chunk.getLengths()[j];
+            }
+          }
+        }
+        for (int i=0; i < brSize; i++) {
+          if (hashIntToByte(brStart + i) != assembled[i]) {
+            System.out.println("Oops");
+          }
+          assertEquals("Byte at " + (brStart + i) + " should be the same",hashIntToByte(brStart + i),assembled[i]);
+        }
+      }
+    }
+  }
+}
