@@ -1,0 +1,118 @@
+{
+  Container container=ctx.getContainer();
+  Path nmPrivateContainerScriptPath=ctx.getNmPrivateContainerScriptPath();
+  Path nmPrivateTokensPath=ctx.getNmPrivateTokensPath();
+  String user=ctx.getUser();
+  String appId=ctx.getAppId();
+  Path containerWorkDir=ctx.getContainerWorkDir();
+  List<String> localDirs=ctx.getLocalDirs();
+  List<String> logDirs=ctx.getLogDirs();
+  verifyUsernamePattern(user);
+  String runAsUser=getRunAsUser(user);
+  ContainerId containerId=container.getContainerId();
+  String containerIdStr=ConverterUtils.toString(containerId);
+  resourcesHandler.preExecute(containerId,container.getResource());
+  String resourcesOptions=resourcesHandler.getResourcesOption(containerId);
+  String tcCommandFile=null;
+  try {
+    if (resourceHandlerChain != null) {
+      List<PrivilegedOperation> ops=resourceHandlerChain.preStart(container);
+      if (ops != null) {
+        List<PrivilegedOperation> resourceOps=new ArrayList<>();
+        resourceOps.add(new PrivilegedOperation(PrivilegedOperation.OperationType.ADD_PID_TO_CGROUP,resourcesOptions));
+        for (        PrivilegedOperation op : ops) {
+switch (op.getOperationType()) {
+case ADD_PID_TO_CGROUP:
+            resourceOps.add(op);
+          break;
+case TC_MODIFY_STATE:
+        tcCommandFile=op.getArguments().get(0);
+      break;
+default :
+    LOG.warn("PrivilegedOperation type unsupported in launch: " + op.getOperationType());
+}
+}
+if (resourceOps.size() > 1) {
+try {
+  PrivilegedOperation operation=PrivilegedOperationExecutor.squashCGroupOperations(resourceOps);
+  resourcesOptions=operation.getArguments().get(0);
+}
+ catch (PrivilegedOperationException e) {
+  LOG.error("Failed to squash cgroup operations!",e);
+  throw new ResourceHandlerException("Failed to squash cgroup operations!");
+}
+}
+}
+}
+}
+ catch (ResourceHandlerException e) {
+LOG.error("ResourceHandlerChain.preStart() failed!",e);
+throw new IOException("ResourceHandlerChain.preStart() failed!");
+}
+ShellCommandExecutor shExec=null;
+try {
+Path pidFilePath=getPidFilePath(containerId);
+if (pidFilePath != null) {
+List<String> command=new ArrayList<String>();
+addSchedPriorityCommand(command);
+command.addAll(Arrays.asList(containerExecutorExe,runAsUser,user,Integer.toString(Commands.LAUNCH_CONTAINER.getValue()),appId,containerIdStr,containerWorkDir.toString(),nmPrivateContainerScriptPath.toUri().getPath().toString(),nmPrivateTokensPath.toUri().getPath().toString(),pidFilePath.toString(),StringUtils.join(",",localDirs),StringUtils.join(",",logDirs),resourcesOptions));
+if (tcCommandFile != null) {
+command.add(tcCommandFile);
+}
+String[] commandArray=command.toArray(new String[command.size()]);
+shExec=new ShellCommandExecutor(commandArray,null,container.getLaunchContext().getEnvironment());
+if (LOG.isDebugEnabled()) {
+LOG.debug("launchContainer: " + Arrays.toString(commandArray));
+}
+shExec.execute();
+if (LOG.isDebugEnabled()) {
+logOutput(shExec.getOutput());
+}
+}
+ else {
+LOG.info("Container was marked as inactive. Returning terminated error");
+return ExitCode.TERMINATED.getExitCode();
+}
+}
+ catch (ExitCodeException e) {
+int exitCode=shExec.getExitCode();
+LOG.warn("Exit code from container " + containerId + " is : "+ exitCode);
+if (exitCode != ExitCode.FORCE_KILLED.getExitCode() && exitCode != ExitCode.TERMINATED.getExitCode()) {
+LOG.warn("Exception from container-launch with container ID: " + containerId + " and exit code: "+ exitCode,e);
+StringBuilder builder=new StringBuilder();
+builder.append("Exception from container-launch.\n");
+builder.append("Container id: " + containerId + "\n");
+builder.append("Exit code: " + exitCode + "\n");
+if (!Optional.fromNullable(e.getMessage()).or("").isEmpty()) {
+builder.append("Exception message: " + e.getMessage() + "\n");
+}
+builder.append("Stack trace: " + StringUtils.stringifyException(e) + "\n");
+if (!shExec.getOutput().isEmpty()) {
+builder.append("Shell output: " + shExec.getOutput() + "\n");
+}
+String diagnostics=builder.toString();
+logOutput(diagnostics);
+container.handle(new ContainerDiagnosticsUpdateEvent(containerId,diagnostics));
+}
+ else {
+container.handle(new ContainerDiagnosticsUpdateEvent(containerId,"Container killed on request. Exit code is " + exitCode));
+}
+return exitCode;
+}
+ finally {
+resourcesHandler.postExecute(containerId);
+try {
+if (resourceHandlerChain != null) {
+resourceHandlerChain.postComplete(containerId);
+}
+}
+ catch (ResourceHandlerException e) {
+LOG.warn("ResourceHandlerChain.postComplete failed for " + "containerId: " + containerId + ". Exception: "+ e);
+}
+}
+if (LOG.isDebugEnabled()) {
+LOG.debug("Output from LinuxContainerExecutor's launchContainer follows:");
+logOutput(shExec.getOutput());
+}
+return 0;
+}

@@ -1,0 +1,25 @@
+{
+  String user=ctx.getUser();
+  String pid=ctx.getPid();
+  Signal signal=ctx.getSignal();
+  verifyUsernamePattern(user);
+  String runAsUser=getRunAsUser(user);
+  String[] command=new String[]{containerExecutorExe,runAsUser,user,Integer.toString(Commands.SIGNAL_CONTAINER.getValue()),pid,Integer.toString(signal.getValue())};
+  ShellCommandExecutor shExec=new ShellCommandExecutor(command);
+  if (LOG.isDebugEnabled()) {
+    LOG.debug("signalContainer: " + Arrays.toString(command));
+  }
+  try {
+    shExec.execute();
+  }
+ catch (  ExitCodeException e) {
+    int ret_code=shExec.getExitCode();
+    if (ret_code == ResultCode.INVALID_CONTAINER_PID.getValue()) {
+      return false;
+    }
+    LOG.warn("Error in signalling container " + pid + " with "+ signal+ "; exit = "+ ret_code,e);
+    logOutput(shExec.getOutput());
+    throw new IOException("Problem signalling container " + pid + " with "+ signal+ "; output: "+ shExec.getOutput()+ " and exitCode: "+ ret_code,e);
+  }
+  return true;
+}
