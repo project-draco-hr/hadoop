@@ -3,16 +3,25 @@
     throw new IOException("The client is stopped");
   }
   Connection connection;
-  do {
-synchronized (connections) {
-      connection=connections.get(remoteId);
-      if (connection == null) {
-        connection=new Connection(remoteId,serviceClass);
-        connections.put(remoteId,connection);
+  while (true) {
+    try {
+      connection=connections.get(remoteId,new Callable<Connection>(){
+        @Override public Connection call() throws Exception {
+          return new Connection(remoteId,serviceClass);
+        }
       }
+);
+    }
+ catch (    ExecutionException e) {
+      throw new IOException(e);
+    }
+    if (connection.addCall(call)) {
+      break;
+    }
+ else {
+      connections.invalidate(remoteId);
     }
   }
- while (!connection.addCall(call));
   connection.setupIOstreams(fallbackToSimpleAuth);
   return connection;
 }
