@@ -1,90 +1,60 @@
 {
-  String src=srcArg;
   if (NameNode.stateChangeLog.isDebugEnabled()) {
     StringBuilder builder=new StringBuilder();
-    builder.append("DIR* NameSystem.startFile: src=" + src + ", holder="+ holder+ ", clientMachine="+ clientMachine+ ", createParent="+ createParent+ ", replication="+ replication+ ", createFlag="+ flag.toString()+ ", blockSize="+ blockSize);
-    builder.append(", supportedVersions=");
-    if (supportedVersions != null) {
-      builder.append(Arrays.toString(supportedVersions));
-    }
- else {
-      builder.append("null");
-    }
+    builder.append("DIR* NameSystem.startFile: src=").append(src).append(", holder=").append(holder).append(", clientMachine=").append(clientMachine).append(", createParent=").append(createParent).append(", replication=").append(replication).append(", createFlag=").append(flag.toString()).append(", blockSize=").append(blockSize).append(", supportedVersions=").append(supportedVersions == null ? null : Arrays.toString(supportedVersions));
     NameNode.stateChangeLog.debug(builder.toString());
   }
   if (!DFSUtil.isValidName(src)) {
     throw new InvalidPathException(src);
   }
   blockManager.verifyReplication(src,replication,clientMachine);
-  boolean skipSync=false;
-  HdfsFileStatus stat=null;
-  FSPermissionChecker pc=getPermissionChecker();
   checkOperation(OperationCategory.WRITE);
   if (blockSize < minBlockSize) {
     throw new IOException("Specified block size is less than configured" + " minimum value (" + DFSConfigKeys.DFS_NAMENODE_MIN_BLOCK_SIZE_KEY + "): "+ blockSize+ " < "+ minBlockSize);
   }
-  byte[][] pathComponents=FSDirectory.getPathComponentsForReservedPath(src);
-  boolean create=flag.contains(CreateFlag.CREATE);
-  boolean overwrite=flag.contains(CreateFlag.OVERWRITE);
-  boolean isLazyPersist=flag.contains(CreateFlag.LAZY_PERSIST);
+  FSPermissionChecker pc=getPermissionChecker();
   waitForLoadingFSImage();
-  CryptoProtocolVersion protocolVersion=null;
-  CipherSuite suite=null;
-  String ezKeyName=null;
-  EncryptedKeyVersion edek=null;
+  FSDirWriteFileOp.EncryptionKeyInfo ezInfo=null;
   if (provider != null) {
     readLock();
     try {
-      src=dir.resolvePath(pc,src,pathComponents);
-      INodesInPath iip=dir.getINodesInPath4Write(src);
-      final EncryptionZone zone=dir.getEZForPath(iip);
-      if (zone != null) {
-        protocolVersion=chooseProtocolVersion(zone,supportedVersions);
-        suite=zone.getSuite();
-        ezKeyName=zone.getKeyName();
-        Preconditions.checkNotNull(protocolVersion);
-        Preconditions.checkNotNull(suite);
-        Preconditions.checkArgument(!suite.equals(CipherSuite.UNKNOWN),"Chose an UNKNOWN CipherSuite!");
-        Preconditions.checkNotNull(ezKeyName);
-      }
+      checkOperation(OperationCategory.READ);
+      ezInfo=FSDirWriteFileOp.getEncryptionKeyInfo(this,pc,src,supportedVersions);
     }
   finally {
       readUnlock();
     }
-    Preconditions.checkState((suite == null && ezKeyName == null) || (suite != null && ezKeyName != null),"Both suite and ezKeyName should both be null or not null");
-    edek=generateEncryptedDataEncryptionKey(ezKeyName);
+    if (ezInfo != null) {
+      ezInfo.edek=generateEncryptedDataEncryptionKey(ezInfo.ezKeyName);
+    }
     EncryptionFaultInjector.getInstance().startFileAfterGenerateKey();
   }
-  BlocksMapUpdateInfo toRemoveBlocks=null;
+  boolean skipSync=false;
+  HdfsFileStatus stat=null;
+  BlocksMapUpdateInfo toRemoveBlocks=new BlocksMapUpdateInfo();
   writeLock();
   try {
     checkOperation(OperationCategory.WRITE);
     checkNameNodeSafeMode("Cannot create file" + src);
     dir.writeLock();
     try {
-      src=dir.resolvePath(pc,src,pathComponents);
-      final INodesInPath iip=dir.getINodesInPath4Write(src);
-      toRemoveBlocks=startFileInternal(pc,iip,permissions,holder,clientMachine,create,overwrite,createParent,replication,blockSize,isLazyPersist,suite,protocolVersion,edek,logRetryCache);
-      stat=FSDirStatAndListingOp.getFileInfo(dir,src,false,FSDirectory.isReservedRawName(srcArg),true);
+      stat=FSDirWriteFileOp.startFile(this,pc,src,permissions,holder,clientMachine,flag,createParent,replication,blockSize,ezInfo,toRemoveBlocks,logRetryCache);
     }
   finally {
       dir.writeUnlock();
     }
   }
- catch (  StandbyException se) {
-    skipSync=true;
-    throw se;
+ catch (  IOException e) {
+    skipSync=e instanceof StandbyException;
+    throw e;
   }
  finally {
     writeUnlock();
     if (!skipSync) {
       getEditLog().logSync();
-      if (toRemoveBlocks != null) {
-        removeBlocks(toRemoveBlocks);
-        toRemoveBlocks.clear();
-      }
+      removeBlocks(toRemoveBlocks);
+      toRemoveBlocks.clear();
     }
   }
-  logAuditEvent(true,"create",srcArg,null,stat);
   return stat;
 }
