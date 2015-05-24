@@ -1,0 +1,56 @@
+{
+  MiniDFSCluster cluster=null;
+  FileSystem fs=null;
+  try {
+    Configuration conf=new HdfsConfiguration();
+    final long precision=1L;
+    conf.setLong(DFSConfigKeys.DFS_NAMENODE_ACCESSTIME_PRECISION_KEY,precision);
+    conf.setLong(DFSConfigKeys.DFS_BLOCKREPORT_INTERVAL_MSEC_KEY,10000L);
+    int totalSize=ErasureCodingSchemaManager.getSystemDefaultSchema().getNumDataUnits() + ErasureCodingSchemaManager.getSystemDefaultSchema().getNumParityUnits();
+    cluster=new MiniDFSCluster.Builder(conf).numDataNodes(totalSize).build();
+    fs=cluster.getFileSystem();
+    Path replDirPath=new Path("/replicated");
+    Path replFilePath=new Path(replDirPath,"replfile");
+    final short factor=3;
+    DFSTestUtil.createFile(fs,replFilePath,1024,factor,0);
+    DFSTestUtil.waitReplication(fs,replFilePath,factor);
+    Path ecDirPath=new Path("/striped");
+    Path ecFilePath=new Path(ecDirPath,"ecfile");
+    final int numBlocks=4;
+    DFSTestUtil.createStripedFile(cluster,ecFilePath,ecDirPath,numBlocks,2,true);
+    long replTime=fs.getFileStatus(replFilePath).getAccessTime();
+    long ecTime=fs.getFileStatus(ecFilePath).getAccessTime();
+    Thread.sleep(precision);
+    setupAuditLogs();
+    String outStr=runFsck(conf,0,true,"/");
+    verifyAuditLogs();
+    assertEquals(replTime,fs.getFileStatus(replFilePath).getAccessTime());
+    assertEquals(ecTime,fs.getFileStatus(ecFilePath).getAccessTime());
+    System.out.println(outStr);
+    assertTrue(outStr.contains(NamenodeFsck.HEALTHY_STATUS));
+    if (fs != null) {
+      try {
+        fs.close();
+      }
+ catch (      Exception e) {
+      }
+    }
+    cluster.shutdown();
+    cluster=new MiniDFSCluster.Builder(conf).numDataNodes(0).format(false).build();
+    outStr=runFsck(conf,1,true,"/");
+    assertTrue(outStr.contains(NamenodeFsck.CORRUPT_STATUS));
+    System.out.println(outStr);
+  }
+  finally {
+    if (fs != null) {
+      try {
+        fs.close();
+      }
+ catch (      Exception e) {
+      }
+    }
+    if (cluster != null) {
+      cluster.shutdown();
+    }
+  }
+}

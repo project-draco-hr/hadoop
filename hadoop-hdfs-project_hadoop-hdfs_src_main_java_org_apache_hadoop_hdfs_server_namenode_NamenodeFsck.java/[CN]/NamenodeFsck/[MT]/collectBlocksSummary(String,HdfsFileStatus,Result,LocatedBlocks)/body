@@ -15,14 +15,22 @@
     final BlockInfo storedBlock=bm.getStoredBlock(block.getLocalBlock());
     NumberReplicas numberReplicas=bm.countNodes(storedBlock);
     int decommissionedReplicas=numberReplicas.decommissioned();
-    ;
     int decommissioningReplicas=numberReplicas.decommissioning();
     res.decommissionedReplicas+=decommissionedReplicas;
     res.decommissioningReplicas+=decommissioningReplicas;
     int liveReplicas=numberReplicas.liveReplicas();
     int totalReplicasPerBlock=liveReplicas + decommissionedReplicas + decommissioningReplicas;
     res.totalReplicas+=totalReplicasPerBlock;
-    short targetFileReplication=file.getReplication();
+    short targetFileReplication;
+    if (file.getReplication() == 0) {
+      INode inode=namenode.getNamesystem().getFSDirectory().getINode(path);
+      INodesInPath iip=INodesInPath.fromINode(inode);
+      ECSchema ecSchema=namenode.getNamesystem().getFSDirectory().getECSchema(iip);
+      targetFileReplication=(short)(ecSchema.getNumDataUnits() + ecSchema.getNumParityUnits());
+    }
+ else {
+      targetFileReplication=file.getReplication();
+    }
     res.numExpectedReplicas+=targetFileReplication;
     if (totalReplicasPerBlock < res.minReplication) {
       res.numUnderMinReplicatedBlocks++;
