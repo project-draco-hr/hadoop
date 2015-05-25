@@ -1,0 +1,14 @@
+{
+  CLUSTER=new MiniDFSCluster.Builder(CONF).numDataNodes(1).build();
+  CLUSTER.waitActive();
+  RESPONSE_HANDLER=new Http2ResponseHandler();
+  Bootstrap bootstrap=new Bootstrap().group(WORKER_GROUP).channel(NioSocketChannel.class).remoteAddress("127.0.0.1",CLUSTER.getDataNodes().get(0).getInfoPort()).handler(new ChannelInitializer<Channel>(){
+    @Override protected void initChannel(    Channel ch) throws Exception {
+      Http2Connection connection=new DefaultHttp2Connection(false);
+      Http2ConnectionHandler connectionHandler=new HttpToHttp2ConnectionHandler(connection,frameReader(),frameWriter(),new DelegatingDecompressorFrameListener(connection,new InboundHttp2ToHttpAdapter.Builder(connection).maxContentLength(Integer.MAX_VALUE).propagateSettings(true).build()));
+      ch.pipeline().addLast(connectionHandler,RESPONSE_HANDLER);
+    }
+  }
+);
+  CHANNEL=bootstrap.connect().syncUninterruptibly().channel();
+}
