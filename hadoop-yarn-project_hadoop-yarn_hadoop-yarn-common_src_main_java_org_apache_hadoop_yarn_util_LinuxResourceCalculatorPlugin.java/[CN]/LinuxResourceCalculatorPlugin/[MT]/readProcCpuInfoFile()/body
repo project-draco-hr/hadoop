@@ -2,18 +2,22 @@
   if (readCpuInfoFile) {
     return;
   }
-  BufferedReader in=null;
-  InputStreamReader fReader=null;
+  HashSet<String> coreIdSet=new HashSet<>();
+  BufferedReader in;
+  InputStreamReader fReader;
   try {
     fReader=new InputStreamReader(new FileInputStream(procfsCpuFile),Charset.forName("UTF-8"));
     in=new BufferedReader(fReader);
   }
  catch (  FileNotFoundException f) {
+    LOG.warn("Couldn't read " + procfsCpuFile + "; can't determine cpu info");
     return;
   }
-  Matcher mat=null;
+  Matcher mat;
   try {
     numProcessors=0;
+    numCores=1;
+    String currentPhysicalId="";
     String str=in.readLine();
     while (str != null) {
       mat=PROCESSOR_FORMAT.matcher(str);
@@ -23,6 +27,15 @@
       mat=FREQUENCY_FORMAT.matcher(str);
       if (mat.find()) {
         cpuFrequency=(long)(Double.parseDouble(mat.group(1)) * 1000);
+      }
+      mat=PHYSICAL_ID_FORMAT.matcher(str);
+      if (mat.find()) {
+        currentPhysicalId=str;
+      }
+      mat=CORE_ID_FORMAT.matcher(str);
+      if (mat.find()) {
+        coreIdSet.add(currentPhysicalId + " " + str);
+        numCores=coreIdSet.size();
       }
       str=in.readLine();
     }
