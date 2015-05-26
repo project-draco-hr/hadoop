@@ -6,6 +6,8 @@
   }
   SchedulerUtils.normalizeRequests(ask,getResourceCalculator(),getClusterResource(),getMinimumResourceCapability(),getMaximumResourceCapability());
   releaseContainers(release,application);
+  Allocation allocation;
+  LeafQueue updateDemandForQueue=null;
 synchronized (application) {
     if (application.isStopped()) {
       LOG.info("Calling allocate on a stopped " + "application " + applicationAttemptId);
@@ -16,7 +18,9 @@ synchronized (application) {
         LOG.debug("allocate: pre-update" + " applicationAttemptId=" + applicationAttemptId + " application="+ application);
       }
       application.showRequests();
-      application.updateResourceRequests(ask);
+      if (application.updateResourceRequests(ask)) {
+        updateDemandForQueue=(LeafQueue)application.getQueue();
+      }
       LOG.debug("allocate: post-update");
       application.showRequests();
     }
@@ -24,6 +28,10 @@ synchronized (application) {
       LOG.debug("allocate:" + " applicationAttemptId=" + applicationAttemptId + " #ask="+ ask.size());
     }
     application.updateBlacklist(blacklistAdditions,blacklistRemovals);
-    return application.getAllocation(getResourceCalculator(),clusterResource,getMinimumResourceCapability());
+    allocation=application.getAllocation(getResourceCalculator(),clusterResource,getMinimumResourceCapability());
   }
+  if (updateDemandForQueue != null) {
+    updateDemandForQueue.getOrderingPolicy().demandUpdated(application);
+  }
+  return allocation;
 }
