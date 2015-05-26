@@ -1,7 +1,29 @@
 {
-  for (int i=0; i < erasedIndexes.length; i++) {
-    errSignature[i]=primitivePower[erasedIndexes[i]];
-    RSUtil.GF.substitute(inputs,inputOffsets,dataLen,outputs[i],outputOffsets[i],primitivePower[i]);
+  int[] erasedOrNotToReadIndexes=getErasedOrNotToReadIndexes(inputs);
+  for (int i=0; i < erasedOrNotToReadIndexes.length; i++) {
+    adjustedByteArrayOutputsParameter[i]=null;
+    adjustedOutputOffsets[i]=0;
   }
-  RSUtil.GF.solveVandermondeSystem(errSignature,outputs,outputOffsets,erasedIndexes.length,dataLen);
+  for (int outputIdx=0, i=0; i < erasedIndexes.length; i++) {
+    boolean found=false;
+    for (int j=0; j < erasedOrNotToReadIndexes.length; j++) {
+      if (erasedIndexes[i] == erasedOrNotToReadIndexes[j]) {
+        found=true;
+        adjustedByteArrayOutputsParameter[j]=resetBuffer(outputs[outputIdx],outputOffsets[outputIdx],dataLen);
+        adjustedOutputOffsets[j]=outputOffsets[outputIdx];
+        outputIdx++;
+      }
+    }
+    if (!found) {
+      throw new HadoopIllegalArgumentException("Inputs not fully corresponding to erasedIndexes in null places");
+    }
+  }
+  for (int bufferIdx=0, i=0; i < erasedOrNotToReadIndexes.length; i++) {
+    if (adjustedByteArrayOutputsParameter[i] == null) {
+      adjustedByteArrayOutputsParameter[i]=resetBuffer(checkGetBytesArrayBuffer(bufferIdx,dataLen),0,dataLen);
+      adjustedOutputOffsets[i]=0;
+      bufferIdx++;
+    }
+  }
+  doDecodeImpl(inputs,inputOffsets,dataLen,erasedOrNotToReadIndexes,adjustedByteArrayOutputsParameter,adjustedOutputOffsets);
 }
