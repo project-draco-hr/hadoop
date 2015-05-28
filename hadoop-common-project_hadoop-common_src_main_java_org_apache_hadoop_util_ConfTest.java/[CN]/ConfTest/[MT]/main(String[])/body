@@ -1,0 +1,77 @@
+{
+  GenericOptionsParser genericParser=new GenericOptionsParser(args);
+  String[] remainingArgs=genericParser.getRemainingArgs();
+  Option conf=OptionBuilder.hasArg().create("conffile");
+  Option help=OptionBuilder.withLongOpt("help").create('h');
+  Options opts=new Options().addOption(conf).addOption(help);
+  CommandLineParser specificParser=new GnuParser();
+  CommandLine cmd=null;
+  try {
+    cmd=specificParser.parse(opts,remainingArgs);
+  }
+ catch (  MissingArgumentException e) {
+    terminate(1,"No argument specified for -conffile option");
+  }
+catch (  ParseException e) {
+    terminate(1,USAGE);
+  }
+  if (cmd == null) {
+    terminate(1,"Failed to parse options");
+  }
+  if (cmd.hasOption('h')) {
+    terminate(0,USAGE);
+  }
+  List<File> files=new ArrayList<File>();
+  if (cmd.hasOption("conffile")) {
+    String[] values=cmd.getOptionValues("conffile");
+    for (    String value : values) {
+      File confFile=new File(value);
+      if (confFile.isFile()) {
+        files.add(confFile);
+      }
+ else       if (confFile.isDirectory()) {
+        for (        File file : listFiles(confFile)) {
+          files.add(file);
+        }
+      }
+ else {
+        terminate(1,confFile.getAbsolutePath() + " is neither a file nor directory");
+      }
+    }
+  }
+ else {
+    String confDirName=System.getenv(HADOOP_CONF_DIR);
+    if (confDirName == null) {
+      terminate(1,HADOOP_CONF_DIR + " does not defined");
+    }
+    File confDir=new File(confDirName);
+    if (!confDir.isDirectory()) {
+      terminate(1,HADOOP_CONF_DIR + " is not a directory");
+    }
+    files=Arrays.asList(listFiles(confDir));
+  }
+  if (files.isEmpty()) {
+    terminate(1,"No input file to validate");
+  }
+  boolean ok=true;
+  for (  File file : files) {
+    String path=file.getAbsolutePath();
+    List<String> errors=checkConf(new FileInputStream(file));
+    if (errors.isEmpty()) {
+      System.out.println(path + ": valid");
+    }
+ else {
+      ok=false;
+      System.err.println(path + ":");
+      for (      String error : errors) {
+        System.err.println("\t" + error);
+      }
+    }
+  }
+  if (ok) {
+    System.out.println("OK");
+  }
+ else {
+    terminate(1,"Invalid file exists");
+  }
+}
