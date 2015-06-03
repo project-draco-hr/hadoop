@@ -8,7 +8,8 @@
     LOG.warn("Failed to get the storage policy of file " + fullPath);
     return false;
   }
-  final List<StorageType> types=policy.chooseStorageTypes(status.getReplication());
+  List<StorageType> types=policy.chooseStorageTypes(status.getReplication());
+  final ECSchema ecSchema=status.getECSchema();
   final LocatedBlocks locatedBlocks=status.getBlockLocations();
   boolean hasRemaining=false;
   final boolean lastBlkComplete=locatedBlocks.isLastBlockComplete();
@@ -18,9 +19,12 @@
       continue;
     }
     LocatedBlock lb=lbs.get(i);
+    if (lb.isStriped()) {
+      types=policy.chooseStorageTypes((short)lb.getLocations().length);
+    }
     final StorageTypeDiff diff=new StorageTypeDiff(types,lb.getStorageTypes());
     if (!diff.removeOverlap(true)) {
-      if (scheduleMoves4Block(diff,lb)) {
+      if (scheduleMoves4Block(diff,lb,ecSchema)) {
         hasRemaining|=(diff.existing.size() > 1 && diff.expected.size() > 1);
       }
     }

@@ -1,15 +1,24 @@
 {
   final long size=Math.min(MAX_BLOCKS_SIZE_TO_FETCH,blocksToReceive);
-  final BlocksWithLocations newBlocks=nnc.getBlocks(getDatanodeInfo(),size);
+  final BlocksWithLocations newBlksLocs=nnc.getBlocks(getDatanodeInfo(),size);
   long bytesReceived=0;
-  for (  BlockWithLocations blk : newBlocks.getBlocks()) {
-    bytesReceived+=blk.getBlock().getNumBytes();
+  for (  BlockWithLocations blkLocs : newBlksLocs.getBlocks()) {
+    DBlock block;
+    if (blkLocs instanceof StripedBlockWithLocations) {
+      StripedBlockWithLocations sblkLocs=(StripedBlockWithLocations)blkLocs;
+      bytesReceived+=sblkLocs.getBlock().getNumBytes() / sblkLocs.getDataBlockNum();
+      block=new DBlockStriped(sblkLocs.getBlock(),sblkLocs.getIndices(),sblkLocs.getDataBlockNum());
+    }
+ else {
+      bytesReceived+=blkLocs.getBlock().getNumBytes();
+      block=new DBlock(blkLocs.getBlock());
+    }
 synchronized (globalBlocks) {
-      final DBlock block=globalBlocks.get(blk.getBlock());
+      block=globalBlocks.putIfAbsent(blkLocs.getBlock(),block);
 synchronized (block) {
         block.clearLocations();
-        final String[] datanodeUuids=blk.getDatanodeUuids();
-        final StorageType[] storageTypes=blk.getStorageTypes();
+        final String[] datanodeUuids=blkLocs.getDatanodeUuids();
+        final StorageType[] storageTypes=blkLocs.getStorageTypes();
         for (int i=0; i < datanodeUuids.length; i++) {
           final StorageGroup g=storageGroupMap.get(datanodeUuids[i],storageTypes[i]);
           if (g != null) {

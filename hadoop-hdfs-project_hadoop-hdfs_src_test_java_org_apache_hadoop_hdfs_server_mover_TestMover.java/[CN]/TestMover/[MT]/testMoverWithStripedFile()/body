@@ -1,0 +1,54 @@
+{
+  final Configuration conf=new HdfsConfiguration();
+  initConfWithStripe(conf);
+  int numOfDatanodes=10;
+  int storagesPerDatanode=2;
+  long capacity=10 * DEFAULT_STRIPE_BLOCK_SIZE;
+  long[][] capacities=new long[numOfDatanodes][storagesPerDatanode];
+  for (int i=0; i < numOfDatanodes; i++) {
+    for (int j=0; j < storagesPerDatanode; j++) {
+      capacities[i][j]=capacity;
+    }
+  }
+  final MiniDFSCluster cluster=new MiniDFSCluster.Builder(conf).numDataNodes(numOfDatanodes).storagesPerDatanode(storagesPerDatanode).storageTypes(new StorageType[][]{{StorageType.DISK,StorageType.DISK},{StorageType.DISK,StorageType.DISK},{StorageType.DISK,StorageType.DISK},{StorageType.DISK,StorageType.DISK},{StorageType.DISK,StorageType.DISK},{StorageType.DISK,StorageType.ARCHIVE},{StorageType.DISK,StorageType.ARCHIVE},{StorageType.DISK,StorageType.ARCHIVE},{StorageType.DISK,StorageType.ARCHIVE},{StorageType.DISK,StorageType.ARCHIVE}}).storageCapacities(capacities).build();
+  try {
+    cluster.waitActive();
+    ClientProtocol client=NameNodeProxies.createProxy(conf,cluster.getFileSystem(0).getUri(),ClientProtocol.class).getProxy();
+    String barDir="/bar";
+    client.mkdirs(barDir,new FsPermission((short)777),true);
+    client.setStoragePolicy(barDir,HdfsServerConstants.HOT_STORAGE_POLICY_NAME);
+    client.createErasureCodingZone(barDir,null,0);
+    final String fooFile="/bar/foo";
+    long fileLen=20 * DEFAULT_STRIPE_BLOCK_SIZE;
+    DFSTestUtil.createFile(cluster.getFileSystem(),new Path(fooFile),fileLen,(short)3,0);
+    LocatedBlocks locatedBlocks=client.getBlockLocations(fooFile,0,fileLen);
+    for (    LocatedBlock lb : locatedBlocks.getLocatedBlocks()) {
+      for (      StorageType type : lb.getStorageTypes()) {
+        Assert.assertEquals(StorageType.DISK,type);
+      }
+    }
+    DFSTestUtil.verifyLocatedStripedBlocks(locatedBlocks,dataBlocks + parityBlocks);
+    numOfDatanodes+=5;
+    capacities=new long[5][storagesPerDatanode];
+    for (int i=0; i < 5; i++) {
+      for (int j=0; j < storagesPerDatanode; j++) {
+        capacities[i][j]=capacity;
+      }
+    }
+    cluster.startDataNodes(conf,5,new StorageType[][]{{StorageType.ARCHIVE,StorageType.ARCHIVE},{StorageType.ARCHIVE,StorageType.ARCHIVE},{StorageType.ARCHIVE,StorageType.ARCHIVE},{StorageType.ARCHIVE,StorageType.ARCHIVE},{StorageType.ARCHIVE,StorageType.ARCHIVE}},true,null,null,null,capacities,null,false,false,false,null);
+    cluster.triggerHeartbeats();
+    client.setStoragePolicy(barDir,"COLD");
+    int rc=ToolRunner.run(conf,new Mover.Cli(),new String[]{"-p",barDir});
+    Assert.assertEquals("Movement to ARCHIVE should be successfull",0,rc);
+    locatedBlocks=client.getBlockLocations(fooFile,0,fileLen);
+    for (    LocatedBlock lb : locatedBlocks.getLocatedBlocks()) {
+      for (      StorageType type : lb.getStorageTypes()) {
+        Assert.assertEquals(StorageType.ARCHIVE,type);
+      }
+    }
+    DFSTestUtil.verifyLocatedStripedBlocks(locatedBlocks,dataBlocks + parityBlocks);
+  }
+  finally {
+    cluster.shutdown();
+  }
+}
