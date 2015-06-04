@@ -4,15 +4,22 @@
   parityBlkNum=schema.getNumParityUnits();
   cellSize=recoveryInfo.getCellSize();
   blockGroup=recoveryInfo.getExtendedBlock();
+  final int cellsNum=(int)((blockGroup.getNumBytes() - 1) / cellSize + 1);
+  minRequiredSources=Math.min(cellsNum,dataBlkNum);
   liveIndices=recoveryInfo.getLiveBlockIndices();
   sources=recoveryInfo.getSourceDnInfos();
   stripedReaders=new ArrayList<>(sources.length);
-  Preconditions.checkArgument(liveIndices.length >= dataBlkNum,"No enough live striped blocks.");
+  Preconditions.checkArgument(liveIndices.length >= minRequiredSources,"No enough live striped blocks.");
   Preconditions.checkArgument(liveIndices.length == sources.length,"liveBlockIndices and source dns should match");
+  if (minRequiredSources < dataBlkNum) {
+    zeroStripeBuffers=new ByteBuffer[dataBlkNum - minRequiredSources];
+    zeroStripeIndices=new short[dataBlkNum - minRequiredSources];
+  }
   targets=recoveryInfo.getTargetDnInfos();
   targetStorageTypes=recoveryInfo.getTargetStorageTypes();
   targetIndices=new short[targets.length];
   targetBuffers=new ByteBuffer[targets.length];
+  Preconditions.checkArgument(targetIndices.length <= parityBlkNum,"Too much missed striped blocks.");
   targetSockets=new Socket[targets.length];
   targetOutputStreams=new DataOutputStream[targets.length];
   targetInputStreams=new DataInputStream[targets.length];

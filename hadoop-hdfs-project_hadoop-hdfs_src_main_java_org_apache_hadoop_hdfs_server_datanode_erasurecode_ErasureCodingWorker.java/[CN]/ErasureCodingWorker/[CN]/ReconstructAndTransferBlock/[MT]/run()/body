@@ -1,25 +1,25 @@
 {
   datanode.incrementXmitsInProgress();
   try {
-    int[] success=new int[dataBlkNum];
+    int[] success=new int[minRequiredSources];
     int nsuccess=0;
-    for (int i=0; i < sources.length && nsuccess < dataBlkNum; i++) {
-      StripedReader reader=new StripedReader(liveIndices[i]);
-      stripedReaders.add(reader);
-      BlockReader blockReader=newBlockReader(getBlock(blockGroup,liveIndices[i]),0,sources[i]);
-      if (blockReader != null) {
-        initChecksumAndBufferSizeIfNeeded(blockReader);
-        reader.blockReader=blockReader;
-        reader.buffer=ByteBuffer.allocate(bufferSize);
+    for (int i=0; i < sources.length && nsuccess < minRequiredSources; i++) {
+      StripedReader reader=addStripedReader(i,0);
+      if (reader.blockReader != null) {
         success[nsuccess++]=i;
       }
     }
-    if (nsuccess < dataBlkNum) {
+    if (nsuccess < minRequiredSources) {
       String error="Can't find minimum sources required by " + "recovery, block id: " + blockGroup.getBlockId();
       throw new IOException(error);
     }
+    if (zeroStripeBuffers != null) {
+      for (int i=0; i < zeroStripeBuffers.length; i++) {
+        zeroStripeBuffers[i]=allocateBuffer(bufferSize);
+      }
+    }
     for (int i=0; i < targets.length; i++) {
-      targetBuffers[i]=ByteBuffer.allocate(bufferSize);
+      targetBuffers[i]=allocateBuffer(bufferSize);
     }
     checksumSize=checksum.getChecksumSize();
     int chunkSize=bytesPerChecksum + checksumSize;
@@ -35,11 +35,7 @@
     long firstStripedBlockLength=getBlockLen(blockGroup,0);
     while (positionInBlock < firstStripedBlockLength) {
       int toRead=Math.min(bufferSize,(int)(firstStripedBlockLength - positionInBlock));
-      nsuccess=readMinimumStripedData4Recovery(success);
-      if (nsuccess < dataBlkNum) {
-        String error="Can't read data from minimum number of sources " + "required by recovery, block id: " + blockGroup.getBlockId();
-        throw new IOException(error);
-      }
+      success=readMinimumStripedData4Recovery(success);
       long remaining=firstStripedBlockLength - positionInBlock;
       int toRecoverLen=remaining < bufferSize ? (int)remaining : bufferSize;
       recoverTargets(success,targetsStatus,toRecoverLen);

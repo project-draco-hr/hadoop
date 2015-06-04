@@ -1,32 +1,43 @@
 {
+  int nsuccess=0;
+  int[] newSuccess=new int[minRequiredSources];
   BitSet used=new BitSet(sources.length);
-  for (int i=0; i < dataBlkNum; i++) {
+  for (int i=0; i < minRequiredSources; i++) {
     StripedReader reader=stripedReaders.get(success[i]);
-    Callable<Void> readCallable=readFromBlock(reader.blockReader,reader.buffer);
-    Future<Void> f=readService.submit(readCallable);
-    futures.put(f,success[i]);
+    if (getReadLength(liveIndices[success[i]]) > 0) {
+      Callable<Void> readCallable=readFromBlock(reader.blockReader,reader.buffer);
+      Future<Void> f=readService.submit(readCallable);
+      futures.put(f,success[i]);
+    }
+ else {
+      reader.buffer.position(0);
+      newSuccess[nsuccess++]=success[i];
+    }
     used.set(success[i]);
   }
-  int nsuccess=0;
   while (!futures.isEmpty()) {
     try {
       StripingChunkReadResult result=StripedBlockUtil.getNextCompletedStripedRead(readService,futures,STRIPED_READ_THRESHOLD_MILLIS);
+      int resultIndex=-1;
       if (result.state == StripingChunkReadResult.SUCCESSFUL) {
-        success[nsuccess++]=result.index;
-        if (nsuccess >= dataBlkNum) {
-          cancelReads(futures.keySet());
-          futures.clear();
-          break;
-        }
+        resultIndex=result.index;
       }
  else       if (result.state == StripingChunkReadResult.FAILED) {
         StripedReader failedReader=stripedReaders.get(result.index);
         closeBlockReader(failedReader.blockReader);
         failedReader.blockReader=null;
-        scheduleNewRead(used);
+        resultIndex=scheduleNewRead(used);
       }
  else       if (result.state == StripingChunkReadResult.TIMEOUT) {
-        scheduleNewRead(used);
+        resultIndex=scheduleNewRead(used);
+      }
+      if (resultIndex >= 0) {
+        newSuccess[nsuccess++]=resultIndex;
+        if (nsuccess >= minRequiredSources) {
+          cancelReads(futures.keySet());
+          futures.clear();
+          break;
+        }
       }
     }
  catch (    InterruptedException e) {
@@ -34,5 +45,9 @@
       break;
     }
   }
-  return nsuccess;
+  if (nsuccess < minRequiredSources) {
+    String error="Can't read data from minimum number of sources " + "required by reconstruction, block id: " + blockGroup.getBlockId();
+    throw new IOException(error);
+  }
+  return newSuccess;
 }

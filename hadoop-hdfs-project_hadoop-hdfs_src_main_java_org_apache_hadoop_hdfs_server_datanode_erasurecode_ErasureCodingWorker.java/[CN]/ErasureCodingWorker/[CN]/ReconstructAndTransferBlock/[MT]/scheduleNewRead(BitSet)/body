@@ -1,2 +1,42 @@
 {
+  StripedReader reader=null;
+  int m=stripedReaders.size();
+  while (reader == null && m < sources.length) {
+    reader=addStripedReader(m,positionInBlock);
+    if (getReadLength(liveIndices[m]) > 0) {
+      if (reader.blockReader == null) {
+        reader=null;
+        m++;
+      }
+    }
+ else {
+      used.set(m);
+      return m;
+    }
+  }
+  for (int i=0; reader == null && i < stripedReaders.size(); i++) {
+    if (!used.get(i)) {
+      StripedReader r=stripedReaders.get(i);
+      if (getReadLength(liveIndices[i]) > 0) {
+        closeBlockReader(r.blockReader);
+        r.blockReader=newBlockReader(getBlock(blockGroup,liveIndices[i]),positionInBlock,sources[i]);
+        if (r.blockReader != null) {
+          m=i;
+          reader=r;
+        }
+      }
+ else {
+        used.set(i);
+        r.buffer.position(0);
+        return i;
+      }
+    }
+  }
+  if (reader != null) {
+    Callable<Void> readCallable=readFromBlock(reader.blockReader,reader.buffer);
+    Future<Void> f=readService.submit(readCallable);
+    futures.put(f,m);
+    used.set(m);
+  }
+  return -1;
 }
