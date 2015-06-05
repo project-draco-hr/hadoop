@@ -1,0 +1,39 @@
+{
+  final int failedDNIdx=2;
+  Path testPath=new Path(file);
+  final byte[] bytes=StripedFileTestUtil.generateBytes(fileSize);
+  DFSTestUtil.writeFile(fs,testPath,bytes);
+  BlockLocation[] locs=fs.getFileBlockLocations(testPath,cellSize * 5,cellSize);
+  String name=(locs[0].getNames())[failedDNIdx];
+  for (  DataNode dn : cluster.getDataNodes()) {
+    int port=dn.getXferPort();
+    if (name.contains(Integer.toString(port))) {
+      dn.shutdown();
+      break;
+    }
+  }
+  try (FSDataInputStream fsdis=fs.open(testPath)){
+    byte[] buf=new byte[fileSize];
+    int readLen=fsdis.read(startOffsetInFile,buf,0,buf.length);
+    Assert.assertEquals("The fileSize of file should be the same to write size",fileSize - startOffsetInFile,readLen);
+    byte[] expected=new byte[readLen];
+    System.arraycopy(bytes,startOffsetInFile,expected,0,fileSize - startOffsetInFile);
+    for (int i=startOffsetInFile; i < fileSize; i++) {
+      Assert.assertEquals("Byte at " + i + " should be the same",expected[i - startOffsetInFile],buf[i - startOffsetInFile]);
+    }
+  }
+   ByteBuffer result=ByteBuffer.allocate(fileSize);
+  ByteBuffer buf=ByteBuffer.allocate(1024);
+  int readLen=0;
+  int ret;
+  try (FSDataInputStream in=fs.open(testPath)){
+    while ((ret=in.read(buf)) >= 0) {
+      readLen+=ret;
+      buf.flip();
+      result.put(buf);
+      buf.clear();
+    }
+  }
+   Assert.assertEquals("The length of file should be the same to write size",fileSize,readLen);
+  Assert.assertArrayEquals(bytes,result.array());
+}

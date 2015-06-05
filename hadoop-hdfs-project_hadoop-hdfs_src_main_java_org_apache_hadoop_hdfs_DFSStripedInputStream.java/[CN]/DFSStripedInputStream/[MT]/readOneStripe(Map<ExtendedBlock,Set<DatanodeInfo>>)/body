@@ -6,25 +6,13 @@
   final int stripeBufOffset=(int)(offsetInBlockGroup % stripeLen);
   final int stripeLimit=(int)Math.min(currentLocatedBlock.getBlockSize() - (stripeIndex * stripeLen),stripeLen);
   curStripeRange=new StripeRange(offsetInBlockGroup,stripeLimit - stripeBufOffset);
-  final int startCell=stripeBufOffset / cellSize;
-  final int numCell=(stripeLimit - 1) / cellSize + 1;
-  Map<Future<Integer>,Integer> futures=new HashMap<>();
-  for (int i=startCell; i < numCell; i++) {
-    int bufPos=i == startCell ? stripeBufOffset : cellSize * i;
-    curStripeBuf.position(bufPos);
-    curStripeBuf.limit(Math.min(cellSize * (i + 1),stripeLimit));
-    ByteBuffer buf=curStripeBuf.slice();
-    ByteBufferStrategy strategy=new ByteBufferStrategy(buf);
-    final int targetLength=buf.remaining();
-    Callable<Integer> readCallable=readCell(blockReaders[i],currentNodes[i],strategy,targetLength,corruptedBlockMap);
-    Future<Integer> request=readingService.submit(readCallable);
-    futures.put(request,i);
+  LocatedStripedBlock blockGroup=(LocatedStripedBlock)currentLocatedBlock;
+  AlignedStripe[] stripes=StripedBlockUtil.divideOneStripe(schema,cellSize,blockGroup,offsetInBlockGroup,offsetInBlockGroup + curStripeRange.length - 1,curStripeBuf);
+  final LocatedBlock[] blks=StripedBlockUtil.parseStripedBlockGroup(blockGroup,cellSize,dataBlkNum,parityBlkNum);
+  for (  AlignedStripe stripe : stripes) {
+    StripeReader sreader=new StatefulStripeReader(readingService,stripe,blks);
+    sreader.readStripe(blks,corruptedBlockMap);
   }
-  while (!futures.isEmpty()) {
-    try {
-      waitNextCompletion(readingService,futures);
-    }
- catch (    InterruptedException ignored) {
-    }
-  }
+  curStripeBuf.position(stripeBufOffset);
+  curStripeBuf.limit(stripeLimit);
 }
