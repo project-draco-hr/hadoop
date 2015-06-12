@@ -1,0 +1,50 @@
+{
+  final ArrayList<DatanodeCommand> cmds=new ArrayList<DatanodeCommand>();
+  reportReceivedDeletedBlocks();
+  long brCreateStartTime=monotonicNow();
+  Map<DatanodeStorage,BlockListAsLongs> perVolumeBlockLists=dn.getFSDataset().getBlockReports(bpos.getBlockPoolId());
+  int i=0;
+  int totalBlockCount=0;
+  StorageBlockReport reports[]=new StorageBlockReport[perVolumeBlockLists.size()];
+  for (  Map.Entry<DatanodeStorage,BlockListAsLongs> kvPair : perVolumeBlockLists.entrySet()) {
+    BlockListAsLongs blockList=kvPair.getValue();
+    reports[i++]=new StorageBlockReport(kvPair.getKey(),blockList);
+    totalBlockCount+=blockList.getNumberOfBlocks();
+  }
+  int numReportsSent=0;
+  int numRPCs=0;
+  boolean success=false;
+  long brSendStartTime=monotonicNow();
+  long reportId=generateUniqueBlockReportId();
+  try {
+    if (totalBlockCount < dnConf.blockReportSplitThreshold) {
+      DatanodeCommand cmd=bpNamenode.blockReport(bpRegistration,bpos.getBlockPoolId(),reports,new BlockReportContext(1,0,reportId,fullBrLeaseId));
+      numRPCs=1;
+      numReportsSent=reports.length;
+      if (cmd != null) {
+        cmds.add(cmd);
+      }
+    }
+ else {
+      for (int r=0; r < reports.length; r++) {
+        StorageBlockReport singleReport[]={reports[r]};
+        DatanodeCommand cmd=bpNamenode.blockReport(bpRegistration,bpos.getBlockPoolId(),singleReport,new BlockReportContext(reports.length,r,reportId,fullBrLeaseId));
+        numReportsSent++;
+        numRPCs++;
+        if (cmd != null) {
+          cmds.add(cmd);
+        }
+      }
+    }
+    success=true;
+  }
+  finally {
+    long brSendCost=monotonicNow() - brSendStartTime;
+    long brCreateCost=brSendStartTime - brCreateStartTime;
+    dn.getMetrics().addBlockReport(brSendCost);
+    final int nCmds=cmds.size();
+    LOG.info((success ? "S" : "Uns") + "uccessfully sent block report 0x" + Long.toHexString(reportId)+ ",  containing "+ reports.length+ " storage report(s), of which we sent "+ numReportsSent+ "."+ " The reports had "+ totalBlockCount+ " total blocks and used "+ numRPCs+ " RPC(s). This took "+ brCreateCost+ " msec to generate and "+ brSendCost+ " msecs for RPC and NN processing."+ " Got back "+ ((nCmds == 0) ? "no commands" : ((nCmds == 1) ? "one command: " + cmds.get(0) : (nCmds + " commands: " + Joiner.on("; ").join(cmds))))+ ".");
+  }
+  scheduler.scheduleNextBlockReport();
+  return cmds.size() == 0 ? null : cmds;
+}

@@ -1,0 +1,33 @@
+{
+  NodeData node=nodes.get(dn.getDatanodeUuid());
+  if (node == null) {
+    LOG.warn("DN {} ({}) requested a lease even though it wasn't yet " + "registered.  Registering now.",dn.getDatanodeUuid(),dn.getXferAddr());
+    node=registerNode(dn);
+  }
+  if (node.leaseId != 0) {
+    LOG.debug("Removing existing BR lease 0x{} for DN {} in order to " + "issue a new one.",Long.toHexString(node.leaseId),dn.getDatanodeUuid());
+  }
+  remove(node);
+  long monotonicNowMs=Time.monotonicNow();
+  pruneExpiredPending(monotonicNowMs);
+  if (numPending >= maxPending) {
+    if (LOG.isDebugEnabled()) {
+      StringBuilder allLeases=new StringBuilder();
+      String prefix="";
+      for (NodeData cur=pendingHead.next; cur != pendingHead; cur=cur.next) {
+        allLeases.append(prefix).append(cur.datanodeUuid);
+        prefix=", ";
+      }
+      LOG.debug("Can't create a new BR lease for DN {}, because " + "numPending equals maxPending at {}.  Current leases: {}",dn.getDatanodeUuid(),numPending,allLeases.toString());
+    }
+    return 0;
+  }
+  numPending++;
+  node.leaseId=getNextId();
+  node.leaseTimeMs=monotonicNowMs;
+  pendingHead.addToEnd(node);
+  if (LOG.isDebugEnabled()) {
+    LOG.debug("Created a new BR lease 0x{} for DN {}.  numPending = {}",Long.toHexString(node.leaseId),dn.getDatanodeUuid(),numPending);
+  }
+  return node.leaseId;
+}

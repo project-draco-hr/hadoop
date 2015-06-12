@@ -1,0 +1,61 @@
+{
+  Configuration conf=new Configuration();
+  conf.setInt(DFS_NAMENODE_MAX_FULL_BLOCK_REPORT_LEASES,1);
+  conf.setLong(DFS_NAMENODE_FULL_BLOCK_REPORT_LEASE_LENGTH_MS,100L);
+  final Semaphore gotFbrSem=new Semaphore(0);
+  final AtomicReference<String> failure=new AtomicReference<String>("");
+  final AtomicReference<MiniDFSCluster> cluster=new AtomicReference<>(null);
+  final BlockingQueue<Integer> datanodeToStop=new ArrayBlockingQueue<Integer>(1);
+  final BlockManagerFaultInjector injector=new BlockManagerFaultInjector(){
+    private String uuidToStop="";
+    @Override public void incomingBlockReportRpc(    DatanodeID nodeID,    BlockReportContext context) throws IOException {
+      if (context.getLeaseId() == 0) {
+        setFailure(failure,"Got unexpected rate-limiting-" + "bypassing full block report RPC from " + nodeID);
+      }
+synchronized (this) {
+        if (uuidToStop.equals(nodeID.getDatanodeUuid())) {
+          throw new IOException("Injecting failure into block " + "report RPC for " + nodeID);
+        }
+      }
+      gotFbrSem.release();
+    }
+    @Override public void requestBlockReportLease(    DatanodeDescriptor node,    long leaseId){
+      if (leaseId == 0) {
+        return;
+      }
+synchronized (this) {
+        if (uuidToStop.isEmpty()) {
+          MiniDFSCluster cl;
+          do {
+            cl=cluster.get();
+          }
+ while (cl == null);
+          int datanodeIndexToStop=getDatanodeIndex(cl,node);
+          uuidToStop=node.getDatanodeUuid();
+          datanodeToStop.add(Integer.valueOf(datanodeIndexToStop));
+        }
+      }
+    }
+    private int getDatanodeIndex(    MiniDFSCluster cl,    DatanodeDescriptor node){
+      List<DataNode> datanodes=cl.getDataNodes();
+      for (int i=0; i < datanodes.size(); i++) {
+        DataNode datanode=datanodes.get(i);
+        if (datanode.getDatanodeUuid().equals(node.getDatanodeUuid())) {
+          return i;
+        }
+      }
+      throw new RuntimeException("Failed to find UUID " + node.getDatanodeUuid() + " in the list of datanodes.");
+    }
+    @Override public void removeBlockReportLease(    DatanodeDescriptor node,    long leaseId){
+    }
+  }
+;
+  BlockManagerFaultInjector.instance=injector;
+  cluster.set(new MiniDFSCluster.Builder(conf).numDataNodes(2).build());
+  cluster.get().waitActive();
+  int datanodeIndexToStop=datanodeToStop.take();
+  cluster.get().stopDataNode(datanodeIndexToStop);
+  gotFbrSem.acquire();
+  cluster.get().shutdown();
+  Assert.assertEquals("",failure.get());
+}
