@@ -1,5 +1,6 @@
 def main():
     global numRunsToExamine
+    global summary_mode
     logging.basicConfig(format='%(levelname)s:%(message)s', level=logging.INFO)
     soh = logging.StreamHandler(sys.stdout)
     soh.setLevel(logging.INFO)
@@ -8,9 +9,21 @@ def main():
     logger.addHandler(soh)
     opts = parse_args()
     logging.info((((('****Recently FAILED builds in url: ' + opts.jenkins_url) + '/job/') + opts.job_name) + ''))
+    if (opts.num_failed_tests != (-1)):
+        summary_mode = True
     all_failing = find_flaky_tests(opts.jenkins_url, opts.job_name, opts.num_prev_days)
     if (len(all_failing) == 0):
         raise SystemExit(0)
-    logging.info(((('\nAmong ' + str(numRunsToExamine)) + ' runs examined, all failed ') + 'tests <#failedRuns: testName>:'))
+    if (summary_mode and (opts.num_failed_tests < len(all_failing))):
+        logging.info((((('\nAmong ' + str(numRunsToExamine)) + ' runs examined, top ') + str(opts.num_failed_tests)) + ' failed tests <#failedRuns: testName>:'))
+    else:
+        logging.info((('\nAmong ' + str(numRunsToExamine)) + ' runs examined, all failed tests <#failedRuns: testName>:'))
+    line_count = 0
     for tn in sorted(all_failing, key=all_failing.get, reverse=True):
         logging.info(((('    ' + str(all_failing[tn])) + ': ') + tn))
+        if summary_mode:
+            line_count += 1
+            if (line_count == opts.num_failed_tests):
+                break
+    if (summary_mode and (error_count > 0)):
+        logging.info(((('\n' + str(error_count)) + ' errors found, you may ') + 're-run in non summary mode to see error details.'))
