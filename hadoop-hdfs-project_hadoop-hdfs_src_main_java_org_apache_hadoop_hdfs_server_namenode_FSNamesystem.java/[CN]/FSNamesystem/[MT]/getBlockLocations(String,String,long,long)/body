@@ -5,7 +5,20 @@
   readLock();
   try {
     checkOperation(OperationCategory.READ);
-    res=getBlockLocations(pc,srcArg,offset,length,true,true);
+    res=FSDirStatAndListingOp.getBlockLocations(dir,pc,srcArg,offset,length,true);
+    if (isInSafeMode()) {
+      for (      LocatedBlock b : res.blocks.getLocatedBlocks()) {
+        if ((b.getLocations() == null) || (b.getLocations().length == 0)) {
+          SafeModeException se=newSafemodeException("Zero blocklocations for " + srcArg);
+          if (haEnabled && haContext != null && haContext.getState().getServiceState() == HAServiceState.ACTIVE) {
+            throw new RetriableException(se);
+          }
+ else {
+            throw se;
+          }
+        }
+      }
+    }
   }
  catch (  AccessControlException e) {
     logAuditEvent(false,"open",srcArg);
@@ -15,7 +28,7 @@
     readUnlock();
   }
   logAuditEvent(true,"open",srcArg);
-  if (res.updateAccessTime()) {
+  if (!isInSafeMode() && res.updateAccessTime()) {
     byte[][] pathComponents=FSDirectory.getPathComponentsForReservedPath(srcArg);
     String src=srcArg;
     writeLock();
@@ -25,7 +38,7 @@
       src=dir.resolvePath(pc,srcArg,pathComponents);
       final INodesInPath iip=dir.getINodesInPath(src,true);
       INode inode=iip.getLastINode();
-      boolean updateAccessTime=inode != null && now > inode.getAccessTime() + getAccessTimePrecision();
+      boolean updateAccessTime=inode != null && now > inode.getAccessTime() + dir.getAccessTimePrecision();
       if (!isInSafeMode() && updateAccessTime) {
         boolean changed=FSDirAttrOp.setTimes(dir,inode,-1,now,false,iip.getLatestSnapshotId());
         if (changed) {
