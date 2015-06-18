@@ -4,6 +4,7 @@
   ReplicationOption replicationOption=Options.getOption(ReplicationOption.class,opts);
   ProgressableOption progressOption=Options.getOption(ProgressableOption.class,opts);
   FileOption fileOption=Options.getOption(FileOption.class,opts);
+  AppendIfExistsOption appendIfExistsOption=Options.getOption(AppendIfExistsOption.class,opts);
   FileSystemOption fsOption=Options.getOption(FileSystemOption.class,opts);
   StreamOption streamOption=Options.getOption(StreamOption.class,opts);
   KeyClassOption keyClassOption=Options.getOption(KeyClassOption.class,opts);
@@ -31,7 +32,34 @@
     short replication=replicationOption == null ? fs.getDefaultReplication(p) : (short)replicationOption.getValue();
     long blockSize=blockSizeOption == null ? fs.getDefaultBlockSize(p) : blockSizeOption.getValue();
     Progressable progress=progressOption == null ? null : progressOption.getValue();
-    out=fs.create(p,true,bufferSize,replication,blockSize,progress);
+    if (appendIfExistsOption != null && appendIfExistsOption.getValue() && fs.exists(p)) {
+      SequenceFile.Reader reader=new SequenceFile.Reader(conf,SequenceFile.Reader.file(p),new Reader.OnlyHeaderOption());
+      try {
+        if (keyClassOption.getValue() != reader.getKeyClass() || valueClassOption.getValue() != reader.getValueClass()) {
+          throw new IllegalArgumentException("Key/value class provided does not match the file");
+        }
+        if (reader.getVersion() != VERSION[3]) {
+          throw new VersionMismatchException(VERSION[3],reader.getVersion());
+        }
+        if (metadataOption != null) {
+          LOG.info("MetaData Option is ignored during append");
+        }
+        metadataOption=(MetadataOption)SequenceFile.Writer.metadata(reader.getMetadata());
+        CompressionOption readerCompressionOption=new CompressionOption(reader.getCompressionType(),reader.getCompressionCodec());
+        if (readerCompressionOption.value != compressionTypeOption.value || !readerCompressionOption.codec.getClass().getName().equals(compressionTypeOption.codec.getClass().getName())) {
+          throw new IllegalArgumentException("Compression option provided does not match the file");
+        }
+        sync=reader.getSync();
+      }
+  finally {
+        reader.close();
+      }
+      out=fs.append(p,bufferSize,progress);
+      this.appendMode=true;
+    }
+ else {
+      out=fs.create(p,true,bufferSize,replication,blockSize,progress);
+    }
   }
  else {
     out=streamOption.getValue();
