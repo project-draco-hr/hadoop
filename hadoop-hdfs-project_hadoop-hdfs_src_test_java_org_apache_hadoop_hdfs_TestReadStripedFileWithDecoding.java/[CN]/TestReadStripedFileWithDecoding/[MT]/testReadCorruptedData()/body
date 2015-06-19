@@ -1,0 +1,16 @@
+{
+  final Path file=new Path("/partially_deleted");
+  final int length=cellSize * dataBlocks * 2;
+  final byte[] bytes=StripedFileTestUtil.generateBytes(length);
+  DFSTestUtil.writeFile(fs,file,bytes);
+  int dnIndex=findFirstDataNode(file,cellSize * dataBlocks);
+  Assert.assertNotEquals(-1,dnIndex);
+  LocatedStripedBlock slb=(LocatedStripedBlock)fs.getClient().getLocatedBlocks(file.toString(),0,cellSize * dataBlocks).get(0);
+  final LocatedBlock[] blks=StripedBlockUtil.parseStripedBlockGroup(slb,cellSize,dataBlocks,parityBlocks);
+  File storageDir=cluster.getInstanceStorageDir(dnIndex,0);
+  File blkFile=MiniDFSCluster.getBlockFile(storageDir,blks[0].getBlock());
+  Assert.assertTrue("Block file does not exist",blkFile.exists());
+  LOG.info("Deliberately removing file " + blkFile.getName());
+  Assert.assertTrue("Cannot remove file",blkFile.delete());
+  verifyRead(file,length,bytes);
+}
