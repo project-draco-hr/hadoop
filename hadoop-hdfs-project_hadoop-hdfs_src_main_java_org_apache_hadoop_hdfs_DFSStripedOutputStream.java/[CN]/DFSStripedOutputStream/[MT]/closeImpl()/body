@@ -1,6 +1,19 @@
 {
   if (isClosed()) {
-    getLeadingStreamer().getLastException().check(true);
+    final MultipleIOException.Builder b=new MultipleIOException.Builder();
+    for (int i=0; i < streamers.size(); i++) {
+      final StripedDataStreamer si=getStripedDataStreamer(i);
+      try {
+        si.getLastException().check(true);
+      }
+ catch (      IOException e) {
+        b.add(e);
+      }
+    }
+    final IOException ioe=b.build();
+    if (ioe != null) {
+      throw ioe;
+    }
     return;
   }
   try {
@@ -29,7 +42,7 @@
       }
     }
     closeThreads(false);
-    final ExtendedBlock lastBlock=getCommittedBlock();
+    final ExtendedBlock lastBlock=coordinator.getBlockGroup();
     TraceScope scope=Trace.startSpan("completeFile",Sampler.NEVER);
     try {
       completeFile(lastBlock);

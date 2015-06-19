@@ -1,17 +1,37 @@
 {
-  if (isLeadingStreamer()) {
-    if (block != null) {
-      long bytes=0;
-      for (int i=0; i < NUM_DATA_BLOCKS; i++) {
-        final ExtendedBlock b=coordinator.getEndBlock(i);
-        if (b != null) {
-          StripedBlockUtil.checkBlocks(block,i,b);
+  final MultipleBlockingQueue<LocatedBlock> followingBlocks=coordinator.getFollowingBlocks();
+  return new ConcurrentPoll<LocatedBlock>(followingBlocks){
+    @Override boolean isReady2Populate(){
+      return super.isReady2Populate() && (block == null || coordinator.hasAllEndBlocks());
+    }
+    @Override void populate() throws IOException {
+      getLastException().check(false);
+      if (block != null) {
+        long bytes=0;
+        for (int i=0; i < NUM_DATA_BLOCKS; i++) {
+          final ExtendedBlock b=coordinator.takeEndBlock(i);
+          StripedBlockUtil.checkBlocks(index,block,i,b);
           bytes+=b.getNumBytes();
         }
+        block.setNumBytes(bytes);
+        block.setBlockId(block.getBlockId() - index);
       }
-      block.setNumBytes(bytes);
+      if (LOG.isDebugEnabled()) {
+        LOG.debug("locateFollowingBlock: index=" + index + ", block="+ block);
+      }
+      final LocatedBlock lb=StripedDataStreamer.super.locateFollowingBlock(excludedNodes);
+      final LocatedBlock[] blocks=StripedBlockUtil.parseStripedBlockGroup((LocatedStripedBlock)lb,BLOCK_STRIPED_CELL_SIZE,NUM_DATA_BLOCKS,NUM_PARITY_BLOCKS);
+      for (int i=0; i < blocks.length; i++) {
+        if (!coordinator.getStripedDataStreamer(i).isFailed()) {
+          if (blocks[i] == null) {
+            getLastException().set(new IOException("Failed to get following block, i=" + i));
+          }
+ else {
+            followingBlocks.offer(i,blocks[i]);
+          }
+        }
+      }
     }
-    putLoactedBlocks(super.locateFollowingBlock(excludedNodes));
   }
-  return coordinator.getStripedBlock(index);
+.poll(index);
 }
