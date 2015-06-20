@@ -4,13 +4,12 @@
     throw new ReplicaAlreadyExistsException("Block " + b + " already exists in state "+ replicaInfo.getState()+ " and thus cannot be created.");
   }
   FsVolumeReference ref=null;
-  if (allowLazyPersist && lazyWriter != null && b.getNumBytes() % cacheManager.getOsPageSize() == 0 && (cacheManager.reserve(b.getNumBytes())) > 0) {
+  if (allowLazyPersist && lazyWriter != null && b.getNumBytes() % cacheManager.getOsPageSize() == 0 && reserveLockedMemory(b.getNumBytes())) {
     try {
       ref=volumes.getNextTransientVolume(b.getNumBytes());
       datanode.getMetrics().incrRamDiskBlocksWrite();
     }
  catch (    DiskOutOfSpaceException de) {
-      datanode.getMetrics().incrRamDiskBlocksWriteFallback();
     }
  finally {
       if (ref == null) {
@@ -22,6 +21,9 @@
     ref=volumes.getNextVolume(storageType,b.getNumBytes());
   }
   FsVolumeImpl v=(FsVolumeImpl)ref.getVolume();
+  if (allowLazyPersist && !v.isTransientStorage()) {
+    datanode.getMetrics().incrRamDiskBlocksWriteFallback();
+  }
   File f;
   try {
     f=v.createRbwFile(b.getBlockPoolId(),b.getLocalBlock());
