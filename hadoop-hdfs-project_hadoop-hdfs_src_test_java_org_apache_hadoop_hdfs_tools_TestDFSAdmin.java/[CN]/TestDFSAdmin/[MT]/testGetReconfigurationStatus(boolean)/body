@@ -1,0 +1,54 @@
+{
+  ReconfigurationUtil ru=mock(ReconfigurationUtil.class);
+  datanode.setReconfigurationUtil(ru);
+  List<ReconfigurationUtil.PropertyChange> changes=new ArrayList<>();
+  File newDir=new File(cluster.getDataDirectory(),"data_new");
+  if (expectedSuccuss) {
+    newDir.mkdirs();
+  }
+ else {
+    newDir.createNewFile();
+  }
+  changes.add(new ReconfigurationUtil.PropertyChange(DFS_DATANODE_DATA_DIR_KEY,newDir.toString(),datanode.getConf().get(DFS_DATANODE_DATA_DIR_KEY)));
+  changes.add(new ReconfigurationUtil.PropertyChange("randomKey","new123","old456"));
+  when(ru.parseChangedProperties(any(Configuration.class),any(Configuration.class))).thenReturn(changes);
+  final int port=datanode.getIpcPort();
+  final String address="localhost:" + port;
+  assertThat(admin.startReconfiguration("datanode",address),is(0));
+  List<String> outputs=null;
+  int count=100;
+  while (count > 0) {
+    outputs=getReconfigureStatus("datanode",address);
+    if (!outputs.isEmpty() && outputs.get(0).contains("finished")) {
+      break;
+    }
+    count--;
+    Thread.sleep(100);
+  }
+  assertTrue(count > 0);
+  if (expectedSuccuss) {
+    assertThat(outputs.size(),is(4));
+  }
+ else {
+    assertThat(outputs.size(),is(6));
+  }
+  List<StorageLocation> locations=DataNode.getStorageLocations(datanode.getConf());
+  if (expectedSuccuss) {
+    assertThat(locations.size(),is(1));
+    assertThat(locations.get(0).getFile(),is(newDir));
+    assertTrue(new File(newDir,Storage.STORAGE_DIR_CURRENT).isDirectory());
+  }
+ else {
+    assertTrue(locations.isEmpty());
+  }
+  int offset=1;
+  if (expectedSuccuss) {
+    assertThat(outputs.get(offset),containsString("SUCCESS: Changed property " + DFS_DATANODE_DATA_DIR_KEY));
+  }
+ else {
+    assertThat(outputs.get(offset),containsString("FAILED: Change property " + DFS_DATANODE_DATA_DIR_KEY));
+  }
+  assertThat(outputs.get(offset + 1),is(allOf(containsString("From:"),containsString("data1"),containsString("data2"))));
+  assertThat(outputs.get(offset + 2),is(not(anyOf(containsString("data1"),containsString("data2")))));
+  assertThat(outputs.get(offset + 2),is(allOf(containsString("To"),containsString("data_new"))));
+}
