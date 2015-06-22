@@ -5,20 +5,36 @@
   conf.setBoolean(DFSConfigKeys.DFS_DATANODE_DUPLICATE_REPLICA_DELETION,false);
   log("Normal NameNode upgrade",1);
   File[] created=UpgradeUtilities.createNameNodeStorageDirs(nameNodeDirs,"current");
-  List<String> beforeUpgrade=new LinkedList<>();
   for (  final File createdDir : created) {
     List<String> fileNameList=IOUtils.listDirectory(createdDir,EditLogsFilter.INSTANCE);
-    beforeUpgrade.addAll(fileNameList);
+    for (    String fileName : fileNameList) {
+      String tmpFileName=fileName + ".tmp";
+      File existingFile=new File(createdDir,fileName);
+      File tmpFile=new File(createdDir,tmpFileName);
+      Files.move(existingFile.toPath(),tmpFile.toPath());
+      File newFile=new File(createdDir,fileName);
+      Preconditions.checkState(newFile.createNewFile(),"Cannot create new edits log file in " + createdDir);
+      EditLogFileInputStream in=new EditLogFileInputStream(tmpFile,HdfsServerConstants.INVALID_TXID,HdfsServerConstants.INVALID_TXID,false);
+      EditLogFileOutputStream out=new EditLogFileOutputStream(conf,newFile,(int)tmpFile.length());
+      out.create(NameNodeLayoutVersion.CURRENT_LAYOUT_VERSION + 1);
+      FSEditLogOp logOp=in.readOp();
+      while (logOp != null) {
+        out.write(logOp);
+        logOp=in.readOp();
+      }
+      out.setReadyToFlush();
+      out.flushAndSync(true);
+      out.close();
+      Files.delete(tmpFile.toPath());
+    }
   }
   cluster=createCluster();
-  List<String> afterUpgrade=new LinkedList<>();
-  for (  final File createdDir : created) {
-    List<String> fileNameList=IOUtils.listDirectory(createdDir,EditLogsFilter.INSTANCE);
-    afterUpgrade.addAll(fileNameList);
-  }
-  for (  String s : beforeUpgrade) {
-    assertTrue(afterUpgrade.contains(s));
-  }
+  DFSInotifyEventInputStream ieis=cluster.getFileSystem().getInotifyEventStream(0);
+  EventBatch batch=ieis.poll();
+  Event[] events=batch.getEvents();
+  assertTrue("Should be able to get transactions before the upgrade.",events.length > 0);
+  assertEquals(events[0].getEventType(),Event.EventType.CREATE);
+  assertEquals(((CreateEvent)events[0]).getPath(),"/TestUpgrade");
   cluster.shutdown();
   UpgradeUtilities.createEmptyDirs(nameNodeDirs);
 }
