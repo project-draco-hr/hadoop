@@ -9,12 +9,18 @@
   if (!HAUtil.usesSharedEditsDir(conf)) {
     throw new HadoopIllegalArgumentException("Shared edits storage is not enabled for this namenode.");
   }
-  Configuration otherNode=HAUtil.getConfForOtherNode(conf);
-  otherNNId=HAUtil.getNameNodeId(otherNode,nsId);
-  otherIpcAddr=NameNode.getServiceAddress(otherNode,true);
-  Preconditions.checkArgument(otherIpcAddr.getPort() != 0 && !otherIpcAddr.getAddress().isAnyLocalAddress(),"Could not determine valid IPC address for other NameNode (%s)" + ", got: %s",otherNNId,otherIpcAddr);
-  final String scheme=DFSUtil.getHttpClientScheme(conf);
-  otherHttpAddr=DFSUtil.getInfoServerWithDefaultHost(otherIpcAddr.getHostName(),otherNode,scheme).toURL();
+  remoteNNs=RemoteNameNodeInfo.getRemoteNameNodes(conf,nsId);
+  List<RemoteNameNodeInfo> remove=new ArrayList<RemoteNameNodeInfo>(remoteNNs.size());
+  for (  RemoteNameNodeInfo info : remoteNNs) {
+    InetSocketAddress address=info.getIpcAddress();
+    LOG.info("Found nn: " + info.getNameNodeID() + ", ipc: "+ info.getIpcAddress());
+    if (address.getPort() == 0 || address.getAddress().isAnyLocalAddress()) {
+      LOG.error("Could not determine valid IPC address for other NameNode (" + info.getNameNodeID() + ") , got: "+ address);
+      remove.add(info);
+    }
+  }
+  remoteNNs.removeAll(remove);
+  Preconditions.checkArgument(!remoteNNs.isEmpty(),"Could not find any valid namenodes!");
   dirsToFormat=FSNamesystem.getNamespaceDirs(conf);
   editUrisToFormat=FSNamesystem.getNamespaceEditsDirs(conf,false);
   sharedEditsUris=FSNamesystem.getSharedEditsDirs(conf);

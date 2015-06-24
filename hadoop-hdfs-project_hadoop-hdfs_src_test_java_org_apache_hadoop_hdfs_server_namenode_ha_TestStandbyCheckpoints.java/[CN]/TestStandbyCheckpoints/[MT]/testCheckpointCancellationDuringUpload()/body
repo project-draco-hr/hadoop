@@ -1,15 +1,20 @@
 {
-  cluster.getConfiguration(0).setBoolean(DFSConfigKeys.DFS_IMAGE_COMPRESS_KEY,false);
-  cluster.getConfiguration(1).setBoolean(DFSConfigKeys.DFS_IMAGE_COMPRESS_KEY,false);
-  cluster.getConfiguration(1).setLong(DFSConfigKeys.DFS_IMAGE_TRANSFER_RATE_KEY,100);
-  cluster.restartNameNode(0);
-  cluster.restartNameNode(1);
-  nn0=cluster.getNameNode(0);
-  nn1=cluster.getNameNode(1);
+  for (int i=0; i < NUM_NNS; i++) {
+    cluster.getConfiguration(i).setBoolean(DFSConfigKeys.DFS_IMAGE_COMPRESS_KEY,false);
+  }
+  for (int i=1; i < NUM_NNS; i++) {
+    cluster.getConfiguration(i).setLong(DFSConfigKeys.DFS_IMAGE_TRANSFER_RATE_KEY,100);
+  }
+  for (int i=0; i < NUM_NNS; i++) {
+    cluster.restartNameNode(i);
+  }
+  setNNs();
   cluster.transitionToActive(0);
   doEdits(0,100);
-  HATestUtil.waitForStandbyToCatchUp(nn0,nn1);
-  HATestUtil.waitForCheckpoint(cluster,1,ImmutableList.of(104));
+  for (int i=1; i < NUM_NNS; i++) {
+    HATestUtil.waitForStandbyToCatchUp(nns[0],nns[i]);
+    HATestUtil.waitForCheckpoint(cluster,i,ImmutableList.of(104));
+  }
   cluster.transitionToStandby(0);
   cluster.transitionToActive(1);
   cluster.shutdown();
@@ -27,5 +32,5 @@
     }
   }
 ,1000,30000);
-  assertEquals(0,nn0.getFSImage().getMostRecentCheckpointTxId());
+  assertEquals(0,nns[0].getFSImage().getMostRecentCheckpointTxId());
 }

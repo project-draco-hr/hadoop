@@ -1,0 +1,58 @@
+{
+  String nsId=nameservice.getId();
+  String lastDefaultFileSystem=null;
+  int numNNs=nameservice.getNNs().size();
+  if (numNNs > 1 && manageNameDfsSharedDirs) {
+    URI sharedEditsUri=getSharedEditsDir(nnCounter,nnCounter + numNNs - 1);
+    conf.set(DFS_NAMENODE_SHARED_EDITS_DIR_KEY,sharedEditsUri.toString());
+    FileUtil.fullyDelete(new File(sharedEditsUri));
+  }
+  int nnIndex=nnCounter;
+  Collection<URI> prevNNDirs=null;
+  for (  NNConf nn : nameservice.getNNs()) {
+    initNameNodeConf(conf,nsId,nsCounter,nn.getNnId(),manageNameDfsDirs,manageNameDfsDirs,nnIndex);
+    Collection<URI> namespaceDirs=FSNamesystem.getNamespaceDirs(conf);
+    if (format) {
+      for (      URI nameDirUri : namespaceDirs) {
+        File nameDir=new File(nameDirUri);
+        if (nameDir.exists() && !FileUtil.fullyDelete(nameDir)) {
+          throw new IOException("Could not fully delete " + nameDir);
+        }
+      }
+      Collection<URI> checkpointDirs=Util.stringCollectionAsURIs(conf.getTrimmedStringCollection(DFS_NAMENODE_CHECKPOINT_DIR_KEY));
+      for (      URI checkpointDirUri : checkpointDirs) {
+        File checkpointDir=new File(checkpointDirUri);
+        if (checkpointDir.exists() && !FileUtil.fullyDelete(checkpointDir)) {
+          throw new IOException("Could not fully delete " + checkpointDir);
+        }
+      }
+    }
+    boolean formatThisOne=format;
+    if (nnIndex++ > nnCounter && format) {
+      formatThisOne=false;
+      assert(null != prevNNDirs);
+      copyNameDirs(prevNNDirs,namespaceDirs,conf);
+    }
+    if (formatThisOne) {
+      if (nn.getClusterId() == null) {
+        StartupOption.FORMAT.setClusterId(clusterId);
+      }
+ else {
+        StartupOption.FORMAT.setClusterId(nn.getClusterId());
+      }
+      DFSTestUtil.formatNameNode(conf);
+    }
+    prevNNDirs=namespaceDirs;
+  }
+  nnIndex=nnCounter;
+  for (  NNConf nn : nameservice.getNNs()) {
+    initNameNodeConf(conf,nsId,nsCounter,nn.getNnId(),manageNameDfsDirs,enableManagedDfsDirsRedundancy,nnIndex++);
+    NameNodeInfo info=createNameNode(conf,false,operation,clusterId,nsId,nn.getNnId());
+    if (info != null && info.conf != null) {
+      lastDefaultFileSystem=info.conf.get(FS_DEFAULT_NAME_KEY);
+    }
+  }
+  if (!federation && lastDefaultFileSystem != null) {
+    conf.set(FS_DEFAULT_NAME_KEY,lastDefaultFileSystem);
+  }
+}
