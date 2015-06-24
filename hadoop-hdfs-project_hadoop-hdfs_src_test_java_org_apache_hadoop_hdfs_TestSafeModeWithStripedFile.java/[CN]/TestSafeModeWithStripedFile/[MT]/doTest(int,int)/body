@@ -1,0 +1,39 @@
+{
+  FileSystem fs=cluster.getFileSystem();
+  byte[] data=StripedFileTestUtil.generateBytes(smallSize);
+  Path smallFilePath=new Path("/testStripedFile_" + smallSize);
+  DFSTestUtil.writeFile(fs,smallFilePath,data);
+  int bigSize=blockSize * DATA_BLK_NUM * 2;
+  Path bigFilePath=new Path("/testStripedFile_" + bigSize);
+  data=StripedFileTestUtil.generateBytes(bigSize);
+  DFSTestUtil.writeFile(fs,bigFilePath,data);
+  List<MiniDFSCluster.DataNodeProperties> dnprops=Lists.newArrayList();
+  LocatedBlocks lbs=cluster.getNameNodeRpc().getBlockLocations(smallFilePath.toString(),0,smallSize);
+  DatanodeInfo[] locations=lbs.get(0).getLocations();
+  for (  DatanodeInfo loc : locations) {
+    dnprops.add(cluster.stopDataNode(loc.getName()));
+  }
+  for (int i=0; i < numDNs - locations.length; i++) {
+    dnprops.add(cluster.stopDataNode(0));
+  }
+  cluster.restartNameNode(0);
+  NameNode nn=cluster.getNameNode();
+  assertTrue(cluster.getNameNode().isInSafeMode());
+  assertEquals(0,NameNodeAdapter.getSafeModeSafeBlocks(nn));
+  for (int i=0; i < minStorages - 1; i++) {
+    cluster.restartDataNode(dnprops.remove(0));
+    cluster.triggerBlockReports();
+    assertEquals(0,NameNodeAdapter.getSafeModeSafeBlocks(nn));
+  }
+  cluster.restartDataNode(dnprops.remove(0));
+  cluster.triggerBlockReports();
+  assertEquals(1,NameNodeAdapter.getSafeModeSafeBlocks(nn));
+  for (int i=minStorages; i < DATA_BLK_NUM - 1; i++) {
+    cluster.restartDataNode(dnprops.remove(0));
+    cluster.triggerBlockReports();
+    assertTrue(nn.isInSafeMode());
+  }
+  cluster.restartDataNode(dnprops.remove(0));
+  cluster.triggerBlockReports();
+  assertFalse(nn.isInSafeMode());
+}
