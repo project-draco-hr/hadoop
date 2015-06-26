@@ -1,0 +1,36 @@
+{
+  blockLog.debug("BLOCK* removeStoredBlock: {} from {}",storedBlock,node);
+  assert(namesystem.hasWriteLock());
+{
+    if (storedBlock == null || !blocksMap.removeNode(storedBlock,node)) {
+      blockLog.debug("BLOCK* removeStoredBlock: {} has already been" + " removed from node {}",storedBlock,node);
+      return;
+    }
+    CachedBlock cblock=namesystem.getCacheManager().getCachedBlocks().get(new CachedBlock(storedBlock.getBlockId(),(short)0,false));
+    if (cblock != null) {
+      boolean removed=false;
+      removed|=node.getPendingCached().remove(cblock);
+      removed|=node.getCached().remove(cblock);
+      removed|=node.getPendingUncached().remove(cblock);
+      if (removed) {
+        blockLog.debug("BLOCK* removeStoredBlock: {} removed from caching " + "related lists on node {}",storedBlock,node);
+      }
+    }
+    BlockCollection bc=storedBlock.getBlockCollection();
+    if (bc != null) {
+      namesystem.decrementSafeBlockCount(storedBlock);
+      updateNeededReplications(storedBlock,-1,0);
+    }
+    LightWeightLinkedSet<BlockInfo> excessBlocks=excessReplicateMap.get(node.getDatanodeUuid());
+    if (excessBlocks != null) {
+      if (excessBlocks.remove(storedBlock)) {
+        excessBlocksCount.decrementAndGet();
+        blockLog.debug("BLOCK* removeStoredBlock: {} is removed from " + "excessBlocks",storedBlock);
+        if (excessBlocks.size() == 0) {
+          excessReplicateMap.remove(node.getDatanodeUuid());
+        }
+      }
+    }
+    corruptReplicas.removeFromCorruptReplicasMap(storedBlock,node);
+  }
+}
