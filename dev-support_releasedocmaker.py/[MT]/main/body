@@ -4,8 +4,9 @@ def main():
     parser.add_option('-m', '--master', dest='master', action='store_true', help='only create the master, merged project files')
     parser.add_option('-i', '--index', dest='index', action='store_true', help='build an index file')
     parser.add_option('-u', '--usetoday', dest='usetoday', action='store_true', help='use current date for unreleased versions')
+    parser.add_option('-n', '--lint', dest='lint', action='store_true', help='use lint flag to exit on failures')
     (options, args) = parser.parse_args()
-    if (options.versions == None):
+    if (options.versions is None):
         options.versions = []
     if (len(args) > 2):
         options.versions.append(args[2])
@@ -36,6 +37,9 @@ def main():
     chhead = '# Hadoop Changelog\n\n## Release %(ver)s - %(date)s\n\n'
     reloutputs.writeAll(relhead)
     choutputs.writeAll(chhead)
+    errorCount = 0
+    warningCount = 0
+    lintMessage = ''
     incompatlist = []
     buglist = []
     improvementlist = []
@@ -47,6 +51,12 @@ def main():
     for jira in sorted(jlist):
         if jira.getIncompatibleChange():
             incompatlist.append(jira)
+            if (len(jira.getReleaseNote()) == 0):
+                warningCount += 1
+        if jira.checkVersionString():
+            warningCount += 1
+        if (jira.checkMissingComponent() or jira.checkMissingAssignee()):
+            errorCount += 1
         elif (jira.getType() == 'Bug'):
             buglist.append(jira)
         elif (jira.getType() == 'Improvement'):
@@ -66,13 +76,27 @@ def main():
             reloutputs.writeKeyRaw(jira.getProject(), '\n---\n\n')
             reloutputs.writeKeyRaw(jira.getProject(), line)
             line = '\n**WARNING: No release note provided for this incompatible change.**\n\n'
-            print ('WARNING: incompatible change %s lacks release notes.' % notableclean(jira.getId()))
+            lintMessage += ('\nWARNING: incompatible change %s lacks release notes.' % notableclean(jira.getId()))
             reloutputs.writeKeyRaw(jira.getProject(), line)
+        if jira.checkVersionString():
+            lintMessage += ('\nWARNING: Version string problem for %s ' % jira.getId())
+        if (jira.checkMissingComponent() or jira.checkMissingAssignee()):
+            errorMessage = []
+            (jira.checkMissingComponent() and errorMessage.append('component'))
+            (jira.checkMissingAssignee() and errorMessage.append('assignee'))
+            lintMessage += ('\nERROR: missing %s for %s ' % (' and '.join(errorMessage), jira.getId()))
         if (len(jira.getReleaseNote()) > 0):
             reloutputs.writeKeyRaw(jira.getProject(), '\n---\n\n')
             reloutputs.writeKeyRaw(jira.getProject(), line)
             line = ('\n%s\n\n' % tableclean(jira.getReleaseNote()))
             reloutputs.writeKeyRaw(jira.getProject(), line)
+    if (options.lint is True):
+        print lintMessage
+        print '======================================='
+        print ('Error:%d, Warning:%d \n' % (errorCount, warningCount))
+        if (errorCount > 0):
+            cleanOutputDir(version)
+            sys.exit(1)
     reloutputs.writeAll('\n\n')
     reloutputs.close()
     choutputs.writeAll('### INCOMPATIBLE CHANGES:\n\n')
