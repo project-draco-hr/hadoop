@@ -2,17 +2,20 @@
   DFSClientFaultInjector.get().startFetchFromDatanode();
   int refetchToken=1;
   int refetchEncryptionKey=1;
+  final int len=(int)(endInBlk - startInBlk + 1);
+  checkReadPortions(offsets,lengths,len);
   while (true) {
-    LocatedBlock block=getBlockAt(blockStartOffset);
+    block=refreshLocatedBlock(block);
     BlockReader reader=null;
     try {
       DFSClientFaultInjector.get().fetchFromDatanodeException();
-      int len=(int)(end - start + 1);
-      reader=getBlockReader(block,start,len,datanode.addr,datanode.storageType,datanode.info);
-      int nread=reader.readAll(buf,offset,len);
-      updateReadStatistics(readStatistics,nread,reader);
-      if (nread != len) {
-        throw new IOException("truncated return from reader.read(): " + "excpected " + len + ", got "+ nread);
+      reader=getBlockReader(block,startInBlk,len,datanode.addr,datanode.storageType,datanode.info);
+      for (int i=0; i < offsets.length; i++) {
+        int nread=reader.readAll(buf,offsets[i],lengths[i]);
+        updateReadStatistics(readStatistics,nread,reader);
+        if (nread != lengths[i]) {
+          throw new IOException("truncated return from reader.read(): " + "excpected " + lengths[i] + ", got "+ nread);
+        }
       }
       DFSClientFaultInjector.get().readFromDatanodeDelay();
       return;
