@@ -1,0 +1,33 @@
+{
+  AsyncDispatcher rmDispatcher=new AsyncDispatcher();
+  CapacityScheduler sched=spy(new CapacityScheduler());
+  YarnConfiguration conf=new YarnConfiguration();
+  SchedulerEventDispatcher schedulerDispatcher=new SchedulerEventDispatcher(sched);
+  rmDispatcher.register(SchedulerEventType.class,schedulerDispatcher);
+  rmDispatcher.init(conf);
+  rmDispatcher.start();
+  schedulerDispatcher.init(conf);
+  schedulerDispatcher.start();
+  try {
+    ApplicationAttemptId appAttemptId=mock(ApplicationAttemptId.class);
+    RMContainer container=mock(RMContainer.class);
+    ContainerPreemptEvent event1=new ContainerPreemptEvent(appAttemptId,container,SchedulerEventType.DROP_RESERVATION);
+    rmDispatcher.getEventHandler().handle(event1);
+    ContainerPreemptEvent event2=new ContainerPreemptEvent(appAttemptId,container,SchedulerEventType.KILL_CONTAINER);
+    rmDispatcher.getEventHandler().handle(event2);
+    ContainerPreemptEvent event3=new ContainerPreemptEvent(appAttemptId,container,SchedulerEventType.PREEMPT_CONTAINER);
+    rmDispatcher.getEventHandler().handle(event3);
+    Thread.sleep(1000);
+    verify(sched,times(3)).handle(any(SchedulerEvent.class));
+    verify(sched).dropContainerReservation(container);
+    verify(sched).preemptContainer(appAttemptId,container);
+    verify(sched).killContainer(container);
+  }
+ catch (  InterruptedException e) {
+    Assert.fail();
+  }
+ finally {
+    schedulerDispatcher.stop();
+    rmDispatcher.stop();
+  }
+}
