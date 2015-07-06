@@ -1,33 +1,3 @@
 {
-  final int numBlocks=4;
-  DFSTestUtil.createStripedFile(cluster,filePath,dirPath,numBlocks,1,true);
-  final INodeFile fileNode=cluster.getNamesystem().getFSDirectory().getINode4Write(filePath.toString()).asFile();
-  assertFalse(fileNode.isUnderConstruction());
-  assertTrue(fileNode.isStriped());
-  BlockInfo[] blocks=fileNode.getBlocks();
-  assertEquals(numBlocks,blocks.length);
-  for (  BlockInfo blk : blocks) {
-    assertTrue(blk.isStriped());
-    assertTrue(blk.isComplete());
-    assertEquals(BLOCK_STRIPED_CELL_SIZE * NUM_DATA_BLOCKS,blk.getNumBytes());
-    final BlockInfoStriped sb=(BlockInfoStriped)blk;
-    assertEquals(GROUP_SIZE,sb.numNodes());
-  }
-  final BlockManager bm=cluster.getNamesystem().getBlockManager();
-  BlockInfo firstBlock=fileNode.getBlocks()[0];
-  DatanodeStorageInfo[] storageInfos=bm.getStorages(firstBlock);
-  DatanodeDescriptor secondDn=storageInfos[1].getDatanodeDescriptor();
-  assertEquals(numBlocks,secondDn.numBlocks());
-  bm.getDatanodeManager().removeDatanode(secondDn);
-  BlockManagerTestUtil.getComputedDatanodeWork(bm);
-  DataNode lastDn=cluster.getDataNodes().get(GROUP_SIZE);
-  DatanodeDescriptor last=bm.getDatanodeManager().getDatanode(lastDn.getDatanodeId());
-  assertEquals("Counting the number of outstanding EC tasks",numBlocks,last.getNumberOfBlocksToBeErasureCoded());
-  List<BlockECRecoveryInfo> recovery=last.getErasureCodeCommand(numBlocks);
-  for (  BlockECRecoveryInfo info : recovery) {
-    assertEquals(1,info.getTargetDnInfos().length);
-    assertEquals(last,info.getTargetDnInfos()[0]);
-    assertEquals(GROUP_SIZE - 1,info.getSourceDnInfos().length);
-    assertEquals(GROUP_SIZE - 1,info.getLiveBlockIndices().length);
-  }
+  doTestMissingStripedBlock(1,0);
 }
