@@ -1,0 +1,77 @@
+{
+  if (limit == null || limit <= 0) {
+    limit=DEFAULT_LIMIT;
+  }
+  if (createdTimeBegin == null || createdTimeBegin <= 0) {
+    createdTimeBegin=0L;
+  }
+  if (createdTimeEnd == null || createdTimeEnd <= 0) {
+    createdTimeEnd=Long.MAX_VALUE;
+  }
+  if (modifiedTimeBegin == null || modifiedTimeBegin <= 0) {
+    modifiedTimeBegin=0L;
+  }
+  if (modifiedTimeEnd == null || modifiedTimeEnd <= 0) {
+    modifiedTimeEnd=Long.MAX_VALUE;
+  }
+  Map<Long,Set<TimelineEntity>> sortedEntities=new TreeMap<>(new Comparator<Long>(){
+    @Override public int compare(    Long l1,    Long l2){
+      return l2.compareTo(l1);
+    }
+  }
+);
+  for (  File entityFile : dir.listFiles()) {
+    if (!entityFile.getName().contains(TIMELINE_SERVICE_STORAGE_EXTENSION)) {
+      continue;
+    }
+    try (BufferedReader reader=new BufferedReader(new InputStreamReader(new FileInputStream(entityFile),Charset.forName("UTF-8")))){
+      TimelineEntity entity=readEntityFromFile(reader);
+      if (!entity.getType().equals(entityType)) {
+        continue;
+      }
+      if (!isTimeInRange(entity.getCreatedTime(),createdTimeBegin,createdTimeEnd)) {
+        continue;
+      }
+      if (!isTimeInRange(entity.getModifiedTime(),modifiedTimeBegin,modifiedTimeEnd)) {
+        continue;
+      }
+      if (relatesTo != null && !relatesTo.isEmpty() && !matchRelations(entity.getRelatesToEntities(),relatesTo)) {
+        continue;
+      }
+      if (isRelatedTo != null && !isRelatedTo.isEmpty() && !matchRelations(entity.getIsRelatedToEntities(),isRelatedTo)) {
+        continue;
+      }
+      if (infoFilters != null && !infoFilters.isEmpty() && !matchFilters(entity.getInfo(),infoFilters)) {
+        continue;
+      }
+      if (configFilters != null && !configFilters.isEmpty() && !matchFilters(entity.getConfigs(),configFilters)) {
+        continue;
+      }
+      if (metricFilters != null && !metricFilters.isEmpty() && !matchMetricFilters(entity.getMetrics(),metricFilters)) {
+        continue;
+      }
+      if (eventFilters != null && !eventFilters.isEmpty() && !matchEventFilters(entity.getEvents(),eventFilters)) {
+        continue;
+      }
+      TimelineEntity entityToBeReturned=createEntityToBeReturned(entity,fieldsToRetrieve);
+      Set<TimelineEntity> entitiesCreatedAtSameTime=sortedEntities.get(entityToBeReturned.getCreatedTime());
+      if (entitiesCreatedAtSameTime == null) {
+        entitiesCreatedAtSameTime=new HashSet<TimelineEntity>();
+      }
+      entitiesCreatedAtSameTime.add(entityToBeReturned);
+      sortedEntities.put(entityToBeReturned.getCreatedTime(),entitiesCreatedAtSameTime);
+    }
+   }
+  Set<TimelineEntity> entities=new HashSet<TimelineEntity>();
+  long entitiesAdded=0;
+  for (  Set<TimelineEntity> entitySet : sortedEntities.values()) {
+    for (    TimelineEntity entity : entitySet) {
+      entities.add(entity);
+      ++entitiesAdded;
+      if (entitiesAdded >= limit) {
+        return entities;
+      }
+    }
+  }
+  return entities;
+}
