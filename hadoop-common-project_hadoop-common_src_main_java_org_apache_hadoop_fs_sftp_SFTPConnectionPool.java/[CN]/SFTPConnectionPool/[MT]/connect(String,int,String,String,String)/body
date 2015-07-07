@@ -1,0 +1,50 @@
+{
+  ConnectionInfo info=new ConnectionInfo(host,port,user);
+  ChannelSftp channel=getFromPool(info);
+  if (channel != null) {
+    if (channel.isConnected()) {
+      return channel;
+    }
+ else {
+      channel=null;
+synchronized (this) {
+        --liveConnectionCount;
+        con2infoMap.remove(channel);
+      }
+    }
+  }
+  JSch jsch=new JSch();
+  Session session=null;
+  try {
+    if (user == null || user.length() == 0) {
+      user=System.getProperty("user.name");
+    }
+    if (password == null) {
+      password="";
+    }
+    if (keyFile != null && keyFile.length() > 0) {
+      jsch.addIdentity(keyFile);
+    }
+    if (port <= 0) {
+      session=jsch.getSession(user,host);
+    }
+ else {
+      session=jsch.getSession(user,host,port);
+    }
+    session.setPassword(password);
+    java.util.Properties config=new java.util.Properties();
+    config.put("StrictHostKeyChecking","no");
+    session.setConfig(config);
+    session.connect();
+    channel=(ChannelSftp)session.openChannel("sftp");
+    channel.connect();
+synchronized (this) {
+      con2infoMap.put(channel,info);
+      liveConnectionCount++;
+    }
+    return channel;
+  }
+ catch (  JSchException e) {
+    throw new IOException(StringUtils.stringifyException(e));
+  }
+}

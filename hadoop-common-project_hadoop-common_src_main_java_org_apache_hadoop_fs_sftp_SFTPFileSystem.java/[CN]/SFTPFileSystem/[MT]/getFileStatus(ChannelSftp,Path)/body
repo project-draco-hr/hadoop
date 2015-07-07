@@ -1,0 +1,44 @@
+{
+  FileStatus fileStat=null;
+  Path workDir;
+  try {
+    workDir=new Path(client.pwd());
+  }
+ catch (  SftpException e) {
+    throw new IOException(e);
+  }
+  Path absolute=makeAbsolute(workDir,file);
+  Path parentPath=absolute.getParent();
+  if (parentPath == null) {
+    long length=-1;
+    boolean isDir=true;
+    int blockReplication=1;
+    long blockSize=DEFAULT_BLOCK_SIZE;
+    long modTime=-1;
+    Path root=new Path("/");
+    return new FileStatus(length,isDir,blockReplication,blockSize,modTime,root.makeQualified(this.getUri(),this.getWorkingDirectory()));
+  }
+  String pathName=parentPath.toUri().getPath();
+  Vector<LsEntry> sftpFiles;
+  try {
+    sftpFiles=(Vector<LsEntry>)client.ls(pathName);
+  }
+ catch (  SftpException e) {
+    throw new FileNotFoundException(String.format(E_FILE_NOTFOUND,file));
+  }
+  if (sftpFiles != null) {
+    for (    LsEntry sftpFile : sftpFiles) {
+      if (sftpFile.getFilename().equals(file.getName())) {
+        fileStat=getFileStatus(client,sftpFile,parentPath);
+        break;
+      }
+    }
+    if (fileStat == null) {
+      throw new FileNotFoundException(String.format(E_FILE_NOTFOUND,file));
+    }
+  }
+ else {
+    throw new FileNotFoundException(String.format(E_FILE_NOTFOUND,file));
+  }
+  return fileStat;
+}
