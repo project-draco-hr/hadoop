@@ -25,25 +25,54 @@
         throw new MojoExecutionException("Could not create directory: " + output);
       }
     }
+    ChecksumComparator comparator=new ChecksumComparator(checksumPath);
+    boolean importsChanged=false;
     command=new ArrayList<String>();
     command.add(protocCommand);
     command.add("--java_out=" + output.getCanonicalPath());
     if (imports != null) {
       for (      File i : imports) {
+        if (comparator.hasChanged(i)) {
+          importsChanged=true;
+        }
         command.add("-I" + i.getCanonicalPath());
       }
     }
+    List<File> changedSources=new ArrayList<>();
+    boolean sourcesChanged=false;
     for (    File f : FileSetUtils.convertFileSetToFiles(source)) {
-      command.add(f.getCanonicalPath());
-    }
-    exec=new Exec(this);
-    out=new ArrayList<String>();
-    if (exec.run(command,out) != 0) {
-      getLog().error("protoc compiler error");
-      for (      String s : out) {
-        getLog().error(s);
+      if (comparator.hasChanged(f) || importsChanged) {
+        sourcesChanged=true;
+        changedSources.add(f);
+        command.add(f.getCanonicalPath());
       }
-      throw new MojoExecutionException("protoc failure");
+    }
+    if (!sourcesChanged && !importsChanged) {
+      getLog().info("No changes detected in protoc files, skipping " + "generation.");
+    }
+ else {
+      if (getLog().isDebugEnabled()) {
+        StringBuilder b=new StringBuilder();
+        b.append("Generating classes for the following protoc files: [");
+        String prefix="";
+        for (        File f : changedSources) {
+          b.append(prefix);
+          b.append(f.toString());
+          prefix=", ";
+        }
+        b.append("]");
+        getLog().debug(b.toString());
+      }
+      exec=new Exec(this);
+      out=new ArrayList<String>();
+      if (exec.run(command,out) != 0) {
+        getLog().error("protoc compiler error");
+        for (        String s : out) {
+          getLog().error(s);
+        }
+        throw new MojoExecutionException("protoc failure");
+      }
+      comparator.writeChecksums();
     }
   }
  catch (  Throwable ex) {
