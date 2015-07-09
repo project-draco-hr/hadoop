@@ -9,14 +9,16 @@
   long deadline=contract.getDeadline() - contract.getDeadline() % plan.getStep();
   long curDeadline=deadline;
   long oldDeadline=-1;
-  Map<ReservationInterval,ReservationRequest> allocations=new HashMap<ReservationInterval,ReservationRequest>();
+  Map<ReservationInterval,Resource> allocations=new HashMap<ReservationInterval,Resource>();
   RLESparseResourceAllocation tempAssigned=new RLESparseResourceAllocation(plan.getResourceCalculator(),plan.getMinimumAllocation());
   List<ReservationRequest> stages=contract.getReservationRequests().getReservationResources();
   ReservationRequestInterpreter type=contract.getReservationRequests().getInterpreter();
+  boolean hasGang=false;
   for (ListIterator<ReservationRequest> li=stages.listIterator(stages.size()); li.hasPrevious(); ) {
     ReservationRequest currentReservationStage=li.previous();
     validateInput(plan,currentReservationStage,totalCapacity);
-    Map<ReservationInterval,ReservationRequest> curAlloc=placeSingleStage(plan,tempAssigned,currentReservationStage,earliestStart,curDeadline,oldReservation,totalCapacity);
+    hasGang|=currentReservationStage.getConcurrency() > 1;
+    Map<ReservationInterval,Resource> curAlloc=placeSingleStage(plan,tempAssigned,currentReservationStage,earliestStart,curDeadline,oldReservation,totalCapacity);
     if (curAlloc == null) {
       if (type != ReservationRequestInterpreter.R_ANY) {
         throw new PlanningException("The GreedyAgent" + " couldn't find a valid allocation for your request");
@@ -44,13 +46,13 @@
   if (allocations.isEmpty()) {
     throw new PlanningException("The GreedyAgent" + " couldn't find a valid allocation for your request");
   }
-  ReservationRequest ZERO_RES=ReservationRequest.newInstance(Resource.newInstance(0,0),0);
+  Resource ZERO_RES=Resource.newInstance(0,0);
   long firstStartTime=findEarliestTime(allocations.keySet());
   if (firstStartTime > earliestStart) {
     allocations.put(new ReservationInterval(earliestStart,firstStartTime),ZERO_RES);
     firstStartTime=earliestStart;
   }
-  ReservationAllocation capReservation=new InMemoryReservationAllocation(reservationId,contract,user,plan.getQueueName(),firstStartTime,findLatestTime(allocations.keySet()),allocations,plan.getResourceCalculator(),plan.getMinimumAllocation());
+  ReservationAllocation capReservation=new InMemoryReservationAllocation(reservationId,contract,user,plan.getQueueName(),firstStartTime,findLatestTime(allocations.keySet()),allocations,plan.getResourceCalculator(),plan.getMinimumAllocation(),hasGang);
   if (oldReservation != null) {
     return plan.updateReservation(capReservation);
   }
