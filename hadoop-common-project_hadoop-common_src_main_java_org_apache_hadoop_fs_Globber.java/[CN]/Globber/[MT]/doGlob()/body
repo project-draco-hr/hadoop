@@ -1,0 +1,80 @@
+{
+  String scheme=schemeFromPath(pathPattern);
+  String authority=authorityFromPath(pathPattern);
+  String pathPatternString=pathPattern.toUri().getPath();
+  List<String> flattenedPatterns=GlobExpander.expand(pathPatternString);
+  ArrayList<FileStatus> results=new ArrayList<FileStatus>(flattenedPatterns.size());
+  boolean sawWildcard=false;
+  for (  String flatPattern : flattenedPatterns) {
+    Path absPattern=fixRelativePart(new Path(flatPattern.isEmpty() ? Path.CUR_DIR : flatPattern));
+    List<String> components=getPathComponents(absPattern.toUri().getPath());
+    ArrayList<FileStatus> candidates=new ArrayList<FileStatus>(1);
+    FileStatus rootPlaceholder;
+    if (Path.WINDOWS && !components.isEmpty() && Path.isWindowsAbsolutePath(absPattern.toUri().getPath(),true)) {
+      String driveLetter=components.remove(0);
+      rootPlaceholder=new FileStatus(0,true,0,0,0,new Path(scheme,authority,Path.SEPARATOR + driveLetter + Path.SEPARATOR));
+    }
+ else {
+      rootPlaceholder=new FileStatus(0,true,0,0,0,new Path(scheme,authority,Path.SEPARATOR));
+    }
+    candidates.add(rootPlaceholder);
+    for (int componentIdx=0; componentIdx < components.size(); componentIdx++) {
+      ArrayList<FileStatus> newCandidates=new ArrayList<FileStatus>(candidates.size());
+      GlobFilter globFilter=new GlobFilter(components.get(componentIdx));
+      String component=unescapePathComponent(components.get(componentIdx));
+      if (globFilter.hasPattern()) {
+        sawWildcard=true;
+      }
+      if (candidates.isEmpty() && sawWildcard) {
+        break;
+      }
+      if ((componentIdx < components.size() - 1) && (!globFilter.hasPattern())) {
+        for (        FileStatus candidate : candidates) {
+          candidate.setPath(new Path(candidate.getPath(),component));
+        }
+        continue;
+      }
+      for (      FileStatus candidate : candidates) {
+        if (globFilter.hasPattern()) {
+          FileStatus[] children=listStatus(candidate.getPath());
+          if (children.length == 1) {
+            if (!getFileStatus(candidate.getPath()).isDirectory()) {
+              continue;
+            }
+          }
+          for (          FileStatus child : children) {
+            if (componentIdx < components.size() - 1) {
+              if (!child.isDirectory())               continue;
+            }
+            child.setPath(new Path(candidate.getPath(),child.getPath().getName()));
+            if (globFilter.accept(child.getPath())) {
+              newCandidates.add(child);
+            }
+          }
+        }
+ else {
+          FileStatus childStatus=getFileStatus(new Path(candidate.getPath(),component));
+          if (childStatus != null) {
+            newCandidates.add(childStatus);
+          }
+        }
+      }
+      candidates=newCandidates;
+    }
+    for (    FileStatus status : candidates) {
+      if (status == rootPlaceholder) {
+        status=getFileStatus(rootPlaceholder.getPath());
+        if (status == null)         continue;
+      }
+      if (filter.accept(status.getPath())) {
+        results.add(status);
+      }
+    }
+  }
+  if ((!sawWildcard) && results.isEmpty() && (flattenedPatterns.size() <= 1)) {
+    return null;
+  }
+  FileStatus ret[]=results.toArray(new FileStatus[0]);
+  Arrays.sort(ret);
+  return ret;
+}
