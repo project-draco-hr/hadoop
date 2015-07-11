@@ -1,30 +1,35 @@
 {
   FiCaSchedulerApp app=mock(FiCaSchedulerApp.class);
+  ResourceCalculator rc=mCS.getResourceCalculator();
   ApplicationId appId=ApplicationId.newInstance(TS,id);
   ApplicationAttemptId appAttId=ApplicationAttemptId.newInstance(appId,0);
   when(app.getApplicationId()).thenReturn(appId);
   when(app.getApplicationAttemptId()).thenReturn(appAttId);
   int cAlloc=0;
-  Resource unit=Resource.newInstance(gran,0);
+  Resource unit=gran;
   List<RMContainer> cReserved=new ArrayList<RMContainer>();
-  for (int i=0; i < reserved; i+=gran) {
+  Resource resIter=Resource.newInstance(0,0);
+  for (; Resources.lessThan(rc,clusterResources,resIter,reserved); Resources.addTo(resIter,gran)) {
     cReserved.add(mockContainer(appAttId,cAlloc,unit,priority.CONTAINER.getValue()));
     ++cAlloc;
   }
   when(app.getReservedContainers()).thenReturn(cReserved);
   List<RMContainer> cLive=new ArrayList<RMContainer>();
-  for (int i=0; i < used; i+=gran) {
+  Resource usedIter=Resource.newInstance(0,0);
+  int i=0;
+  for (; Resources.lessThan(rc,clusterResources,usedIter,used); Resources.addTo(usedIter,gran)) {
     if (setAMContainer && i == 0) {
       cLive.add(mockContainer(appAttId,cAlloc,unit,priority.AMCONTAINER.getValue()));
     }
  else     if (setLabeledContainer && i == 1) {
       cLive.add(mockContainer(appAttId,cAlloc,unit,priority.LABELEDCONTAINER.getValue()));
-      ++used;
+      Resources.addTo(used,Resource.newInstance(1,1));
     }
  else {
       cLive.add(mockContainer(appAttId,cAlloc,unit,priority.CONTAINER.getValue()));
     }
     ++cAlloc;
+    ++i;
   }
   when(app.getLiveContainers()).thenReturn(cLive);
   return app;
