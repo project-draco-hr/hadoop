@@ -1,0 +1,18 @@
+{
+  final StripingChunk chunk=alignedStripe.chunks[chunkIndex];
+  if (block == null) {
+    chunk.state=StripingChunk.MISSING;
+    return false;
+  }
+  DatanodeInfo loc=block.getLocations()[0];
+  StorageType type=block.getStorageTypes()[0];
+  DNAddrPair dnAddr=new DNAddrPair(loc,NetUtils.createSocketAddr(loc.getXferAddr(dfsClient.getConf().isConnectToDnViaHostname())),type);
+  chunk.state=StripingChunk.PENDING;
+  Callable<Void> readCallable=getFromOneDataNode(dnAddr,block,alignedStripe.getOffsetInBlock(),alignedStripe.getOffsetInBlock() + alignedStripe.getSpanInBlock() - 1,chunk.byteArray.buf(),chunk.byteArray.getOffsets(),chunk.byteArray.getLengths(),corruptedBlockMap,chunkIndex);
+  Future<Void> getFromDNRequest=service.submit(readCallable);
+  if (DFSClient.LOG.isDebugEnabled()) {
+    DFSClient.LOG.debug("Submitting striped read request for " + chunkIndex + ". Info of the block: "+ block+ ", offset in block is "+ alignedStripe.getOffsetInBlock()+ ", end is "+ (alignedStripe.getOffsetInBlock() + alignedStripe.getSpanInBlock() - 1));
+  }
+  futures.put(getFromDNRequest,chunkIndex);
+  return true;
+}

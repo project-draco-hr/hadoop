@@ -1,0 +1,52 @@
+{
+  for (int i=0; i < dataBlkNum; i++) {
+    if (alignedStripe.chunks[i] != null && alignedStripe.chunks[i].state != StripingChunk.ALLZERO) {
+      if (!readChunk(service,targetBlocks[i],i)) {
+        alignedStripe.missingChunksNum++;
+      }
+    }
+  }
+  if (alignedStripe.missingChunksNum > 0) {
+    checkMissingBlocks();
+    readDataForDecoding();
+    readParityChunks(alignedStripe.missingChunksNum);
+  }
+  while (!futures.isEmpty()) {
+    try {
+      StripingChunkReadResult r=getNextCompletedStripedRead(service,futures,0);
+      if (DFSClient.LOG.isDebugEnabled()) {
+        DFSClient.LOG.debug("Read task returned: " + r + ", for stripe "+ alignedStripe);
+      }
+      StripingChunk returnedChunk=alignedStripe.chunks[r.index];
+      Preconditions.checkNotNull(returnedChunk);
+      Preconditions.checkState(returnedChunk.state == StripingChunk.PENDING);
+      if (r.state == StripingChunkReadResult.SUCCESSFUL) {
+        returnedChunk.state=StripingChunk.FETCHED;
+        alignedStripe.fetchedChunksNum++;
+        updateState4SuccessRead(r);
+        if (alignedStripe.fetchedChunksNum == dataBlkNum) {
+          clearFutures(futures.keySet());
+          break;
+        }
+      }
+ else {
+        returnedChunk.state=StripingChunk.MISSING;
+        closeReader(r.index);
+        final int missing=alignedStripe.missingChunksNum;
+        alignedStripe.missingChunksNum++;
+        checkMissingBlocks();
+        readDataForDecoding();
+        readParityChunks(alignedStripe.missingChunksNum - missing);
+      }
+    }
+ catch (    InterruptedException ie) {
+      String err="Read request interrupted";
+      DFSClient.LOG.error(err);
+      clearFutures(futures.keySet());
+      throw new InterruptedIOException(err);
+    }
+  }
+  if (alignedStripe.missingChunksNum > 0) {
+    decode();
+  }
+}

@@ -1,0 +1,24 @@
+{
+  LOG.info("readFileWithMissingBlocks: (" + missingDataNum + ","+ missingParityNum+ ")");
+  final byte[] expected=StripedFileTestUtil.generateBytes(fileLength);
+  DFSTestUtil.writeFile(fs,srcPath,new String(expected));
+  StripedFileTestUtil.verifyLength(fs,srcPath,fileLength);
+  int dataBlocks=(fileLength - 1) / cellSize + 1;
+  BlockLocation[] locs=fs.getFileBlockLocations(srcPath,0,cellSize);
+  int[] missingDataNodes=new int[missingDataNum + missingParityNum];
+  for (int i=0; i < missingDataNum; i++) {
+    missingDataNodes[i]=i;
+  }
+  for (int i=0; i < missingParityNum; i++) {
+    missingDataNodes[i + missingDataNum]=i + Math.min(StripedFileTestUtil.dataBlocks,dataBlocks);
+  }
+  stopDataNodes(locs,missingDataNodes);
+  BlockLocation[] newLocs=fs.getFileBlockLocations(srcPath,0,cellSize);
+  Assert.assertTrue(newLocs[0].getNames().length < locs[0].getNames().length);
+  byte[] smallBuf=new byte[1024];
+  byte[] largeBuf=new byte[fileLength + 100];
+  StripedFileTestUtil.verifySeek(fs,srcPath,fileLength);
+  StripedFileTestUtil.verifyStatefulRead(fs,srcPath,fileLength,expected,smallBuf);
+  StripedFileTestUtil.verifyPread(fs,srcPath,fileLength,expected,largeBuf);
+  fs.delete(srcPath,true);
+}
