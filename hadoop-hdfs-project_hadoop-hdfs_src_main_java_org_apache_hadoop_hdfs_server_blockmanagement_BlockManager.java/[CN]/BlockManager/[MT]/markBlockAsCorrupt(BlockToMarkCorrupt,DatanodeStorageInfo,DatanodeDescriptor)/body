@@ -8,14 +8,18 @@
   if (storageInfo != null) {
     storageInfo.addBlock(b.stored,b.corrupted);
   }
-  corruptReplicas.addToCorruptReplicasMap(b.corrupted,node,b.reason,b.reasonCode);
+  Block corrupted=new Block(b.corrupted);
+  if (b.stored.isStriped()) {
+    corrupted.setBlockId(b.stored.getBlockId());
+  }
+  corruptReplicas.addToCorruptReplicasMap(corrupted,node,b.reason,b.reasonCode);
   NumberReplicas numberOfReplicas=countNodes(b.stored);
   boolean hasEnoughLiveReplicas=numberOfReplicas.liveReplicas() >= expectedReplicas;
   boolean minReplicationSatisfied=hasMinStorage(b.stored,numberOfReplicas.liveReplicas());
   boolean hasMoreCorruptReplicas=minReplicationSatisfied && (numberOfReplicas.liveReplicas() + numberOfReplicas.corruptReplicas()) > expectedReplicas;
   boolean corruptedDuringWrite=minReplicationSatisfied && (b.stored.getGenerationStamp() > b.corrupted.getGenerationStamp());
   if (hasEnoughLiveReplicas || hasMoreCorruptReplicas || corruptedDuringWrite) {
-    invalidateBlock(b,node);
+    invalidateBlock(b,node,numberOfReplicas);
   }
  else   if (namesystem.isPopulatingReplQueues()) {
     updateNeededReplications(b.stored,-1,0);

@@ -1,0 +1,38 @@
+{
+  final Path file=new Path("/corrupted");
+  final int length=10;
+  final byte[] bytes=StripedFileTestUtil.generateBytes(length);
+  DFSTestUtil.writeFile(fs,file,bytes);
+  int dnIndex=findFirstDataNode(file,cellSize * dataBlocks);
+  Assert.assertNotEquals(-1,dnIndex);
+  LocatedStripedBlock slb=(LocatedStripedBlock)fs.getClient().getLocatedBlocks(file.toString(),0,cellSize * dataBlocks).get(0);
+  final LocatedBlock[] blks=StripedBlockUtil.parseStripedBlockGroup(slb,cellSize,dataBlocks,parityBlocks);
+  File storageDir=cluster.getInstanceStorageDir(dnIndex,0);
+  File blkFile=MiniDFSCluster.getBlockFile(storageDir,blks[0].getBlock());
+  Assert.assertTrue("Block file does not exist",blkFile.exists());
+  LOG.info("Deliberately corrupting file " + blkFile.getName());
+  try (FileOutputStream out=new FileOutputStream(blkFile)){
+    out.write("corruption".getBytes());
+  }
+   for (  DataNode dn : cluster.getDataNodes()) {
+    DataNodeTestUtils.setHeartbeatsDisabledForTests(dn,true);
+  }
+  ByteBuffer result=ByteBuffer.allocate(length);
+  ByteBuffer buf=ByteBuffer.allocate(1024);
+  int readLen=0;
+  int ret;
+  try (FSDataInputStream in=fs.open(file)){
+    while ((ret=in.read(buf)) >= 0) {
+      readLen+=ret;
+      buf.flip();
+      result.put(buf);
+      buf.clear();
+    }
+  }
+   Assert.assertEquals("The length of file should be the same to write size",length,readLen);
+  Assert.assertArrayEquals(bytes,result.array());
+  final FSNamesystem ns=cluster.getNamesystem();
+  final BlockManager bm=ns.getBlockManager();
+  BlockInfo blockInfo=(ns.getFSDirectory().getINode4Write(file.toString()).asFile().getBlocks())[0];
+  Assert.assertEquals(1,bm.getCorruptReplicas(blockInfo).size());
+}
