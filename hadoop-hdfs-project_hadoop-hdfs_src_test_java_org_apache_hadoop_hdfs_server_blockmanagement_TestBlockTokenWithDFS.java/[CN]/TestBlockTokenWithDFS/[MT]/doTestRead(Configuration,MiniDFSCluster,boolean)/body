@@ -1,0 +1,141 @@
+{
+  final int numDataNodes=cluster.getDataNodes().size();
+  final NameNode nn=cluster.getNameNode();
+  final NamenodeProtocols nnProto=nn.getRpcServer();
+  final BlockManager bm=nn.getNamesystem().getBlockManager();
+  final BlockTokenSecretManager sm=bm.getBlockTokenSecretManager();
+  SecurityTestUtil.setBlockTokenLifetime(sm,1000L);
+  Path fileToRead=new Path(FILE_TO_READ);
+  FileSystem fs=cluster.getFileSystem();
+  byte[] expected=generateBytes(FILE_SIZE);
+  createFile(fs,fileToRead,expected);
+  FSDataInputStream in1=fs.open(fileToRead);
+  assertTrue(checkFile1(in1,expected));
+  FSDataInputStream in2=fs.open(fileToRead);
+  assertTrue(checkFile1(in2,expected));
+  FSDataInputStream in3=fs.open(fileToRead);
+  assertTrue(checkFile2(in3,expected));
+  DFSClient client=null;
+  try {
+    client=new DFSClient(new InetSocketAddress("localhost",cluster.getNameNodePort()),conf);
+  }
+  finally {
+    if (client != null)     client.close();
+  }
+  List<LocatedBlock> locatedBlocks=nnProto.getBlockLocations(FILE_TO_READ,0,FILE_SIZE).getLocatedBlocks();
+  LocatedBlock lblock=locatedBlocks.get(0);
+  assertFalse(isBlockTokenExpired(lblock));
+  tryRead(conf,lblock,true);
+  while (!isBlockTokenExpired(lblock)) {
+    try {
+      Thread.sleep(10);
+    }
+ catch (    InterruptedException ignored) {
+    }
+  }
+  assertTrue(isBlockTokenExpired(lblock));
+  tryRead(conf,lblock,false);
+  bm.setBlockToken(lblock,BlockTokenIdentifier.AccessMode.READ);
+  tryRead(conf,lblock,true);
+  long rightId=lblock.getBlock().getBlockId();
+  long wrongId=rightId + 1;
+  lblock.getBlock().setBlockId(wrongId);
+  bm.setBlockToken(lblock,BlockTokenIdentifier.AccessMode.READ);
+  lblock.getBlock().setBlockId(rightId);
+  tryRead(conf,lblock,false);
+  bm.setBlockToken(lblock,BlockTokenIdentifier.AccessMode.WRITE);
+  tryRead(conf,lblock,false);
+  SecurityTestUtil.setBlockTokenLifetime(sm,600 * 1000L);
+  List<LocatedBlock> lblocks=DFSTestUtil.getAllBlocks(in1);
+  for (  LocatedBlock blk : lblocks) {
+    assertTrue(isBlockTokenExpired(blk));
+  }
+  in1.seek(0);
+  assertTrue(checkFile1(in1,expected));
+  List<LocatedBlock> lblocks2=DFSTestUtil.getAllBlocks(in2);
+  for (  LocatedBlock blk : lblocks2) {
+    assertTrue(isBlockTokenExpired(blk));
+  }
+  if (isStriped) {
+    in2.seek(0);
+  }
+ else {
+    assertTrue(in2.seekToNewSource(0));
+  }
+  assertTrue(checkFile1(in2,expected));
+  List<LocatedBlock> lblocks3=DFSTestUtil.getAllBlocks(in3);
+  for (  LocatedBlock blk : lblocks3) {
+    assertTrue(isBlockTokenExpired(blk));
+  }
+  assertTrue(checkFile2(in3,expected));
+  assertTrue(cluster.restartDataNodes(true));
+  cluster.waitActive();
+  assertEquals(numDataNodes,cluster.getDataNodes().size());
+  cluster.shutdownNameNode(0);
+  lblocks=DFSTestUtil.getAllBlocks(in1);
+  for (  LocatedBlock blk : lblocks) {
+    assertFalse(isBlockTokenExpired(blk));
+  }
+  in1.seek(0);
+  assertTrue(checkFile1(in1,expected));
+  lblocks2=DFSTestUtil.getAllBlocks(in2);
+  for (  LocatedBlock blk : lblocks2) {
+    assertFalse(isBlockTokenExpired(blk));
+  }
+  if (isStriped) {
+    in2.seek(0);
+  }
+ else {
+    in2.seekToNewSource(0);
+  }
+  assertTrue(checkFile1(in2,expected));
+  lblocks3=DFSTestUtil.getAllBlocks(in3);
+  for (  LocatedBlock blk : lblocks3) {
+    assertFalse(isBlockTokenExpired(blk));
+  }
+  assertTrue(checkFile2(in3,expected));
+  cluster.restartNameNode(0);
+  cluster.shutdownNameNode(0);
+  in1.seek(0);
+  assertTrue(checkFile1(in1,expected));
+  if (isStriped) {
+    in2.seek(0);
+  }
+ else {
+    in2.seekToNewSource(0);
+  }
+  assertTrue(checkFile1(in2,expected));
+  assertTrue(checkFile2(in3,expected));
+  cluster.restartNameNode(0);
+  assertTrue(cluster.restartDataNodes(true));
+  cluster.waitActive();
+  assertEquals(numDataNodes,cluster.getDataNodes().size());
+  cluster.shutdownNameNode(0);
+  in1.seek(0);
+  assertFalse(checkFile1(in1,expected));
+  assertFalse(checkFile2(in3,expected));
+  cluster.restartNameNode(0);
+  in1.seek(0);
+  assertTrue(checkFile1(in1,expected));
+  if (isStriped) {
+    in2.seek(0);
+  }
+ else {
+    in2.seekToNewSource(0);
+  }
+  assertTrue(checkFile1(in2,expected));
+  assertTrue(checkFile2(in3,expected));
+  assertTrue(cluster.restartDataNodes(false));
+  cluster.waitActive();
+  assertEquals(numDataNodes,cluster.getDataNodes().size());
+  in1.seek(0);
+  assertTrue(checkFile1(in1,expected));
+  if (isStriped) {
+    in2.seek(0);
+  }
+ else {
+    in2.seekToNewSource(0);
+  }
+  assertTrue(checkFile1(in2,expected));
+  assertTrue(checkFile2(in3,expected));
+}
