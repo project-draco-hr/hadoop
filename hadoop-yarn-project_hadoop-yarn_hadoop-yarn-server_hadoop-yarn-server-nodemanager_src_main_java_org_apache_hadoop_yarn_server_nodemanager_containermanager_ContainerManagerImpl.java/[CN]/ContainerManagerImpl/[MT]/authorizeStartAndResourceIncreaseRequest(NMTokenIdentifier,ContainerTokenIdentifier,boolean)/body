@@ -8,12 +8,12 @@
   ContainerId containerId=containerTokenIdentifier.getContainerID();
   String containerIDStr=containerId.toString();
   boolean unauthorized=false;
-  StringBuilder messageBuilder=new StringBuilder("Unauthorized request to start container. ");
+  StringBuilder messageBuilder=new StringBuilder("Unauthorized request to " + (startRequest ? "start container." : "increase container resource."));
   if (!nmTokenIdentifier.getApplicationAttemptId().getApplicationId().equals(containerId.getApplicationAttemptId().getApplicationId())) {
     unauthorized=true;
-    messageBuilder.append("\nNMToken for application attempt : ").append(nmTokenIdentifier.getApplicationAttemptId()).append(" was used for starting container with container token").append(" issued for application attempt : ").append(containerId.getApplicationAttemptId());
+    messageBuilder.append("\nNMToken for application attempt : ").append(nmTokenIdentifier.getApplicationAttemptId()).append(" was used for " + (startRequest ? "starting " : "increasing resource of ") + "container with container token").append(" issued for application attempt : ").append(containerId.getApplicationAttemptId());
   }
- else   if (!this.context.getContainerTokenSecretManager().isValidStartContainerRequest(containerTokenIdentifier)) {
+ else   if (startRequest && !this.context.getContainerTokenSecretManager().isValidStartContainerRequest(containerTokenIdentifier)) {
     unauthorized=true;
     messageBuilder.append("\n Attempt to relaunch the same ").append("container with id ").append(containerIDStr).append(".");
   }
@@ -26,5 +26,10 @@
     String msg=messageBuilder.toString();
     LOG.error(msg);
     throw RPCUtil.getRemoteException(msg);
+  }
+  if (containerTokenIdentifier.getRMIdentifier() != nodeStatusUpdater.getRMIdentifier()) {
+    StringBuilder sb=new StringBuilder("\nContainer ");
+    sb.append(containerTokenIdentifier.getContainerID().toString()).append(" rejected as it is allocated by a previous RM");
+    throw new InvalidContainerException(sb.toString());
   }
 }

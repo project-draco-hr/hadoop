@@ -1,0 +1,38 @@
+{
+  Container container=context.getContainers().get(containerId);
+  if (container == null) {
+    if (nodeStatusUpdater.isContainerRecentlyStopped(containerId)) {
+      throw RPCUtil.getRemoteException("Container " + containerId.toString() + " was recently stopped on node manager.");
+    }
+ else {
+      throw RPCUtil.getRemoteException("Container " + containerId.toString() + " is not handled by this NodeManager");
+    }
+  }
+  org.apache.hadoop.yarn.server.nodemanager.containermanager.container.ContainerState currentState=container.getContainerState();
+  if (currentState != org.apache.hadoop.yarn.server.nodemanager.containermanager.container.ContainerState.RUNNING) {
+    throw RPCUtil.getRemoteException("Container " + containerId.toString() + " is in "+ currentState.name()+ " state."+ " Resource can only be changed when a container is in"+ " RUNNING state");
+  }
+  Resource currentResource=container.getResource();
+  if (currentResource.equals(targetResource)) {
+    LOG.warn("Unable to change resource for container " + containerId.toString() + ". The target resource "+ targetResource.toString()+ " is the same as the current resource");
+    return;
+  }
+  if (increase && !Resources.fitsIn(currentResource,targetResource)) {
+    throw RPCUtil.getRemoteException("Unable to increase resource for " + "container " + containerId.toString() + ". The target resource "+ targetResource.toString()+ " is smaller than the current resource "+ currentResource.toString());
+  }
+  if (!increase && (!Resources.fitsIn(Resources.none(),targetResource) || !Resources.fitsIn(targetResource,currentResource))) {
+    throw RPCUtil.getRemoteException("Unable to decrease resource for " + "container " + containerId.toString() + ". The target resource "+ targetResource.toString()+ " is not smaller than the current resource "+ currentResource.toString());
+  }
+  this.readLock.lock();
+  try {
+    if (!serviceStopped) {
+      dispatcher.getEventHandler().handle(new ChangeContainerResourceEvent(containerId,targetResource));
+    }
+ else {
+      throw new YarnException("Unable to change container resource as the NodeManager is " + "in the process of shutting down");
+    }
+  }
+  finally {
+    this.readLock.unlock();
+  }
+}
