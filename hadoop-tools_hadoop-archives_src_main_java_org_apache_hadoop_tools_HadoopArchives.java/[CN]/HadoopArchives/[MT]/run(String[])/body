@@ -1,37 +1,40 @@
 {
   try {
-    Path parentPath=null;
-    List<Path> srcPaths=new ArrayList<Path>();
-    Path destPath=null;
-    String archiveName=null;
-    if (args.length < 5) {
-      System.out.println(usage);
-      throw new IOException("Invalid usage.");
+    Options options=new Options();
+    options.addOption(ARCHIVE_NAME,true,"Name of the Archive. This is mandatory option");
+    options.addOption(PARENT_PATH,true,"Parent path of sources. This is mandatory option");
+    options.addOption(REPLICATION,true,"Replication factor archive files");
+    options.addOption(HELP,false,"Show the usage");
+    Parser parser=new GnuParser();
+    CommandLine commandLine=parser.parse(options,args,true);
+    if (commandLine.hasOption(HELP)) {
+      printUsage(options,true);
+      return 0;
     }
-    if (!"-archiveName".equals(args[0])) {
-      System.out.println(usage);
+    if (!commandLine.hasOption(ARCHIVE_NAME)) {
+      printUsage(options,false);
       throw new IOException("Archive Name not specified.");
     }
-    archiveName=args[1];
+    String archiveName=commandLine.getOptionValue(ARCHIVE_NAME);
     if (!checkValidName(archiveName)) {
-      System.out.println(usage);
+      printUsage(options,false);
       throw new IOException("Invalid name for archives. " + archiveName);
     }
-    int i=2;
-    if (!"-p".equals(args[i])) {
-      System.out.println(usage);
+    if (!commandLine.hasOption(PARENT_PATH)) {
+      printUsage(options,false);
       throw new IOException("Parent path not specified.");
     }
-    parentPath=new Path(args[i + 1]);
+    Path parentPath=new Path(commandLine.getOptionValue(PARENT_PATH));
     if (!parentPath.isAbsolute()) {
       parentPath=parentPath.getFileSystem(getConf()).makeQualified(parentPath);
     }
-    i+=2;
-    if ("-r".equals(args[i])) {
-      repl=Short.parseShort(args[i + 1]);
-      i+=2;
+    if (commandLine.hasOption(REPLICATION)) {
+      repl=Short.parseShort(commandLine.getOptionValue(REPLICATION));
     }
-    for (; i < args.length; i++) {
+    args=commandLine.getArgs();
+    List<Path> srcPaths=new ArrayList<Path>();
+    Path destPath=null;
+    for (int i=0; i < args.length; i++) {
       if (i == (args.length - 1)) {
         destPath=new Path(args[i]);
         if (!destPath.isAbsolute()) {
@@ -41,11 +44,15 @@
  else {
         Path argPath=new Path(args[i]);
         if (argPath.isAbsolute()) {
-          System.out.println(usage);
+          printUsage(options,false);
           throw new IOException("Source path " + argPath + " is not relative to "+ parentPath);
         }
         srcPaths.add(new Path(parentPath,argPath));
       }
+    }
+    if (destPath == null) {
+      printUsage(options,false);
+      throw new IOException("Destination path not specified.");
     }
     if (srcPaths.size() == 0) {
       srcPaths.add(parentPath);
