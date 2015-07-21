@@ -1,0 +1,40 @@
+{
+  Configuration conf=new Configuration();
+  conf.setClass(YarnConfiguration.RM_SCHEDULER,CapacityScheduler.class,ResourceScheduler.class);
+  conf.setInt(YarnConfiguration.MAX_CLUSTER_LEVEL_APPLICATION_PRIORITY,10);
+  MockRM rm=new MockRM(conf);
+  rm.start();
+  Priority appPriority1=Priority.newInstance(5);
+  MockNM nm1=rm.registerNode("127.0.0.1:1234",8 * GB);
+  RMApp app1=rm.submitApp(1 * GB,appPriority1);
+  MockAM am1=MockRM.launchAM(app1,rm,nm1);
+  am1.registerAppAttempt();
+  am1.addRequests(new String[]{"127.0.0.1","127.0.0.2"},1 * GB,1,7);
+  AllocateResponse alloc1Response=am1.schedule();
+  nm1.nodeHeartbeat(true);
+  while (alloc1Response.getAllocatedContainers().size() < 1) {
+    LOG.info("Waiting for containers to be created for app 1...");
+    Thread.sleep(100);
+    alloc1Response=am1.schedule();
+  }
+  List<Container> allocated1=alloc1Response.getAllocatedContainers();
+  Assert.assertEquals(7,allocated1.size());
+  Assert.assertEquals(1 * GB,allocated1.get(0).getResource().getMemory());
+  SchedulerNodeReport report_nm1=rm.getResourceScheduler().getNodeReport(nm1.getNodeId());
+  Assert.assertEquals(8 * GB,report_nm1.getUsedResource().getMemory());
+  Assert.assertEquals(0 * GB,report_nm1.getAvailableResource().getMemory());
+  Priority appPriority2=Priority.newInstance(7);
+  RMApp app2=rm.submitApp(1 * GB,appPriority2);
+  Priority appPriority3=Priority.newInstance(8);
+  RMApp app3=rm.submitApp(1 * GB,appPriority3);
+  Priority appPriority4=Priority.newInstance(6);
+  RMApp app4=rm.submitApp(1 * GB,appPriority4);
+  rm.killApp(app1.getApplicationId());
+  nm1.nodeHeartbeat(true);
+  MockAM am3=rm.sendAMLaunched(app3.getCurrentAppAttempt().getAppAttemptId());
+  am3.registerAppAttempt();
+  report_nm1=rm.getResourceScheduler().getNodeReport(nm1.getNodeId());
+  Assert.assertEquals(1 * GB,report_nm1.getUsedResource().getMemory());
+  Assert.assertEquals(7 * GB,report_nm1.getAvailableResource().getMemory());
+  rm.stop();
+}
