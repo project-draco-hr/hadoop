@@ -1,10 +1,18 @@
 {
   LocatedStripedBlock blockGroup=getBlockGroupAt(block.getStartOffset());
-  AlignedStripe[] stripes=divideByteRangeIntoStripes(schema,cellSize,blockGroup,start,end,buf,offset);
+  AlignedStripe[] stripes=StripedBlockUtil.divideByteRangeIntoStripes(schema,cellSize,blockGroup,start,end,buf,offset);
   CompletionService<Void> readService=new ExecutorCompletionService<>(dfsClient.getStripedReadsThreadPool());
   final LocatedBlock[] blks=StripedBlockUtil.parseStripedBlockGroup(blockGroup,cellSize,dataBlkNum,parityBlkNum);
-  for (  AlignedStripe stripe : stripes) {
-    StripeReader preader=new PositionStripeReader(readService,stripe,blks,corruptedBlockMap);
-    preader.readStripe();
+  final BlockReaderInfo[] preaderInfos=new BlockReaderInfo[groupSize];
+  try {
+    for (    AlignedStripe stripe : stripes) {
+      StripeReader preader=new PositionStripeReader(readService,stripe,blks,preaderInfos,corruptedBlockMap);
+      preader.readStripe();
+    }
+  }
+  finally {
+    for (    BlockReaderInfo preaderInfo : preaderInfos) {
+      closeReader(preaderInfo);
+    }
   }
 }
