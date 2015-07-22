@@ -1,0 +1,23 @@
+{
+  final Path file=new Path("/invalidate");
+  final int length=10;
+  final byte[] bytes=StripedFileTestUtil.generateBytes(length);
+  DFSTestUtil.writeFile(fs,file,bytes);
+  int dnIndex=findFirstDataNode(file,cellSize * dataBlocks);
+  Assert.assertNotEquals(-1,dnIndex);
+  LocatedStripedBlock slb=(LocatedStripedBlock)fs.getClient().getLocatedBlocks(file.toString(),0,cellSize * dataBlocks).get(0);
+  final LocatedBlock[] blks=StripedBlockUtil.parseStripedBlockGroup(slb,cellSize,dataBlocks,parityBlocks);
+  final Block b=blks[0].getBlock().getLocalBlock();
+  DataNode dn=cluster.getDataNodes().get(dnIndex);
+  DataNodeTestUtils.setHeartbeatsDisabledForTests(dn,true);
+  try {
+    fs.delete(file,true);
+    final FSNamesystem fsn=cluster.getNamesystem();
+    final BlockManager bm=fsn.getBlockManager();
+    DatanodeDescriptor dnd=NameNodeAdapter.getDatanode(fsn,dn.getDatanodeId());
+    Assert.assertTrue(bm.containsInvalidateBlock(blks[0].getLocations()[0],b) || dnd.containsInvalidateBlock(b));
+  }
+  finally {
+    DataNodeTestUtils.setHeartbeatsDisabledForTests(dn,false);
+  }
+}
