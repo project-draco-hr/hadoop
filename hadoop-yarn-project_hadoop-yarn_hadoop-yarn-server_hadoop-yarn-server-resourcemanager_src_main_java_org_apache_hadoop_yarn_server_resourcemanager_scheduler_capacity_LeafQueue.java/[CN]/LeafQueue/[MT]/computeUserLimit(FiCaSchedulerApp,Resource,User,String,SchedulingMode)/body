@@ -1,0 +1,22 @@
+{
+  Resource queueCapacity=Resources.multiplyAndNormalizeUp(resourceCalculator,labelManager.getResourceByLabel(nodePartition,clusterResource),queueCapacities.getAbsoluteCapacity(nodePartition),minimumAllocation);
+  Resource required=minimumAllocation;
+  queueCapacity=Resources.max(resourceCalculator,clusterResource,queueCapacity,required);
+  Resource currentCapacity=Resources.lessThan(resourceCalculator,clusterResource,queueUsage.getUsed(nodePartition),queueCapacity) ? queueCapacity : Resources.add(queueUsage.getUsed(nodePartition),required);
+  final int activeUsers=activeUsersManager.getNumActiveUsers();
+  Resource userLimitResource=Resources.max(resourceCalculator,clusterResource,Resources.divideAndCeil(resourceCalculator,currentCapacity,activeUsers),Resources.divideAndCeil(resourceCalculator,Resources.multiplyAndRoundDown(currentCapacity,userLimit),100));
+  Resource maxUserLimit=Resources.none();
+  if (schedulingMode == SchedulingMode.RESPECT_PARTITION_EXCLUSIVITY) {
+    maxUserLimit=Resources.multiplyAndRoundDown(queueCapacity,userLimitFactor);
+  }
+ else   if (schedulingMode == SchedulingMode.IGNORE_PARTITION_EXCLUSIVITY) {
+    maxUserLimit=labelManager.getResourceByLabel(nodePartition,clusterResource);
+  }
+  userLimitResource=Resources.roundUp(resourceCalculator,Resources.min(resourceCalculator,clusterResource,userLimitResource,maxUserLimit),minimumAllocation);
+  if (LOG.isDebugEnabled()) {
+    String userName=application.getUser();
+    LOG.debug("User limit computation for " + userName + " in queue "+ getQueueName()+ " userLimitPercent="+ userLimit+ " userLimitFactor="+ userLimitFactor+ " required: "+ required+ " consumed: "+ user.getUsed()+ " user-limit-resource: "+ userLimitResource+ " queueCapacity: "+ queueCapacity+ " qconsumed: "+ queueUsage.getUsed()+ " currentCapacity: "+ currentCapacity+ " activeUsers: "+ activeUsers+ " clusterCapacity: "+ clusterResource);
+  }
+  user.setUserResourceLimit(userLimitResource);
+  return userLimitResource;
+}
