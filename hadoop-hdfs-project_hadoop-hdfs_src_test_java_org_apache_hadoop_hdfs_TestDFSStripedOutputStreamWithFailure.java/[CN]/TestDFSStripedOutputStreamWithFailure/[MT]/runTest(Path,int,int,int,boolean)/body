@@ -1,0 +1,40 @@
+{
+  LOG.info("p=" + p + ", length="+ length+ ", killPos="+ killPos+ ", dnIndex="+ dnIndex);
+  Preconditions.checkArgument(killPos < length);
+  Preconditions.checkArgument(killPos > FLUSH_POS);
+  final String fullPath=p.toString();
+  final NameNode nn=cluster.getNameNode();
+  final BlockManager bm=nn.getNamesystem().getBlockManager();
+  final BlockTokenSecretManager sm=bm.getBlockTokenSecretManager();
+  if (tokenExpire) {
+    SecurityTestUtil.setBlockTokenLifetime(sm,1000L);
+  }
+  final AtomicInteger pos=new AtomicInteger();
+  final FSDataOutputStream out=dfs.create(p);
+  final DFSStripedOutputStream stripedOut=(DFSStripedOutputStream)out.getWrappedStream();
+  long oldGS=-1;
+  boolean killed=false;
+  for (; pos.get() < length; ) {
+    final int i=pos.getAndIncrement();
+    if (i == killPos) {
+      final long gs=getGenerationStamp(stripedOut);
+      Assert.assertTrue(oldGS != -1);
+      Assert.assertEquals(oldGS,gs);
+      if (tokenExpire) {
+        DFSTestUtil.flushInternal(stripedOut);
+        waitTokenExpires(out);
+      }
+      killDatanode(cluster,stripedOut,dnIndex,pos);
+      killed=true;
+    }
+    write(out,i);
+    if (i == FLUSH_POS) {
+      oldGS=getGenerationStamp(stripedOut);
+    }
+  }
+  out.close();
+  Assert.assertTrue(killed);
+  final FileStatus status=dfs.getFileStatus(p);
+  Assert.assertEquals(length,status.getLen());
+  checkData(dfs,fullPath,length,dnIndex,oldGS);
+}

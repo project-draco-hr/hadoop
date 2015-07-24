@@ -1,0 +1,38 @@
+{
+  int numOfDatanodes=dataBlocks + parityBlocks + 2;
+  int numOfRacks=dataBlocks;
+  long capacity=20 * DEFAULT_STRIPE_BLOCK_SIZE;
+  long[] capacities=new long[numOfDatanodes];
+  for (int i=0; i < capacities.length; i++) {
+    capacities[i]=capacity;
+  }
+  String[] racks=new String[numOfDatanodes];
+  for (int i=0; i < numOfDatanodes; i++) {
+    racks[i]="/rack" + (i % numOfRacks);
+  }
+  cluster=new MiniDFSCluster.Builder(conf).numDataNodes(numOfDatanodes).racks(racks).simulatedCapacities(capacities).build();
+  try {
+    cluster.waitActive();
+    client=NameNodeProxies.createProxy(conf,cluster.getFileSystem(0).getUri(),ClientProtocol.class).getProxy();
+    client.createErasureCodingZone("/",null,0);
+    long totalCapacity=sum(capacities);
+    long fileLen=totalCapacity * 3 / 10;
+    long totalUsedSpace=fileLen * (dataBlocks + parityBlocks) / dataBlocks;
+    FileSystem fs=cluster.getFileSystem(0);
+    DFSTestUtil.createFile(fs,filePath,fileLen,(short)3,r.nextLong());
+    LocatedBlocks locatedBlocks=client.getBlockLocations(fileName,0,fileLen);
+    DFSTestUtil.verifyLocatedStripedBlocks(locatedBlocks,groupSize);
+    String newRack="/rack" + (++numOfRacks);
+    cluster.startDataNodes(conf,1,true,null,new String[]{newRack},null,new long[]{capacity});
+    totalCapacity+=capacity;
+    cluster.triggerHeartbeats();
+    Balancer.Parameters p=Balancer.Parameters.DEFAULT;
+    Collection<URI> namenodes=DFSUtil.getNsServiceRpcUris(conf);
+    runBalancer(conf,totalUsedSpace,totalCapacity,p,0);
+    locatedBlocks=client.getBlockLocations(fileName,0,fileLen);
+    DFSTestUtil.verifyLocatedStripedBlocks(locatedBlocks,groupSize);
+  }
+  finally {
+    cluster.shutdown();
+  }
+}
