@@ -1,0 +1,57 @@
+{
+  Map<Future<Object>,ProxyInfo<T>> proxyMap=new HashMap<>();
+  int numAttempts=0;
+  ExecutorService executor=null;
+  CompletionService<Object> completionService;
+  try {
+    targetProxies.remove(toIgnore);
+    if (targetProxies.size() == 1) {
+      ProxyInfo<T> proxyInfo=targetProxies.values().iterator().next();
+      Object retVal=method.invoke(proxyInfo.proxy,args);
+      successfulProxy=proxyInfo;
+      return retVal;
+    }
+    executor=Executors.newFixedThreadPool(proxies.size());
+    completionService=new ExecutorCompletionService<>(executor);
+    for (    final Map.Entry<String,ProxyInfo<T>> pEntry : targetProxies.entrySet()) {
+      Callable<Object> c=new Callable<Object>(){
+        @Override public Object call() throws Exception {
+          return method.invoke(pEntry.getValue().proxy,args);
+        }
+      }
+;
+      proxyMap.put(completionService.submit(c),pEntry.getValue());
+      numAttempts++;
+    }
+    Map<String,Exception> badResults=new HashMap<>();
+    while (numAttempts > 0) {
+      Future<Object> callResultFuture=completionService.take();
+      Object retVal;
+      try {
+        retVal=callResultFuture.get();
+        successfulProxy=proxyMap.get(callResultFuture);
+        if (LOG.isDebugEnabled()) {
+          LOG.debug("Invocation successful on [" + successfulProxy.proxyInfo + "]");
+        }
+        return retVal;
+      }
+ catch (      Exception ex) {
+        ProxyInfo<T> tProxyInfo=proxyMap.get(callResultFuture);
+        LOG.warn("Invocation returned exception on " + "[" + tProxyInfo.proxyInfo + "]");
+        badResults.put(tProxyInfo.proxyInfo,ex);
+        numAttempts--;
+      }
+    }
+    if (badResults.size() == 1) {
+      throw badResults.values().iterator().next();
+    }
+ else {
+      throw new MultiException(badResults);
+    }
+  }
+  finally {
+    if (executor != null) {
+      executor.shutdownNow();
+    }
+  }
+}
