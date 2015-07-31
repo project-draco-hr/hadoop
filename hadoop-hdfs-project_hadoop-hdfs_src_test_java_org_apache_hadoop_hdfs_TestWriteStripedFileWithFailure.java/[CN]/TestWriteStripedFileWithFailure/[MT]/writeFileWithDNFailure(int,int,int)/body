@@ -1,0 +1,37 @@
+{
+  String fileType=fileLength < (blockSize * dataBlocks) ? "smallFile" : "largeFile";
+  String src="/dnFailure_" + dataDNFailureNum + "_"+ parityDNFailureNum+ "_"+ fileType;
+  LOG.info("writeFileWithDNFailure: file = " + src + ", fileType = "+ fileType+ ", dataDNFailureNum = "+ dataDNFailureNum+ ", parityDNFailureNum = "+ parityDNFailureNum);
+  Path srcPath=new Path(src);
+  final AtomicInteger pos=new AtomicInteger();
+  final FSDataOutputStream out=fs.create(srcPath);
+  final DFSStripedOutputStream stripedOut=(DFSStripedOutputStream)out.getWrappedStream();
+  int[] dataDNFailureIndices=StripedFileTestUtil.randomArray(0,dataBlocks,dataDNFailureNum);
+  Assert.assertNotNull(dataDNFailureIndices);
+  int[] parityDNFailureIndices=StripedFileTestUtil.randomArray(dataBlocks,dataBlocks + parityBlocks,dataDNFailureNum);
+  Assert.assertNotNull(parityDNFailureIndices);
+  int[] failedDataNodes=new int[dataDNFailureNum + parityDNFailureNum];
+  System.arraycopy(dataDNFailureIndices,0,failedDataNodes,0,dataDNFailureIndices.length);
+  System.arraycopy(parityDNFailureIndices,0,failedDataNodes,dataDNFailureIndices.length,parityDNFailureIndices.length);
+  final int killPos=fileLength / 2;
+  for (; pos.get() < fileLength; ) {
+    final int i=pos.getAndIncrement();
+    if (i == killPos) {
+      for (      int failedDn : failedDataNodes) {
+        StripedFileTestUtil.killDatanode(cluster,stripedOut,failedDn,pos);
+      }
+    }
+    write(out,i);
+  }
+  out.close();
+  int dnFailureNum=dataDNFailureNum + parityDNFailureNum;
+  Assert.assertEquals(cluster.getDataNodes().size(),numDNs - dnFailureNum);
+  byte[] smallBuf=new byte[1024];
+  byte[] largeBuf=new byte[fileLength + 100];
+  final byte[] expected=StripedFileTestUtil.generateBytes(fileLength);
+  StripedFileTestUtil.verifyLength(fs,srcPath,fileLength);
+  StripedFileTestUtil.verifySeek(fs,srcPath,fileLength);
+  StripedFileTestUtil.verifyStatefulRead(fs,srcPath,fileLength,expected,smallBuf);
+  StripedFileTestUtil.verifyPread(fs,srcPath,fileLength,expected,largeBuf);
+  fs.delete(srcPath,true);
+}

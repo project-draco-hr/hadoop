@@ -1,0 +1,19 @@
+{
+  String fileType=fileLength < (blockSize * dataBlocks) ? "smallFile" : "largeFile";
+  String src="/dnFailure_" + dnFailureNum + "_"+ fileType;
+  LOG.info("testReadWithDNFailure: file = " + src + ", fileSize = "+ fileLength+ ", dnFailureNum = "+ dnFailureNum);
+  Path testPath=new Path(src);
+  final byte[] bytes=StripedFileTestUtil.generateBytes(fileLength);
+  DFSTestUtil.writeFile(fs,testPath,bytes);
+  BlockLocation[] locs=fs.getFileBlockLocations(testPath,cellSize * 5,cellSize);
+  for (int failedDnIdx=0; failedDnIdx < dnFailureNum; failedDnIdx++) {
+    String name=(locs[0].getNames())[failedDnIdx];
+    for (    DataNode dn : cluster.getDataNodes()) {
+      int port=dn.getXferPort();
+      if (name.contains(Integer.toString(port))) {
+        dn.shutdown();
+      }
+    }
+  }
+  verifyRead(testPath,fileLength,bytes);
+}
