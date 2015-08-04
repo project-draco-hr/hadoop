@@ -1,0 +1,50 @@
+{
+  MiniDFSCluster cluster=null;
+  try {
+    final int len=1024;
+    final Path parentDir=new Path("/parentDir");
+    final Path zone=new Path(parentDir,"zone");
+    final Path zoneFile=new Path(zone,"zoneFile");
+    final Path contiguousFile=new Path(parentDir,"someFile");
+    final DistributedFileSystem dfs;
+    final Configuration conf=new Configuration();
+    final short GROUP_SIZE=HdfsConstants.NUM_DATA_BLOCKS + HdfsConstants.NUM_PARITY_BLOCKS;
+    conf.setInt(DFSConfigKeys.DFS_NAMENODE_MAX_XATTRS_PER_INODE_KEY,2);
+    cluster=new MiniDFSCluster.Builder(conf).numDataNodes(GROUP_SIZE).build();
+    cluster.waitActive();
+    FSNamesystem fsn=cluster.getNamesystem();
+    dfs=cluster.getFileSystem();
+    dfs.mkdirs(zone);
+    dfs.createErasureCodingZone(zone,null,0);
+    DFSTestUtil.createFile(dfs,zoneFile,len,(short)1,0xFEED);
+    DFSTestUtil.createFile(dfs,contiguousFile,len,(short)1,0xFEED);
+    final FSDirectory fsd=fsn.getFSDirectory();
+    INode inodeStriped=fsd.getINode("/parentDir/zone/zoneFile");
+    assertTrue("Failed to get INodeFile for /parentDir/zone/zoneFile",inodeStriped instanceof INodeFile);
+    INodeFile inodeStripedFile=(INodeFile)inodeStriped;
+    BlockInfo[] stripedBlks=inodeStripedFile.getBlocks();
+    for (    BlockInfo blockInfo : stripedBlks) {
+      assertFalse("Mistakenly marked the block as deleted!",blockInfo.isDeleted());
+    }
+    dfs.delete(zone,true);
+    for (    BlockInfo blockInfo : stripedBlks) {
+      assertTrue("Didn't mark the block as deleted!",blockInfo.isDeleted());
+    }
+    INode inode=fsd.getINode("/parentDir/someFile");
+    assertTrue("Failed to get INodeFile for /parentDir/someFile",inode instanceof INodeFile);
+    INodeFile inodeFile=(INodeFile)inode;
+    BlockInfo[] contiguousBlks=inodeFile.getBlocks();
+    for (    BlockInfo blockInfo : contiguousBlks) {
+      assertFalse("Mistakenly marked the block as deleted!",blockInfo.isDeleted());
+    }
+    dfs.delete(parentDir,true);
+    for (    BlockInfo blockInfo : contiguousBlks) {
+      assertTrue("Didn't mark the block as deleted!",blockInfo.isDeleted());
+    }
+  }
+  finally {
+    if (cluster != null) {
+      cluster.shutdown();
+    }
+  }
+}
