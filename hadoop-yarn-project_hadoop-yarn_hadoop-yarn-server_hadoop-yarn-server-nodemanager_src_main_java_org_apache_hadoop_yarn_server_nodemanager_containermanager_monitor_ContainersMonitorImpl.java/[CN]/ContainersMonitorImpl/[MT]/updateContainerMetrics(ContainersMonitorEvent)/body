@@ -1,0 +1,33 @@
+{
+  if (!containerMetricsEnabled || monitoringEvent == null) {
+    return;
+  }
+  ContainerId containerId=monitoringEvent.getContainerId();
+  ContainerMetrics usageMetrics=ContainerMetrics.forContainer(containerId,containerMetricsPeriodMs);
+  int vmemLimitMBs;
+  int pmemLimitMBs;
+  int cpuVcores;
+switch (monitoringEvent.getType()) {
+case START_MONITORING_CONTAINER:
+    ContainerStartMonitoringEvent startEvent=(ContainerStartMonitoringEvent)monitoringEvent;
+  usageMetrics.recordStateChangeDurations(startEvent.getLaunchDuration(),startEvent.getLocalizationDuration());
+cpuVcores=startEvent.getCpuVcores();
+vmemLimitMBs=(int)(startEvent.getVmemLimit() >> 20);
+pmemLimitMBs=(int)(startEvent.getPmemLimit() >> 20);
+usageMetrics.recordResourceLimit(vmemLimitMBs,pmemLimitMBs,cpuVcores);
+break;
+case STOP_MONITORING_CONTAINER:
+usageMetrics.finished();
+break;
+case CHANGE_MONITORING_CONTAINER_RESOURCE:
+ChangeMonitoringContainerResourceEvent changeEvent=(ChangeMonitoringContainerResourceEvent)monitoringEvent;
+Resource resource=changeEvent.getResource();
+pmemLimitMBs=resource.getMemory();
+vmemLimitMBs=(int)(pmemLimitMBs * vmemRatio);
+cpuVcores=resource.getVirtualCores();
+usageMetrics.recordResourceLimit(vmemLimitMBs,pmemLimitMBs,cpuVcores);
+break;
+default :
+break;
+}
+}
