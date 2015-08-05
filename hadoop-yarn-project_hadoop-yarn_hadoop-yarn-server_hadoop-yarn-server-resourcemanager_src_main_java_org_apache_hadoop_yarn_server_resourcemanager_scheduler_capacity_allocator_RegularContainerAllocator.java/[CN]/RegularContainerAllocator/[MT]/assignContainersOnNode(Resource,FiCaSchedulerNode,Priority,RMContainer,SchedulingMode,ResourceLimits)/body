@@ -1,0 +1,40 @@
+{
+  ContainerAllocation assigned;
+  NodeType requestType=null;
+  ResourceRequest nodeLocalResourceRequest=application.getResourceRequest(priority,node.getNodeName());
+  if (nodeLocalResourceRequest != null) {
+    requestType=NodeType.NODE_LOCAL;
+    assigned=assignNodeLocalContainers(clusterResource,nodeLocalResourceRequest,node,priority,reservedContainer,schedulingMode,currentResoureLimits);
+    if (Resources.greaterThan(rc,clusterResource,assigned.getResourceToBeAllocated(),Resources.none())) {
+      assigned.requestNodeType=requestType;
+      return assigned;
+    }
+  }
+  ResourceRequest rackLocalResourceRequest=application.getResourceRequest(priority,node.getRackName());
+  if (rackLocalResourceRequest != null) {
+    if (!rackLocalResourceRequest.getRelaxLocality()) {
+      return ContainerAllocation.PRIORITY_SKIPPED;
+    }
+    if (requestType != NodeType.NODE_LOCAL) {
+      requestType=NodeType.RACK_LOCAL;
+    }
+    assigned=assignRackLocalContainers(clusterResource,rackLocalResourceRequest,node,priority,reservedContainer,schedulingMode,currentResoureLimits);
+    if (Resources.greaterThan(rc,clusterResource,assigned.getResourceToBeAllocated(),Resources.none())) {
+      assigned.requestNodeType=requestType;
+      return assigned;
+    }
+  }
+  ResourceRequest offSwitchResourceRequest=application.getResourceRequest(priority,ResourceRequest.ANY);
+  if (offSwitchResourceRequest != null) {
+    if (!offSwitchResourceRequest.getRelaxLocality()) {
+      return ContainerAllocation.PRIORITY_SKIPPED;
+    }
+    if (requestType != NodeType.NODE_LOCAL && requestType != NodeType.RACK_LOCAL) {
+      requestType=NodeType.OFF_SWITCH;
+    }
+    assigned=assignOffSwitchContainers(clusterResource,offSwitchResourceRequest,node,priority,reservedContainer,schedulingMode,currentResoureLimits);
+    assigned.requestNodeType=requestType;
+    return assigned;
+  }
+  return ContainerAllocation.PRIORITY_SKIPPED;
+}

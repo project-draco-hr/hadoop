@@ -1,0 +1,27 @@
+{
+  boolean skipped=(result.getAllocationState() == AllocationState.APP_SKIPPED);
+  CSAssignment assignment=new CSAssignment(skipped);
+  assignment.setApplication(this);
+  assignment.setExcessReservation(result.getContainerToBeUnreserved());
+  if (Resources.greaterThan(rc,clusterResource,result.getResourceToBeAllocated(),Resources.none())) {
+    Resource allocatedResource=result.getResourceToBeAllocated();
+    Container updatedContainer=result.getUpdatedContainer();
+    assignment.setResource(allocatedResource);
+    assignment.setType(result.getContainerNodeType());
+    if (result.getAllocationState() == AllocationState.RESERVED) {
+      LOG.info("Reserved container " + " application=" + getApplicationId() + " resource="+ allocatedResource+ " queue="+ this.toString()+ " cluster="+ clusterResource);
+      assignment.getAssignmentInformation().addReservationDetails(updatedContainer.getId(),getCSLeafQueue().getQueuePath());
+      assignment.getAssignmentInformation().incrReservations();
+      Resources.addTo(assignment.getAssignmentInformation().getReserved(),allocatedResource);
+      assignment.setFulfilledReservation(true);
+    }
+ else {
+      LOG.info("assignedContainer" + " application attempt=" + getApplicationAttemptId() + " container="+ updatedContainer.getId()+ " queue="+ this+ " clusterResource="+ clusterResource);
+      getCSLeafQueue().getOrderingPolicy().containerAllocated(this,getRMContainer(updatedContainer.getId()));
+      assignment.getAssignmentInformation().addAllocationDetails(updatedContainer.getId(),getCSLeafQueue().getQueuePath());
+      assignment.getAssignmentInformation().incrAllocations();
+      Resources.addTo(assignment.getAssignmentInformation().getAllocated(),allocatedResource);
+    }
+  }
+  return assignment;
+}

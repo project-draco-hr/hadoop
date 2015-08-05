@@ -7,80 +7,17 @@
     if (LOG.isDebugEnabled()) {
       LOG.debug("Skip app_attempt=" + getApplicationAttemptId() + ", because it doesn't need more resource, schedulingMode="+ schedulingMode.name()+ " node-label="+ node.getPartition());
     }
-    return SKIP_ASSIGNMENT;
+    return CSAssignment.SKIP_ASSIGNMENT;
   }
 synchronized (this) {
-    if (SchedulerAppUtils.isBlacklisted(this,node,LOG)) {
-      return SKIP_ASSIGNMENT;
-    }
     for (    Priority priority : getPriorities()) {
-      ResourceRequest anyRequest=getResourceRequest(priority,ResourceRequest.ANY);
-      if (null == anyRequest) {
+      ContainerAllocation allocationResult=containerAllocator.allocate(clusterResource,node,schedulingMode,currentResourceLimits,priority,null);
+      AllocationState allocationState=allocationResult.getAllocationState();
+      if (allocationState == AllocationState.PRIORITY_SKIPPED) {
         continue;
       }
-      Resource required=anyRequest.getCapability();
-      if (getTotalRequiredResources(priority) <= 0) {
-        continue;
-      }
-      if (schedulingMode == SchedulingMode.IGNORE_PARTITION_EXCLUSIVITY) {
-        RMAppAttempt rmAppAttempt=rmContext.getRMApps().get(getApplicationId()).getCurrentAppAttempt();
-        if (rmAppAttempt.getSubmissionContext().getUnmanagedAM() == false && null == rmAppAttempt.getMasterContainer()) {
-          if (LOG.isDebugEnabled()) {
-            LOG.debug("Skip allocating AM container to app_attempt=" + getApplicationAttemptId() + ", don't allow to allocate AM container in non-exclusive mode");
-          }
-          break;
-        }
-      }
-      if (!SchedulerUtils.checkResourceRequestMatchingNodePartition(anyRequest,node.getPartition(),schedulingMode)) {
-        continue;
-      }
-      if (!getCSLeafQueue().getReservationContinueLooking()) {
-        if (!shouldAllocOrReserveNewContainer(priority,required)) {
-          if (LOG.isDebugEnabled()) {
-            LOG.debug("doesn't need containers based on reservation algo!");
-          }
-          continue;
-        }
-      }
-      if (!checkHeadroom(clusterResource,currentResourceLimits,required,node)) {
-        if (LOG.isDebugEnabled()) {
-          LOG.debug("cannot allocate required resource=" + required + " because of headroom");
-        }
-        return NULL_ASSIGNMENT;
-      }
-      addSchedulingOpportunity(priority);
-      int missedNonPartitionedRequestSchedulingOpportunity=0;
-      if (anyRequest.getNodeLabelExpression().equals(RMNodeLabelsManager.NO_LABEL)) {
-        missedNonPartitionedRequestSchedulingOpportunity=addMissedNonPartitionedRequestSchedulingOpportunity(priority);
-      }
-      if (schedulingMode == SchedulingMode.IGNORE_PARTITION_EXCLUSIVITY) {
-        if (missedNonPartitionedRequestSchedulingOpportunity < rmContext.getScheduler().getNumClusterNodes()) {
-          if (LOG.isDebugEnabled()) {
-            LOG.debug("Skip app_attempt=" + getApplicationAttemptId() + " priority="+ priority+ " because missed-non-partitioned-resource-request"+ " opportunity under requred:"+ " Now="+ missedNonPartitionedRequestSchedulingOpportunity+ " required="+ rmContext.getScheduler().getNumClusterNodes());
-          }
-          return SKIP_ASSIGNMENT;
-        }
-      }
-      CSAssignment assignment=assignContainersOnNode(clusterResource,node,priority,null,schedulingMode,currentResourceLimits);
-      if (assignment.getSkipped()) {
-        subtractSchedulingOpportunity(priority);
-        continue;
-      }
-      Resource assigned=assignment.getResource();
-      if (Resources.greaterThan(rc,clusterResource,assigned,Resources.none())) {
-        if (assignment.getType() != NodeType.OFF_SWITCH) {
-          if (LOG.isDebugEnabled()) {
-            LOG.debug("Resetting scheduling opportunities");
-          }
-          resetSchedulingOpportunities(priority);
-        }
-        resetMissedNonPartitionedRequestSchedulingOpportunity(priority);
-        return assignment;
-      }
- else {
-        return SKIP_ASSIGNMENT;
-      }
+      return getCSAssignmentFromAllocateResult(clusterResource,allocationResult);
     }
   }
-  return SKIP_ASSIGNMENT;
+  return CSAssignment.SKIP_ASSIGNMENT;
 }
