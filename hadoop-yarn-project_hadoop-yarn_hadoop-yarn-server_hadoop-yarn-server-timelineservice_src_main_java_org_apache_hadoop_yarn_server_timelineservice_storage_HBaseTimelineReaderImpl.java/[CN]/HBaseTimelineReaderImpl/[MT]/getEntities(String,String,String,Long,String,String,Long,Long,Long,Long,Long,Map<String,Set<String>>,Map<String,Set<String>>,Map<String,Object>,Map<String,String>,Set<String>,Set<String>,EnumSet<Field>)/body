@@ -1,0 +1,42 @@
+{
+  validateParams(userId,clusterId,appId,entityType,null,false);
+  if (flowId == null || flowRunId == null) {
+    FlowContext context=lookupFlowContext(clusterId,appId);
+    flowId=context.flowId;
+    flowRunId=context.flowRunId;
+  }
+  if (limit == null) {
+    limit=TimelineReader.DEFAULT_LIMIT;
+  }
+  if (createdTimeBegin == null) {
+    createdTimeBegin=DEFAULT_BEGIN_TIME;
+  }
+  if (createdTimeEnd == null) {
+    createdTimeEnd=DEFAULT_END_TIME;
+  }
+  if (modifiedTimeBegin == null) {
+    modifiedTimeBegin=DEFAULT_BEGIN_TIME;
+  }
+  if (modifiedTimeEnd == null) {
+    modifiedTimeEnd=DEFAULT_END_TIME;
+  }
+  if (fieldsToRetrieve == null) {
+    fieldsToRetrieve=EnumSet.noneOf(Field.class);
+  }
+  NavigableSet<TimelineEntity> entities=new TreeSet<>();
+  Scan scan=new Scan();
+  scan.setRowPrefixFilter(EntityRowKey.getRowKeyPrefix(clusterId,userId,flowId,flowRunId,appId,entityType));
+  scan.setMaxVersions(Integer.MAX_VALUE);
+  ResultScanner scanner=entityTable.getResultScanner(hbaseConf,conn,scan);
+  for (  Result result : scanner) {
+    TimelineEntity entity=parseEntity(result,fieldsToRetrieve,true,createdTimeBegin,createdTimeEnd,true,modifiedTimeBegin,modifiedTimeEnd,isRelatedTo,relatesTo,infoFilters,configFilters,eventFilters,metricFilters);
+    if (entity == null) {
+      continue;
+    }
+    if (entities.size() > limit) {
+      entities.pollLast();
+    }
+    entities.add(entity);
+  }
+  return entities;
+}
