@@ -1,0 +1,22 @@
+{
+  Priority appPriority=null;
+  SchedulerApplication<FiCaSchedulerApp> application=applications.get(applicationId);
+  if (application == null) {
+    throw new YarnException("Application '" + applicationId + "' is not present, hence could not change priority.");
+  }
+  if (application.getPriority().equals(newPriority)) {
+    return;
+  }
+  RMApp rmApp=rmContext.getRMApps().get(applicationId);
+  appPriority=checkAndGetApplicationPriority(newPriority,rmApp.getUser(),rmApp.getQueue(),applicationId);
+  rmApp.getApplicationSubmissionContext().setPriority(appPriority);
+  ApplicationStateData appState=ApplicationStateData.newInstance(rmApp.getSubmitTime(),rmApp.getStartTime(),rmApp.getApplicationSubmissionContext(),rmApp.getUser());
+  rmContext.getStateStore().updateApplicationStateSynchronously(appState);
+  LeafQueue queue=(LeafQueue)getQueue(rmApp.getQueue());
+synchronized (queue) {
+    queue.getOrderingPolicy().removeSchedulableEntity(application.getCurrentAppAttempt());
+    application.setPriority(appPriority);
+    queue.getOrderingPolicy().addSchedulableEntity(application.getCurrentAppAttempt());
+  }
+  LOG.info("Priority '" + appPriority + "' is updated in queue :"+ rmApp.getQueue()+ "for application:"+ applicationId+ "for the user: "+ rmApp.getUser());
+}
