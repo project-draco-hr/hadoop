@@ -1,0 +1,28 @@
+{
+  Map<String,TimelineEvent> eventsMap=new HashMap<>();
+  Map<String,Object> eventsResult=isApplication ? ApplicationColumnPrefix.EVENT.readResults(result) : EntityColumnPrefix.EVENT.readResults(result);
+  for (  Map.Entry<String,Object> eventResult : eventsResult.entrySet()) {
+    Collection<String> tokens=Separator.VALUES.splitEncoded(eventResult.getKey());
+    if (tokens.size() != 2 && tokens.size() != 3) {
+      throw new IOException("Invalid event column name: " + eventResult.getKey());
+    }
+    Iterator<String> idItr=tokens.iterator();
+    String id=idItr.next();
+    String tsStr=idItr.next();
+    Long ts=TimelineWriterUtils.invert(Bytes.toLong(tsStr.getBytes(StandardCharsets.UTF_8)));
+    String key=Separator.VALUES.joinEncoded(id,ts.toString());
+    TimelineEvent event=eventsMap.get(key);
+    if (event == null) {
+      event=new TimelineEvent();
+      event.setId(id);
+      event.setTimestamp(ts);
+      eventsMap.put(key,event);
+    }
+    if (tokens.size() == 3) {
+      String infoKey=idItr.next();
+      event.addInfo(infoKey,eventResult.getValue());
+    }
+  }
+  Set<TimelineEvent> eventsSet=new HashSet<>(eventsMap.values());
+  entity.addEvents(eventsSet);
+}

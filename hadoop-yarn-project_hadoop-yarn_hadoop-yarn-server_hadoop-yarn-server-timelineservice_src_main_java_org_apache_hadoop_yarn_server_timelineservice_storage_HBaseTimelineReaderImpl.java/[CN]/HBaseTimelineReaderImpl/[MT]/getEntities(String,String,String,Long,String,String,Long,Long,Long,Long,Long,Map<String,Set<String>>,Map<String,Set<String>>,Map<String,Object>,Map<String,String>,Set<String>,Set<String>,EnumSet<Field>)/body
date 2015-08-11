@@ -24,19 +24,32 @@
     fieldsToRetrieve=EnumSet.noneOf(Field.class);
   }
   NavigableSet<TimelineEntity> entities=new TreeSet<>();
-  Scan scan=new Scan();
-  scan.setRowPrefixFilter(EntityRowKey.getRowKeyPrefix(clusterId,userId,flowId,flowRunId,appId,entityType));
-  scan.setMaxVersions(Integer.MAX_VALUE);
-  ResultScanner scanner=entityTable.getResultScanner(hbaseConf,conn,scan);
-  for (  Result result : scanner) {
-    TimelineEntity entity=parseEntity(result,fieldsToRetrieve,true,createdTimeBegin,createdTimeEnd,true,modifiedTimeBegin,modifiedTimeEnd,isRelatedTo,relatesTo,infoFilters,configFilters,eventFilters,metricFilters);
-    if (entity == null) {
-      continue;
+  boolean isApplication=isApplicationEntity(entityType);
+  if (isApplication) {
+    byte[] rowKey=ApplicationRowKey.getRowKey(clusterId,userId,flowId,flowRunId,appId);
+    Get get=new Get(rowKey);
+    get.setMaxVersions(Integer.MAX_VALUE);
+    Result result=applicationTable.getResult(hbaseConf,conn,get);
+    TimelineEntity entity=parseEntity(result,fieldsToRetrieve,true,createdTimeBegin,createdTimeEnd,true,modifiedTimeBegin,modifiedTimeEnd,isRelatedTo,relatesTo,infoFilters,configFilters,eventFilters,metricFilters,isApplication);
+    if (entity != null) {
+      entities.add(entity);
     }
-    if (entities.size() > limit) {
-      entities.pollLast();
+  }
+ else {
+    Scan scan=new Scan();
+    scan.setRowPrefixFilter(EntityRowKey.getRowKeyPrefix(clusterId,userId,flowId,flowRunId,appId,entityType));
+    scan.setMaxVersions(Integer.MAX_VALUE);
+    ResultScanner scanner=entityTable.getResultScanner(hbaseConf,conn,scan);
+    for (    Result result : scanner) {
+      TimelineEntity entity=parseEntity(result,fieldsToRetrieve,true,createdTimeBegin,createdTimeEnd,true,modifiedTimeBegin,modifiedTimeEnd,isRelatedTo,relatesTo,infoFilters,configFilters,eventFilters,metricFilters,isApplication);
+      if (entity == null) {
+        continue;
+      }
+      if (entities.size() > limit) {
+        entities.pollLast();
+      }
+      entities.add(entity);
     }
-    entities.add(entity);
   }
   return entities;
 }
