@@ -1,0 +1,27 @@
+{
+  final int dataBlkNum=ecPolicy.getNumDataUnits();
+  StripingCell[] cells=getStripingCellsOfByteRange(ecPolicy,cellSize,blockGroup,rangeStartInBlockGroup,rangeEndInBlockGroup);
+  VerticalRange[] ranges=getRangesForInternalBlocks(ecPolicy,cellSize,cells);
+  AlignedStripe[] stripes=mergeRangesForInternalBlocks(ecPolicy,ranges);
+  int bufOffset=(int)(rangeStartInBlockGroup % (cellSize * dataBlkNum));
+  for (  StripingCell cell : cells) {
+    long cellStart=cell.idxInInternalBlk * cellSize + cell.offset;
+    long cellEnd=cellStart + cell.size - 1;
+    for (    AlignedStripe s : stripes) {
+      long stripeEnd=s.getOffsetInBlock() + s.getSpanInBlock() - 1;
+      long overlapStart=Math.max(cellStart,s.getOffsetInBlock());
+      long overlapEnd=Math.min(cellEnd,stripeEnd);
+      int overLapLen=(int)(overlapEnd - overlapStart + 1);
+      if (overLapLen > 0) {
+        Preconditions.checkState(s.chunks[cell.idxInStripe] == null);
+        final int pos=(int)(bufOffset + overlapStart - cellStart);
+        buf.position(pos);
+        buf.limit(pos + overLapLen);
+        s.chunks[cell.idxInStripe]=new StripingChunk(buf.slice());
+      }
+    }
+    bufOffset+=cell.size;
+  }
+  prepareAllZeroChunks(blockGroup,stripes,cellSize,dataBlkNum);
+  return stripes;
+}
