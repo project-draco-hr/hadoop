@@ -1,0 +1,25 @@
+{
+  HdfsConfiguration conf=new HdfsConfiguration();
+  conf.setLong(DFSConfigKeys.DFS_BLOCK_SIZE_KEY,BLOCK_SIZE);
+  try {
+    setup(conf);
+    ArrayList<DataNode> dataNodes=cluster.getDataNodes();
+    int killDns=(NUM_PARITY_BLOCKS - 1);
+    int numDatanodes=dataNodes.size() - killDns;
+    for (int i=0; i < killDns; i++) {
+      cluster.stopDataNode(i);
+    }
+    cluster.restartNameNodes();
+    cluster.triggerHeartbeats();
+    DatanodeInfo[] info=dfs.getClient().datanodeReport(DatanodeReportType.LIVE);
+    assertEquals("Mismatches number of live Dns ",numDatanodes,info.length);
+    Path srcPath=new Path(dir,"testAddBlockWhenNoSufficientParityNodes");
+    int fileLength=HdfsConstants.BLOCK_STRIPED_CELL_SIZE - 1000;
+    final byte[] expected=StripedFileTestUtil.generateBytes(fileLength);
+    DFSTestUtil.writeFile(dfs,srcPath,new String(expected));
+    StripedFileTestUtil.verifySeek(dfs,srcPath,fileLength);
+  }
+  finally {
+    tearDown();
+  }
+}
