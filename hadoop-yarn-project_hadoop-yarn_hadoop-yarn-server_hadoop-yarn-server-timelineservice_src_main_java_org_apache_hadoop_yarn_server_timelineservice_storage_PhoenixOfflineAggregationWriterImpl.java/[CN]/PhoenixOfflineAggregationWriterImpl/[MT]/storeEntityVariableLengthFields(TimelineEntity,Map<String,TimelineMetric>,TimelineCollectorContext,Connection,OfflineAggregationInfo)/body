@@ -1,0 +1,25 @@
+{
+  int numPlaceholders=0;
+  StringBuilder columnDefs=new StringBuilder(StringUtils.join(aggregationInfo.getPrimaryKeyList(),","));
+  if (formattedMetrics != null && formattedMetrics.size() > 0) {
+    appendColumnsSQL(columnDefs,new DynamicColumns<>(METRIC_COLUMN_FAMILY,DynamicColumns.COLUMN_FAMILY_TYPE_BYTES,formattedMetrics.keySet()));
+    numPlaceholders+=formattedMetrics.keySet().size();
+  }
+  if (numPlaceholders == 0) {
+    return;
+  }
+  StringBuilder placeholders=new StringBuilder();
+  placeholders.append(StringUtils.repeat("?,",aggregationInfo.getPrimaryKeyList().length));
+  placeholders.append("?").append(StringUtils.repeat(",?",numPlaceholders - 1));
+  String sqlVariableLengthFields=new StringBuilder("UPSERT INTO ").append(aggregationInfo.getTableName()).append(" (").append(columnDefs).append(") VALUES(").append(placeholders).append(")").toString();
+  if (LOG.isDebugEnabled()) {
+    LOG.debug("SQL statement for variable length fields: " + sqlVariableLengthFields);
+  }
+  try (PreparedStatement psVariableLengthFields=conn.prepareStatement(sqlVariableLengthFields)){
+    int idx=aggregationInfo.setStringsForPrimaryKey(psVariableLengthFields,context,null,1);
+    if (formattedMetrics != null && formattedMetrics.size() > 0) {
+      idx=setBytesForColumnFamily(psVariableLengthFields,formattedMetrics,idx);
+    }
+    psVariableLengthFields.execute();
+  }
+ }
