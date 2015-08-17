@@ -4,20 +4,21 @@
   Block newBlock=op.getLastBlock();
   if (pBlock != null) {
     Preconditions.checkState(oldBlocks != null && oldBlocks.length > 0);
-    Block oldLastBlock=oldBlocks[oldBlocks.length - 1];
+    BlockInfo oldLastBlock=oldBlocks[oldBlocks.length - 1];
     if (oldLastBlock.getBlockId() != pBlock.getBlockId() || oldLastBlock.getGenerationStamp() != pBlock.getGenerationStamp()) {
       throw new IOException("Mismatched block IDs or generation stamps for the old last block of file " + op.getPath() + ", the old last block is "+ oldLastBlock+ ", and the block read from editlog is "+ pBlock);
     }
     oldLastBlock.setNumBytes(pBlock.getNumBytes());
-    if (oldLastBlock instanceof BlockInfoContiguousUnderConstruction) {
-      fsNamesys.getBlockManager().forceCompleteBlock(file,(BlockInfoContiguousUnderConstruction)oldLastBlock);
+    if (!oldLastBlock.isComplete()) {
+      fsNamesys.getBlockManager().forceCompleteBlock(file,oldLastBlock);
       fsNamesys.getBlockManager().processQueuedMessagesForBlock(pBlock);
     }
   }
  else {
     Preconditions.checkState(oldBlocks == null || oldBlocks.length == 0);
   }
-  BlockInfo newBI=new BlockInfoContiguousUnderConstruction(newBlock,file.getPreferredBlockReplication());
+  BlockInfo newBI=new BlockInfoContiguous(newBlock,file.getPreferredBlockReplication());
+  newBI.convertToBlockUnderConstruction(HdfsServerConstants.BlockUCState.UNDER_CONSTRUCTION,null);
   fsNamesys.getBlockManager().addBlockCollection(newBI,file);
   file.addBlock(newBI);
   fsNamesys.getBlockManager().processQueuedMessagesForBlock(newBlock);
