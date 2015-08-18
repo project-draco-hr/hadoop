@@ -22,8 +22,13 @@
           LOG.debug("Request [{}] triggering authentication",getRequestURL(httpRequest));
         }
         token=authHandler.authenticate(httpRequest,httpResponse);
-        if (token != null && token.getExpires() != 0 && token != AuthenticationToken.ANONYMOUS) {
-          token.setExpires(System.currentTimeMillis() + getValidity() * 1000);
+        if (token != null && token != AuthenticationToken.ANONYMOUS) {
+          if (token.getMaxInactives() != 0) {
+            token.setMaxInactives(System.currentTimeMillis() + getMaxInactiveInterval() * 1000);
+          }
+          if (token.getExpires() != 0) {
+            token.setExpires(System.currentTimeMillis() + getValidity() * 1000);
+          }
         }
         newToken=true;
       }
@@ -45,6 +50,10 @@
           }
         }
 ;
+        if (!newToken && !isCookiePersistent() && getMaxInactiveInterval() > 0) {
+          token.setMaxInactives(System.currentTimeMillis() + getMaxInactiveInterval() * 1000);
+          newToken=true;
+        }
         if (newToken && !token.isExpired() && token != AuthenticationToken.ANONYMOUS) {
           String signedToken=signer.sign(token.toString());
           createAuthCookie(httpResponse,signedToken,getCookieDomain(),getCookiePath(),token.getExpires(),isCookiePersistent(),isHttps);
