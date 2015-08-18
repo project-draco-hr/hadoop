@@ -16,8 +16,6 @@
     for (    Entry<ContainerId,ProcessTreeInfo> entry : trackingContainers.entrySet()) {
       ContainerId containerId=entry.getKey();
       ProcessTreeInfo ptInfo=entry.getValue();
-      ContainerEntity entity=new ContainerEntity();
-      entity.setId(containerId.toString());
       try {
         String pId=ptInfo.getPID();
         if (pId == null) {
@@ -61,20 +59,6 @@
           ContainerMetrics.forContainer(containerId,containerMetricsPeriodMs,containerMetricsUnregisterDelayMs).recordMemoryUsage((int)(currentPmemUsage >> 20));
           ContainerMetrics.forContainer(containerId,containerMetricsPeriodMs,containerMetricsUnregisterDelayMs).recordCpuUsage((int)cpuUsagePercentPerCore,milliVcoresUsed);
         }
-        if (publishContainerMetricsToTimelineService) {
-          if (currentPmemUsage != ResourceCalculatorProcessTree.UNAVAILABLE) {
-            TimelineMetric memoryMetric=new TimelineMetric();
-            memoryMetric.setId(ContainerMetric.MEMORY.toString() + pId);
-            memoryMetric.addValue(currentTime,currentPmemUsage);
-            entity.addMetric(memoryMetric);
-          }
-          if (cpuUsageTotalCoresPercentage != ResourceCalculatorProcessTree.UNAVAILABLE) {
-            TimelineMetric cpuMetric=new TimelineMetric();
-            cpuMetric.setId(ContainerMetric.CPU.toString() + pId);
-            cpuMetric.addValue(currentTime,cpuUsageTotalCoresPercentage);
-            entity.addMetric(cpuMetric);
-          }
-        }
         boolean isMemoryOverLimit=false;
         String msg="";
         int containerExitStatus=ContainerExitStatus.INVALID;
@@ -101,18 +85,11 @@
           trackingContainers.remove(containerId);
           LOG.info("Removed ProcessTree with root " + pId);
         }
+        ContainerImpl container=(ContainerImpl)context.getContainers().get(containerId);
+        container.getNMTimelinePublisher().reportContainerResourceUsage(container,currentTime,pId,currentPmemUsage,cpuUsageTotalCoresPercentage);
       }
  catch (      Exception e) {
         LOG.warn("Uncaught exception in ContainersMonitorImpl " + "while monitoring resource of " + containerId,e);
-      }
-      if (publishContainerMetricsToTimelineService) {
-        try {
-          TimelineClient timelineClient=context.getApplications().get(containerId.getApplicationAttemptId().getApplicationId()).getTimelineClient();
-          putEntityWithoutBlocking(timelineClient,entity);
-        }
- catch (        Exception e) {
-          LOG.error("Exception in ContainersMonitorImpl in putting " + "resource usage metrics to timeline service.",e);
-        }
       }
     }
     if (LOG.isDebugEnabled()) {
