@@ -2,7 +2,7 @@
   TimelineEvent event=new TimelineEvent();
   String eventId=ApplicationMetricsConstants.CREATED_EVENT_TYPE;
   event.setId(eventId);
-  Long expTs=1436512802000L;
+  long expTs=1436512802000L;
   event.setTimestamp(expTs);
   String expKey="foo_event";
   Object expVal="test";
@@ -38,12 +38,14 @@
     assertTrue(result != null);
     byte[] row1=result.getRow();
     assertTrue(isApplicationRowKeyCorrect(row1,cluster,user,flow,runid,appName));
-    Map<String,Object> eventsResult=ApplicationColumnPrefix.EVENT.readResults(result);
+    Map<?,Object> eventsResult=ApplicationColumnPrefix.EVENT.readResultsHavingCompoundColumnQualifiers(result);
     assertEquals(1,eventsResult.size());
-    byte[] compoundColumnQualifierBytes=Separator.VALUES.join(Bytes.toBytes(eventId),Bytes.toBytes(TimelineWriterUtils.invert(expTs)),Bytes.toBytes(expKey));
-    String valueKey=Bytes.toString(compoundColumnQualifierBytes);
-    for (    Map.Entry<String,Object> e : eventsResult.entrySet()) {
-      assertEquals(valueKey,e.getKey());
+    for (    Map.Entry<?,Object> e : eventsResult.entrySet()) {
+      byte[][] karr=(byte[][])e.getKey();
+      assertEquals(3,karr.length);
+      assertEquals(eventId,Bytes.toString(karr[0]));
+      assertEquals(TimelineWriterUtils.invert(expTs),Bytes.toLong(karr[1]));
+      assertEquals(expKey,Bytes.toString(karr[2]));
       Object value=e.getValue();
       assertEquals(expVal,value.toString());
     }
@@ -57,6 +59,18 @@
     assertEquals(1,es1.size());
     assertEquals(1,es2.size());
     assertEquals(es1,es2);
+    NavigableSet<TimelineEvent> events=e1.getEvents();
+    assertEquals(1,events.size());
+    for (    TimelineEvent e : events) {
+      assertEquals(eventId,e.getId());
+      assertEquals(expTs,e.getTimestamp());
+      Map<String,Object> info=e.getInfo();
+      assertEquals(1,info.size());
+      for (      Map.Entry<String,Object> infoEntry : info.entrySet()) {
+        assertEquals(expKey,infoEntry.getKey());
+        assertEquals(expVal,infoEntry.getValue());
+      }
+    }
   }
   finally {
     if (hbi != null) {
