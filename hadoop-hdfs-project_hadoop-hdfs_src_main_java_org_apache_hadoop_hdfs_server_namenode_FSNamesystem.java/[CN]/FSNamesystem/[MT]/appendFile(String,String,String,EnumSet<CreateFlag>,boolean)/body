@@ -1,9 +1,35 @@
 {
+  boolean newBlock=flag.contains(CreateFlag.NEW_BLOCK);
+  if (newBlock) {
+    requireEffectiveLayoutVersionForFeature(Feature.APPEND_NEW_BLOCK);
+  }
+  NameNode.stateChangeLog.debug("DIR* NameSystem.appendFile: src={}, holder={}, clientMachine={}",srcArg,holder,clientMachine);
   try {
-    return appendFileInt(src,holder,clientMachine,flag.contains(CreateFlag.NEW_BLOCK),logRetryCache);
+    boolean skipSync=false;
+    LastBlockWithStatus lbs=null;
+    final FSPermissionChecker pc=getPermissionChecker();
+    checkOperation(OperationCategory.WRITE);
+    writeLock();
+    try {
+      checkOperation(OperationCategory.WRITE);
+      checkNameNodeSafeMode("Cannot append to file" + srcArg);
+      lbs=FSDirAppendOp.appendFile(this,srcArg,pc,holder,clientMachine,newBlock,logRetryCache);
+    }
+ catch (    StandbyException se) {
+      skipSync=true;
+      throw se;
+    }
+ finally {
+      writeUnlock();
+      if (!skipSync) {
+        getEditLog().logSync();
+      }
+    }
+    logAuditEvent(true,"append",srcArg);
+    return lbs;
   }
  catch (  AccessControlException e) {
-    logAuditEvent(false,"append",src);
+    logAuditEvent(false,"append",srcArg);
     throw e;
   }
 }

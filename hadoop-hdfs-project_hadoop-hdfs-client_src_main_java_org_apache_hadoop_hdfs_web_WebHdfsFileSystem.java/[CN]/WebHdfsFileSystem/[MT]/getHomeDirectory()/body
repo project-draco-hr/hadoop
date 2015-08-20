@@ -1,3 +1,19 @@
 {
-  return makeQualified(new Path(getHomeDirectoryString(ugi)));
+  if (cachedHomeDirectory == null) {
+    final HttpOpParam.Op op=GetOpParam.Op.GETHOMEDIRECTORY;
+    try {
+      String pathFromDelegatedFS=new FsPathResponseRunner<String>(op,null,new UserParam(ugi)){
+        @Override String decodeResponse(        Map<?,?> json) throws IOException {
+          return JsonUtilClient.getPath(json);
+        }
+      }
+.run();
+      cachedHomeDirectory=new Path(pathFromDelegatedFS).makeQualified(this.getUri(),null);
+    }
+ catch (    IOException e) {
+      LOG.error("Unable to get HomeDirectory from original File System",e);
+      cachedHomeDirectory=new Path("/user/" + ugi.getShortUserName()).makeQualified(this.getUri(),null);
+    }
+  }
+  return cachedHomeDirectory;
 }

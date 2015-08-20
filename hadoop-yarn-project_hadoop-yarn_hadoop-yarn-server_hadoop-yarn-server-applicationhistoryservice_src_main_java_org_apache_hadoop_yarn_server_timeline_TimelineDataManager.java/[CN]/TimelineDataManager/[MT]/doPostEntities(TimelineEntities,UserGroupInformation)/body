@@ -1,0 +1,39 @@
+{
+  if (entities == null) {
+    return new TimelinePutResponse();
+  }
+  metrics.incrPostEntitiesTotal(entities.getEntities().size());
+  TimelineEntities entitiesToPut=new TimelineEntities();
+  List<TimelinePutResponse.TimelinePutError> errors=new ArrayList<TimelinePutResponse.TimelinePutError>();
+  for (  TimelineEntity entity : entities.getEntities()) {
+    if (entity.getDomainId() == null || entity.getDomainId().length() == 0) {
+      entity.setDomainId(DEFAULT_DOMAIN_ID);
+    }
+    TimelineEntity existingEntity=null;
+    try {
+      existingEntity=store.getEntity(entity.getEntityId(),entity.getEntityType(),EnumSet.of(Field.PRIMARY_FILTERS));
+      if (existingEntity != null) {
+        addDefaultDomainIdIfAbsent(existingEntity);
+        if (!existingEntity.getDomainId().equals(entity.getDomainId())) {
+          throw new YarnException("The domain of the timeline entity " + "{ id: " + entity.getEntityId() + ", type: "+ entity.getEntityType()+ " } is not allowed to be changed from "+ existingEntity.getDomainId()+ " to "+ entity.getDomainId());
+        }
+      }
+      if (!timelineACLsManager.checkAccess(callerUGI,ApplicationAccessType.MODIFY_APP,entity)) {
+        throw new YarnException(callerUGI + " is not allowed to put the timeline entity " + "{ id: "+ entity.getEntityId()+ ", type: "+ entity.getEntityType()+ " } into the domain "+ entity.getDomainId()+ ".");
+      }
+    }
+ catch (    Exception e) {
+      LOG.warn("Skip the timeline entity: { id: " + entity.getEntityId() + ", type: "+ entity.getEntityType()+ " }",e);
+      TimelinePutResponse.TimelinePutError error=new TimelinePutResponse.TimelinePutError();
+      error.setEntityId(entity.getEntityId());
+      error.setEntityType(entity.getEntityType());
+      error.setErrorCode(TimelinePutResponse.TimelinePutError.ACCESS_DENIED);
+      errors.add(error);
+      continue;
+    }
+    entitiesToPut.addEntity(entity);
+  }
+  TimelinePutResponse response=store.put(entitiesToPut);
+  response.addErrors(errors);
+  return response;
+}

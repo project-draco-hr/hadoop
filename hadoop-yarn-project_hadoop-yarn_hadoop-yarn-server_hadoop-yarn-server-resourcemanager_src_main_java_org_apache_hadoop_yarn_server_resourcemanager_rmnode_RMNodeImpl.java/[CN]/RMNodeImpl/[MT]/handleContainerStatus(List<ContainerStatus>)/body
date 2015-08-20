@@ -7,19 +7,28 @@
       LOG.info("Container " + containerId + " already scheduled for "+ "cleanup, no further processing");
       continue;
     }
-    if (finishedApplications.contains(containerId.getApplicationAttemptId().getApplicationId())) {
+    ApplicationId containerAppId=containerId.getApplicationAttemptId().getApplicationId();
+    if (finishedApplications.contains(containerAppId)) {
       LOG.info("Container " + containerId + " belongs to an application that is already killed,"+ " no further processing");
       continue;
+    }
+ else     if (!runningApplications.contains(containerAppId)) {
+      if (LOG.isDebugEnabled()) {
+        LOG.debug("Container " + containerId + " is the first container get launched for application "+ containerAppId);
+      }
+      runningApplications.add(containerAppId);
     }
     if (remoteContainer.getState() == ContainerState.RUNNING) {
       if (!launchedContainers.contains(containerId)) {
         launchedContainers.add(containerId);
         newlyLaunchedContainers.add(remoteContainer);
+        containerAllocationExpirer.unregister(containerId);
       }
     }
  else {
       launchedContainers.remove(containerId);
       completedContainers.add(remoteContainer);
+      containerAllocationExpirer.unregister(containerId);
     }
   }
   if (newlyLaunchedContainers.size() != 0 || completedContainers.size() != 0) {

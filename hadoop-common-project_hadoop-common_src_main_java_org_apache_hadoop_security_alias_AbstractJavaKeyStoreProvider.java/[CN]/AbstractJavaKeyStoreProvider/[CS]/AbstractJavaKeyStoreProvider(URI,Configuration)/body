@@ -1,0 +1,47 @@
+{
+  this.uri=uri;
+  initFileSystem(uri,conf);
+  if (System.getenv().containsKey(CREDENTIAL_PASSWORD_NAME)) {
+    password=System.getenv(CREDENTIAL_PASSWORD_NAME).toCharArray();
+  }
+  if (password == null) {
+    String pwFile=conf.get(KEYSTORE_PASSWORD_FILE_KEY);
+    if (pwFile != null) {
+      ClassLoader cl=Thread.currentThread().getContextClassLoader();
+      URL pwdFile=cl.getResource(pwFile);
+      if (pwdFile != null) {
+        try (InputStream is=pwdFile.openStream()){
+          password=IOUtils.toString(is).trim().toCharArray();
+        }
+       }
+    }
+  }
+  if (password == null) {
+    password=KEYSTORE_PASSWORD_DEFAULT.toCharArray();
+  }
+  try {
+    keyStore=KeyStore.getInstance("jceks");
+    if (keystoreExists()) {
+      stashOriginalFilePermissions();
+      try (InputStream in=getInputStreamForFile()){
+        keyStore.load(in,password);
+      }
+     }
+ else {
+      createPermissions("700");
+      keyStore.load(null,password);
+    }
+  }
+ catch (  KeyStoreException e) {
+    throw new IOException("Can't create keystore",e);
+  }
+catch (  NoSuchAlgorithmException e) {
+    throw new IOException("Can't load keystore " + getPathAsString(),e);
+  }
+catch (  CertificateException e) {
+    throw new IOException("Can't load keystore " + getPathAsString(),e);
+  }
+  ReadWriteLock lock=new ReentrantReadWriteLock(true);
+  readLock=lock.readLock();
+  writeLock=lock.writeLock();
+}

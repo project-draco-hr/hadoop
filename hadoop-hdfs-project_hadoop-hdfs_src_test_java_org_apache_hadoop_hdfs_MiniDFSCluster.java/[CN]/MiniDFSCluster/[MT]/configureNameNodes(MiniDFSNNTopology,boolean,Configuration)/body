@@ -1,0 +1,28 @@
+{
+  Preconditions.checkArgument(nnTopology.countNameNodes() > 0,"empty NN topology: no namenodes specified!");
+  if (!federation && nnTopology.countNameNodes() == 1) {
+    NNConf onlyNN=nnTopology.getOnlyNameNode();
+    conf.set(FS_DEFAULT_NAME_KEY,"hdfs://127.0.0.1:" + onlyNN.getIpcPort());
+  }
+  List<String> allNsIds=Lists.newArrayList();
+  for (  MiniDFSNNTopology.NSConf nameservice : nnTopology.getNameservices()) {
+    if (nameservice.getId() != null) {
+      allNsIds.add(nameservice.getId());
+    }
+  }
+  if (!allNsIds.isEmpty()) {
+    conf.set(DFS_NAMESERVICES,Joiner.on(",").join(allNsIds));
+  }
+  for (  MiniDFSNNTopology.NSConf nameservice : nnTopology.getNameservices()) {
+    String nsId=nameservice.getId();
+    Preconditions.checkArgument(!federation || nsId != null,"if there is more than one NS, they must have names");
+    List<String> nnIds=Lists.newArrayList();
+    for (    NNConf nn : nameservice.getNNs()) {
+      nnIds.add(nn.getNnId());
+      initNameNodeAddress(conf,nameservice.getId(),nn);
+    }
+    if (nnIds.size() > 1) {
+      conf.set(DFSUtil.addKeySuffixes(DFS_HA_NAMENODES_KEY_PREFIX,nameservice.getId()),Joiner.on(",").join(nnIds));
+    }
+  }
+}

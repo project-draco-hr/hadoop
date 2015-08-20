@@ -1,0 +1,31 @@
+{
+  Configuration conf=new Configuration();
+  try {
+    cluster=new MiniDFSCluster.Builder(conf).numDataNodes(1).build();
+    Path file=new Path("/testLeaseRecovery");
+    DistributedFileSystem dfs=cluster.getFileSystem();
+    FSDataOutputStream out=dfs.create(file);
+    out.hflush();
+    out.hsync();
+    ((DFSOutputStream)out.getWrappedStream()).abort();
+    DistributedFileSystem newdfs=(DistributedFileSystem)FileSystem.newInstance(cluster.getConfiguration(0));
+    try {
+      newdfs.append(file);
+      fail("Append to a file(lease is held by another client) should fail");
+    }
+ catch (    RemoteException e) {
+      assertTrue(e.getMessage().contains("file lease is currently owned"));
+    }
+    boolean recoverLease=newdfs.recoverLease(file);
+    assertTrue(recoverLease);
+    FSDataOutputStream append=newdfs.append(file);
+    append.write("test".getBytes());
+    append.close();
+  }
+  finally {
+    if (cluster != null) {
+      cluster.shutdown();
+      cluster=null;
+    }
+  }
+}

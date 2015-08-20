@@ -1,0 +1,52 @@
+{
+  QName configuration=new QName("configuration");
+  QName property=new QName("property");
+  List<NodeInfo> nodes=new ArrayList<NodeInfo>();
+  Stack<NodeInfo> parsed=new Stack<NodeInfo>();
+  XMLInputFactory factory=XMLInputFactory.newInstance();
+  XMLEventReader reader=factory.createXMLEventReader(in);
+  while (reader.hasNext()) {
+    XMLEvent event=reader.nextEvent();
+    if (event.isStartElement()) {
+      StartElement currentElement=event.asStartElement();
+      NodeInfo currentNode=new NodeInfo(currentElement);
+      if (parsed.isEmpty()) {
+        if (!currentElement.getName().equals(configuration)) {
+          return null;
+        }
+      }
+ else {
+        NodeInfo parentNode=parsed.peek();
+        QName parentName=parentNode.getStartElement().getName();
+        if (parentName.equals(configuration) && currentNode.getStartElement().getName().equals(property)) {
+          @SuppressWarnings("unchecked") Iterator<Attribute> it=currentElement.getAttributes();
+          while (it.hasNext()) {
+            currentNode.addAttribute(it.next());
+          }
+        }
+ else         if (parentName.equals(property)) {
+          parentNode.addElement(currentElement);
+        }
+      }
+      parsed.push(currentNode);
+    }
+ else     if (event.isEndElement()) {
+      NodeInfo node=parsed.pop();
+      if (parsed.size() == 1) {
+        nodes.add(node);
+      }
+    }
+ else     if (event.isCharacters()) {
+      if (2 < parsed.size()) {
+        NodeInfo parentNode=parsed.pop();
+        StartElement parentElement=parentNode.getStartElement();
+        NodeInfo grandparentNode=parsed.peek();
+        if (grandparentNode.getElement(parentElement) == null) {
+          grandparentNode.setElement(parentElement,event.asCharacters());
+        }
+        parsed.push(parentNode);
+      }
+    }
+  }
+  return nodes;
+}

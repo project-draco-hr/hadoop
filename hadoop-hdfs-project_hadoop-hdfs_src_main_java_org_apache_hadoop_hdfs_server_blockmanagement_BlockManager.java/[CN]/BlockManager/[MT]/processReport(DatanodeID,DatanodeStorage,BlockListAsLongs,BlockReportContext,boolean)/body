@@ -17,6 +17,11 @@
       blockLog.info("BLOCK* processReport: " + "discarded non-initial block report from {}" + " because namenode still in startup phase",nodeID);
       return !node.hasStaleStorages();
     }
+    if (context != null) {
+      if (!blockReportLeaseManager.checkLease(node,startTime,context.getLeaseId())) {
+        return false;
+      }
+    }
     if (storageInfo.getBlockReportCount() == 0) {
       LOG.info("Processing first storage report for " + storageInfo.getStorageID() + " from datanode "+ nodeID.getDatanodeUuid());
       processFirstBlockReport(storageInfo,newReport);
@@ -30,6 +35,8 @@
       if (lastStorageInRpc) {
         int rpcsSeen=node.updateBlockReportContext(context);
         if (rpcsSeen >= context.getTotalRpcs()) {
+          long leaseId=blockReportLeaseManager.removeLease(node);
+          BlockManagerFaultInjector.getInstance().removeBlockReportLease(node,leaseId);
           List<DatanodeStorageInfo> zombies=node.removeZombieStorages();
           if (zombies.isEmpty()) {
             LOG.debug("processReport 0x{}: no zombie storages found.",Long.toHexString(context.getReportId()));

@@ -1,0 +1,35 @@
+{
+  final byte policyId=status.getStoragePolicy();
+  if (policyId == HdfsConstants.BLOCK_STORAGE_POLICY_ID_UNSPECIFIED) {
+    return;
+  }
+  final BlockStoragePolicy policy=blockStoragePolicies[policyId];
+  if (policy == null) {
+    LOG.warn("Failed to get the storage policy of file " + fullPath);
+    return;
+  }
+  List<StorageType> types=policy.chooseStorageTypes(status.getReplication());
+  final ErasureCodingPolicy ecPolicy=status.getErasureCodingPolicy();
+  final LocatedBlocks locatedBlocks=status.getBlockLocations();
+  final boolean lastBlkComplete=locatedBlocks.isLastBlockComplete();
+  List<LocatedBlock> lbs=locatedBlocks.getLocatedBlocks();
+  for (int i=0; i < lbs.size(); i++) {
+    if (i == lbs.size() - 1 && !lastBlkComplete) {
+      continue;
+    }
+    LocatedBlock lb=lbs.get(i);
+    if (lb.isStriped()) {
+      types=policy.chooseStorageTypes((short)lb.getLocations().length);
+    }
+    final StorageTypeDiff diff=new StorageTypeDiff(types,lb.getStorageTypes());
+    if (!diff.removeOverlap(true)) {
+      if (scheduleMoves4Block(diff,lb,ecPolicy)) {
+        result.updateHasRemaining(diff.existing.size() > 1 && diff.expected.size() > 1);
+        result.setNoBlockMoved(false);
+      }
+ else {
+        result.updateHasRemaining(true);
+      }
+    }
+  }
+}

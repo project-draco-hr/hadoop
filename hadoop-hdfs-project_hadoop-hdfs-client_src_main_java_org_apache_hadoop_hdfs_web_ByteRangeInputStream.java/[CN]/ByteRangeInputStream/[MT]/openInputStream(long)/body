@@ -1,0 +1,22 @@
+{
+  final boolean resolved=resolvedURL.getURL() != null;
+  final URLOpener opener=resolved ? resolvedURL : originalURL;
+  final HttpURLConnection connection=opener.connect(startOffset,resolved);
+  resolvedURL.setURL(getResolvedUrl(connection));
+  InputStream in=connection.getInputStream();
+  final Long length;
+  final Map<String,List<String>> headers=connection.getHeaderFields();
+  if (isChunkedTransferEncoding(headers)) {
+    length=null;
+  }
+ else {
+    final String cl=connection.getHeaderField(HttpHeaders.CONTENT_LENGTH);
+    if (cl == null) {
+      throw new IOException(HttpHeaders.CONTENT_LENGTH + " is missing: " + headers);
+    }
+    final long streamlength=Long.parseLong(cl);
+    length=startOffset + streamlength;
+    in=new BoundedInputStream(in,streamlength);
+  }
+  return new InputStreamAndFileLength(length,in);
+}

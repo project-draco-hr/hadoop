@@ -1,0 +1,34 @@
+{
+  final Statistics stats=new Statistics("test");
+  final int size=2;
+  ExecutorService es=Executors.newFixedThreadPool(size);
+  List<Callable<Boolean>> tasks=new ArrayList<Callable<Boolean>>(size);
+  for (int i=0; i < size; i++) {
+    tasks.add(new Callable<Boolean>(){
+      public Boolean call(){
+        stats.incrementReadOps(1);
+        return true;
+      }
+    }
+);
+  }
+  es.invokeAll(tasks);
+  final AtomicInteger allDataSize=new AtomicInteger(0);
+  allDataSize.set(stats.getAllThreadLocalDataSize());
+  Assert.assertEquals(size,allDataSize.get());
+  Assert.assertEquals(size,stats.getReadOps());
+  es.shutdownNow();
+  es.awaitTermination(1,TimeUnit.MINUTES);
+  es=null;
+  System.gc();
+  GenericTestUtils.waitFor(new Supplier<Boolean>(){
+    @Override public Boolean get(){
+      int size=stats.getAllThreadLocalDataSize();
+      allDataSize.set(size);
+      return size == 0;
+    }
+  }
+,1000,10 * 1000);
+  Assert.assertEquals(0,allDataSize.get());
+  Assert.assertEquals(size,stats.getReadOps());
+}

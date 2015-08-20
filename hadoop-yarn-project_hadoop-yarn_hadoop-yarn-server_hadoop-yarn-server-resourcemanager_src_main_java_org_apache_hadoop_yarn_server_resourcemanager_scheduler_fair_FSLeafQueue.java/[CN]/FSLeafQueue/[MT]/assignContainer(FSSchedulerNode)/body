@@ -6,31 +6,30 @@
   if (!assignContainerPreCheck(node)) {
     return assigned;
   }
-  Comparator<Schedulable> comparator=policy.getComparator();
-  writeLock.lock();
-  try {
-    Collections.sort(runnableApps,comparator);
-  }
-  finally {
-    writeLock.unlock();
-  }
+  TreeSet<FSAppAttempt> pendingForResourceApps=new TreeSet<FSAppAttempt>(policy.getComparator());
   readLock.lock();
   try {
-    for (    FSAppAttempt sched : runnableApps) {
-      if (SchedulerAppUtils.isBlacklisted(sched,node,LOG)) {
-        continue;
-      }
-      assigned=sched.assignContainer(node);
-      if (!assigned.equals(Resources.none())) {
-        if (LOG.isDebugEnabled()) {
-          LOG.debug("Assigned container in queue:" + getName() + " "+ "container:"+ assigned);
-        }
-        break;
+    for (    FSAppAttempt app : runnableApps) {
+      Resource pending=app.getAppAttemptResourceUsage().getPending();
+      if (!pending.equals(Resources.none())) {
+        pendingForResourceApps.add(app);
       }
     }
   }
   finally {
     readLock.unlock();
+  }
+  for (  FSAppAttempt sched : pendingForResourceApps) {
+    if (SchedulerAppUtils.isBlacklisted(sched,node,LOG)) {
+      continue;
+    }
+    assigned=sched.assignContainer(node);
+    if (!assigned.equals(Resources.none())) {
+      if (LOG.isDebugEnabled()) {
+        LOG.debug("Assigned container in queue:" + getName() + " "+ "container:"+ assigned);
+      }
+      break;
+    }
   }
   return assigned;
 }

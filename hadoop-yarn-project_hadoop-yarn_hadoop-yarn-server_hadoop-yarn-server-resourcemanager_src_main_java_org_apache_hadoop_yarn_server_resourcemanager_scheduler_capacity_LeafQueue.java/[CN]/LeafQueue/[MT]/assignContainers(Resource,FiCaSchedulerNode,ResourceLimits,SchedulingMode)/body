@@ -7,110 +7,44 @@
   if (reservedContainer != null) {
     FiCaSchedulerApp application=getApplication(reservedContainer.getApplicationAttemptId());
 synchronized (application) {
-      return assignReservedContainer(application,node,reservedContainer,clusterResource,schedulingMode);
+      CSAssignment assignment=application.assignContainers(clusterResource,node,currentResourceLimits,schedulingMode,reservedContainer);
+      handleExcessReservedContainer(clusterResource,assignment);
+      return assignment;
     }
   }
   if (schedulingMode == SchedulingMode.RESPECT_PARTITION_EXCLUSIVITY && !accessibleToPartition(node.getPartition())) {
-    return NULL_ASSIGNMENT;
+    return CSAssignment.NULL_ASSIGNMENT;
   }
   if (!hasPendingResourceRequest(node.getPartition(),clusterResource,schedulingMode)) {
     if (LOG.isDebugEnabled()) {
       LOG.debug("Skip this queue=" + getQueuePath() + ", because it doesn't need more resource, schedulingMode="+ schedulingMode.name()+ " node-partition="+ node.getPartition());
     }
-    return NULL_ASSIGNMENT;
+    return CSAssignment.NULL_ASSIGNMENT;
   }
   for (Iterator<FiCaSchedulerApp> assignmentIterator=orderingPolicy.getAssignmentIterator(); assignmentIterator.hasNext(); ) {
     FiCaSchedulerApp application=assignmentIterator.next();
-    if (LOG.isDebugEnabled()) {
-      LOG.debug("pre-assignContainers for application " + application.getApplicationId());
-      application.showRequests();
+    if (!super.canAssignToThisQueue(clusterResource,node.getPartition(),currentResourceLimits,application.getCurrentReservation(),schedulingMode)) {
+      return CSAssignment.NULL_ASSIGNMENT;
     }
-    if (!application.hasPendingResourceRequest(resourceCalculator,node.getPartition(),clusterResource,schedulingMode)) {
-      if (LOG.isDebugEnabled()) {
-        LOG.debug("Skip app_attempt=" + application.getApplicationAttemptId() + ", because it doesn't need more resource, schedulingMode="+ schedulingMode.name()+ " node-label="+ node.getPartition());
-      }
+    Resource userLimit=computeUserLimitAndSetHeadroom(application,clusterResource,node.getPartition(),schedulingMode);
+    if (!canAssignToUser(clusterResource,application.getUser(),userLimit,application,node.getPartition(),currentResourceLimits)) {
       continue;
     }
-synchronized (application) {
-      if (SchedulerAppUtils.isBlacklisted(application,node,LOG)) {
-        continue;
-      }
-      for (      Priority priority : application.getPriorities()) {
-        ResourceRequest anyRequest=application.getResourceRequest(priority,ResourceRequest.ANY);
-        if (null == anyRequest) {
-          continue;
-        }
-        Resource required=anyRequest.getCapability();
-        if (application.getTotalRequiredResources(priority) <= 0) {
-          continue;
-        }
-        if (schedulingMode == SchedulingMode.IGNORE_PARTITION_EXCLUSIVITY) {
-          RMAppAttempt rmAppAttempt=csContext.getRMContext().getRMApps().get(application.getApplicationId()).getCurrentAppAttempt();
-          if (null == rmAppAttempt.getMasterContainer()) {
-            if (LOG.isDebugEnabled()) {
-              LOG.debug("Skip allocating AM container to app_attempt=" + application.getApplicationAttemptId() + ", don't allow to allocate AM container in non-exclusive mode");
-            }
-            break;
-          }
-        }
-        if (!SchedulerUtils.checkResourceRequestMatchingNodePartition(anyRequest,node.getPartition(),schedulingMode)) {
-          continue;
-        }
-        if (!this.reservationsContinueLooking) {
-          if (!shouldAllocOrReserveNewContainer(application,priority,required)) {
-            if (LOG.isDebugEnabled()) {
-              LOG.debug("doesn't need containers based on reservation algo!");
-            }
-            continue;
-          }
-        }
-        Resource userLimit=computeUserLimitAndSetHeadroom(application,clusterResource,required,node.getPartition(),schedulingMode);
-        if (!super.canAssignToThisQueue(clusterResource,node.getPartition(),currentResourceLimits,required,application.getCurrentReservation(),schedulingMode)) {
-          return NULL_ASSIGNMENT;
-        }
-        if (!canAssignToUser(clusterResource,application.getUser(),userLimit,application,node.getPartition(),currentResourceLimits)) {
-          break;
-        }
-        application.addSchedulingOpportunity(priority);
-        int missedNonPartitionedRequestSchedulingOpportunity=0;
-        if (anyRequest.getNodeLabelExpression().equals(RMNodeLabelsManager.NO_LABEL)) {
-          missedNonPartitionedRequestSchedulingOpportunity=application.addMissedNonPartitionedRequestSchedulingOpportunity(priority);
-        }
-        if (schedulingMode == SchedulingMode.IGNORE_PARTITION_EXCLUSIVITY) {
-          if (missedNonPartitionedRequestSchedulingOpportunity < scheduler.getNumClusterNodes()) {
-            if (LOG.isDebugEnabled()) {
-              LOG.debug("Skip app_attempt=" + application.getApplicationAttemptId() + " priority="+ priority+ " because missed-non-partitioned-resource-request"+ " opportunity under requred:"+ " Now="+ missedNonPartitionedRequestSchedulingOpportunity+ " required="+ scheduler.getNumClusterNodes());
-            }
-            break;
-          }
-        }
-        CSAssignment assignment=assignContainersOnNode(clusterResource,node,application,priority,null,schedulingMode,currentResourceLimits);
-        if (assignment.getSkipped()) {
-          application.subtractSchedulingOpportunity(priority);
-          continue;
-        }
-        Resource assigned=assignment.getResource();
-        if (Resources.greaterThan(resourceCalculator,clusterResource,assigned,Resources.none())) {
-          RMContainer reservedOrAllocatedRMContainer=application.getRMContainer(assignment.getAssignmentInformation().getFirstAllocatedOrReservedContainerId());
-          allocateResource(clusterResource,application,assigned,node.getPartition(),reservedOrAllocatedRMContainer);
-          if (assignment.getType() != NodeType.OFF_SWITCH) {
-            if (LOG.isDebugEnabled()) {
-              LOG.debug("Resetting scheduling opportunities");
-            }
-            application.resetSchedulingOpportunities(priority);
-          }
-          application.resetMissedNonPartitionedRequestSchedulingOpportunity(priority);
-          return assignment;
-        }
- else {
-          break;
-        }
-      }
-    }
+    CSAssignment assignment=application.assignContainers(clusterResource,node,currentResourceLimits,schedulingMode,null);
     if (LOG.isDebugEnabled()) {
       LOG.debug("post-assignContainers for application " + application.getApplicationId());
+      application.showRequests();
     }
-    application.showRequests();
+    Resource assigned=assignment.getResource();
+    handleExcessReservedContainer(clusterResource,assignment);
+    if (Resources.greaterThan(resourceCalculator,clusterResource,assigned,Resources.none())) {
+      RMContainer reservedOrAllocatedRMContainer=application.getRMContainer(assignment.getAssignmentInformation().getFirstAllocatedOrReservedContainerId());
+      allocateResource(clusterResource,application,assigned,node.getPartition(),reservedOrAllocatedRMContainer);
+      return assignment;
+    }
+ else     if (!assignment.getSkipped()) {
+      return CSAssignment.NULL_ASSIGNMENT;
+    }
   }
-  return NULL_ASSIGNMENT;
+  return CSAssignment.NULL_ASSIGNMENT;
 }

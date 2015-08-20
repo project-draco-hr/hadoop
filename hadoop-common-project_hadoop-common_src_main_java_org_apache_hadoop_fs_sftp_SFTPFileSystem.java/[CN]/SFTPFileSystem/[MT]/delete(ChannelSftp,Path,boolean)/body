@@ -1,0 +1,47 @@
+{
+  Path workDir;
+  try {
+    workDir=new Path(channel.pwd());
+  }
+ catch (  SftpException e) {
+    throw new IOException(e);
+  }
+  Path absolute=makeAbsolute(workDir,file);
+  String pathName=absolute.toUri().getPath();
+  FileStatus fileStat=null;
+  try {
+    fileStat=getFileStatus(channel,absolute);
+  }
+ catch (  FileNotFoundException e) {
+    return false;
+  }
+  if (!fileStat.isDirectory()) {
+    boolean status=true;
+    try {
+      channel.rm(pathName);
+    }
+ catch (    SftpException e) {
+      status=false;
+    }
+    return status;
+  }
+ else {
+    boolean status=true;
+    FileStatus[] dirEntries=listStatus(channel,absolute);
+    if (dirEntries != null && dirEntries.length > 0) {
+      if (!recursive) {
+        throw new IOException(String.format(E_DIR_NOTEMPTY,file));
+      }
+      for (int i=0; i < dirEntries.length; ++i) {
+        delete(channel,new Path(absolute,dirEntries[i].getPath()),recursive);
+      }
+    }
+    try {
+      channel.rmdir(pathName);
+    }
+ catch (    SftpException e) {
+      status=false;
+    }
+    return status;
+  }
+}

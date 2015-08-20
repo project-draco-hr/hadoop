@@ -1,0 +1,53 @@
+{
+  if (SchedulerAppUtils.isBlacklisted(application,node,LOG)) {
+    return ContainerAllocation.APP_SKIPPED;
+  }
+  ResourceRequest anyRequest=application.getResourceRequest(priority,ResourceRequest.ANY);
+  if (null == anyRequest) {
+    return ContainerAllocation.PRIORITY_SKIPPED;
+  }
+  Resource required=anyRequest.getCapability();
+  if (application.getTotalRequiredResources(priority) <= 0) {
+    return ContainerAllocation.PRIORITY_SKIPPED;
+  }
+  if (schedulingMode == SchedulingMode.IGNORE_PARTITION_EXCLUSIVITY) {
+    RMAppAttempt rmAppAttempt=rmContext.getRMApps().get(application.getApplicationId()).getCurrentAppAttempt();
+    if (rmAppAttempt.getSubmissionContext().getUnmanagedAM() == false && null == rmAppAttempt.getMasterContainer()) {
+      if (LOG.isDebugEnabled()) {
+        LOG.debug("Skip allocating AM container to app_attempt=" + application.getApplicationAttemptId() + ", don't allow to allocate AM container in non-exclusive mode");
+      }
+      return ContainerAllocation.APP_SKIPPED;
+    }
+  }
+  if (!SchedulerUtils.checkResourceRequestMatchingNodePartition(anyRequest,node.getPartition(),schedulingMode)) {
+    return ContainerAllocation.PRIORITY_SKIPPED;
+  }
+  if (!application.getCSLeafQueue().getReservationContinueLooking()) {
+    if (!shouldAllocOrReserveNewContainer(priority,required)) {
+      if (LOG.isDebugEnabled()) {
+        LOG.debug("doesn't need containers based on reservation algo!");
+      }
+      return ContainerAllocation.PRIORITY_SKIPPED;
+    }
+  }
+  if (!checkHeadroom(clusterResource,resourceLimits,required,node)) {
+    if (LOG.isDebugEnabled()) {
+      LOG.debug("cannot allocate required resource=" + required + " because of headroom");
+    }
+    return ContainerAllocation.QUEUE_SKIPPED;
+  }
+  application.addSchedulingOpportunity(priority);
+  int missedNonPartitionedRequestSchedulingOpportunity=0;
+  if (anyRequest.getNodeLabelExpression().equals(RMNodeLabelsManager.NO_LABEL)) {
+    missedNonPartitionedRequestSchedulingOpportunity=application.addMissedNonPartitionedRequestSchedulingOpportunity(priority);
+  }
+  if (schedulingMode == SchedulingMode.IGNORE_PARTITION_EXCLUSIVITY) {
+    if (missedNonPartitionedRequestSchedulingOpportunity < rmContext.getScheduler().getNumClusterNodes()) {
+      if (LOG.isDebugEnabled()) {
+        LOG.debug("Skip app_attempt=" + application.getApplicationAttemptId() + " priority="+ priority+ " because missed-non-partitioned-resource-request"+ " opportunity under requred:"+ " Now="+ missedNonPartitionedRequestSchedulingOpportunity+ " required="+ rmContext.getScheduler().getNumClusterNodes());
+      }
+      return ContainerAllocation.APP_SKIPPED;
+    }
+  }
+  return null;
+}

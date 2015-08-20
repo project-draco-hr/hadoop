@@ -1,15 +1,16 @@
 {
   removeStandbyNameDirs();
-  try {
-    cluster.restartNameNode(1);
-    fail("Did not throw");
+  for (int index=1; index < maxNNCount; index++) {
+    try {
+      cluster.restartNameNode(index);
+      fail("Did not throw");
+    }
+ catch (    IOException ioe) {
+      GenericTestUtils.assertExceptionContains("storage directory does not exist or is not accessible",ioe);
+    }
+    int rc=BootstrapStandby.run(new String[]{"-nonInteractive"},cluster.getConfiguration(index));
+    assertEquals(0,rc);
+    FSImageTestUtil.assertNNHasCheckpoints(cluster,index,ImmutableList.of(0));
   }
- catch (  IOException ioe) {
-    GenericTestUtils.assertExceptionContains("storage directory does not exist or is not accessible",ioe);
-  }
-  int rc=BootstrapStandby.run(new String[]{"-nonInteractive"},cluster.getConfiguration(1));
-  assertEquals(0,rc);
-  FSImageTestUtil.assertNNHasCheckpoints(cluster,1,ImmutableList.of(0));
-  FSImageTestUtil.assertNNFilesMatch(cluster);
-  cluster.restartNameNode(1);
+  restartNameNodesFromIndex(1);
 }

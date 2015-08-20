@@ -1,0 +1,35 @@
+{
+  conf.setInt(org.apache.hadoop.mapreduce.lib.input.LineRecordReader.MAX_LINE_LENGTH,Integer.MAX_VALUE);
+  assertTrue("unexpected test data at " + testFilePath,testFileSize > firstSplitLength);
+  String delimiter=conf.get("textinputformat.record.delimiter");
+  byte[] recordDelimiterBytes=null;
+  if (null != delimiter) {
+    recordDelimiterBytes=delimiter.getBytes(Charsets.UTF_8);
+  }
+  TaskAttemptContext context=new TaskAttemptContextImpl(conf,new TaskAttemptID());
+  FileSplit split=new FileSplit(testFilePath,0,testFileSize,(String[])null);
+  LineRecordReader reader=new LineRecordReader(recordDelimiterBytes);
+  reader.initialize(split,context);
+  int numRecordsNoSplits=0;
+  while (reader.nextKeyValue()) {
+    ++numRecordsNoSplits;
+  }
+  reader.close();
+  split=new FileSplit(testFilePath,0,firstSplitLength,(String[])null);
+  reader=new LineRecordReader(recordDelimiterBytes);
+  reader.initialize(split,context);
+  int numRecordsFirstSplit=0;
+  while (reader.nextKeyValue()) {
+    ++numRecordsFirstSplit;
+  }
+  reader.close();
+  split=new FileSplit(testFilePath,firstSplitLength,testFileSize - firstSplitLength,(String[])null);
+  reader=new LineRecordReader(recordDelimiterBytes);
+  reader.initialize(split,context);
+  int numRecordsRemainingSplits=0;
+  while (reader.nextKeyValue()) {
+    ++numRecordsRemainingSplits;
+  }
+  reader.close();
+  assertEquals("Unexpected number of records in split ",numRecordsNoSplits,numRecordsFirstSplit + numRecordsRemainingSplits);
+}

@@ -1,25 +1,22 @@
 {
+  Container container=ctx.getContainer();
   String user=ctx.getUser();
   String pid=ctx.getPid();
   Signal signal=ctx.getSignal();
   verifyUsernamePattern(user);
   String runAsUser=getRunAsUser(user);
-  String[] command=new String[]{containerExecutorExe,runAsUser,user,Integer.toString(Commands.SIGNAL_CONTAINER.getValue()),pid,Integer.toString(signal.getValue())};
-  ShellCommandExecutor shExec=new ShellCommandExecutor(command);
-  if (LOG.isDebugEnabled()) {
-    LOG.debug("signalContainer: " + Arrays.toString(command));
-  }
+  ContainerRuntimeContext runtimeContext=new ContainerRuntimeContext.Builder(container).setExecutionAttribute(RUN_AS_USER,runAsUser).setExecutionAttribute(USER,user).setExecutionAttribute(PID,pid).setExecutionAttribute(SIGNAL,signal).build();
   try {
-    shExec.execute();
+    linuxContainerRuntime.signalContainer(runtimeContext);
   }
- catch (  ExitCodeException e) {
-    int ret_code=shExec.getExitCode();
-    if (ret_code == ResultCode.INVALID_CONTAINER_PID.getValue()) {
+ catch (  ContainerExecutionException e) {
+    int retCode=e.getExitCode();
+    if (retCode == PrivilegedOperation.ResultCode.INVALID_CONTAINER_PID.getValue()) {
       return false;
     }
-    LOG.warn("Error in signalling container " + pid + " with "+ signal+ "; exit = "+ ret_code,e);
-    logOutput(shExec.getOutput());
-    throw new IOException("Problem signalling container " + pid + " with "+ signal+ "; output: "+ shExec.getOutput()+ " and exitCode: "+ ret_code,e);
+    LOG.warn("Error in signalling container " + pid + " with "+ signal+ "; exit = "+ retCode,e);
+    logOutput(e.getOutput());
+    throw new IOException("Problem signalling container " + pid + " with "+ signal+ "; output: "+ e.getOutput()+ " and exitCode: "+ retCode,e);
   }
   return true;
 }

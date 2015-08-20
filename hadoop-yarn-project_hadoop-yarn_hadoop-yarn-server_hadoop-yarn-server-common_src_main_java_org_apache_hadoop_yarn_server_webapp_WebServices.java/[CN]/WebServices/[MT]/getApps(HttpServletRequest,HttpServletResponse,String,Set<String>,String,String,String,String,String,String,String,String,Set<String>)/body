@@ -1,32 +1,26 @@
 {
   UserGroupInformation callerUGI=getUser(req);
-  long num=0;
-  boolean checkCount=false;
-  boolean checkStart=false;
   boolean checkEnd=false;
   boolean checkAppTypes=false;
   boolean checkAppStates=false;
-  long countNum=0;
+  long countNum=Long.MAX_VALUE;
   long sBegin=0;
   long sEnd=Long.MAX_VALUE;
   long fBegin=0;
   long fEnd=Long.MAX_VALUE;
   if (count != null && !count.isEmpty()) {
-    checkCount=true;
     countNum=Long.parseLong(count);
     if (countNum <= 0) {
       throw new BadRequestException("limit value must be greater then 0");
     }
   }
   if (startedBegin != null && !startedBegin.isEmpty()) {
-    checkStart=true;
     sBegin=Long.parseLong(startedBegin);
     if (sBegin < 0) {
       throw new BadRequestException("startedTimeBegin must be greater than 0");
     }
   }
   if (startedEnd != null && !startedEnd.isEmpty()) {
-    checkStart=true;
     sEnd=Long.parseLong(startedEnd);
     if (sEnd < 0) {
       throw new BadRequestException("startedTimeEnd must be greater than 0");
@@ -65,15 +59,17 @@
   }
   AppsInfo allApps=new AppsInfo();
   Collection<ApplicationReport> appReports=null;
+  final GetApplicationsRequest request=GetApplicationsRequest.newInstance();
+  request.setLimit(countNum);
+  request.setStartRange(new LongRange(sBegin,sEnd));
   try {
     if (callerUGI == null) {
-      GetApplicationsRequest request=GetApplicationsRequest.newInstance();
       appReports=appBaseProt.getApplications(request).getApplicationList();
     }
  else {
       appReports=callerUGI.doAs(new PrivilegedExceptionAction<Collection<ApplicationReport>>(){
         @Override public Collection<ApplicationReport> run() throws Exception {
-          return appBaseProt.getApplications(GetApplicationsRequest.newInstance()).getApplicationList();
+          return appBaseProt.getApplications(request).getApplicationList();
         }
       }
 );
@@ -83,9 +79,6 @@
     rewrapAndThrowException(e);
   }
   for (  ApplicationReport appReport : appReports) {
-    if (checkCount && num == countNum) {
-      break;
-    }
     if (checkAppStates && !appStates.contains(StringUtils.toLowerCase(appReport.getYarnApplicationState().toString()))) {
       continue;
     }
@@ -108,15 +101,11 @@
     if (checkAppTypes && !appTypes.contains(StringUtils.toLowerCase(appReport.getApplicationType().trim()))) {
       continue;
     }
-    if (checkStart && (appReport.getStartTime() < sBegin || appReport.getStartTime() > sEnd)) {
-      continue;
-    }
     if (checkEnd && (appReport.getFinishTime() < fBegin || appReport.getFinishTime() > fEnd)) {
       continue;
     }
     AppInfo app=new AppInfo(appReport);
     allApps.add(app);
-    num++;
   }
   return allApps;
 }

@@ -1,29 +1,34 @@
 {
   FiCaSchedulerApp application=getApplicationAttempt(applicationAttemptId);
   if (application == null) {
-    LOG.info("Calling allocate on removed " + "or non existant application " + applicationAttemptId);
     return EMPTY_ALLOCATION;
   }
   SchedulerUtils.normalizeRequests(ask,getResourceCalculator(),getClusterResource(),getMinimumResourceCapability(),getMaximumResourceCapability());
   releaseContainers(release,application);
+  Allocation allocation;
+  LeafQueue updateDemandForQueue=null;
 synchronized (application) {
     if (application.isStopped()) {
-      LOG.info("Calling allocate on a stopped " + "application " + applicationAttemptId);
       return EMPTY_ALLOCATION;
     }
     if (!ask.isEmpty()) {
       if (LOG.isDebugEnabled()) {
-        LOG.debug("allocate: pre-update" + " applicationAttemptId=" + applicationAttemptId + " application="+ application);
+        LOG.debug("allocate: pre-update " + applicationAttemptId + " ask size ="+ ask.size());
+        application.showRequests();
       }
-      application.showRequests();
-      application.updateResourceRequests(ask);
-      LOG.debug("allocate: post-update");
-      application.showRequests();
-    }
-    if (LOG.isDebugEnabled()) {
-      LOG.debug("allocate:" + " applicationAttemptId=" + applicationAttemptId + " #ask="+ ask.size());
+      if (application.updateResourceRequests(ask)) {
+        updateDemandForQueue=(LeafQueue)application.getQueue();
+      }
+      if (LOG.isDebugEnabled()) {
+        LOG.debug("allocate: post-update");
+        application.showRequests();
+      }
     }
     application.updateBlacklist(blacklistAdditions,blacklistRemovals);
-    return application.getAllocation(getResourceCalculator(),clusterResource,getMinimumResourceCapability());
+    allocation=application.getAllocation(getResourceCalculator(),clusterResource,getMinimumResourceCapability());
   }
+  if (updateDemandForQueue != null) {
+    updateDemandForQueue.getOrderingPolicy().demandUpdated(application);
+  }
+  return allocation;
 }

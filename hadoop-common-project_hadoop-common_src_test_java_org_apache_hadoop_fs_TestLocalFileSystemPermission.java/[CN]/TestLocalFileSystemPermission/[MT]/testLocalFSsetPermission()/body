@@ -4,13 +4,40 @@
     return;
   }
   Configuration conf=new Configuration();
+  conf.set(CommonConfigurationKeys.FS_PERMISSIONS_UMASK_KEY,"044");
   LocalFileSystem localfs=FileSystem.getLocal(conf);
   String filename="foo";
   Path f=writeFile(localfs,filename);
   try {
     FsPermission initialPermission=getPermission(localfs,f);
-    System.out.println(filename + ": " + initialPermission);
     assertEquals(FsPermission.getFileDefault().applyUMask(FsPermission.getUMask(conf)),initialPermission);
+  }
+ catch (  Exception e) {
+    System.out.println(StringUtils.stringifyException(e));
+    System.out.println("Cannot run test");
+    return;
+  }
+  String filename1="foo1";
+  FsPermission perm=new FsPermission((short)0755);
+  Path f1=writeFile(localfs,filename1,perm);
+  try {
+    FsPermission initialPermission=getPermission(localfs,f1);
+    assertEquals(perm.applyUMask(FsPermission.getUMask(conf)),initialPermission);
+  }
+ catch (  Exception e) {
+    System.out.println(StringUtils.stringifyException(e));
+    System.out.println("Cannot run test");
+    return;
+  }
+  String filename2="foo2";
+  Path f2=writeFile(localfs,filename2);
+  try {
+    FsPermission initialPermission=getPermission(localfs,f2);
+    Path copyPath=new Path(TEST_PATH_PREFIX + "/foo_copy");
+    localfs.rename(f2,copyPath);
+    FsPermission copyPermission=getPermission(localfs,copyPath);
+    assertEquals(copyPermission,initialPermission);
+    f2=copyPath;
   }
  catch (  Exception e) {
     System.out.println(StringUtils.stringifyException(e));
@@ -26,6 +53,10 @@
     assertEquals(all,getPermission(localfs,f));
   }
   finally {
-    cleanupFile(localfs,f);
+    cleanup(localfs,f);
+    cleanup(localfs,f1);
+    if (localfs.exists(f2)) {
+      localfs.delete(f2,true);
+    }
   }
 }

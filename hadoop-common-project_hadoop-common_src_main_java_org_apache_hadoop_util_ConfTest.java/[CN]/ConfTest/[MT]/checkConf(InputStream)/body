@@ -1,0 +1,70 @@
+{
+  List<NodeInfo> nodes=null;
+  List<String> errors=new ArrayList<String>();
+  try {
+    nodes=parseConf(in);
+    if (nodes == null) {
+      errors.add("bad conf file: top-level element not <configuration>");
+    }
+  }
+ catch (  XMLStreamException e) {
+    errors.add("bad conf file: " + e.getMessage());
+  }
+  if (!errors.isEmpty()) {
+    return errors;
+  }
+  Map<String,List<Integer>> duplicatedProperties=new HashMap<String,List<Integer>>();
+  for (  NodeInfo node : nodes) {
+    StartElement element=node.getStartElement();
+    int line=element.getLocation().getLineNumber();
+    if (!element.getName().equals(new QName("property"))) {
+      errors.add(String.format("Line %d: element not <property>",line));
+      continue;
+    }
+    List<XMLEvent> events=node.getXMLEventsForQName(new QName("name"));
+    if (events == null) {
+      errors.add(String.format("Line %d: <property> has no <name>",line));
+    }
+ else {
+      String v=null;
+      for (      XMLEvent event : events) {
+        if (event.isAttribute()) {
+          v=((Attribute)event).getValue();
+        }
+ else {
+          Characters c=node.getElement(event.asStartElement());
+          if (c != null) {
+            v=c.getData();
+          }
+        }
+        if (v == null || v.isEmpty()) {
+          errors.add(String.format("Line %d: <property> has an empty <name>",line));
+        }
+      }
+      if (v != null && !v.isEmpty()) {
+        List<Integer> lines=duplicatedProperties.get(v);
+        if (lines == null) {
+          lines=new ArrayList<Integer>();
+          duplicatedProperties.put(v,lines);
+        }
+        lines.add(node.getStartElement().getLocation().getLineNumber());
+      }
+    }
+    events=node.getXMLEventsForQName(new QName("value"));
+    if (events == null) {
+      errors.add(String.format("Line %d: <property> has no <value>",line));
+    }
+    for (    QName qName : node.getDuplicatedQNames()) {
+      if (!qName.equals(new QName("source"))) {
+        errors.add(String.format("Line %d: <property> has duplicated <%s>s",line,qName));
+      }
+    }
+  }
+  for (  Entry<String,List<Integer>> e : duplicatedProperties.entrySet()) {
+    List<Integer> lines=e.getValue();
+    if (1 < lines.size()) {
+      errors.add(String.format("Line %s: duplicated <property>s for %s",StringUtils.join(", ",lines),e.getKey()));
+    }
+  }
+  return errors;
+}

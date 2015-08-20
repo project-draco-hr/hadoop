@@ -8,9 +8,21 @@
     validateRequest(context,conf,request,response,nnImage,parsedParams.getStorageInfoString());
     UserGroupInformation.getCurrentUser().doAs(new PrivilegedExceptionAction<Void>(){
       @Override public Void run() throws Exception {
+        HAServiceProtocol.HAServiceState state=NameNodeHttpServer.getNameNodeStateFromContext(getServletContext());
+        if (state != HAServiceProtocol.HAServiceState.ACTIVE) {
+          response.sendError(HttpServletResponse.SC_EXPECTATION_FAILED,"Nameode " + request.getLocalAddr() + " is currently not in a state which can "+ "accept uploads of new fsimages. State: "+ state);
+          return null;
+        }
         final long txid=parsedParams.getTxId();
+        String remoteAddr=request.getRemoteAddr();
+        ImageUploadRequest imageRequest=new ImageUploadRequest(txid,remoteAddr);
         final NameNodeFile nnf=parsedParams.getNameNodeFile();
-        if (!nnImage.addToCheckpointing(txid)) {
+        SortedSet<ImageUploadRequest> larger=currentlyDownloadingCheckpoints.tailSet(imageRequest);
+        if (larger.size() > 0) {
+          response.sendError(HttpServletResponse.SC_CONFLICT,"Another checkpointer is already in the process of uploading a" + " checkpoint made up to transaction ID " + larger.last());
+          return null;
+        }
+        if (!currentlyDownloadingCheckpoints.add(imageRequest)) {
           response.sendError(HttpServletResponse.SC_CONFLICT,"Either current namenode is checkpointing or another" + " checkpointer is already in the process of " + "uploading a checkpoint made at transaction ID "+ txid);
           return null;
         }
@@ -31,6 +43,7 @@
             nnImage.purgeOldStorage(nnf);
           }
   finally {
+            currentlyDownloadingCheckpoints.remove(imageRequest);
             stream.close();
           }
         }

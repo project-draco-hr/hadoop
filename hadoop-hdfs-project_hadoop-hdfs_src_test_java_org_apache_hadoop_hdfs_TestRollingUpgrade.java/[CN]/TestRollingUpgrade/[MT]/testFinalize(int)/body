@@ -1,0 +1,34 @@
+{
+  final Configuration conf=new HdfsConfiguration();
+  MiniQJMHACluster cluster=null;
+  final Path foo=new Path("/foo");
+  final Path bar=new Path("/bar");
+  try {
+    cluster=new MiniQJMHACluster.Builder(conf).setNumNameNodes(nnCount).build();
+    MiniDFSCluster dfsCluster=cluster.getDfsCluster();
+    dfsCluster.waitActive();
+    for (int i=1; i < nnCount; i++) {
+      dfsCluster.getConfiguration(i).setInt(DFSConfigKeys.DFS_HA_TAILEDITS_PERIOD_KEY,1);
+    }
+    dfsCluster.restartNameNodes();
+    dfsCluster.transitionToActive(0);
+    DistributedFileSystem dfs=dfsCluster.getFileSystem(0);
+    dfs.mkdirs(foo);
+    FSImage fsimage=dfsCluster.getNamesystem(0).getFSImage();
+    RollingUpgradeInfo info=dfs.rollingUpgrade(RollingUpgradeAction.PREPARE);
+    Assert.assertTrue(info.isStarted());
+    dfs.mkdirs(bar);
+    queryForPreparation(dfs);
+    Assert.assertTrue(fsimage.hasRollbackFSImage());
+    info=dfs.rollingUpgrade(RollingUpgradeAction.FINALIZE);
+    Assert.assertTrue(info.isFinalized());
+    Assert.assertTrue(dfs.exists(foo));
+    Assert.assertFalse(fsimage.hasRollbackFSImage());
+    dfsCluster.restartNameNode(0);
+  }
+  finally {
+    if (cluster != null) {
+      cluster.shutdown();
+    }
+  }
+}
