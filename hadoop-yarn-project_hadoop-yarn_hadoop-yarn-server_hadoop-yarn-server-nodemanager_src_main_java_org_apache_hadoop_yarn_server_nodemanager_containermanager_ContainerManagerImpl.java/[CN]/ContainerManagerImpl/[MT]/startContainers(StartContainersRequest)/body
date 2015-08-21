@@ -7,31 +7,33 @@
   authorizeUser(remoteUgi,nmTokenIdentifier);
   List<ContainerId> succeededContainers=new ArrayList<ContainerId>();
   Map<ContainerId,SerializedException> failedContainers=new HashMap<ContainerId,SerializedException>();
-  for (  StartContainerRequest request : requests.getStartContainerRequests()) {
-    ContainerId containerId=null;
-    try {
-      if (request.getContainerToken() == null || request.getContainerToken().getIdentifier() == null) {
-        throw new IOException(INVALID_CONTAINERTOKEN_MSG);
+synchronized (this.context) {
+    for (    StartContainerRequest request : requests.getStartContainerRequests()) {
+      ContainerId containerId=null;
+      try {
+        if (request.getContainerToken() == null || request.getContainerToken().getIdentifier() == null) {
+          throw new IOException(INVALID_CONTAINERTOKEN_MSG);
+        }
+        ContainerTokenIdentifier containerTokenIdentifier=BuilderUtils.newContainerTokenIdentifier(request.getContainerToken());
+        verifyAndGetContainerTokenIdentifier(request.getContainerToken(),containerTokenIdentifier);
+        containerId=containerTokenIdentifier.getContainerID();
+        if (isARMRMProxyEnabled() && containerTokenIdentifier.getContainerType().equals(ContainerType.APPLICATION_MASTER)) {
+          this.amrmProxyService.processApplicationStartRequest(request);
+        }
+        startContainerInternal(nmTokenIdentifier,containerTokenIdentifier,request);
+        succeededContainers.add(containerId);
       }
-      ContainerTokenIdentifier containerTokenIdentifier=BuilderUtils.newContainerTokenIdentifier(request.getContainerToken());
-      verifyAndGetContainerTokenIdentifier(request.getContainerToken(),containerTokenIdentifier);
-      containerId=containerTokenIdentifier.getContainerID();
-      if (isARMRMProxyEnabled() && containerTokenIdentifier.getContainerType().equals(ContainerType.APPLICATION_MASTER)) {
-        this.amrmProxyService.processApplicationStartRequest(request);
+ catch (      YarnException e) {
+        failedContainers.put(containerId,SerializedException.newInstance(e));
       }
-      startContainerInternal(nmTokenIdentifier,containerTokenIdentifier,request);
-      succeededContainers.add(containerId);
+catch (      InvalidToken ie) {
+        failedContainers.put(containerId,SerializedException.newInstance(ie));
+        throw ie;
+      }
+catch (      IOException e) {
+        throw RPCUtil.getRemoteException(e);
+      }
     }
- catch (    YarnException e) {
-      failedContainers.put(containerId,SerializedException.newInstance(e));
-    }
-catch (    InvalidToken ie) {
-      failedContainers.put(containerId,SerializedException.newInstance(ie));
-      throw ie;
-    }
-catch (    IOException e) {
-      throw RPCUtil.getRemoteException(e);
-    }
+    return StartContainersResponse.newInstance(getAuxServiceMetaData(),succeededContainers,failedContainers);
   }
-  return StartContainersResponse.newInstance(getAuxServiceMetaData(),succeededContainers,failedContainers);
 }
