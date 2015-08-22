@@ -1,0 +1,36 @@
+{
+  ApplicationId appId=createApplication();
+  String policyParameters=null;
+  if (sampleRate != SampleContainerLogAggregationPolicy.DEFAULT_SAMPLE_RATE || minThreshold != SampleContainerLogAggregationPolicy.DEFAULT_SAMPLE_MIN_THRESHOLD) {
+    policyParameters=SampleContainerLogAggregationPolicy.buildParameters(sampleRate,minThreshold);
+  }
+  if (enableAtClusterLevel) {
+    this.conf.set(YarnConfiguration.NM_LOG_AGG_POLICY_CLASS,SampleContainerLogAggregationPolicy.class.getName());
+    if (policyParameters != null) {
+      this.conf.set(YarnConfiguration.NM_LOG_AGG_POLICY_CLASS_PARAMETERS,policyParameters);
+    }
+  }
+  LogAggregationService logAggregationService=createLogAggregationService(appId,SampleContainerLogAggregationPolicy.class.getName(),policyParameters,!enableAtClusterLevel);
+  ArrayList<ContainerId> containerIds=new ArrayList<ContainerId>();
+  String[] logFiles=new String[]{"stdout"};
+  int cid=1;
+  containerIds.add(finishContainer(appId,logAggregationService,ContainerType.APPLICATION_MASTER,cid++,0,logFiles));
+  if (minThreshold > 0) {
+    containerIds.addAll(finishContainers(appId,logAggregationService,cid,(successfulContainers > minThreshold) ? minThreshold : successfulContainers,0,logFiles));
+  }
+  cid=containerIds.size() + 1;
+  if (successfulContainers > minThreshold) {
+    List<ContainerId> restOfSuccessfulContainers=finishContainers(appId,logAggregationService,cid,successfulContainers - minThreshold,0,logFiles);
+    cid+=successfulContainers - minThreshold;
+    if (sampleRate == 1.0) {
+      containerIds.addAll(restOfSuccessfulContainers);
+    }
+  }
+  containerIds.add(finishContainer(appId,logAggregationService,ContainerType.TASK,cid++,1,logFiles));
+  containerIds.add(finishContainer(appId,logAggregationService,ContainerType.TASK,cid++,ContainerExecutor.ExitCode.FORCE_KILLED.getExitCode(),logFiles));
+  finishApplication(appId,logAggregationService);
+  int minOfContainersWithLogs=3 + minThreshold + (int)((successfulContainers - minThreshold) * sampleRate / 2);
+  int maxOfContainersWithLogs=3 + minThreshold + (int)((successfulContainers - minThreshold) * sampleRate * 2);
+  verifyContainerLogs(logAggregationService,appId,containerIds.toArray(new ContainerId[containerIds.size()]),minOfContainersWithLogs,maxOfContainersWithLogs,logFiles,1,false);
+  verifyLogAggFinishEvent(appId);
+}
