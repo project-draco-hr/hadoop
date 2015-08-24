@@ -23,8 +23,19 @@
     assertTrue(fsckOut.contains(NamenodeFsck.HEALTHY_STATUS));
     assertTrue(fsckOut.contains("(LIVE)"));
     ExtendedBlock eb=DFSTestUtil.getFirstBlock(dfs,path);
-    DatanodeDescriptor dn=cluster.getNameNode().getNamesystem().getBlockManager().getBlockCollection(eb.getLocalBlock()).getBlocks()[0].getDatanode(0);
-    cluster.getNameNode().getNamesystem().getBlockManager().getDatanodeManager().getDecomManager().startDecommission(dn);
+    FSNamesystem fsn=cluster.getNameNode().getNamesystem();
+    BlockManager bm=fsn.getBlockManager();
+    BlockCollection bc=null;
+    try {
+      fsn.writeLock();
+      BlockInfo bi=bm.getStoredBlock(eb.getLocalBlock());
+      bc=bm.getBlockCollection(bi);
+    }
+  finally {
+      fsn.writeUnlock();
+    }
+    DatanodeDescriptor dn=bc.getBlocks()[0].getDatanode(0);
+    bm.getDatanodeManager().getDecomManager().startDecommission(dn);
     String dnName=dn.getXferAddr();
     fsckOut=runFsck(conf,0,true,testFile,"-files","-blocks","-replicaDetails");
     assertTrue(fsckOut.contains("(DECOMMISSIONING)"));
