@@ -1,21 +1,21 @@
 {
   initData(source);
   initData(target);
-  dfs.allowSnapshot(source);
-  dfs.allowSnapshot(target);
-  dfs.createSnapshot(source,"s1");
-  dfs.createSnapshot(target,"s1");
-  changeData(source);
+  enableAndCreateFirstSnapshot();
+  int numCreatedModified=changeData(source);
   dfs.createSnapshot(source,"s2");
   final Path toDelete=new Path(source,"foo/d1/foo/f1");
   dfs.delete(toDelete,true);
   final Path newdir=new Path(source,"foo/d1/foo/newdir");
   dfs.mkdirs(newdir);
-  Assert.assertTrue(DistCpSync.sync(options,conf));
+  SnapshotDiffReport report=dfs.getSnapshotDiffReport(source,"s1","s2");
+  System.out.println(report);
+  DistCpSync distCpSync=new DistCpSync(options,conf);
+  Assert.assertTrue(distCpSync.sync());
   final Path spath=new Path(source,HdfsConstants.DOT_SNAPSHOT_DIR + Path.SEPARATOR + "s2");
   Assert.assertEquals(spath,options.getSourcePaths().get(0));
   final Path listingPath=new Path("/tmp/META/fileList.seq");
-  CopyListing listing=new GlobbedCopyListing(conf,new Credentials());
+  CopyListing listing=new SimpleCopyListing(conf,new Credentials(),distCpSync);
   listing.buildListing(listingPath,options);
   Map<Text,CopyListingFileStatus> copyListing=getListing(listingPath);
   CopyMapper copyMapper=new CopyMapper();
@@ -26,6 +26,7 @@
   for (  Map.Entry<Text,CopyListingFileStatus> entry : copyListing.entrySet()) {
     copyMapper.map(entry.getKey(),entry.getValue(),context);
   }
+  Assert.assertEquals(numCreatedModified,copyListing.size());
   Assert.assertEquals(BLOCK_SIZE * 3,stubContext.getReporter().getCounter(CopyMapper.Counter.BYTESCOPIED).getValue());
   verifyCopy(dfs.getFileStatus(spath),dfs.getFileStatus(target),false);
 }

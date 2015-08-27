@@ -1,0 +1,30 @@
+{
+  if (!preSyncCheck()) {
+    return false;
+  }
+  if (!getAllDiffs()) {
+    return false;
+  }
+  List<Path> sourcePaths=inputOptions.getSourcePaths();
+  final Path sourceDir=sourcePaths.get(0);
+  final Path targetDir=inputOptions.getTargetPath();
+  final FileSystem tfs=targetDir.getFileSystem(conf);
+  final DistributedFileSystem targetFs=(DistributedFileSystem)tfs;
+  Path tmpDir=null;
+  try {
+    tmpDir=createTargetTmpDir(targetFs,targetDir);
+    DiffInfo[] renameAndDeleteDiffs=getRenameAndDeleteDiffs(targetDir);
+    if (renameAndDeleteDiffs.length > 0) {
+      syncDiff(renameAndDeleteDiffs,targetFs,tmpDir);
+    }
+    return true;
+  }
+ catch (  Exception e) {
+    DistCp.LOG.warn("Failed to use snapshot diff for distcp",e);
+    return false;
+  }
+ finally {
+    deleteTargetTmpDir(targetFs,tmpDir);
+    inputOptions.setSourcePaths(Arrays.asList(getSourceSnapshotPath(sourceDir,inputOptions.getToSnapshot())));
+  }
+}

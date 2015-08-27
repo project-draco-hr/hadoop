@@ -7,7 +7,9 @@
   doThrow(e).when(logAggregationService).verifyAndCreateRemoteLogDir(any(Configuration.class));
   logAggregationService.start();
   ApplicationId appId=BuilderUtils.newApplicationId(System.currentTimeMillis(),(int)(Math.random() * 1000));
-  logAggregationService.handle(new LogHandlerAppStartedEvent(appId,this.user,null,ContainerLogsRetentionPolicy.AM_AND_FAILED_CONTAINERS_ONLY,this.acls));
+  LogAggregationContext contextWithAMAndFailed=Records.newRecord(LogAggregationContext.class);
+  contextWithAMAndFailed.setLogAggregationPolicyClassName(AMOrFailedContainerLogAggregationPolicy.class.getName());
+  logAggregationService.handle(new LogHandlerAppStartedEvent(appId,this.user,null,this.acls,contextWithAMAndFailed));
   dispatcher.await();
   ApplicationEvent[] expectedEvents=new ApplicationEvent[]{new ApplicationEvent(appId,ApplicationEventType.APPLICATION_LOG_HANDLING_FAILED)};
   checkEvents(appEventHandler,expectedEvents,false,"getType","getApplicationID","getDiagnostic");
@@ -15,7 +17,7 @@
   ApplicationId appId2=BuilderUtils.newApplicationId(System.currentTimeMillis(),(int)(Math.random() * 1000));
   File appLogDir=new File(localLogDir,ConverterUtils.toString(appId2));
   appLogDir.mkdir();
-  logAggregationService.handle(new LogHandlerAppStartedEvent(appId2,this.user,null,ContainerLogsRetentionPolicy.AM_AND_FAILED_CONTAINERS_ONLY,this.acls));
+  logAggregationService.handle(new LogHandlerAppStartedEvent(appId2,this.user,null,this.acls,contextWithAMAndFailed));
   dispatcher.await();
   expectedEvents=new ApplicationEvent[]{new ApplicationEvent(appId,ApplicationEventType.APPLICATION_LOG_HANDLING_FAILED),new ApplicationEvent(appId2,ApplicationEventType.APPLICATION_LOG_HANDLING_INITED)};
   checkEvents(appEventHandler,expectedEvents,false,"getType","getApplicationID","getDiagnostic");

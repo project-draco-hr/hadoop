@@ -6,15 +6,21 @@
   long overLoadedBytes=0L, underLoadedBytes=0L;
   for (  DatanodeStorageReport r : reports) {
     final DDatanode dn=dispatcher.newDatanode(r.getDatanodeInfo());
+    final boolean isSource=Util.isIncluded(sourceNodes,dn.getDatanodeInfo());
     for (    StorageType t : StorageType.getMovableTypes()) {
       final Double utilization=policy.getUtilization(r,t);
       if (utilization == null) {
         continue;
       }
+      final double average=policy.getAvgUtilization(t);
+      if (utilization >= average && !isSource) {
+        LOG.info(dn + "[" + t+ "] has utilization="+ utilization+ " >= average="+ average+ " but it is not specified as a source; skipping it.");
+        continue;
+      }
+      final double utilizationDiff=utilization - average;
       final long capacity=getCapacity(r,t);
-      final double utilizationDiff=utilization - policy.getAvgUtilization(t);
       final double thresholdDiff=Math.abs(utilizationDiff) - threshold;
-      final long maxSize2Move=computeMaxSize2Move(capacity,getRemaining(r,t),utilizationDiff,threshold,maxSizeToMove);
+      final long maxSize2Move=computeMaxSize2Move(capacity,getRemaining(r,t),utilizationDiff,maxSizeToMove);
       final StorageGroup g;
       if (utilizationDiff > 0) {
         final Source s=dn.addSource(t,maxSize2Move,dispatcher);
