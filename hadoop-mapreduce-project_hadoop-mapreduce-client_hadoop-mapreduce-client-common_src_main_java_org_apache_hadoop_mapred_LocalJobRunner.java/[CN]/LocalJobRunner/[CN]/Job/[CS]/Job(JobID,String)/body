@@ -23,5 +23,18 @@
   profile=new JobProfile(job.getUser(),id,systemJobFile.toString(),"http://localhost:8080/",job.getJobName());
   status=new JobStatus(id,0.0f,0.0f,JobStatus.RUNNING,profile.getUser(),profile.getJobName(),profile.getJobFile(),profile.getURL().toString());
   jobs.put(id,this);
+  if (CryptoUtils.isEncryptedSpillEnabled(job)) {
+    try {
+      int keyLen=conf.getInt(MRJobConfig.MR_ENCRYPTED_INTERMEDIATE_DATA_KEY_SIZE_BITS,MRJobConfig.DEFAULT_MR_ENCRYPTED_INTERMEDIATE_DATA_KEY_SIZE_BITS);
+      KeyGenerator keyGen=KeyGenerator.getInstance(INTERMEDIATE_DATA_ENCRYPTION_ALGO);
+      keyGen.init(keyLen);
+      Credentials creds=UserGroupInformation.getCurrentUser().getCredentials();
+      TokenCache.setEncryptedSpillKey(keyGen.generateKey().getEncoded(),creds);
+      UserGroupInformation.getCurrentUser().addCredentials(creds);
+    }
+ catch (    NoSuchAlgorithmException e) {
+      throw new IOException("Error generating encrypted spill key",e);
+    }
+  }
   this.start();
 }
