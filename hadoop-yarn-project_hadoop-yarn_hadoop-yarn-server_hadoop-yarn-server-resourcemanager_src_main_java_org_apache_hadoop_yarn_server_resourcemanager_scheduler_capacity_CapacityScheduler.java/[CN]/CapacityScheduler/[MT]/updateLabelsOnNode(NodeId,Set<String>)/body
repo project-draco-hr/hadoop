@@ -6,9 +6,23 @@
   if (node.getLabels().size() == newLabels.size() && node.getLabels().containsAll(newLabels)) {
     return;
   }
+  String newPartition;
+  if (newLabels.isEmpty()) {
+    newPartition=RMNodeLabelsManager.NO_LABEL;
+  }
+ else {
+    newPartition=newLabels.iterator().next();
+  }
+  String oldPartition=node.getPartition();
   for (  RMContainer rmContainer : node.getRunningContainers()) {
-    ContainerId containerId=rmContainer.getContainerId();
-    completedContainer(rmContainer,ContainerStatus.newInstance(containerId,ContainerState.COMPLETE,String.format("Container=%s killed since labels on the node=%s changed",containerId.toString(),nodeId.toString()),ContainerExitStatus.KILLED_BY_RESOURCEMANAGER),RMContainerEventType.KILL);
+    FiCaSchedulerApp application=getApplicationAttempt(rmContainer.getApplicationAttemptId());
+    if (null != application) {
+      application.nodePartitionUpdated(rmContainer,oldPartition,newPartition);
+    }
+ else {
+      LOG.warn("There's something wrong, some RMContainers running on" + " a node, but we cannot find SchedulerApplicationAttempt for it. Node=" + node.getNodeID() + " applicationAttemptId="+ rmContainer.getApplicationAttemptId());
+      continue;
+    }
   }
   RMContainer reservedContainer=node.getReservedContainer();
   if (null != reservedContainer) {
