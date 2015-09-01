@@ -1,0 +1,29 @@
+{
+  limiter.setLimit(maxOpSize);
+  in.mark(maxOpSize);
+  checksum.reset();
+  byte opCodeByte;
+  try {
+    opCodeByte=in.readByte();
+  }
+ catch (  EOFException eof) {
+    return null;
+  }
+  FSEditLogOpCodes opCode=FSEditLogOpCodes.fromByte(opCodeByte);
+  if (opCode == OP_INVALID) {
+    verifyTerminator();
+    return null;
+  }
+  FSEditLogOp op=cache.get(opCode);
+  if (op == null) {
+    throw new IOException("Read invalid opcode " + opCode);
+  }
+  op.setTransactionId(in.readLong());
+  op.readFields(in,logVersion);
+  int calculatedChecksum=(int)checksum.getValue();
+  int expectedChecksum=in.readInt();
+  if (expectedChecksum != calculatedChecksum) {
+    throw new ChecksumException("Transaction is corrupt. Calculated checksum is " + calculatedChecksum + " but read checksum "+ expectedChecksum,op.txid);
+  }
+  return op;
+}

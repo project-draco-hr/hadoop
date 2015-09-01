@@ -1,0 +1,38 @@
+{
+  limiter.setLimit(maxOpSize);
+  in.mark(maxOpSize);
+  byte opCodeByte;
+  try {
+    opCodeByte=in.readByte();
+  }
+ catch (  EOFException eof) {
+    return HdfsServerConstants.INVALID_TXID;
+  }
+  if (opCodeByte == FSEditLogOpCodes.OP_INVALID.getOpCode()) {
+    verifyTerminator();
+    return HdfsServerConstants.INVALID_TXID;
+  }
+  int opLength=in.readInt() + OP_ID_LENGTH + CHECKSUM_LENGTH;
+  if (opLength > maxOpSize) {
+    throw new IOException("Op " + (int)opCodeByte + " has size "+ opLength+ ", but maxOpSize = "+ maxOpSize);
+  }
+ else   if (opLength < MIN_OP_LENGTH) {
+    throw new IOException("Op " + (int)opCodeByte + " has size "+ opLength+ ", but the minimum op size is "+ MIN_OP_LENGTH);
+  }
+  long txid=in.readLong();
+  in.reset();
+  in.mark(maxOpSize);
+  checksum.reset();
+  for (int rem=opLength - CHECKSUM_LENGTH; rem > 0; ) {
+    int toRead=Math.min(temp.length,rem);
+    IOUtils.readFully(in,temp,0,toRead);
+    checksum.update(temp,0,toRead);
+    rem-=toRead;
+  }
+  int expectedChecksum=in.readInt();
+  int calculatedChecksum=(int)checksum.getValue();
+  if (expectedChecksum != calculatedChecksum) {
+    throw new ChecksumException("Transaction is corrupt. Calculated checksum is " + calculatedChecksum + " but read checksum "+ expectedChecksum,txid);
+  }
+  return txid;
+}

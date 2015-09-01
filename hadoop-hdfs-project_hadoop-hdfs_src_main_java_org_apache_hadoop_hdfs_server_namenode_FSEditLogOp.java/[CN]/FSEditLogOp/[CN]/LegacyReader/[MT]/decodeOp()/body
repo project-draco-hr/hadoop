@@ -1,0 +1,28 @@
+{
+  limiter.setLimit(maxOpSize);
+  in.mark(maxOpSize);
+  byte opCodeByte;
+  try {
+    opCodeByte=in.readByte();
+  }
+ catch (  EOFException eof) {
+    return null;
+  }
+  FSEditLogOpCodes opCode=FSEditLogOpCodes.fromByte(opCodeByte);
+  if (opCode == OP_INVALID) {
+    verifyTerminator();
+    return null;
+  }
+  FSEditLogOp op=cache.get(opCode);
+  if (op == null) {
+    throw new IOException("Read invalid opcode " + opCode);
+  }
+  if (NameNodeLayoutVersion.supports(LayoutVersion.Feature.STORED_TXIDS,logVersion)) {
+    op.setTransactionId(in.readLong());
+  }
+ else {
+    op.setTransactionId(HdfsServerConstants.INVALID_TXID);
+  }
+  op.readFields(in,logVersion);
+  return op;
+}
