@@ -1,2 +1,68 @@
 {
+  int requiredReplication, numEffectiveReplicas;
+  List<DatanodeDescriptor> containingNodes;
+  BlockCollection bc;
+  int additionalReplRequired;
+  int scheduledWork=0;
+  List<BlockRecoveryWork> recovWork=new LinkedList<>();
+  namesystem.writeLock();
+  try {
+synchronized (neededReplications) {
+      for (int priority=0; priority < blocksToRecover.size(); priority++) {
+        for (        BlockInfo block : blocksToRecover.get(priority)) {
+          BlockRecoveryWork rw=scheduleRecovery(block,priority);
+          if (rw != null) {
+            recovWork.add(rw);
+          }
+        }
+      }
+    }
+  }
+  finally {
+    namesystem.writeUnlock();
+  }
+  final Set<Node> excludedNodes=new HashSet<>();
+  for (  BlockRecoveryWork rw : recovWork) {
+    excludedNodes.clear();
+    for (    DatanodeDescriptor dn : rw.getContainingNodes()) {
+      excludedNodes.add(dn);
+    }
+    final BlockPlacementPolicy placementPolicy=placementPolicies.getPolicy(rw.getBlock().isStriped());
+    rw.chooseTargets(placementPolicy,storagePolicySuite,excludedNodes);
+  }
+  namesystem.writeLock();
+  try {
+    for (    BlockRecoveryWork rw : recovWork) {
+      final DatanodeStorageInfo[] targets=rw.getTargets();
+      if (targets == null || targets.length == 0) {
+        rw.resetTargets();
+        continue;
+      }
+synchronized (neededReplications) {
+        if (validateRecoveryWork(rw)) {
+          scheduledWork++;
+        }
+      }
+    }
+  }
+  finally {
+    namesystem.writeUnlock();
+  }
+  if (blockLog.isInfoEnabled()) {
+    for (    BlockRecoveryWork rw : recovWork) {
+      DatanodeStorageInfo[] targets=rw.getTargets();
+      if (targets != null && targets.length != 0) {
+        StringBuilder targetList=new StringBuilder("datanode(s)");
+        for (        DatanodeStorageInfo target : targets) {
+          targetList.append(' ');
+          targetList.append(target.getDatanodeDescriptor());
+        }
+        blockLog.debug("BLOCK* ask {} to replicate {} to {}",rw.getSrcNodes(),rw.getBlock(),targetList);
+      }
+    }
+  }
+  if (blockLog.isDebugEnabled()) {
+    blockLog.debug("BLOCK* neededReplications = {} pendingReplications = {}",neededReplications.size(),pendingReplications.size());
+  }
+  return scheduledWork;
 }
