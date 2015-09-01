@@ -15,27 +15,17 @@
         builder.append("\nNode ").append(NodeBase.getPath(chosenNode)).append(" [");
       }
       numOfAvailableNodes--;
-      if (!isGoodDatanode(chosenNode,maxNodesPerRack,considerLoad,results,avoidStaleNodes)) {
-        if (LOG.isDebugEnabled()) {
-          builder.append("\n]");
-        }
-        badTarget=true;
-        continue;
-      }
-      final DatanodeStorageInfo[] storages=DFSUtil.shuffle(chosenNode.getStorageInfos());
-      int i=0;
-      boolean search=true;
-      for (Iterator<Map.Entry<StorageType,Integer>> iter=storageTypes.entrySet().iterator(); search && iter.hasNext(); ) {
-        Map.Entry<StorageType,Integer> entry=iter.next();
-        for (i=0; i < storages.length; i++) {
-          StorageType type=entry.getKey();
-          final int newExcludedNodes=addIfIsGoodTarget(storages[i],excludedNodes,blocksize,results,type);
-          if (newExcludedNodes >= 0) {
+      DatanodeStorageInfo storage=null;
+      if (isGoodDatanode(chosenNode,maxNodesPerRack,considerLoad,results,avoidStaleNodes)) {
+        for (Iterator<Map.Entry<StorageType,Integer>> iter=storageTypes.entrySet().iterator(); iter.hasNext(); ) {
+          Map.Entry<StorageType,Integer> entry=iter.next();
+          storage=chooseStorage4Block(chosenNode,blocksize,results,entry.getKey());
+          if (storage != null) {
             numOfReplicas--;
             if (firstChosen == null) {
-              firstChosen=storages[i];
+              firstChosen=storage;
             }
-            numOfAvailableNodes-=newExcludedNodes;
+            numOfAvailableNodes-=addToExcludedNodes(chosenNode,excludedNodes);
             int num=entry.getValue();
             if (num == 1) {
               iter.remove();
@@ -43,7 +33,6 @@
  else {
               entry.setValue(num - 1);
             }
-            search=false;
             break;
           }
         }
@@ -51,7 +40,7 @@
       if (LOG.isDebugEnabled()) {
         builder.append("\n]");
       }
-      badTarget=(i == storages.length);
+      badTarget=(storage == null);
     }
   }
   if (numOfReplicas > 0) {
