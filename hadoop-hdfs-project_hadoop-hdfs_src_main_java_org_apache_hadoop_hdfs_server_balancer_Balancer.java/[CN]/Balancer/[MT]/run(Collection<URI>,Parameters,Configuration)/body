@@ -14,19 +14,24 @@
       done=true;
       Collections.shuffle(connectors);
       for (      NameNodeConnector nnc : connectors) {
-        final Balancer b=new Balancer(nnc,p,conf);
-        final Result r=b.runOneIteration();
-        r.print(iteration,System.out);
-        b.resetData(conf);
-        if (r.exitStatus == ExitStatus.IN_PROGRESS) {
-          done=false;
+        if (p.blockpools.size() == 0 || p.blockpools.contains(nnc.getBlockpoolID())) {
+          final Balancer b=new Balancer(nnc,p,conf);
+          final Result r=b.runOneIteration();
+          r.print(iteration,System.out);
+          b.resetData(conf);
+          if (r.exitStatus == ExitStatus.IN_PROGRESS) {
+            done=false;
+          }
+ else           if (r.exitStatus != ExitStatus.SUCCESS) {
+            return r.exitStatus.getExitCode();
+          }
+          if (!done) {
+            Thread.sleep(sleeptime);
+          }
         }
- else         if (r.exitStatus != ExitStatus.SUCCESS) {
-          return r.exitStatus.getExitCode();
+ else {
+          LOG.info("Skipping blockpool " + nnc.getBlockpoolID());
         }
-      }
-      if (!done) {
-        Thread.sleep(sleeptime);
       }
     }
   }
