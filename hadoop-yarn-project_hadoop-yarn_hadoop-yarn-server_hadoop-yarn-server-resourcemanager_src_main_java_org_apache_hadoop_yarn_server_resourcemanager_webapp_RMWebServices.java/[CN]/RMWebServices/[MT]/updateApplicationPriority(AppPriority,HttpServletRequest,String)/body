@@ -1,0 +1,27 @@
+{
+  init();
+  if (targetPriority == null) {
+    throw new YarnException("Target Priority cannot be null");
+  }
+  UserGroupInformation callerUGI=getCallerUserGroupInformation(hsr,true);
+  if (callerUGI == null) {
+    throw new AuthorizationException("Unable to obtain user name, user not authenticated");
+  }
+  if (UserGroupInformation.isSecurityEnabled() && isStaticUser(callerUGI)) {
+    return Response.status(Status.FORBIDDEN).entity("The default static user cannot carry out this operation.").build();
+  }
+  String userName=callerUGI.getUserName();
+  RMApp app=null;
+  try {
+    app=getRMAppForAppId(appId);
+  }
+ catch (  NotFoundException e) {
+    RMAuditLogger.logFailure(userName,AuditConstants.KILL_APP_REQUEST,"UNKNOWN","RMWebService","Trying to move an absent application " + appId);
+    throw e;
+  }
+  Priority priority=app.getApplicationSubmissionContext().getPriority();
+  if (priority == null || priority.getPriority() != targetPriority.getPriority()) {
+    return modifyApplicationPriority(app,callerUGI,targetPriority.getPriority());
+  }
+  return Response.status(Status.OK).entity(targetPriority).build();
+}
