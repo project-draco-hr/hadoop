@@ -1,0 +1,33 @@
+{
+  Configuration conf=getConfig();
+  List<String> interceptorClassNames=getInterceptorClassNames(conf);
+  RequestInterceptor pipeline=null;
+  RequestInterceptor current=null;
+  for (  String interceptorClassName : interceptorClassNames) {
+    try {
+      Class<?> interceptorClass=conf.getClassByName(interceptorClassName);
+      if (RequestInterceptor.class.isAssignableFrom(interceptorClass)) {
+        RequestInterceptor interceptorInstance=(RequestInterceptor)ReflectionUtils.newInstance(interceptorClass,conf);
+        if (pipeline == null) {
+          pipeline=interceptorInstance;
+          current=interceptorInstance;
+          continue;
+        }
+ else {
+          current.setNextInterceptor(interceptorInstance);
+          current=interceptorInstance;
+        }
+      }
+ else {
+        throw new YarnRuntimeException("Class: " + interceptorClassName + " not instance of "+ RequestInterceptor.class.getCanonicalName());
+      }
+    }
+ catch (    ClassNotFoundException e) {
+      throw new YarnRuntimeException("Could not instantiate ApplicationMasterRequestInterceptor: " + interceptorClassName,e);
+    }
+  }
+  if (pipeline == null) {
+    throw new YarnRuntimeException("RequestInterceptor pipeline is not configured in the system");
+  }
+  return pipeline;
+}

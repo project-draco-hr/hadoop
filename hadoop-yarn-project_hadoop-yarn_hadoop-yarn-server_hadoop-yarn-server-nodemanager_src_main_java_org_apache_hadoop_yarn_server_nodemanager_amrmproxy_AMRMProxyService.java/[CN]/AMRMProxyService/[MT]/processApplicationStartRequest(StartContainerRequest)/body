@@ -1,0 +1,16 @@
+{
+  LOG.info("Callback received for initializing request " + "processing pipeline for an AM");
+  ContainerTokenIdentifier containerTokenIdentifierForKey=BuilderUtils.newContainerTokenIdentifier(request.getContainerToken());
+  ApplicationAttemptId appAttemptId=containerTokenIdentifierForKey.getContainerID().getApplicationAttemptId();
+  Credentials credentials=YarnServerSecurityUtils.parseCredentials(request.getContainerLaunchContext());
+  Token<AMRMTokenIdentifier> amrmToken=getFirstAMRMToken(credentials.getAllTokens());
+  if (amrmToken == null) {
+    throw new YarnRuntimeException("AMRMToken not found in the start container request for application:" + appAttemptId.toString());
+  }
+  Token<AMRMTokenIdentifier> localToken=this.secretManager.createAndGetAMRMToken(appAttemptId);
+  credentials.addToken(localToken.getService(),localToken);
+  DataOutputBuffer dob=new DataOutputBuffer();
+  credentials.writeTokenStorageToStream(dob);
+  request.getContainerLaunchContext().setTokens(ByteBuffer.wrap(dob.getData(),0,dob.getLength()));
+  initializePipeline(containerTokenIdentifierForKey.getContainerID().getApplicationAttemptId(),containerTokenIdentifierForKey.getApplicationSubmitter(),amrmToken,localToken);
+}

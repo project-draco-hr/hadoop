@@ -1,0 +1,37 @@
+{
+  ExecutorCompletionService<R> completionService=new ExecutorCompletionService<R>(this.getThreadPool());
+  LOG.info("Sending requests to endpoints asynchronously. Number of test contexts=" + testContexts.size());
+  for (int index=0; index < testContexts.size(); index++) {
+    final T testContext=testContexts.get(index);
+    LOG.info("Adding request to threadpool for test context: " + testContext.toString());
+    completionService.submit(new Callable<R>(){
+      @Override public R call() throws Exception {
+        LOG.info("Sending request. Test context:" + testContext.toString());
+        R response=null;
+        try {
+          response=func.invoke(testContext);
+          LOG.info("Successfully sent request for context: " + testContext.toString());
+        }
+ catch (        Throwable ex) {
+          LOG.error("Failed to process request for context: " + testContext);
+          response=null;
+        }
+        return response;
+      }
+    }
+);
+  }
+  ArrayList<R> responseList=new ArrayList<R>();
+  LOG.info("Waiting for responses from endpoints. Number of contexts=" + testContexts.size());
+  for (int i=0; i < testContexts.size(); ++i) {
+    try {
+      final Future<R> future=completionService.take();
+      final R response=future.get(3000,TimeUnit.MILLISECONDS);
+      responseList.add(response);
+    }
+ catch (    Throwable e) {
+      LOG.error("Failed to process request " + e.getMessage());
+    }
+  }
+  return responseList;
+}
