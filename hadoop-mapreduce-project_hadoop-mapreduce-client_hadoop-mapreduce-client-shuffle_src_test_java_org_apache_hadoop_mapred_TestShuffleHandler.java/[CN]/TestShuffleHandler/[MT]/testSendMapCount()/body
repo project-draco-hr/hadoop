@@ -1,0 +1,27 @@
+{
+  final List<ShuffleHandler.ReduceMapFileCount> listenerList=new ArrayList<ShuffleHandler.ReduceMapFileCount>();
+  final ChannelHandlerContext mockCtx=Mockito.mock(ChannelHandlerContext.class);
+  final MessageEvent mockEvt=Mockito.mock(MessageEvent.class);
+  final Channel mockCh=Mockito.mock(AbstractChannel.class);
+  final HttpRequest mockHttpRequest=createMockHttpRequest();
+  final ChannelFuture mockFuture=createMockChannelFuture(mockCh,listenerList);
+  Mockito.doReturn(mockCh).when(mockCtx).getChannel();
+  Mockito.when(mockCtx.getChannel()).thenReturn(mockCh);
+  Mockito.doReturn(mockFuture).when(mockCh).write(Mockito.any(Object.class));
+  Mockito.when(mockCh.write(Object.class)).thenReturn(mockFuture);
+  Mockito.doReturn(mockCh).when(mockEvt).getChannel();
+  Mockito.when(mockEvt.getChannel()).thenReturn(mockCh);
+  Mockito.doReturn(mockHttpRequest).when(mockEvt).getMessage();
+  final ShuffleHandler sh=new MockShuffleHandler();
+  Configuration conf=new Configuration();
+  sh.init(conf);
+  sh.start();
+  int maxOpenFiles=conf.getInt(ShuffleHandler.SHUFFLE_MAX_SESSION_OPEN_FILES,ShuffleHandler.DEFAULT_SHUFFLE_MAX_SESSION_OPEN_FILES);
+  sh.getShuffle(conf).messageReceived(mockCtx,mockEvt);
+  assertTrue("Number of Open files should not exceed the configured " + "value!-Not Expected",listenerList.size() <= maxOpenFiles);
+  while (!listenerList.isEmpty()) {
+    listenerList.remove(0).operationComplete(mockFuture);
+    assertTrue("Number of Open files should not exceed the configured " + "value!-Not Expected",listenerList.size() <= maxOpenFiles);
+  }
+  sh.close();
+}
