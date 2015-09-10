@@ -1,0 +1,41 @@
+{
+  final Path testDir=new Path("/ec");
+  fs.mkdir(testDir,FsPermission.getDirDefault());
+  fs.getClient().setErasureCodingPolicy(testDir.toString(),null);
+  final Path ECFilePath=new Path(testDir,"foo");
+  fs.create(ECFilePath);
+  INode inode=namesystem.getFSDirectory().getINode(ECFilePath.toString());
+  assertTrue(inode.asFile().isStriped());
+  final Path notEmpty=new Path("/nonEmpty");
+  fs.mkdir(notEmpty,FsPermission.getDirDefault());
+  final Path oldFile=new Path(notEmpty,"old");
+  fs.create(oldFile);
+  fs.getClient().setErasureCodingPolicy(notEmpty.toString(),null);
+  final Path newFile=new Path(notEmpty,"new");
+  fs.create(newFile);
+  INode oldInode=namesystem.getFSDirectory().getINode(oldFile.toString());
+  assertFalse(oldInode.asFile().isStriped());
+  INode newInode=namesystem.getFSDirectory().getINode(newFile.toString());
+  assertTrue(newInode.asFile().isStriped());
+  final Path dir1=new Path("/dir1");
+  final Path dir2=new Path(dir1,"dir2");
+  fs.mkdir(dir1,FsPermission.getDirDefault());
+  fs.getClient().setErasureCodingPolicy(dir1.toString(),null);
+  fs.mkdir(dir2,FsPermission.getDirDefault());
+  try {
+    fs.getClient().setErasureCodingPolicy(dir2.toString(),null);
+    fail("Nested erasure coding policies");
+  }
+ catch (  IOException e) {
+    assertExceptionContains("already has an erasure coding policy",e);
+  }
+  final Path fPath=new Path("/file");
+  fs.create(fPath);
+  try {
+    fs.getClient().setErasureCodingPolicy(fPath.toString(),null);
+    fail("Erasure coding policy on file");
+  }
+ catch (  IOException e) {
+    assertExceptionContains("erasure coding policy for a file",e);
+  }
+}

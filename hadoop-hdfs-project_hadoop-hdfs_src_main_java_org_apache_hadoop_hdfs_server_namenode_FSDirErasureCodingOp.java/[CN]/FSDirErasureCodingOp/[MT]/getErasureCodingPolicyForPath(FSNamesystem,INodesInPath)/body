@@ -1,10 +1,34 @@
 {
-  final FSDirectory fsd=fsn.getFSDirectory();
+  Preconditions.checkNotNull(iip,"INodes cannot be null");
+  FSDirectory fsd=fsn.getFSDirectory();
   fsd.readLock();
   try {
-    return fsn.getErasureCodingZoneManager().getErasureCodingPolicy(iip);
+    List<INode> inodes=iip.getReadOnlyINodes();
+    for (int i=inodes.size() - 1; i >= 0; i--) {
+      final INode inode=inodes.get(i);
+      if (inode == null) {
+        continue;
+      }
+      if (inode.isFile()) {
+        return inode.asFile().getErasureCodingPolicyID() == 0 ? null : ErasureCodingPolicyManager.getSystemDefaultPolicy();
+      }
+      if (inode.isSymlink()) {
+        return null;
+      }
+      final XAttrFeature xaf=inode.getXAttrFeature();
+      if (xaf != null) {
+        XAttr xattr=xaf.getXAttr(XATTR_ERASURECODING_POLICY);
+        if (xattr != null) {
+          ByteArrayInputStream bIn=new ByteArrayInputStream(xattr.getValue());
+          DataInputStream dIn=new DataInputStream(bIn);
+          String ecPolicyName=WritableUtils.readString(dIn);
+          return fsd.getFSNamesystem().getErasureCodingPolicyManager().getPolicy(ecPolicyName);
+        }
+      }
+    }
   }
   finally {
     fsd.readUnlock();
   }
+  return null;
 }
