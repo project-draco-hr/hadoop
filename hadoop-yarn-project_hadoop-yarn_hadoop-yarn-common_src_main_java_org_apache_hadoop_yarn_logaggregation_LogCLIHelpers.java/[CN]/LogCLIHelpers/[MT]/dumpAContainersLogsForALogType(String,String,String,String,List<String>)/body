@@ -1,7 +1,8 @@
 {
   Path remoteRootLogDir=new Path(getConf().get(YarnConfiguration.NM_REMOTE_APP_LOG_DIR,YarnConfiguration.DEFAULT_NM_REMOTE_APP_LOG_DIR));
   String suffix=LogAggregationUtils.getRemoteNodeLogDirSuffix(getConf());
-  Path remoteAppLogDir=LogAggregationUtils.getRemoteAppLogDir(remoteRootLogDir,ConverterUtils.toApplicationId(appId),jobOwner,suffix);
+  ApplicationId applicationId=ConverterUtils.toApplicationId(appId);
+  Path remoteAppLogDir=LogAggregationUtils.getRemoteAppLogDir(remoteRootLogDir,applicationId,jobOwner,suffix);
   RemoteIterator<FileStatus> nodeFiles;
   try {
     Path qualifiedLogDir=FileContext.getFileContext(getConf()).makeQualified(remoteAppLogDir);
@@ -15,6 +16,11 @@
   while (nodeFiles.hasNext()) {
     FileStatus thisNodeFile=nodeFiles.next();
     String fileName=thisNodeFile.getPath().getName();
+    if (fileName.equals(applicationId + ".har")) {
+      Path p=new Path("har:///" + thisNodeFile.getPath().toUri().getRawPath());
+      nodeFiles=HarFs.get(p.toUri(),conf).listStatusIterator(p);
+      continue;
+    }
     if (fileName.contains(LogAggregationUtils.getNodeString(nodeId)) && !fileName.endsWith(LogAggregationUtils.TMP_FILE_SUFFIX)) {
       AggregatedLogFormat.LogReader reader=null;
       try {
