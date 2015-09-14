@@ -1,0 +1,28 @@
+{
+  long lastPos;
+  long lastTxId=HdfsServerConstants.INVALID_TXID;
+  long numValid=0;
+  while (true) {
+    long txid;
+    lastPos=in.getPosition();
+    try {
+      if ((txid=in.scanNextOp()) == HdfsServerConstants.INVALID_TXID) {
+        break;
+      }
+    }
+ catch (    Throwable t) {
+      FSImage.LOG.warn("Caught exception after scanning through " + numValid + " ops from "+ in+ " while determining its valid length. Position was "+ lastPos,t);
+      in.resync();
+      FSImage.LOG.warn("After resync, position is " + in.getPosition());
+      continue;
+    }
+    if (lastTxId == HdfsServerConstants.INVALID_TXID || txid > lastTxId) {
+      lastTxId=txid;
+    }
+    if (lastTxId >= maxTxIdToScan) {
+      break;
+    }
+    numValid++;
+  }
+  return new EditLogValidation(lastPos,lastTxId,false);
+}
