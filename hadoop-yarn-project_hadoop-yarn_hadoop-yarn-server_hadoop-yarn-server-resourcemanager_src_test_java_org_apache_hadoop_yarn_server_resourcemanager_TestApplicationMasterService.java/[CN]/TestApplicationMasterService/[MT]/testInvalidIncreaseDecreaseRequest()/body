@@ -1,0 +1,43 @@
+{
+  conf=new YarnConfiguration();
+  conf.setClass(YarnConfiguration.RM_SCHEDULER,CapacityScheduler.class,ResourceScheduler.class);
+  MockRM rm=new MockRM(conf);
+  try {
+    rm.start();
+    MockNM nm1=rm.registerNode("127.0.0.1:1234",6 * GB);
+    RMApp app1=rm.submitApp(1024);
+    nm1.nodeHeartbeat(true);
+    RMAppAttempt attempt1=app1.getCurrentAppAttempt();
+    MockAM am1=rm.sendAMLaunched(attempt1.getAppAttemptId());
+    RegisterApplicationMasterResponse registerResponse=am1.registerAppAttempt();
+    sentRMContainerLaunched(rm,ContainerId.newContainerId(am1.getApplicationAttemptId(),1));
+    am1.sendContainerResizingRequest(Arrays.asList(ContainerResourceChangeRequest.newInstance(ContainerId.newContainerId(attempt1.getAppAttemptId(),1),Resources.createResource(2048))),null);
+    boolean exceptionCaught=false;
+    try {
+      am1.sendContainerResizingRequest(Arrays.asList(ContainerResourceChangeRequest.newInstance(ContainerId.newContainerId(attempt1.getAppAttemptId(),1),Resources.createResource(-1))),null);
+    }
+ catch (    InvalidResourceRequestException e) {
+      exceptionCaught=true;
+    }
+    Assert.assertTrue(exceptionCaught);
+    try {
+      am1.sendContainerResizingRequest(Arrays.asList(ContainerResourceChangeRequest.newInstance(ContainerId.newContainerId(attempt1.getAppAttemptId(),1),Resources.add(registerResponse.getMaximumResourceCapability(),Resources.createResource(1)))),null);
+    }
+ catch (    InvalidResourceRequestException e) {
+      exceptionCaught=true;
+    }
+    Assert.assertTrue(exceptionCaught);
+    try {
+      am1.sendContainerResizingRequest(Arrays.asList(ContainerResourceChangeRequest.newInstance(ContainerId.newContainerId(attempt1.getAppAttemptId(),1),Resources.add(registerResponse.getMaximumResourceCapability(),Resources.createResource(1)))),Arrays.asList(ContainerResourceChangeRequest.newInstance(ContainerId.newContainerId(attempt1.getAppAttemptId(),1),Resources.add(registerResponse.getMaximumResourceCapability(),Resources.createResource(1)))));
+    }
+ catch (    InvalidResourceRequestException e) {
+      exceptionCaught=true;
+    }
+    Assert.assertTrue(exceptionCaught);
+  }
+  finally {
+    if (rm != null) {
+      rm.close();
+    }
+  }
+}

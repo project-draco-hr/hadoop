@@ -1,0 +1,27 @@
+{
+  boolean resourceUpdated=false;
+  for (  SchedContainerChangeRequest r : increaseRequests) {
+    NodeId nodeId=r.getRMContainer().getAllocatedNode();
+    Map<Priority,Map<ContainerId,SchedContainerChangeRequest>> requestsOnNode=increaseRequestMap.get(nodeId);
+    if (null == requestsOnNode) {
+      requestsOnNode=new TreeMap<>();
+      increaseRequestMap.put(nodeId,requestsOnNode);
+    }
+    SchedContainerChangeRequest prevChangeRequest=getIncreaseRequest(nodeId,r.getPriority(),r.getContainerId());
+    if (null != prevChangeRequest) {
+      if (Resources.equals(prevChangeRequest.getTargetCapacity(),r.getTargetCapacity())) {
+        continue;
+      }
+      removeIncreaseRequest(nodeId,prevChangeRequest.getPriority(),prevChangeRequest.getContainerId());
+    }
+    if (Resources.equals(r.getTargetCapacity(),r.getRMContainer().getAllocatedResource())) {
+      if (LOG.isDebugEnabled()) {
+        LOG.debug("Trying to increase/decrease container, " + "target capacity = previous capacity = " + prevChangeRequest + " for container="+ r.getContainerId()+ ". Will ignore this increase request");
+      }
+      continue;
+    }
+    resourceUpdated=true;
+    insertIncreaseRequest(r);
+  }
+  return resourceUpdated;
+}

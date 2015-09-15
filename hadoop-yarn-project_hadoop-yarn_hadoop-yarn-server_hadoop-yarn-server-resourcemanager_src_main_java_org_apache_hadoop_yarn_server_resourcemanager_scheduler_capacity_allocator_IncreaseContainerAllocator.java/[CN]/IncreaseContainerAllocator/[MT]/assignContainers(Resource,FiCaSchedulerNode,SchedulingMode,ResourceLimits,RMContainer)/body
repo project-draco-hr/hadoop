@@ -1,0 +1,95 @@
+{
+  AppSchedulingInfo sinfo=application.getAppSchedulingInfo();
+  NodeId nodeId=node.getNodeID();
+  if (reservedContainer == null) {
+    if (!sinfo.hasIncreaseRequest(nodeId)) {
+      if (LOG.isDebugEnabled()) {
+        LOG.debug("Skip allocating increase request since we don't have any" + " increase request on this node=" + node.getNodeID());
+      }
+      return CSAssignment.SKIP_ASSIGNMENT;
+    }
+    boolean shouldUnreserve=Resources.greaterThan(rc,clusterResource,resourceLimits.getAmountNeededUnreserve(),Resources.none());
+    boolean cannotAllocateAnything=!checkHeadroom(clusterResource,resourceLimits,rmContext.getScheduler().getMinimumResourceCapability());
+    if (cannotAllocateAnything || shouldUnreserve) {
+      if (LOG.isDebugEnabled()) {
+        if (shouldUnreserve) {
+          LOG.debug("Cannot continue since we have to unreserve some resource" + ", now increase container allocation doesn't " + "support continuous reservation looking..");
+        }
+        if (cannotAllocateAnything) {
+          LOG.debug("We cannot allocate anything because of low headroom, " + "headroom=" + resourceLimits.getHeadroom());
+        }
+      }
+      return CSAssignment.SKIP_ASSIGNMENT;
+    }
+    CSAssignment assigned=null;
+    for (    Priority priority : application.getPriorities()) {
+      if (LOG.isDebugEnabled()) {
+        LOG.debug("Looking at increase request for application=" + application.getApplicationAttemptId() + " priority="+ priority);
+      }
+      Map<ContainerId,SchedContainerChangeRequest> increaseRequestMap=sinfo.getIncreaseRequests(nodeId,priority);
+      if (null == increaseRequestMap) {
+        if (LOG.isDebugEnabled()) {
+          LOG.debug("There's no increase request for " + application.getApplicationAttemptId() + " priority="+ priority);
+        }
+        continue;
+      }
+      Iterator<Entry<ContainerId,SchedContainerChangeRequest>> iter=increaseRequestMap.entrySet().iterator();
+      List<SchedContainerChangeRequest> toBeRemovedRequests=new ArrayList<>();
+      while (iter.hasNext()) {
+        Entry<ContainerId,SchedContainerChangeRequest> entry=iter.next();
+        SchedContainerChangeRequest increaseRequest=entry.getValue();
+        if (LOG.isDebugEnabled()) {
+          LOG.debug("Looking at increase request=" + increaseRequest.toString());
+        }
+        boolean headroomSatisifed=checkHeadroom(clusterResource,resourceLimits,increaseRequest.getDeltaCapacity());
+        if (!headroomSatisifed) {
+          if (LOG.isDebugEnabled()) {
+            LOG.debug(" Headroom is not satisfied, skip..");
+          }
+          continue;
+        }
+        RMContainer rmContainer=increaseRequest.getRMContainer();
+        if (rmContainer.getContainerState() != ContainerState.RUNNING) {
+          if (LOG.isDebugEnabled()) {
+            LOG.debug("  Container is not running any more, skip...");
+          }
+          toBeRemovedRequests.add(increaseRequest);
+          continue;
+        }
+        if (!Resources.fitsIn(rc,clusterResource,increaseRequest.getTargetCapacity(),node.getTotalResource())) {
+          if (LOG.isDebugEnabled()) {
+            LOG.debug("  Target capacity is more than what node can offer," + " node.resource=" + node.getTotalResource());
+          }
+          toBeRemovedRequests.add(increaseRequest);
+          continue;
+        }
+        assigned=allocateIncreaseRequest(node,clusterResource,increaseRequest);
+        if (!assigned.getSkipped()) {
+          break;
+        }
+      }
+      if (!toBeRemovedRequests.isEmpty()) {
+        for (        SchedContainerChangeRequest req : toBeRemovedRequests) {
+          sinfo.removeIncreaseRequest(req.getNodeId(),req.getPriority(),req.getContainerId());
+        }
+      }
+      if (!assigned.getSkipped()) {
+        break;
+      }
+    }
+    return assigned == null ? CSAssignment.SKIP_ASSIGNMENT : assigned;
+  }
+ else {
+    if (LOG.isDebugEnabled()) {
+      LOG.debug("Trying to allocate reserved increase container request..");
+    }
+    SchedContainerChangeRequest request=sinfo.getIncreaseRequest(nodeId,reservedContainer.getContainer().getPriority(),reservedContainer.getContainerId());
+    if (null == request || reservedContainer.getContainerState() != ContainerState.RUNNING || (!Resources.equals(reservedContainer.getReservedResource(),request.getDeltaCapacity()))) {
+      if (LOG.isDebugEnabled()) {
+        LOG.debug("We don't need reserved increase container request " + "for container=" + reservedContainer.getContainerId() + ". Unreserving and return...");
+      }
+      return new CSAssignment(application,reservedContainer);
+    }
+    return allocateIncreaseRequestFromReservedContainer(node,clusterResource,request);
+  }
+}
