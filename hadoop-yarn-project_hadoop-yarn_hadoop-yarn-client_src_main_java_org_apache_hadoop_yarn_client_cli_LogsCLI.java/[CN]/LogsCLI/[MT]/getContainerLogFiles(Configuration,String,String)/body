@@ -1,0 +1,32 @@
+{
+  List<String> logFiles=new ArrayList<>();
+  Client webServiceClient=Client.create();
+  try {
+    WebResource webResource=webServiceClient.resource(WebAppUtils.getHttpSchemePrefix(conf) + nodeHttpAddress);
+    ClientResponse response=webResource.path("ws").path("v1").path("node").path("containers").path(containerIdStr).accept(MediaType.APPLICATION_XML).get(ClientResponse.class);
+    if (response.getClientResponseStatus().equals(ClientResponse.Status.OK)) {
+      try {
+        String xml=response.getEntity(String.class);
+        DocumentBuilderFactory dbf=DocumentBuilderFactory.newInstance();
+        DocumentBuilder db=dbf.newDocumentBuilder();
+        InputSource is=new InputSource();
+        is.setCharacterStream(new StringReader(xml));
+        Document dom=db.parse(is);
+        NodeList elements=dom.getElementsByTagName("containerLogFiles");
+        for (int i=0; i < elements.getLength(); i++) {
+          logFiles.add(elements.item(i).getTextContent());
+        }
+      }
+ catch (      Exception e) {
+        System.out.println("Unable to parse xml from webservice. Error:");
+        System.out.println(e.getMessage());
+        throw new IOException(e);
+      }
+    }
+  }
+ catch (  ClientHandlerException|UniformInterfaceException ex) {
+    System.out.println("Unable to fetch log files list");
+    throw new IOException(ex);
+  }
+  return logFiles.toArray(new String[0]);
+}
