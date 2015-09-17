@@ -1,0 +1,25 @@
+{
+  Cell cell=null;
+  startNext();
+  ByteArrayComparator comp=new ByteArrayComparator();
+  byte[] currentColumnQualifier=TimelineWriterUtils.EMPTY_BYTES;
+  AggregationOperation currentAggOp=null;
+  SortedSet<Cell> currentColumnCells=new TreeSet<>(KeyValue.COMPARATOR);
+  Set<String> alreadySeenAggDim=new HashSet<>();
+  int addedCnt=0;
+  while (((cell=peekAtNextCell(limit)) != null) && (limit <= 0 || addedCnt < limit)) {
+    byte[] newColumnQualifier=CellUtil.cloneQualifier(cell);
+    if (comp.compare(currentColumnQualifier,newColumnQualifier) != 0) {
+      addedCnt+=emitCells(cells,currentColumnCells,currentAggOp);
+      resetState(currentColumnCells,alreadySeenAggDim);
+      currentColumnQualifier=newColumnQualifier;
+      currentAggOp=getCurrentAggOp(cell);
+    }
+    collectCells(currentColumnCells,currentAggOp,cell,alreadySeenAggDim);
+    nextCell(limit);
+  }
+  if (!currentColumnCells.isEmpty()) {
+    emitCells(cells,currentColumnCells,currentAggOp);
+  }
+  return hasMore();
+}
