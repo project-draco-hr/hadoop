@@ -4,13 +4,25 @@
   NodeHealthStatus remoteNodeHealthStatus=statusEvent.getNodeHealthStatus();
   rmNode.setHealthReport(remoteNodeHealthStatus.getHealthReport());
   rmNode.setLastHealthReportTime(remoteNodeHealthStatus.getLastHealthReportTime());
+  NodeState initialState=rmNode.getState();
+  boolean isNodeDecommissioning=initialState.equals(NodeState.DECOMMISSIONING);
   if (!remoteNodeHealthStatus.getIsNodeHealthy()) {
     LOG.info("Node " + rmNode.nodeId + " reported UNHEALTHY with details: "+ remoteNodeHealthStatus.getHealthReport());
-    rmNode.nodeUpdateQueue.clear();
-    rmNode.context.getDispatcher().getEventHandler().handle(new NodeRemovedSchedulerEvent(rmNode));
-    rmNode.context.getDispatcher().getEventHandler().handle(new NodesListManagerEvent(NodesListManagerEventType.NODE_UNUSABLE,rmNode));
-    rmNode.updateMetricsForDeactivatedNode(rmNode.getState(),NodeState.UNHEALTHY);
-    return NodeState.UNHEALTHY;
+    if (isNodeDecommissioning) {
+      return NodeState.DECOMMISSIONING;
+    }
+ else {
+      reportNodeUnusable(rmNode,NodeState.UNHEALTHY);
+      return NodeState.UNHEALTHY;
+    }
+  }
+  if (isNodeDecommissioning) {
+    List<ApplicationId> runningApps=rmNode.getRunningApps();
+    List<ApplicationId> keepAliveApps=statusEvent.getKeepAliveAppIds();
+    if ((runningApps == null || runningApps.size() == 0) && (keepAliveApps == null || keepAliveApps.size() == 0)) {
+      RMNodeImpl.deactivateNode(rmNode,NodeState.DECOMMISSIONED);
+      return NodeState.DECOMMISSIONED;
+    }
   }
   rmNode.handleContainerStatus(statusEvent.getContainers());
   List<LogAggregationReport> logAggregationReportsForApps=statusEvent.getLogAggregationReportsForApps();
@@ -24,5 +36,5 @@
   if (UserGroupInformation.isSecurityEnabled()) {
     rmNode.context.getDelegationTokenRenewer().updateKeepAliveApplications(statusEvent.getKeepAliveAppIds());
   }
-  return NodeState.RUNNING;
+  return initialState;
 }
