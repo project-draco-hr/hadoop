@@ -5,6 +5,11 @@
   try {
     cluster=new MiniDFSCluster.Builder(conf).numDataNodes(2).build();
     cluster.waitActive();
+    String upgradeDomain="abcd";
+    DatanodeManager dm=cluster.getNameNode().getNamesystem().getBlockManager().getDatanodeManager();
+    DatanodeDescriptor dd=dm.getDatanode(cluster.getDataNodes().get(0).getDatanodeId());
+    dd.setUpgradeDomain(upgradeDomain);
+    String dnXferAddrWithUpgradeDomainSet=dd.getXferAddr();
     FSNamesystem fsn=cluster.getNameNode().namesystem;
     MBeanServer mbs=ManagementFactory.getPlatformMBeanServer();
     ObjectName mxbeanName=new ObjectName("Hadoop:service=NameNode,name=NameNodeInfo");
@@ -37,6 +42,13 @@
       assertTrue(((Long)liveNode.get("capacity")) > 0);
       assertTrue(liveNode.containsKey("numBlocks"));
       assertTrue(((Long)liveNode.get("numBlocks")) == 0);
+      String xferAddr=(String)liveNode.get("xferaddr");
+      if (!xferAddr.equals(dnXferAddrWithUpgradeDomainSet)) {
+        assertTrue(!liveNode.containsKey("upgradeDomain"));
+      }
+ else {
+        assertTrue(liveNode.get("upgradeDomain").equals(upgradeDomain));
+      }
     }
     assertEquals(fsn.getLiveNodes(),alivenodeinfo);
     String deadnodeinfo=(String)(mbs.getAttribute(mxbeanName,"DeadNodes"));
