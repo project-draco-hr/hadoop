@@ -1,10 +1,13 @@
 {
   this.conf.set(YarnConfiguration.NM_LOG_DIRS,localLogDir.getAbsolutePath());
   this.conf.set(YarnConfiguration.NM_REMOTE_APP_LOG_DIR,this.remoteRootLogDir.getAbsolutePath());
-  LogAggregationService logAggregationService=spy(new LogAggregationService(dispatcher,this.context,this.delSrvc,super.dirsHandler));
+  DeletionService spyDelSrvc=spy(this.delSrvc);
+  LogAggregationService logAggregationService=spy(new LogAggregationService(dispatcher,this.context,spyDelSrvc,super.dirsHandler));
   logAggregationService.init(this.conf);
   logAggregationService.start();
   ApplicationId appId=BuilderUtils.newApplicationId(System.currentTimeMillis(),(int)(Math.random() * 1000));
+  File appLogDir=new File(localLogDir,ConverterUtils.toString(appId));
+  appLogDir.mkdir();
   Exception e=new RuntimeException("KABOOM!");
   doThrow(e).when(logAggregationService).createAppDir(any(String.class),any(ApplicationId.class),any(UserGroupInformation.class));
   LogAggregationContext contextWithAMAndFailed=Records.newRecord(LogAggregationContext.class);
@@ -13,11 +16,12 @@
   dispatcher.await();
   ApplicationEvent expectedEvents[]=new ApplicationEvent[]{new ApplicationEvent(appId,ApplicationEventType.APPLICATION_LOG_HANDLING_FAILED)};
   checkEvents(appEventHandler,expectedEvents,false,"getType","getApplicationID","getDiagnostic");
-  verify(logAggregationService).closeFileSystems(any(UserGroupInformation.class));
   logAggregationService.handle(new LogHandlerContainerFinishedEvent(BuilderUtils.newContainerId(4,1,1,1),0));
   dispatcher.await();
   logAggregationService.handle(new LogHandlerAppFinishedEvent(BuilderUtils.newApplicationId(1,5)));
   dispatcher.await();
   logAggregationService.stop();
   assertEquals(0,logAggregationService.getNumAggregators());
+  verify(spyDelSrvc).delete(eq(user),any(Path.class),Mockito.<Path>anyVararg());
+  verify(logAggregationService).closeFileSystems(any(UserGroupInformation.class));
 }

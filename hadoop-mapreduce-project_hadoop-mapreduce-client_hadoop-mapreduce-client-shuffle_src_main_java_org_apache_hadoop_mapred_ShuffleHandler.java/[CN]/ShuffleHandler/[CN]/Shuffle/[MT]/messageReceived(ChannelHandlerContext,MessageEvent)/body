@@ -76,26 +76,11 @@ catch (  IllegalArgumentException e) {
     return;
   }
   ch.write(response);
-  ChannelFuture lastMap=null;
-  for (  String mapId : mapIds) {
-    try {
-      MapOutputInfo info=mapOutputInfoMap.get(mapId);
-      if (info == null) {
-        info=getMapOutputInfo(outputBasePathStr + mapId,mapId,reduceId,user);
-      }
-      lastMap=sendMapOutput(ctx,ch,user,mapId,reduceId,info);
-      if (null == lastMap) {
-        sendError(ctx,NOT_FOUND);
-        return;
-      }
-    }
- catch (    IOException e) {
-      LOG.error("Shuffle error :",e);
-      String errorMessage=getErrorMessage(e);
-      sendError(ctx,errorMessage,INTERNAL_SERVER_ERROR);
+  ReduceContext reduceContext=new ReduceContext(mapIds,reduceId,ctx,user,mapOutputInfoMap,outputBasePathStr);
+  for (int i=0; i < Math.min(maxSessionOpenFiles,mapIds.size()); i++) {
+    ChannelFuture nextMap=sendMap(reduceContext);
+    if (nextMap == null) {
       return;
     }
   }
-  lastMap.addListener(metrics);
-  lastMap.addListener(ChannelFutureListener.CLOSE);
 }

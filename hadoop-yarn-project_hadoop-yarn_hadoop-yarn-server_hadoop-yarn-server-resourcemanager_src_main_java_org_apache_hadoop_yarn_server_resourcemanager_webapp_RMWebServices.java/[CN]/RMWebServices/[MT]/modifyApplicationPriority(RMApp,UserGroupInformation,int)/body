@@ -1,0 +1,35 @@
+{
+  String userName=callerUGI.getUserName();
+  try {
+    callerUGI.doAs(new PrivilegedExceptionAction<Void>(){
+      @Override public Void run() throws IOException, YarnException {
+        Priority priority=Priority.newInstance(appPriority);
+        UpdateApplicationPriorityRequest request=UpdateApplicationPriorityRequest.newInstance(app.getApplicationId(),priority);
+        rm.getClientRMService().updateApplicationPriority(request);
+        return null;
+      }
+    }
+);
+  }
+ catch (  UndeclaredThrowableException ue) {
+    if (ue.getCause() instanceof YarnException) {
+      YarnException ye=(YarnException)ue.getCause();
+      if (ye.getCause() instanceof AccessControlException) {
+        String appId=app.getApplicationId().toString();
+        String msg="Unauthorized attempt to change priority of appid " + appId + " by remote user "+ userName;
+        return Response.status(Status.FORBIDDEN).entity(msg).build();
+      }
+ else       if (ye.getMessage().startsWith("Application in") && ye.getMessage().endsWith("state cannot be update priority.")) {
+        return Response.status(Status.BAD_REQUEST).entity(ye.getMessage()).build();
+      }
+ else {
+        throw ue;
+      }
+    }
+ else {
+      throw ue;
+    }
+  }
+  AppPriority ret=new AppPriority(app.getApplicationSubmissionContext().getPriority().getPriority());
+  return Response.status(Status.OK).entity(ret).build();
+}

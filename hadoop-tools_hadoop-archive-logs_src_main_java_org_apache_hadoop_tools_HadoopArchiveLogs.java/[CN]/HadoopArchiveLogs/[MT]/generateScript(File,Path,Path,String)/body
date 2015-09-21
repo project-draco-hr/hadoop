@@ -1,0 +1,42 @@
+{
+  LOG.info("Generating script at: " + localScript.getAbsolutePath());
+  String halrJarPath=HadoopArchiveLogsRunner.class.getProtectionDomain().getCodeSource().getLocation().getPath();
+  String harJarPath=HadoopArchives.class.getProtectionDomain().getCodeSource().getLocation().getPath();
+  String classpath=halrJarPath + File.pathSeparator + harJarPath;
+  FileWriter fw=null;
+  try {
+    fw=new FileWriter(localScript);
+    fw.write("#!/bin/bash\nset -e\nset -x\n");
+    int containerCount=1;
+    for (    ApplicationReport report : eligibleApplications) {
+      fw.write("if [ \"$YARN_SHELL_ID\" == \"");
+      fw.write(Integer.toString(containerCount));
+      fw.write("\" ]; then\n\tappId=\"");
+      fw.write(report.getApplicationId().toString());
+      fw.write("\"\n\tuser=\"");
+      fw.write(report.getUser());
+      fw.write("\"\nel");
+      containerCount++;
+    }
+    fw.write("se\n\techo \"Unknown Mapping!\"\n\texit 1\nfi\n");
+    fw.write("export HADOOP_CLIENT_OPTS=\"-Xmx");
+    fw.write(Long.toString(memory));
+    fw.write("m\"\n");
+    fw.write("export HADOOP_CLASSPATH=");
+    fw.write(classpath);
+    fw.write("\n\"$HADOOP_HOME\"/bin/hadoop ");
+    fw.write(HadoopArchiveLogsRunner.class.getName());
+    fw.write(" -appId \"$appId\" -user \"$user\" -workingDir ");
+    fw.write(workingDir.toString());
+    fw.write(" -remoteRootLogDir ");
+    fw.write(remoteRootLogDir.toString());
+    fw.write(" -suffix ");
+    fw.write(suffix);
+    fw.write("\n");
+  }
+  finally {
+    if (fw != null) {
+      fw.close();
+    }
+  }
+}

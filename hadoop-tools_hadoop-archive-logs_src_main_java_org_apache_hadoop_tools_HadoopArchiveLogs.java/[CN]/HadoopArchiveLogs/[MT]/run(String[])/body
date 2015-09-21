@@ -1,0 +1,38 @@
+{
+  handleOpts(args);
+  findAggregatedApps();
+  FileSystem fs=null;
+  Path remoteRootLogDir=new Path(conf.get(YarnConfiguration.NM_REMOTE_APP_LOG_DIR,YarnConfiguration.DEFAULT_NM_REMOTE_APP_LOG_DIR));
+  String suffix=LogAggregationUtils.getRemoteNodeLogDirSuffix(conf);
+  Path workingDir=new Path(remoteRootLogDir,"archive-logs-work");
+  try {
+    fs=FileSystem.get(conf);
+    checkFiles(fs,remoteRootLogDir,suffix);
+    if (fs.exists(workingDir)) {
+      fs.delete(workingDir,true);
+    }
+    fs.mkdirs(workingDir);
+    fs.setPermission(workingDir,new FsPermission(FsAction.ALL,FsAction.NONE,FsAction.NONE));
+  }
+  finally {
+    if (fs != null) {
+      fs.close();
+    }
+  }
+  checkMaxEligible();
+  if (eligibleApplications.isEmpty()) {
+    LOG.info("No eligible applications to process");
+    System.exit(0);
+  }
+  StringBuilder sb=new StringBuilder("Will process the following applications:");
+  for (  ApplicationReport report : eligibleApplications) {
+    sb.append("\n\t").append(report.getApplicationId());
+  }
+  LOG.info(sb.toString());
+  File localScript=File.createTempFile("hadoop-archive-logs-",".sh");
+  generateScript(localScript,workingDir,remoteRootLogDir,suffix);
+  if (runDistributedShell(localScript)) {
+    return 0;
+  }
+  return -1;
+}

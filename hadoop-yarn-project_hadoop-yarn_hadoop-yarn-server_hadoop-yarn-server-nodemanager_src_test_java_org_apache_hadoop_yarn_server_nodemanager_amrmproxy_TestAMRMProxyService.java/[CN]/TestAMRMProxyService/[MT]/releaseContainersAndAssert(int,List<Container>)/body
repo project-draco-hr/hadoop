@@ -1,0 +1,24 @@
+{
+  Assert.assertTrue(containers.size() > 0);
+  AllocateRequest allocateRequest=Records.newRecord(AllocateRequest.class);
+  allocateRequest.setResponseId(1);
+  List<ContainerId> relList=new ArrayList<ContainerId>(containers.size());
+  for (  Container container : containers) {
+    relList.add(container.getId());
+  }
+  allocateRequest.setReleaseList(relList);
+  AllocateResponse allocateResponse=allocate(appId,allocateRequest);
+  Assert.assertNotNull(allocateResponse);
+  List<Container> containersForReleasedContainerIds=new ArrayList<Container>();
+  containersForReleasedContainerIds.addAll(allocateResponse.getAllocatedContainers());
+  int numHeartbeat=0;
+  while (containersForReleasedContainerIds.size() < relList.size() && numHeartbeat++ < 10) {
+    allocateResponse=allocate(appId,Records.newRecord(AllocateRequest.class));
+    Assert.assertNotNull(allocateResponse);
+    containersForReleasedContainerIds.addAll(allocateResponse.getAllocatedContainers());
+    LOG.info("Number of containers received in this request: " + Integer.toString(allocateResponse.getAllocatedContainers().size()));
+    LOG.info("Total number of containers received: " + Integer.toString(containersForReleasedContainerIds.size()));
+    Thread.sleep(10);
+  }
+  Assert.assertEquals(relList.size(),containersForReleasedContainerIds.size());
+}

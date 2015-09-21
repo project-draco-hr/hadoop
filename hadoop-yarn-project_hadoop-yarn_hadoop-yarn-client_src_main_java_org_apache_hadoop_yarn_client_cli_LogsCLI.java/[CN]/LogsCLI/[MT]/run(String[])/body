@@ -12,7 +12,7 @@
   amOption.setArgs(Option.UNLIMITED_VALUES);
   amOption.setArgName("AM Containers");
   opts.addOption(amOption);
-  Option logFileOpt=new Option(CONTAINER_LOG_FILES,true,"Work with -am/-containerId and specify comma-separated value " + "to get specified Container log files");
+  Option logFileOpt=new Option(CONTAINER_LOG_FILES,true,"Work with -am/-containerId and specify comma-separated value " + "to get specified container log files. Use \"ALL\" to fetch all the " + "log files for the container.");
   logFileOpt.setValueSeparator(',');
   logFileOpt.setArgs(Option.UNLIMITED_VALUES);
   logFileOpt.setArgName("Log File Name");
@@ -138,7 +138,17 @@
   int resultCode=0;
   if (containerIdStr != null) {
     if (nodeAddress != null && isApplicationFinished(appState)) {
-      return logCliHelper.dumpAContainersLogsForALogType(appIdStr,containerIdStr,nodeAddress,appOwner,logFiles == null ? null : Arrays.asList(logFiles));
+      List<String> logs;
+      if (logFiles == null) {
+        logs=null;
+      }
+ else       if (fetchAllLogFiles(logFiles)) {
+        logs=null;
+      }
+ else {
+        logs=Arrays.asList(logFiles);
+      }
+      return logCliHelper.dumpAContainersLogsForALogType(appIdStr,containerIdStr,nodeAddress,appOwner,logs);
     }
     try {
       ContainerReport report=getContainerReport(containerIdStr);
@@ -151,7 +161,11 @@
         printContainerLogsFromRunningApplication(getConf(),appIdStr,containerIdStr,nodeHttpAddress,nodeId,logFiles,logCliHelper,appOwner);
       }
  else {
-        printContainerLogsForFinishedApplication(appIdStr,containerIdStr,nodeId,logFiles,logCliHelper,appOwner);
+        String[] requestedLogFiles=logFiles;
+        if (fetchAllLogFiles(logFiles)) {
+          requestedLogFiles=null;
+        }
+        printContainerLogsForFinishedApplication(appIdStr,containerIdStr,nodeId,requestedLogFiles,logCliHelper,appOwner);
       }
       return resultCode;
     }

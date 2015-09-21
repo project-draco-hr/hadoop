@@ -1,0 +1,18 @@
+{
+  AMRMProxyApplicationContextImpl context=(AMRMProxyApplicationContextImpl)pipeline.getRootInterceptor().getApplicationContext();
+  if (allocateResponse.getAMRMToken() != null) {
+    org.apache.hadoop.yarn.api.records.Token token=allocateResponse.getAMRMToken();
+    org.apache.hadoop.security.token.Token<AMRMTokenIdentifier> newTokenId=new org.apache.hadoop.security.token.Token<AMRMTokenIdentifier>(token.getIdentifier().array(),token.getPassword().array(),new Text(token.getKind()),new Text(token.getService()));
+    context.setAMRMToken(newTokenId);
+  }
+  MasterKeyData nextMasterKey=this.secretManager.getNextMasterKeyData();
+  if (nextMasterKey != null && nextMasterKey.getMasterKey().getKeyId() != amrmTokenIdentifier.getKeyId()) {
+    Token<AMRMTokenIdentifier> localToken=context.getLocalAMRMToken();
+    if (nextMasterKey.getMasterKey().getKeyId() != context.getLocalAMRMTokenKeyId()) {
+      LOG.info("The local AMRMToken has been rolled-over." + " Send new local AMRMToken back to application: " + pipeline.getApplicationId());
+      localToken=this.secretManager.createAndGetAMRMToken(pipeline.getApplicationAttemptId());
+      context.setLocalAMRMToken(localToken);
+    }
+    allocateResponse.setAMRMToken(org.apache.hadoop.yarn.api.records.Token.newInstance(localToken.getIdentifier(),localToken.getKind().toString(),localToken.getPassword(),localToken.getService().toString()));
+  }
+}

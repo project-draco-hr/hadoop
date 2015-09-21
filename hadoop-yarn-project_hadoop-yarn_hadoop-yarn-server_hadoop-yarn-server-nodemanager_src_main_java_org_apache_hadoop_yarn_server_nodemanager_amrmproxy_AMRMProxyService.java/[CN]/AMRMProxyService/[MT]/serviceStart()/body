@@ -1,0 +1,16 @@
+{
+  LOG.info("Starting AMRMProxyService");
+  Configuration conf=getConfig();
+  YarnRPC rpc=YarnRPC.create(conf);
+  UserGroupInformation.setConfiguration(conf);
+  this.listenerEndpoint=conf.getSocketAddr(YarnConfiguration.AMRM_PROXY_ADDRESS,YarnConfiguration.DEFAULT_AMRM_PROXY_ADDRESS,YarnConfiguration.DEFAULT_AMRM_PROXY_PORT);
+  Configuration serverConf=new Configuration(conf);
+  serverConf.set(CommonConfigurationKeysPublic.HADOOP_SECURITY_AUTHENTICATION,SaslRpcServer.AuthMethod.TOKEN.toString());
+  int numWorkerThreads=serverConf.getInt(YarnConfiguration.AMRM_PROXY_CLIENT_THREAD_COUNT,YarnConfiguration.DEFAULT_AMRM_PROXY_CLIENT_THREAD_COUNT);
+  this.secretManager=new AMRMProxyTokenSecretManager(serverConf);
+  this.secretManager.start();
+  this.server=rpc.getServer(ApplicationMasterProtocol.class,this,listenerEndpoint,serverConf,this.secretManager,numWorkerThreads);
+  this.server.start();
+  LOG.info("AMRMProxyService listening on address: " + this.server.getListenerAddress());
+  super.serviceStart();
+}

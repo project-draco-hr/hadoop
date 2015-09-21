@@ -1,0 +1,26 @@
+{
+  ChannelFuture nextMap=null;
+  if (reduceContext.getMapsToSend().get() < reduceContext.getMapIds().size()) {
+    int nextIndex=reduceContext.getMapsToSend().getAndIncrement();
+    String mapId=reduceContext.getMapIds().get(nextIndex);
+    try {
+      MapOutputInfo info=reduceContext.getInfoMap().get(mapId);
+      if (info == null) {
+        info=getMapOutputInfo(reduceContext.getOutputBasePathStr() + mapId,mapId,reduceContext.getReduceId(),reduceContext.getUser());
+      }
+      nextMap=sendMapOutput(reduceContext.getCtx(),reduceContext.getCtx().getChannel(),reduceContext.getUser(),mapId,reduceContext.getReduceId(),info);
+      if (null == nextMap) {
+        sendError(reduceContext.getCtx(),NOT_FOUND);
+        return null;
+      }
+      nextMap.addListener(new ReduceMapFileCount(reduceContext));
+    }
+ catch (    IOException e) {
+      LOG.error("Shuffle error :",e);
+      String errorMessage=getErrorMessage(e);
+      sendError(reduceContext.getCtx(),errorMessage,INTERNAL_SERVER_ERROR);
+      return null;
+    }
+  }
+  return nextMap;
+}

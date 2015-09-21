@@ -7,16 +7,18 @@
   if (this.appLogAggregators.putIfAbsent(appId,appLogAggregator) != null) {
     throw new YarnRuntimeException("Duplicate initApp for " + appId);
   }
+  YarnRuntimeException appDirException=null;
   try {
     createAppDir(user,appId,userUgi);
   }
  catch (  Exception e) {
-    appLogAggregators.remove(appId);
-    closeFileSystems(userUgi);
+    appLogAggregator.disableLogAggregation();
     if (!(e instanceof YarnRuntimeException)) {
-      e=new YarnRuntimeException(e);
+      appDirException=new YarnRuntimeException(e);
     }
-    throw (YarnRuntimeException)e;
+ else {
+      appDirException=(YarnRuntimeException)e;
+    }
   }
   Runnable aggregatorWrapper=new Runnable(){
     public void run(){
@@ -31,4 +33,7 @@
   }
 ;
   this.threadPool.execute(aggregatorWrapper);
+  if (appDirException != null) {
+    throw appDirException;
+  }
 }
