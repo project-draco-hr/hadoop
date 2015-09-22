@@ -7,10 +7,12 @@
   String user="testWriteFlowRunMinMaxToHBase_user1";
   String flow="testing_flowRun_flow_name";
   String flowVersion="CF7022C10F1354";
-  Long runid=1002345678919L;
+  long runid=1002345678919L;
   String appName="application_100000000000_1111";
+  long minStartTs=10000000000000L;
+  long greaterStartTs=30000000000000L;
   long endTs=1439750690000L;
-  TimelineEntity entityMinStartTime=TestFlowDataGenerator.getEntityMinStartTime();
+  TimelineEntity entityMinStartTime=TestFlowDataGenerator.getEntityMinStartTime(minStartTs);
   try {
     hbi=new HBaseTimelineWriterImpl(c1);
     hbi.init(c1);
@@ -24,7 +26,7 @@
     te.addEntity(entityMaxEndTime);
     appName="application_100000000000_4444";
     hbi.write(cluster,user,flow,flowVersion,runid,appName,te);
-    TimelineEntity entityGreaterStartTime=TestFlowDataGenerator.getEntityGreaterStartTime();
+    TimelineEntity entityGreaterStartTime=TestFlowDataGenerator.getEntityGreaterStartTime(greaterStartTs);
     te=new TimelineEntities();
     te.addEntity(entityGreaterStartTime);
     appName="application_1000000000000000_2222";
@@ -45,8 +47,21 @@
   assertTrue(!r1.isEmpty());
   Map<byte[],byte[]> values=r1.getFamilyMap(FlowRunColumnFamily.INFO.getBytes());
   assertEquals(2,r1.size());
-  Long starttime=(Long)GenericObjectMapper.read(values.get(FlowRunColumn.MIN_START_TIME.getColumnQualifierBytes()));
-  Long expmin=entityMinStartTime.getCreatedTime();
-  assertEquals(expmin,starttime);
+  long starttime=(Long)GenericObjectMapper.read(values.get(FlowRunColumn.MIN_START_TIME.getColumnQualifierBytes()));
+  assertEquals(minStartTs,starttime);
   assertEquals(endTs,GenericObjectMapper.read(values.get(FlowRunColumn.MAX_END_TIME.getColumnQualifierBytes())));
+  HBaseTimelineReaderImpl hbr=null;
+  try {
+    hbr=new HBaseTimelineReaderImpl();
+    hbr.init(c1);
+    hbr.start();
+    TimelineEntity entity=hbr.getEntity(user,cluster,flow,runid,null,TimelineEntityType.YARN_FLOW_RUN.toString(),null,null);
+    assertTrue(TimelineEntityType.YARN_FLOW_RUN.matches(entity.getType()));
+    FlowRunEntity flowRun=(FlowRunEntity)entity;
+    assertEquals(minStartTs,flowRun.getStartTime());
+    assertEquals(endTs,flowRun.getMaxEndTime());
+  }
+  finally {
+    hbr.close();
+  }
 }

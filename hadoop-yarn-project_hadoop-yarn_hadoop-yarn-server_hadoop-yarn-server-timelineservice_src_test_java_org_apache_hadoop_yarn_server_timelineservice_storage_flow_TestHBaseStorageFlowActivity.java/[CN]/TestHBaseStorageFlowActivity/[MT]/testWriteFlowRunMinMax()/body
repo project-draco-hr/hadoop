@@ -7,10 +7,12 @@
   String user="testWriteFlowRunMinMaxToHBase_user1";
   String flow="testing_flowRun_flow_name";
   String flowVersion="CF7022C10F1354";
-  Long runid=1002345678919L;
+  long runid=1002345678919L;
   String appName="application_100000000000_1111";
+  long minStartTs=10000000000000L;
+  long greaterStartTs=30000000000000L;
   long endTs=1439750690000L;
-  TimelineEntity entityMinStartTime=TestFlowDataGenerator.getEntityMinStartTime();
+  TimelineEntity entityMinStartTime=TestFlowDataGenerator.getEntityMinStartTime(minStartTs);
   try {
     hbi=new HBaseTimelineWriterImpl(c1);
     hbi.init(c1);
@@ -24,7 +26,7 @@
     te.addEntity(entityMaxEndTime);
     appName="application_100000000000_4444";
     hbi.write(cluster,user,flow,flowVersion,runid,appName,te);
-    TimelineEntity entityGreaterStartTime=TestFlowDataGenerator.getEntityGreaterStartTime();
+    TimelineEntity entityGreaterStartTime=TestFlowDataGenerator.getEntityGreaterStartTime(greaterStartTs);
     te=new TimelineEntities();
     te.addEntity(entityGreaterStartTime);
     appName="application_1000000000000000_2222";
@@ -53,4 +55,24 @@
   assertEquals(dayTs,flowActivityRowKey.getDayTimestamp());
   assertEquals(1,values.size());
   checkFlowActivityRunId(runid,flowVersion,values);
+  HBaseTimelineReaderImpl hbr=null;
+  try {
+    hbr=new HBaseTimelineReaderImpl();
+    hbr.init(c1);
+    hbr.start();
+    Set<TimelineEntity> entities=hbr.getEntities(null,cluster,null,null,null,TimelineEntityType.YARN_FLOW_ACTIVITY.toString(),10L,null,null,null,null,null,null,null,null,null,null,null);
+    assertEquals(1,entities.size());
+    for (    TimelineEntity e : entities) {
+      FlowActivityEntity flowActivity=(FlowActivityEntity)e;
+      assertEquals(cluster,flowActivity.getCluster());
+      assertEquals(user,flowActivity.getUser());
+      assertEquals(flow,flowActivity.getFlowName());
+      assertEquals(dayTs,flowActivity.getDate().getTime());
+      Set<FlowRunEntity> flowRuns=flowActivity.getFlowRuns();
+      assertEquals(1,flowRuns.size());
+    }
+  }
+  finally {
+    hbr.close();
+  }
 }

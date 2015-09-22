@@ -3,7 +3,7 @@
   String user="testManyRunsFlowActivity_c_user1";
   String flow="flow_activity_test_flow_name";
   String flowVersion1="A122110F135BC4";
-  Long runid1=11111111111L;
+  long runid1=11111111111L;
   String flowVersion2="A12222222222C4";
   long runid2=2222222222222L;
   String flowVersion3="A1333333333C4";
@@ -32,4 +32,41 @@
     hbi.close();
   }
   checkFlowActivityTableSeveralRuns(cluster,user,flow,c1,flowVersion1,runid1,flowVersion2,runid2,flowVersion3,runid3);
+  HBaseTimelineReaderImpl hbr=null;
+  try {
+    hbr=new HBaseTimelineReaderImpl();
+    hbr.init(c1);
+    hbr.start();
+    Set<TimelineEntity> entities=hbr.getEntities(null,cluster,null,null,null,TimelineEntityType.YARN_FLOW_ACTIVITY.toString(),10L,null,null,null,null,null,null,null,null,null,null,null);
+    assertEquals(1,entities.size());
+    for (    TimelineEntity e : entities) {
+      FlowActivityEntity flowActivity=(FlowActivityEntity)e;
+      assertEquals(cluster,flowActivity.getCluster());
+      assertEquals(user,flowActivity.getUser());
+      assertEquals(flow,flowActivity.getFlowName());
+      long dayTs=TimelineWriterUtils.getTopOfTheDayTimestamp(System.currentTimeMillis());
+      assertEquals(dayTs,flowActivity.getDate().getTime());
+      Set<FlowRunEntity> flowRuns=flowActivity.getFlowRuns();
+      assertEquals(3,flowRuns.size());
+      for (      FlowRunEntity flowRun : flowRuns) {
+        long runId=flowRun.getRunId();
+        String version=flowRun.getVersion();
+        if (runId == runid1) {
+          assertEquals(flowVersion1,version);
+        }
+ else         if (runId == runid2) {
+          assertEquals(flowVersion2,version);
+        }
+ else         if (runId == runid3) {
+          assertEquals(flowVersion3,version);
+        }
+ else {
+          fail("unknown run id: " + runId);
+        }
+      }
+    }
+  }
+  finally {
+    hbr.close();
+  }
 }
