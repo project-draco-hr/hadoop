@@ -1,0 +1,24 @@
+{
+  conf.setInt(DFSConfigKeys.DFS_HEARTBEAT_INTERVAL_KEY,1);
+  conf.setInt(DFSConfigKeys.DFS_NAMENODE_HEARTBEAT_RECHECK_INTERVAL_KEY,1);
+  try {
+    cluster=new MiniDFSCluster.Builder(conf).nnTopology(MiniDFSNNTopology.simpleFederatedTopology(1)).numDataNodes(1).build();
+    cluster.waitActive();
+    DFSClient client=getDfsClient(cluster.getNameNode(0),conf);
+    validateCluster(client,1);
+    ArrayList<ArrayList<DatanodeInfo>> namenodeDecomList=new ArrayList<ArrayList<DatanodeInfo>>(1);
+    namenodeDecomList.add(0,new ArrayList<DatanodeInfo>(1));
+    ArrayList<DatanodeInfo> decommissionedNode=namenodeDecomList.get(0);
+    decommissionNode(0,null,decommissionedNode,AdminStates.DECOMMISSIONED);
+    FSNamesystem ns=cluster.getNamesystem(0);
+    DatanodeManager datanodeManager=ns.getBlockManager().getDatanodeManager();
+    List<DatanodeDescriptor> live=new ArrayList<DatanodeDescriptor>();
+    datanodeManager.fetchDatanodes(live,null,false);
+    assertTrue(1 == live.size());
+    datanodeManager.fetchDatanodes(live,null,true);
+    assertTrue(0 == live.size());
+  }
+  finally {
+    cluster.shutdown();
+  }
+}
