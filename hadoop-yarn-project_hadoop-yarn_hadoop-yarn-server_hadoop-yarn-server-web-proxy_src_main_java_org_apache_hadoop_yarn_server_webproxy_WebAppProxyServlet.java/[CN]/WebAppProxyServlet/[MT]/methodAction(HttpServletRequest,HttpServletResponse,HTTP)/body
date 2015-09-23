@@ -37,9 +37,16 @@
       }
     }
     boolean checkUser=securityEnabled && (!userWasWarned || !userApproved);
-    ApplicationReport applicationReport;
+    FetchedAppReport fetchedAppReport=null;
+    ApplicationReport applicationReport=null;
     try {
-      applicationReport=getApplicationReport(id);
+      fetchedAppReport=getApplicationReport(id);
+      if (fetchedAppReport != null) {
+        if (fetchedAppReport.getAppReportSource() != AppReportSource.RM && fetchedAppReport.getAppReportSource() != AppReportSource.AHS) {
+          throw new UnsupportedOperationException("Application report not " + "fetched from RM or history server.");
+        }
+        applicationReport=fetchedAppReport.getApplicationReport();
+      }
     }
  catch (    ApplicationNotFoundException e) {
       applicationReport=null;
@@ -51,13 +58,20 @@
         ProxyUtils.sendRedirect(req,resp,toFetch.toString());
         return;
       }
-      notFound(resp,"Application " + appId + " could not be found, "+ "please try the history server");
+      notFound(resp,"Application " + appId + " could not be found "+ "in RM or history server");
       return;
     }
     String original=applicationReport.getOriginalTrackingUrl();
     URI trackingUri;
-    if (original == null || original.equals("N/A")) {
-      ProxyUtils.sendRedirect(req,resp,StringHelper.pjoin(rmAppPageUrlBase,id.toString()));
+    if (original == null || original.equals("N/A") || original.equals("")) {
+      if (fetchedAppReport.getAppReportSource() == AppReportSource.RM) {
+        LOG.debug("Original tracking url is '{}'. Redirecting to RM app page",original == null ? "NULL" : original);
+        ProxyUtils.sendRedirect(req,resp,StringHelper.pjoin(rmAppPageUrlBase,id.toString()));
+      }
+ else       if (fetchedAppReport.getAppReportSource() == AppReportSource.AHS) {
+        LOG.debug("Original tracking url is '{}'. Redirecting to AHS app page",original == null ? "NULL" : original);
+        ProxyUtils.sendRedirect(req,resp,StringHelper.pjoin(ahsAppPageUrlBase,id.toString()));
+      }
       return;
     }
  else {
