@@ -1,0 +1,36 @@
+{
+  YarnClient client=YarnClient.createYarnClient();
+  try {
+    client.init(getConf());
+    client.start();
+    for (Iterator<AppInfo> it=eligibleApplications.iterator(); it.hasNext(); ) {
+      AppInfo app=it.next();
+      try {
+        ApplicationReport report=client.getApplicationReport(ConverterUtils.toApplicationId(app.getAppId()));
+        LogAggregationStatus aggStatus=report.getLogAggregationStatus();
+        if (aggStatus.equals(LogAggregationStatus.RUNNING) || aggStatus.equals(LogAggregationStatus.RUNNING_WITH_FAILURE) || aggStatus.equals(LogAggregationStatus.NOT_START)|| aggStatus.equals(LogAggregationStatus.DISABLED)|| aggStatus.equals(LogAggregationStatus.FAILED)) {
+          if (verbose) {
+            LOG.info("Skipping " + app.getAppId() + " due to aggregation status being "+ aggStatus);
+          }
+          it.remove();
+        }
+ else {
+          if (verbose) {
+            LOG.info(app.getAppId() + " has aggregation status " + aggStatus);
+          }
+          app.setFinishTime(report.getFinishTime());
+        }
+      }
+ catch (      ApplicationNotFoundException e) {
+        if (verbose) {
+          LOG.info(app.getAppId() + " not in the ResourceManager");
+        }
+      }
+    }
+  }
+  finally {
+    if (client != null) {
+      client.stop();
+    }
+  }
+}
