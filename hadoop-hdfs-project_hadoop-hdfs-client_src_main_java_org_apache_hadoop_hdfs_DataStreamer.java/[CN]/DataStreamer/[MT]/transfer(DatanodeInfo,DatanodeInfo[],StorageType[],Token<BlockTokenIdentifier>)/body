@@ -1,0 +1,28 @@
+{
+  Socket sock=null;
+  DataOutputStream out=null;
+  DataInputStream in=null;
+  try {
+    sock=createSocketForPipeline(src,2,dfsClient);
+    final long writeTimeout=dfsClient.getDatanodeWriteTimeout(2);
+    final long readTimeout=dfsClient.getDatanodeReadTimeout(2);
+    OutputStream unbufOut=NetUtils.getOutputStream(sock,writeTimeout);
+    InputStream unbufIn=NetUtils.getInputStream(sock,readTimeout);
+    IOStreamPair saslStreams=dfsClient.saslClient.socketSend(sock,unbufOut,unbufIn,dfsClient,blockToken,src);
+    unbufOut=saslStreams.out;
+    unbufIn=saslStreams.in;
+    out=new DataOutputStream(new BufferedOutputStream(unbufOut,DFSUtilClient.getSmallBufferSize(dfsClient.getConfiguration())));
+    in=new DataInputStream(unbufIn);
+    new Sender(out).transferBlock(block,blockToken,dfsClient.clientName,targets,targetStorageTypes);
+    out.flush();
+    BlockOpResponseProto response=BlockOpResponseProto.parseFrom(PBHelperClient.vintPrefixed(in));
+    if (SUCCESS != response.getStatus()) {
+      throw new IOException("Failed to add a datanode");
+    }
+  }
+  finally {
+    IOUtils.closeStream(in);
+    IOUtils.closeStream(out);
+    IOUtils.closeSocket(sock);
+  }
+}
