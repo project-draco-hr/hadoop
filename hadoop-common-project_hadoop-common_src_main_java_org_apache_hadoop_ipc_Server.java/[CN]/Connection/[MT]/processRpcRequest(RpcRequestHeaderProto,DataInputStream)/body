@@ -15,12 +15,15 @@
     String err="IPC server unable to read call parameters: " + t.getMessage();
     throw new WrappedRpcServerException(RpcErrorCodeProto.FATAL_DESERIALIZING_REQUEST,err);
   }
-  Span traceSpan=null;
+  TraceScope traceScope=null;
   if (header.hasTraceInfo()) {
-    TraceInfo parentSpan=new TraceInfo(header.getTraceInfo().getTraceId(),header.getTraceInfo().getParentId());
-    traceSpan=Trace.startSpan(RpcClientUtil.toTraceName(rpcRequest.toString()),parentSpan).detach();
+    if (tracer != null) {
+      SpanId parentSpanId=new SpanId(header.getTraceInfo().getTraceId(),header.getTraceInfo().getParentId());
+      traceScope=tracer.newScope(RpcClientUtil.toTraceName(rpcRequest.toString()),parentSpanId);
+      traceScope.detach();
+    }
   }
-  Call call=new Call(header.getCallId(),header.getRetryCount(),rpcRequest,this,ProtoUtil.convert(header.getRpcKind()),header.getClientId().toByteArray(),traceSpan);
+  Call call=new Call(header.getCallId(),header.getRetryCount(),rpcRequest,this,ProtoUtil.convert(header.getRpcKind()),header.getClientId().toByteArray(),traceScope);
   if (callQueue.isClientBackoffEnabled()) {
     queueRequestOrAskClientToBackOff(call);
   }
