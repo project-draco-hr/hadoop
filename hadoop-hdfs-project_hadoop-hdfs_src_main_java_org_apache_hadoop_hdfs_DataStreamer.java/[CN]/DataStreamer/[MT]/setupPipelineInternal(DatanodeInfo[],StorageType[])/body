@@ -1,0 +1,23 @@
+{
+  boolean success=false;
+  long newGS=0L;
+  while (!success && !streamerClosed && dfsClient.clientRunning) {
+    if (!handleRestartingDatanode()) {
+      return;
+    }
+    final boolean isRecovery=errorState.hasInternalError();
+    if (!handleBadDatanode()) {
+      return;
+    }
+    handleDatanodeReplacement();
+    final LocatedBlock lb=updateBlockForPipeline();
+    newGS=lb.getBlock().getGenerationStamp();
+    accessToken=lb.getBlockToken();
+    success=createBlockOutputStream(nodes,storageTypes,newGS,isRecovery);
+    failPacket4Testing();
+    errorState.checkRestartingNodeDeadline(nodes);
+  }
+  if (success) {
+    block=updatePipeline(newGS);
+  }
+}

@@ -1,0 +1,59 @@
+{
+  if (killPos[0] <= FLUSH_POS) {
+    LOG.warn("killPos=" + Arrays.toString(killPos) + " <= FLUSH_POS="+ FLUSH_POS+ ", length="+ length+ ", dnIndex="+ Arrays.toString(dnIndex));
+    return;
+  }
+  Preconditions.checkArgument(length > killPos[0],"length=%s <= killPos=%s",length,killPos);
+  Preconditions.checkArgument(killPos.length == dnIndex.length);
+  final Path p=new Path(dir,"dn" + Arrays.toString(dnIndex) + "len"+ length+ "kill"+ Arrays.toString(killPos));
+  final String fullPath=p.toString();
+  LOG.info("fullPath=" + fullPath);
+  if (tokenExpire) {
+    final NameNode nn=cluster.getNameNode();
+    final BlockManager bm=nn.getNamesystem().getBlockManager();
+    final BlockTokenSecretManager sm=bm.getBlockTokenSecretManager();
+    SecurityTestUtil.setBlockTokenLifetime(sm,1000L);
+  }
+  final AtomicInteger pos=new AtomicInteger();
+  final FSDataOutputStream out=dfs.create(p);
+  final DFSStripedOutputStream stripedOut=(DFSStripedOutputStream)out.getWrappedStream();
+  long firstGS=-1;
+  long oldGS=-1;
+  int numKilled=0;
+  for (; pos.get() < length; ) {
+    final int i=pos.getAndIncrement();
+    if (numKilled < killPos.length && i == killPos[numKilled]) {
+      assertTrue(firstGS != -1);
+      final long gs=getGenerationStamp(stripedOut);
+      if (numKilled == 0) {
+        assertEquals(firstGS,gs);
+      }
+ else {
+        assertTrue(gs >= oldGS);
+      }
+      oldGS=gs;
+      if (tokenExpire) {
+        DFSTestUtil.flushInternal(stripedOut);
+        waitTokenExpires(out);
+      }
+      killDatanode(cluster,stripedOut,dnIndex[numKilled],pos);
+      numKilled++;
+    }
+    write(out,i);
+    if (i % BLOCK_GROUP_SIZE == FLUSH_POS) {
+      firstGS=getGenerationStamp(stripedOut);
+      oldGS=firstGS;
+    }
+  }
+  out.close();
+  assertEquals(dnIndex.length,numKilled);
+  short expectedReported=StripedFileTestUtil.getRealTotalBlockNum(length);
+  for (  int idx : dnIndex) {
+    if (length > idx * CELL_SIZE || idx >= NUM_DATA_BLOCKS) {
+      expectedReported--;
+    }
+  }
+  DFSTestUtil.waitReplication(dfs,p,expectedReported);
+  cluster.triggerBlockReports();
+  StripedFileTestUtil.checkData(dfs,p,length,dnIndex,oldGS);
+}

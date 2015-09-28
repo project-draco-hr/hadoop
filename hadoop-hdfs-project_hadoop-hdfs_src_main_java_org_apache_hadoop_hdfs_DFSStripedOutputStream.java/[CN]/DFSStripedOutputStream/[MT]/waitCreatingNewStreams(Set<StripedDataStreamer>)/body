@@ -1,0 +1,36 @@
+{
+  Set<StripedDataStreamer> failed=new HashSet<>();
+  final int expectedNum=healthyStreamers.size();
+  final long socketTimeout=dfsClient.getConf().getSocketTimeout();
+  long remaingTime=socketTimeout > 0 ? socketTimeout / 2 : Long.MAX_VALUE;
+  final long waitInterval=1000;
+synchronized (coordinator) {
+    while (checkStreamerUpdates(failed,healthyStreamers) < expectedNum && remaingTime > 0) {
+      try {
+        long start=Time.monotonicNow();
+        coordinator.wait(waitInterval);
+        remaingTime-=Time.monotonicNow() - start;
+      }
+ catch (      InterruptedException e) {
+        throw DFSUtil.toInterruptedIOException("Interrupted when waiting" + " for results of updating striped streamers",e);
+      }
+    }
+  }
+synchronized (coordinator) {
+    for (    StripedDataStreamer streamer : healthyStreamers) {
+      if (!coordinator.updateStreamerMap.containsKey(streamer)) {
+        streamer.setStreamerAsClosed();
+        failed.add(streamer);
+      }
+    }
+  }
+  for (  Map.Entry<StripedDataStreamer,Boolean> entry : coordinator.updateStreamerMap.entrySet()) {
+    if (!entry.getValue()) {
+      failed.add(entry.getKey());
+    }
+  }
+  for (  StripedDataStreamer failedStreamer : failed) {
+    healthyStreamers.remove(failedStreamer);
+  }
+  return failed;
+}

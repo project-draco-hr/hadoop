@@ -1,5 +1,5 @@
 {
-  super(dfsClient,src,stat,flag,progress,checksum,favoredNodes);
+  super(dfsClient,src,stat,flag,progress,checksum,favoredNodes,false);
   if (LOG.isDebugEnabled()) {
     LOG.debug("Creating DFSStripedOutputStream for " + src);
   }
@@ -8,20 +8,21 @@
   cellSize=ecPolicy.getCellSize();
   numDataBlocks=ecPolicy.getNumDataUnits();
   numAllBlocks=numDataBlocks + numParityBlocks;
+  this.favoredNodes=favoredNodes;
+  failedStreamers=new ArrayList<>();
   encoder=CodecUtil.createRSRawEncoder(dfsClient.getConfiguration(),numDataBlocks,numParityBlocks);
-  coordinator=new Coordinator(dfsClient.getConf(),numDataBlocks,numAllBlocks);
+  coordinator=new Coordinator(numAllBlocks);
   try {
     cellBuffers=new CellBuffers(numParityBlocks);
   }
  catch (  InterruptedException ie) {
     throw DFSUtil.toInterruptedIOException("Failed to create cell buffers",ie);
   }
-  List<StripedDataStreamer> s=new ArrayList<>(numAllBlocks);
+  streamers=new ArrayList<>(numAllBlocks);
   for (short i=0; i < numAllBlocks; i++) {
     StripedDataStreamer streamer=new StripedDataStreamer(stat,dfsClient,src,progress,checksum,cachingStrategy,byteArrayManager,favoredNodes,i,coordinator);
-    s.add(streamer);
+    streamers.add(streamer);
   }
-  streamers=Collections.unmodifiableList(s);
   currentPackets=new DFSPacket[streamers.size()];
   setCurrentStreamer(0);
 }

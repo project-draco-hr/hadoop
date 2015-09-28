@@ -3,8 +3,11 @@
   final StripedDataStreamer current=getCurrentStreamer();
   final int pos=cellBuffers.addTo(index,bytes,offset,len);
   final boolean cellFull=pos == cellSize;
-  final long oldBytes=current.getBytesCurBlock();
-  if (!current.isFailed()) {
+  if (currentBlockGroup == null || shouldEndBlockGroup()) {
+    allocateNewBlock();
+  }
+  currentBlockGroup.setNumBytes(currentBlockGroup.getNumBytes() + len);
+  if (current.isHealthy()) {
     try {
       super.writeChunk(bytes,offset,len,checksum,ckoff,cklen);
     }
@@ -12,17 +15,25 @@
       handleStreamerFailure("offset=" + offset + ", length="+ len,e);
     }
   }
-  if (current.isFailed()) {
-    final long newBytes=oldBytes + len;
-    coordinator.setBytesEndBlock(index,newBytes,current.getBlock());
-    current.setBytesCurBlock(newBytes);
-  }
   if (cellFull) {
     int next=index + 1;
     if (next == numDataBlocks) {
       cellBuffers.flipDataBuffers();
       writeParityCells();
       next=0;
+      checkStreamerFailures();
+      if (shouldEndBlockGroup()) {
+        for (int i=0; i < numAllBlocks; i++) {
+          final StripedDataStreamer s=setCurrentStreamer(i);
+          if (s.isHealthy()) {
+            try {
+              endBlock();
+            }
+ catch (            IOException ignored) {
+            }
+          }
+        }
+      }
     }
     setCurrentStreamer(next);
   }
