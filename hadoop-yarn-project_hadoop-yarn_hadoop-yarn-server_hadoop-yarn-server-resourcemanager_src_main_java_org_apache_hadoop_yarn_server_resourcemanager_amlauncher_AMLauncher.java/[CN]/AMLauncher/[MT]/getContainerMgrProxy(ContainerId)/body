@@ -1,15 +1,10 @@
 {
   final NodeId node=masterContainer.getNodeId();
-  final InetSocketAddress containerManagerBindAddress=NetUtils.createSocketAddrForHost(node.getHost(),node.getPort());
-  final YarnRPC rpc=YarnRPC.create(conf);
+  final InetSocketAddress containerManagerConnectAddress=NetUtils.createSocketAddrForHost(node.getHost(),node.getPort());
+  final YarnRPC rpc=getYarnRPC();
   UserGroupInformation currentUser=UserGroupInformation.createRemoteUser(containerId.getApplicationAttemptId().toString());
   String user=rmContext.getRMApps().get(containerId.getApplicationAttemptId().getApplicationId()).getUser();
   org.apache.hadoop.yarn.api.records.Token token=rmContext.getNMTokenSecretManager().createNMToken(containerId.getApplicationAttemptId(),node,user);
-  currentUser.addToken(ConverterUtils.convertFromYarn(token,containerManagerBindAddress));
-  return currentUser.doAs(new PrivilegedAction<ContainerManagementProtocol>(){
-    @Override public ContainerManagementProtocol run(){
-      return (ContainerManagementProtocol)rpc.getProxy(ContainerManagementProtocol.class,containerManagerBindAddress,conf);
-    }
-  }
-);
+  currentUser.addToken(ConverterUtils.convertFromYarn(token,containerManagerConnectAddress));
+  return NMProxy.createNMProxy(conf,ContainerManagementProtocol.class,currentUser,rpc,containerManagerConnectAddress);
 }
