@@ -21,14 +21,25 @@
     processCommits(nextOffset.get());
     this.asyncStatus=false;
   }
- else   if (range.getMin() < offset && range.getMax() > offset) {
-    LOG.warn("Got an overlapping write (" + range.getMin() + ", "+ range.getMax()+ "), nextOffset="+ offset+ ". Silently drop it now");
+ else   if (range.getMax() <= offset) {
+    if (LOG.isDebugEnabled()) {
+      LOG.debug("Remove write " + range.toString() + " which is already written from the list");
+    }
     pendingWrites.remove(range);
-    processCommits(nextOffset.get());
+  }
+ else   if (range.getMin() < offset && range.getMax() > offset) {
+    LOG.warn("Got an overlapping write " + range.toString() + ", nextOffset="+ offset+ ". Remove and trim it");
+    pendingWrites.remove(range);
+    trimWriteRequest(toWrite,offset);
+    nextOffset.addAndGet(toWrite.getCount());
+    if (LOG.isDebugEnabled()) {
+      LOG.debug("Change nextOffset (after trim) to " + nextOffset.get());
+    }
+    return toWrite;
   }
  else {
     if (LOG.isDebugEnabled()) {
-      LOG.debug("Remove write(" + range.getMin() + "-"+ range.getMax()+ ") from the list");
+      LOG.debug("Remove write " + range.toString() + " from the list");
     }
     pendingWrites.remove(range);
     nextOffset.addAndGet(toWrite.getCount());
