@@ -1,0 +1,34 @@
+{
+  ContainerId containerId=request.getContainerId();
+  ResourceScheduler scheduler=rmContext.getScheduler();
+  RMContainer rmContainer=scheduler.getRMContainer(containerId);
+  ResourceCalculator rc=scheduler.getResourceCalculator();
+  if (null == rmContainer) {
+    String msg="Failed to get rmContainer for " + (increase ? "increase" : "decrease") + " request, with container-id="+ containerId;
+    throw new InvalidResourceRequestException(msg);
+  }
+  if (rmContainer.getState() != RMContainerState.RUNNING) {
+    String msg="rmContainer's state is not RUNNING, for " + (increase ? "increase" : "decrease") + " request, with container-id="+ containerId;
+    throw new InvalidResourceRequestException(msg);
+  }
+  Resource targetResource=Resources.normalize(rc,request.getCapability(),scheduler.getMinimumResourceCapability(),scheduler.getMaximumResourceCapability(),scheduler.getMinimumResourceCapability());
+  Resource originalResource=rmContainer.getAllocatedResource();
+  if (increase) {
+    if (originalResource.getMemory() > targetResource.getMemory() || originalResource.getVirtualCores() > targetResource.getVirtualCores()) {
+      String msg="Trying to increase a container, but target resource has some" + " resource < original resource, target=" + targetResource + " original="+ originalResource+ " containerId="+ containerId;
+      throw new InvalidResourceRequestException(msg);
+    }
+  }
+ else {
+    if (originalResource.getMemory() < targetResource.getMemory() || originalResource.getVirtualCores() < targetResource.getVirtualCores()) {
+      String msg="Trying to decrease a container, but target resource has " + "some resource > original resource, target=" + targetResource + " original="+ originalResource+ " containerId="+ containerId;
+      throw new InvalidResourceRequestException(msg);
+    }
+  }
+  RMNode rmNode=rmContext.getRMNodes().get(rmContainer.getAllocatedNode());
+  if (!Resources.fitsIn(scheduler.getResourceCalculator(),scheduler.getClusterResource(),targetResource,rmNode.getTotalCapability())) {
+    String msg="Target resource=" + targetResource + " of containerId="+ containerId+ " is more than node's total resource="+ rmNode.getTotalCapability();
+    throw new InvalidResourceRequestException(msg);
+  }
+  request.setCapability(targetResource);
+}

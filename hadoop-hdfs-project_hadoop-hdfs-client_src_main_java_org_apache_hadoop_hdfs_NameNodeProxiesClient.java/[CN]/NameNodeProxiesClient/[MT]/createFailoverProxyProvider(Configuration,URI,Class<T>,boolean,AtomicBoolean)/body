@@ -1,0 +1,36 @@
+{
+  Class<FailoverProxyProvider<T>> failoverProxyProviderClass=null;
+  AbstractNNFailoverProxyProvider<T> providerNN;
+  try {
+    failoverProxyProviderClass=getFailoverProxyProviderClass(conf,nameNodeUri);
+    if (failoverProxyProviderClass == null) {
+      return null;
+    }
+    Constructor<FailoverProxyProvider<T>> ctor=failoverProxyProviderClass.getConstructor(Configuration.class,URI.class,Class.class);
+    FailoverProxyProvider<T> provider=ctor.newInstance(conf,nameNodeUri,xface);
+    if (!(provider instanceof AbstractNNFailoverProxyProvider)) {
+      providerNN=new WrappedFailoverProxyProvider<>(provider);
+    }
+ else {
+      providerNN=(AbstractNNFailoverProxyProvider<T>)provider;
+    }
+  }
+ catch (  Exception e) {
+    final String message="Couldn't create proxy provider " + failoverProxyProviderClass;
+    LOG.debug(message,e);
+    if (e.getCause() instanceof IOException) {
+      throw (IOException)e.getCause();
+    }
+ else {
+      throw new IOException(message,e);
+    }
+  }
+  if (checkPort && providerNN.useLogicalURI()) {
+    int port=nameNodeUri.getPort();
+    if (port > 0 && port != HdfsClientConfigKeys.DFS_NAMENODE_RPC_PORT_DEFAULT) {
+      throw new IOException("Port " + port + " specified in URI "+ nameNodeUri+ " but host '"+ nameNodeUri.getHost()+ "' is a logical (HA) namenode"+ " and does not use port information.");
+    }
+  }
+  providerNN.setFallbackToSimpleAuth(fallbackToSimpleAuth);
+  return providerNN;
+}

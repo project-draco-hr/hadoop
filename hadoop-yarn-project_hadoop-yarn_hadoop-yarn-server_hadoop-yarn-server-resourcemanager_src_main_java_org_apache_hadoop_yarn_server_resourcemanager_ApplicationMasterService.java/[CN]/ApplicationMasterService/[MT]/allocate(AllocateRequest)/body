@@ -44,8 +44,9 @@ synchronized (lock) {
         req.setNodeLabelExpression(asc.getNodeLabelExpression());
       }
     }
+    Resource maximumCapacity=rScheduler.getMaximumResourceCapability();
     try {
-      RMServerUtils.normalizeAndValidateRequests(ask,rScheduler.getMaximumResourceCapability(),app.getQueue(),rScheduler,rmContext);
+      RMServerUtils.normalizeAndValidateRequests(ask,maximumCapacity,app.getQueue(),rScheduler,rmContext);
     }
  catch (    InvalidResourceRequestException e) {
       LOG.warn("Invalid resource ask by application " + appAttemptId,e);
@@ -56,6 +57,13 @@ synchronized (lock) {
     }
  catch (    InvalidResourceBlacklistRequestException e) {
       LOG.warn("Invalid blacklist request by application " + appAttemptId,e);
+      throw e;
+    }
+    try {
+      RMServerUtils.increaseDecreaseRequestSanityCheck(rmContext,request.getIncreaseRequests(),request.getDecreaseRequests(),maximumCapacity);
+    }
+ catch (    InvalidResourceRequestException e) {
+      LOG.warn(e);
       throw e;
     }
     if (!app.getApplicationSubmissionContext().getKeepContainersAcrossApplicationAttempts()) {
@@ -74,7 +82,7 @@ synchronized (lock) {
       allocation=EMPTY_ALLOCATION;
     }
  else {
-      allocation=this.rScheduler.allocate(appAttemptId,ask,release,blacklistAdditions,blacklistRemovals);
+      allocation=this.rScheduler.allocate(appAttemptId,ask,release,blacklistAdditions,blacklistRemovals,request.getIncreaseRequests(),request.getDecreaseRequests());
     }
     if (!blacklistAdditions.isEmpty() || !blacklistRemovals.isEmpty()) {
       LOG.info("blacklist are updated in Scheduler." + "blacklistAdditions: " + blacklistAdditions + ", "+ "blacklistRemovals: "+ blacklistRemovals);
@@ -105,6 +113,8 @@ synchronized (lock) {
     allocateResponse.setCompletedContainersStatuses(appAttempt.pullJustFinishedContainers());
     allocateResponse.setResponseId(lastResponse.getResponseId() + 1);
     allocateResponse.setAvailableResources(allocation.getResourceLimit());
+    allocateResponse.setIncreasedContainers(allocation.getIncreasedContainers());
+    allocateResponse.setDecreasedContainers(allocation.getDecreasedContainers());
     allocateResponse.setNumClusterNodes(this.rScheduler.getNumClusterNodes());
     allocateResponse.setPreemptionMessage(generatePreemptionMessage(allocation));
     MasterKeyData nextMasterKey=this.rmContext.getAMRMTokenSecretManager().getNextMasterKeyData();

@@ -1,0 +1,31 @@
+{
+  MockRM rm1=new MockRM(){
+    @Override public RMNodeLabelsManager createNodeLabelManager(){
+      return mgr;
+    }
+  }
+;
+  rm1.start();
+  MockNM nm1=rm1.registerNode("h1:1234",20 * GB);
+  RMApp app1=rm1.submitApp(3 * GB,"app","user",null,"default");
+  MockAM am1=MockRM.launchAndRegisterAM(app1,rm1,nm1);
+  FiCaSchedulerApp app=getFiCaSchedulerApp(rm1,app1.getApplicationId());
+  checkUsedResource(rm1,"default",3 * GB,null);
+  Assert.assertEquals(3 * GB,app.getAppAttemptResourceUsage().getUsed().getMemory());
+  ContainerId containerId1=ContainerId.newContainerId(am1.getApplicationAttemptId(),1);
+  sentRMContainerLaunched(rm1,containerId1);
+  AllocateResponse response=am1.sendContainerResizingRequest(null,Arrays.asList(ContainerResourceChangeRequest.newInstance(containerId1,Resources.createResource(1 * GB))));
+  verifyContainerDecreased(response,containerId1,1 * GB);
+  checkUsedResource(rm1,"default",1 * GB,null);
+  Assert.assertEquals(1 * GB,app.getAppAttemptResourceUsage().getUsed().getMemory());
+  RMNodeImpl rmNode=(RMNodeImpl)rm1.getRMContext().getRMNodes().get(nm1.getNodeId());
+  Collection<Container> decreasedContainers=rmNode.getToBeDecreasedContainers();
+  boolean rmNodeReceivedDecreaseContainer=false;
+  for (  Container c : decreasedContainers) {
+    if (c.getId().equals(containerId1) && c.getResource().equals(Resources.createResource(1 * GB))) {
+      rmNodeReceivedDecreaseContainer=true;
+    }
+  }
+  Assert.assertTrue(rmNodeReceivedDecreaseContainer);
+  rm1.close();
+}

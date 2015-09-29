@@ -1,0 +1,39 @@
+{
+  if (DataTransferProtocol.LOG.isDebugEnabled()) {
+    DataTransferProtocol.LOG.debug("lastAckedSeqno = " + lastAckedSeqno);
+  }
+  if (!isAppend && lastAckedSeqno < 0 && stage == BlockConstructionStage.PIPELINE_SETUP_CREATE) {
+    return;
+  }
+ else   if (stage == BlockConstructionStage.PIPELINE_CLOSE || stage == BlockConstructionStage.PIPELINE_CLOSE_RECOVERY) {
+    return;
+  }
+  int tried=0;
+  final DatanodeInfo[] original=nodes;
+  final StorageType[] originalTypes=storageTypes;
+  final String[] originalIDs=storageIDs;
+  IOException caughtException=null;
+  ArrayList<DatanodeInfo> exclude=new ArrayList<DatanodeInfo>(failed);
+  while (tried < 3) {
+    LocatedBlock lb;
+    lb=dfsClient.namenode.getAdditionalDatanode(src,stat.getFileId(),block,nodes,storageIDs,exclude.toArray(new DatanodeInfo[exclude.size()]),1,dfsClient.clientName);
+    setPipeline(lb);
+    final int d=findNewDatanode(original);
+    final DatanodeInfo src=original[tried % original.length];
+    final DatanodeInfo[] targets={nodes[d]};
+    final StorageType[] targetStorageTypes={storageTypes[d]};
+    try {
+      transfer(src,targets,targetStorageTypes,lb.getBlockToken());
+    }
+ catch (    IOException ioe) {
+      DFSClient.LOG.warn("Error transferring data from " + src + " to "+ nodes[d]+ ": "+ ioe.getMessage());
+      caughtException=ioe;
+      exclude.add(nodes[d]);
+      setPipeline(original,originalTypes,originalIDs);
+      tried++;
+      continue;
+    }
+    return;
+  }
+  throw (caughtException != null) ? caughtException : new IOException("Failed to add a node");
+}

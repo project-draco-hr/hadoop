@@ -1,0 +1,35 @@
+{
+  LOG.info("Start a container and wait until it is in RUNNING state");
+  File scriptFile=Shell.appendScriptExtension(tmpDir,"scriptFile");
+  PrintWriter fileWriter=new PrintWriter(scriptFile);
+  if (Shell.WINDOWS) {
+    fileWriter.println("@ping -n 100 127.0.0.1 >nul");
+  }
+ else {
+    fileWriter.write("\numask 0");
+    fileWriter.write("\nexec sleep 100");
+  }
+  fileWriter.close();
+  ContainerLaunchContext containerLaunchContext=recordFactory.newRecordInstance(ContainerLaunchContext.class);
+  URL resource_alpha=ConverterUtils.getYarnUrlFromPath(localFS.makeQualified(new Path(scriptFile.getAbsolutePath())));
+  LocalResource rsrc_alpha=recordFactory.newRecordInstance(LocalResource.class);
+  rsrc_alpha.setResource(resource_alpha);
+  rsrc_alpha.setSize(-1);
+  rsrc_alpha.setVisibility(LocalResourceVisibility.APPLICATION);
+  rsrc_alpha.setType(LocalResourceType.FILE);
+  rsrc_alpha.setTimestamp(scriptFile.lastModified());
+  String destinationFile="dest_file";
+  Map<String,LocalResource> localResources=new HashMap<String,LocalResource>();
+  localResources.put(destinationFile,rsrc_alpha);
+  containerLaunchContext.setLocalResources(localResources);
+  List<String> commands=Arrays.asList(Shell.getRunScriptCommand(scriptFile));
+  containerLaunchContext.setCommands(commands);
+  Resource resource=Resource.newInstance(1024,1);
+  StartContainerRequest scRequest=StartContainerRequest.newInstance(containerLaunchContext,getContainerToken(resource));
+  List<StartContainerRequest> list=new ArrayList<StartContainerRequest>();
+  list.add(scRequest);
+  StartContainersRequest allRequests=StartContainersRequest.newInstance(list);
+  getContainerManager().startContainers(allRequests);
+  ContainerId cId=TestContainerManager.createContainerId(0);
+  BaseContainerManagerTest.waitForNMContainerState(getContainerManager(),cId,org.apache.hadoop.yarn.server.nodemanager.containermanager.container.ContainerState.RUNNING);
+}

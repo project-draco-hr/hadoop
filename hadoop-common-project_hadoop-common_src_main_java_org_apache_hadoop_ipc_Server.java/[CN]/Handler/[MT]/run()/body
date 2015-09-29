@@ -19,8 +19,9 @@
       RpcErrorCodeProto detailedErr=null;
       Writable value=null;
       CurCall.set(call);
-      if (call.traceSpan != null) {
-        traceScope=Trace.continueSpan(call.traceSpan);
+      if (call.traceScope != null) {
+        call.traceScope.reattach();
+        traceScope=call.traceScope;
         traceScope.getSpan().addTimelineAnnotation("called");
       }
       try {
@@ -79,21 +80,18 @@ synchronized (call.connection.responseQueue) {
  catch (    InterruptedException e) {
       if (running) {
         LOG.info(Thread.currentThread().getName() + " unexpectedly interrupted",e);
-        if (Trace.isTracing()) {
+        if (traceScope != null) {
           traceScope.getSpan().addTimelineAnnotation("unexpectedly interrupted: " + StringUtils.stringifyException(e));
         }
       }
     }
 catch (    Exception e) {
       LOG.info(Thread.currentThread().getName() + " caught an exception",e);
-      if (Trace.isTracing()) {
+      if (traceScope != null) {
         traceScope.getSpan().addTimelineAnnotation("Exception: " + StringUtils.stringifyException(e));
       }
     }
  finally {
-      if (traceScope != null) {
-        traceScope.close();
-      }
       IOUtils.cleanup(LOG,traceScope);
     }
   }

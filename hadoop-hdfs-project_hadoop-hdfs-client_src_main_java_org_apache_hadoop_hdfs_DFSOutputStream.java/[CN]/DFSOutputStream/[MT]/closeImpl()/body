@@ -1,0 +1,31 @@
+{
+  if (isClosed()) {
+    getStreamer().getLastException().check(true);
+    return;
+  }
+  try {
+    flushBuffer();
+    if (currentPacket != null) {
+      enqueueCurrentPacket();
+    }
+    if (getStreamer().getBytesCurBlock() != 0) {
+      setCurrentPacketToEmpty();
+    }
+    flushInternal();
+    ExtendedBlock lastBlock=getStreamer().getBlock();
+    closeThreads(false);
+    TraceScope scope=dfsClient.getTracer().newScope("completeFile");
+    try {
+      completeFile(lastBlock);
+    }
+  finally {
+      scope.close();
+    }
+    dfsClient.endFileLease(fileId);
+  }
+ catch (  ClosedChannelException e) {
+  }
+ finally {
+    setClosed();
+  }
+}

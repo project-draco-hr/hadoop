@@ -1,0 +1,35 @@
+{
+  if (blockNewContainerRequests.get()) {
+    throw new NMNotYetReadyException("Rejecting container resource increase as NodeManager has not" + " yet connected with ResourceManager");
+  }
+  UserGroupInformation remoteUgi=getRemoteUgi();
+  NMTokenIdentifier nmTokenIdentifier=selectNMTokenIdentifier(remoteUgi);
+  authorizeUser(remoteUgi,nmTokenIdentifier);
+  List<ContainerId> successfullyIncreasedContainers=new ArrayList<ContainerId>();
+  Map<ContainerId,SerializedException> failedContainers=new HashMap<ContainerId,SerializedException>();
+synchronized (this.context) {
+    for (    org.apache.hadoop.yarn.api.records.Token token : requests.getContainersToIncrease()) {
+      ContainerId containerId=null;
+      try {
+        if (token.getIdentifier() == null) {
+          throw new IOException(INVALID_CONTAINERTOKEN_MSG);
+        }
+        ContainerTokenIdentifier containerTokenIdentifier=BuilderUtils.newContainerTokenIdentifier(token);
+        verifyAndGetContainerTokenIdentifier(token,containerTokenIdentifier);
+        authorizeStartAndResourceIncreaseRequest(nmTokenIdentifier,containerTokenIdentifier,false);
+        containerId=containerTokenIdentifier.getContainerID();
+        updateNMTokenIdentifier(nmTokenIdentifier);
+        Resource resource=containerTokenIdentifier.getResource();
+        changeContainerResourceInternal(containerId,resource,true);
+        successfullyIncreasedContainers.add(containerId);
+      }
+ catch (      YarnException|InvalidToken e) {
+        failedContainers.put(containerId,SerializedException.newInstance(e));
+      }
+catch (      IOException e) {
+        throw RPCUtil.getRemoteException(e);
+      }
+    }
+  }
+  return IncreaseContainersResourceResponse.newInstance(successfullyIncreasedContainers,failedContainers);
+}

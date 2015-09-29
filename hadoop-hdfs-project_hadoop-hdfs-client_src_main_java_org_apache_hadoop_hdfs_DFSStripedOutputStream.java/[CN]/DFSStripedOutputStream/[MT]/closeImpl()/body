@@ -1,0 +1,55 @@
+{
+  if (isClosed()) {
+    final MultipleIOException.Builder b=new MultipleIOException.Builder();
+    for (int i=0; i < streamers.size(); i++) {
+      final StripedDataStreamer si=getStripedDataStreamer(i);
+      try {
+        si.getLastException().check(true);
+      }
+ catch (      IOException e) {
+        b.add(e);
+      }
+    }
+    final IOException ioe=b.build();
+    if (ioe != null) {
+      throw ioe;
+    }
+    return;
+  }
+  try {
+    flushBuffer();
+    if (generateParityCellsForLastStripe()) {
+      writeParityCells();
+    }
+    enqueueAllCurrentPackets();
+    flushAllInternals();
+    checkStreamerFailures();
+    for (int i=0; i < numAllBlocks; i++) {
+      final StripedDataStreamer s=setCurrentStreamer(i);
+      if (s.isHealthy()) {
+        try {
+          if (s.getBytesCurBlock() > 0) {
+            setCurrentPacketToEmpty();
+          }
+          flushInternal();
+        }
+ catch (        Exception e) {
+        }
+      }
+    }
+    closeThreads(false);
+    TraceScope scope=dfsClient.getTracer().newScope("completeFile");
+    try {
+      completeFile(currentBlockGroup);
+    }
+  finally {
+      scope.close();
+    }
+    dfsClient.endFileLease(fileId);
+  }
+ catch (  ClosedChannelException ignored) {
+  }
+ finally {
+    setClosed();
+  }
+}

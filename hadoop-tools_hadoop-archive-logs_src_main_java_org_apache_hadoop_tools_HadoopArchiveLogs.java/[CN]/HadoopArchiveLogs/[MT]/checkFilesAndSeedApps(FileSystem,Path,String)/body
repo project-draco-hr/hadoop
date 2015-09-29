@@ -1,0 +1,55 @@
+{
+  for (RemoteIterator<FileStatus> userIt=fs.listStatusIterator(remoteRootLogDir); userIt.hasNext(); ) {
+    Path userLogPath=userIt.next().getPath();
+    try {
+      for (RemoteIterator<FileStatus> appIt=fs.listStatusIterator(new Path(userLogPath,suffix)); appIt.hasNext(); ) {
+        Path appLogPath=appIt.next().getPath();
+        try {
+          FileStatus[] files=fs.listStatus(appLogPath);
+          if (files.length >= minNumLogFiles) {
+            boolean eligible=true;
+            long totalFileSize=0L;
+            for (            FileStatus file : files) {
+              if (file.getPath().getName().equals(appLogPath.getName() + ".har")) {
+                eligible=false;
+                if (verbose) {
+                  LOG.info("Skipping " + appLogPath.getName() + " due to existing .har file");
+                }
+                break;
+              }
+              totalFileSize+=file.getLen();
+              if (totalFileSize > maxTotalLogsSize) {
+                eligible=false;
+                if (verbose) {
+                  LOG.info("Skipping " + appLogPath.getName() + " due to "+ "total file size being too large ("+ totalFileSize+ " > "+ maxTotalLogsSize+ ")");
+                }
+                break;
+              }
+            }
+            if (eligible) {
+              if (verbose) {
+                LOG.info("Adding " + appLogPath.getName() + " for user "+ userLogPath.getName());
+              }
+              eligibleApplications.add(new AppInfo(appLogPath.getName(),userLogPath.getName()));
+            }
+          }
+ else {
+            if (verbose) {
+              LOG.info("Skipping " + appLogPath.getName() + " due to not "+ "having enough log files ("+ files.length+ " < "+ minNumLogFiles+ ")");
+            }
+          }
+        }
+ catch (        IOException ioe) {
+          if (verbose) {
+            LOG.info("Skipping logs under " + appLogPath + " due to "+ ioe.getMessage());
+          }
+        }
+      }
+    }
+ catch (    IOException ioe) {
+      if (verbose) {
+        LOG.info("Skipping all logs under " + userLogPath + " due to "+ ioe.getMessage());
+      }
+    }
+  }
+}

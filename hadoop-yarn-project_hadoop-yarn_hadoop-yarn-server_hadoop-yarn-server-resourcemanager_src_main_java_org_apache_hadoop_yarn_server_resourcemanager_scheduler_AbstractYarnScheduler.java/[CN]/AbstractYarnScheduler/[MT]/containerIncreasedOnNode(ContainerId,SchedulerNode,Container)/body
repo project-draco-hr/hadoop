@@ -1,0 +1,23 @@
+{
+  SchedulerApplicationAttempt application=getCurrentAttemptForContainer(containerId);
+  if (application == null) {
+    LOG.info("Unknown application " + containerId.getApplicationAttemptId().getApplicationId() + " increased container "+ containerId+ " on node: "+ node);
+    this.rmContext.getDispatcher().getEventHandler().handle(new RMNodeCleanContainerEvent(node.getNodeID(),containerId));
+    return;
+  }
+  RMContainer rmContainer=getRMContainer(containerId);
+  Resource rmContainerResource=rmContainer.getAllocatedResource();
+  Resource nmContainerResource=increasedContainerReportedByNM.getResource();
+  if (Resources.equals(nmContainerResource,rmContainerResource)) {
+    rmContainer.handle(new RMContainerEvent(containerId,RMContainerEventType.NM_DONE_CHANGE_RESOURCE));
+  }
+ else   if (Resources.fitsIn(getResourceCalculator(),clusterResource,nmContainerResource,rmContainerResource)) {
+  }
+ else   if (Resources.fitsIn(getResourceCalculator(),clusterResource,rmContainerResource,nmContainerResource)) {
+    this.rmContext.getDispatcher().getEventHandler().handle(new RMNodeDecreaseContainerEvent(node.getNodeID(),Arrays.asList(rmContainer.getContainer())));
+  }
+ else {
+    LOG.warn("Something wrong happened, container size reported by NM" + " is not expected, ContainerID=" + containerId + " rm-size-resource:"+ rmContainerResource+ " nm-size-reosurce:"+ nmContainerResource);
+    this.rmContext.getDispatcher().getEventHandler().handle(new RMNodeCleanContainerEvent(node.getNodeID(),containerId));
+  }
+}

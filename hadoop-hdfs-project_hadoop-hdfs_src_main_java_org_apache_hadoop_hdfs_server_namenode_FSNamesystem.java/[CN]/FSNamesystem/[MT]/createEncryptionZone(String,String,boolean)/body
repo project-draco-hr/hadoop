@@ -1,17 +1,22 @@
 {
   try {
-    if (provider == null) {
-      throw new IOException("Can't create an encryption zone for " + src + " since no key provider is available.");
+    Metadata metadata=FSDirEncryptionZoneOp.ensureKeyIsInitialized(dir,keyName,src);
+    checkSuperuserPrivilege();
+    FSPermissionChecker pc=getPermissionChecker();
+    checkOperation(OperationCategory.WRITE);
+    final HdfsFileStatus resultingStat;
+    writeLock();
+    try {
+      checkSuperuserPrivilege();
+      checkOperation(OperationCategory.WRITE);
+      checkNameNodeSafeMode("Cannot create encryption zone on " + src);
+      resultingStat=FSDirEncryptionZoneOp.createEncryptionZone(dir,src,pc,metadata.getCipher(),keyName,logRetryCache);
     }
-    if (keyName == null || keyName.isEmpty()) {
-      throw new IOException("Must specify a key name when creating an " + "encryption zone");
+  finally {
+      writeUnlock();
     }
-    KeyProvider.Metadata metadata=provider.getMetadata(keyName);
-    if (metadata == null) {
-      throw new IOException("Key " + keyName + " doesn't exist.");
-    }
-    provider.warmUpEncryptedKeys(keyName);
-    createEncryptionZoneInt(src,metadata.getCipher(),keyName,logRetryCache);
+    getEditLog().logSync();
+    logAuditEvent(true,"createEncryptionZone",src,null,resultingStat);
   }
  catch (  AccessControlException e) {
     logAuditEvent(false,"createEncryptionZone",src);

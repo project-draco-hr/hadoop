@@ -1,0 +1,25 @@
+{
+  Container container=rmContainer.getContainer();
+  ContainerType containerType=ContainerType.TASK;
+  if (isWaitingForAMContainer(getApplicationId())) {
+    containerType=ContainerType.APPLICATION_MASTER;
+  }
+  try {
+    container.setContainerToken(rmContext.getContainerTokenSecretManager().createContainerToken(container.getId(),container.getNodeId(),getUser(),container.getResource(),container.getPriority(),rmContainer.getCreationTime(),this.logAggregationContext,rmContainer.getNodeLabelExpression(),containerType));
+    NMToken nmToken=rmContext.getNMTokenSecretManager().createAndGetNMToken(getUser(),getApplicationAttemptId(),container);
+    if (nmToken != null) {
+      updatedNMTokens.add(nmToken);
+    }
+  }
+ catch (  IllegalArgumentException e) {
+    LOG.error("Error trying to assign container token and NM token to" + " an updated container " + container.getId(),e);
+    return null;
+  }
+  if (newContainer) {
+    rmContainer.handle(new RMContainerEvent(rmContainer.getContainerId(),RMContainerEventType.ACQUIRED));
+  }
+ else {
+    rmContainer.handle(new RMContainerUpdatesAcquiredEvent(rmContainer.getContainerId(),increasedContainer));
+  }
+  return container;
+}

@@ -1,0 +1,35 @@
+{
+  TraceScope scope=dfsClient.getTracer().newScope("waitForAckedSeqno");
+  try {
+    if (LOG.isDebugEnabled()) {
+      LOG.debug("Waiting for ack for: " + seqno);
+    }
+    long begin=Time.monotonicNow();
+    try {
+synchronized (dataQueue) {
+        while (!streamerClosed) {
+          checkClosed();
+          if (lastAckedSeqno >= seqno) {
+            break;
+          }
+          try {
+            dataQueue.wait(1000);
+          }
+ catch (          InterruptedException ie) {
+            throw new InterruptedIOException("Interrupted while waiting for data to be acknowledged by pipeline");
+          }
+        }
+      }
+      checkClosed();
+    }
+ catch (    ClosedChannelException e) {
+    }
+    long duration=Time.monotonicNow() - begin;
+    if (duration > dfsclientSlowLogThresholdMs) {
+      LOG.warn("Slow waitForAckedSeqno took " + duration + "ms (threshold="+ dfsclientSlowLogThresholdMs+ "ms)");
+    }
+  }
+  finally {
+    scope.close();
+  }
+}

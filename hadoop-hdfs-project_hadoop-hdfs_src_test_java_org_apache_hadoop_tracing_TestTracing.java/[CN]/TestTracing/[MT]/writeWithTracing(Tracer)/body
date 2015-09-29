@@ -1,0 +1,22 @@
+{
+  long startTime=System.currentTimeMillis();
+  TraceScope ts=tracer.newScope("testWriteTraceHooks");
+  writeTestFile("testWriteTraceHooks.dat");
+  long endTime=System.currentTimeMillis();
+  ts.close();
+  String[] expectedSpanNames={"testWriteTraceHooks","ClientProtocol#create","ClientNamenodeProtocol#create","ClientProtocol#fsync","ClientNamenodeProtocol#fsync","ClientProtocol#complete","ClientNamenodeProtocol#complete","newStreamForCreate","DFSOutputStream#write","DFSOutputStream#close","dataStreamer","OpWriteBlockProto","ClientProtocol#addBlock","ClientNamenodeProtocol#addBlock"};
+  SetSpanReceiver.assertSpanNamesFound(expectedSpanNames);
+  Map<String,List<Span>> map=SetSpanReceiver.getMap();
+  Span s=map.get("testWriteTraceHooks").get(0);
+  Assert.assertNotNull(s);
+  long spanStart=s.getStartTimeMillis();
+  long spanEnd=s.getStopTimeMillis();
+  String[] spansInTopTrace={"testWriteTraceHooks","ClientProtocol#create","ClientNamenodeProtocol#create","ClientProtocol#fsync","ClientNamenodeProtocol#fsync","ClientProtocol#complete","ClientNamenodeProtocol#complete","newStreamForCreate","DFSOutputStream#write","DFSOutputStream#close"};
+  for (  String desc : spansInTopTrace) {
+    for (    Span span : map.get(desc)) {
+      Assert.assertEquals(ts.getSpan().getSpanId().getHigh(),span.getSpanId().getHigh());
+    }
+  }
+  Assert.assertEquals("called",map.get("ClientProtocol#create").get(0).getTimelineAnnotations().get(0).getMessage());
+  SetSpanReceiver.clear();
+}
