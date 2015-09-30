@@ -1,6 +1,7 @@
 {
   Configuration conf=getConf();
   conf.set(DFS_DATANODE_DATA_DIR_KEY,newVolumes);
+  ExecutorService service=null;
   int numOldDataDirs=dataDirs.size();
   ChangedVolumes changedVolumes=parseChangedVolumes(newVolumes);
   StringBuilder errorMessageBuilder=new StringBuilder();
@@ -18,7 +19,7 @@
       for (      BPOfferService bpos : blockPoolManager.getAllNamenodeThreads()) {
         nsInfos.add(bpos.getNamespaceInfo());
       }
-      ExecutorService service=Executors.newFixedThreadPool(changedVolumes.newLocations.size());
+      service=Executors.newFixedThreadPool(changedVolumes.newLocations.size());
       List<Future<IOException>> exceptions=Lists.newArrayList();
       for (      final StorageLocation location : changedVolumes.newLocations) {
         exceptions.add(service.submit(new Callable<IOException>(){
@@ -66,6 +67,9 @@
     }
   }
   finally {
+    if (service != null) {
+      service.shutdown();
+    }
     conf.set(DFS_DATANODE_DATA_DIR_KEY,Joiner.on(",").join(effectiveVolumes));
     dataDirs=getStorageLocations(conf);
     triggerBlockReport(new BlockReportOptions.Factory().setIncremental(false).build());
