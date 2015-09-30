@@ -1,19 +1,22 @@
 {
+  String url=req.getRequestURI() + (null == req.getQueryString() ? "" : QUERY_STRING_SEP + req.getQueryString());
+  UserGroupInformation callerUGI=getUser(req);
+  LOG.info("Received URL " + url + " from user "+ getUserName(callerUGI));
+  long startTime=Time.monotonicNow();
   init(res);
   TimelineReaderManager timelineReaderManager=getTimelineReaderManager();
-  UserGroupInformation callerUGI=getUser(req);
   TimelineEntity entity=null;
   try {
     entity=timelineReaderManager.getEntity(parseUser(callerUGI,userId),parseStr(clusterId),parseStr(flowId),parseLongStr(flowRunId),null,TimelineEntityType.YARN_FLOW_RUN.toString(),null,parseFieldsStr(fields,COMMA_DELIMITER));
   }
- catch (  NumberFormatException e) {
-    throw new BadRequestException("flowRunId is not a numeric value.");
+ catch (  Exception e) {
+    handleException(e,url,startTime,"flowrunid");
   }
-catch (  Exception e) {
-    handleException(e);
-  }
+  long endTime=Time.monotonicNow();
   if (entity == null) {
+    LOG.info("Processed URL " + url + " but flowrun not found (Took "+ (endTime - startTime)+ " ms.)");
     throw new NotFoundException("Flow run {flow id: " + parseStr(flowId) + ", run id: "+ parseLongStr(flowRunId)+ " } is not found");
   }
+  LOG.info("Processed URL " + url + " (Took "+ (endTime - startTime)+ " ms.)");
   return entity;
 }
