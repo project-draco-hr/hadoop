@@ -1,0 +1,31 @@
+{
+  ContainerId containerId=request.getContainerId();
+  UserGroupInformation callerUGI;
+  try {
+    callerUGI=UserGroupInformation.getCurrentUser();
+  }
+ catch (  IOException ie) {
+    LOG.info("Error getting UGI ",ie);
+    throw RPCUtil.getRemoteException(ie);
+  }
+  ApplicationId applicationId=containerId.getApplicationAttemptId().getApplicationId();
+  RMApp application=this.rmContext.getRMApps().get(applicationId);
+  if (application == null) {
+    RMAuditLogger.logFailure(callerUGI.getUserName(),AuditConstants.SIGNAL_CONTAINER,"UNKNOWN","ClientRMService","Trying to signal an absent container",applicationId,containerId);
+    throw RPCUtil.getRemoteException("Trying to signal an absent container " + containerId);
+  }
+  if (!checkAccess(callerUGI,application.getUser(),ApplicationAccessType.MODIFY_APP,application)) {
+    RMAuditLogger.logFailure(callerUGI.getShortUserName(),AuditConstants.SIGNAL_CONTAINER,"User doesn't have permissions to " + ApplicationAccessType.MODIFY_APP.toString(),"ClientRMService",AuditConstants.UNAUTHORIZED_USER,applicationId);
+    throw RPCUtil.getRemoteException(new AccessControlException("User " + callerUGI.getShortUserName() + " cannot perform operation "+ ApplicationAccessType.MODIFY_APP.name()+ " on "+ applicationId));
+  }
+  RMContainer container=scheduler.getRMContainer(containerId);
+  if (container != null) {
+    this.rmContext.getDispatcher().getEventHandler().handle(new RMNodeSignalContainerEvent(container.getContainer().getNodeId(),request));
+    RMAuditLogger.logSuccess(callerUGI.getShortUserName(),AuditConstants.SIGNAL_CONTAINER,"ClientRMService",applicationId,containerId);
+  }
+ else {
+    RMAuditLogger.logFailure(callerUGI.getUserName(),AuditConstants.SIGNAL_CONTAINER,"UNKNOWN","ClientRMService","Trying to signal an absent container",applicationId,containerId);
+    throw RPCUtil.getRemoteException("Trying to signal an absent container " + containerId);
+  }
+  return recordFactory.newRecordInstance(SignalContainerResponse.class);
+}

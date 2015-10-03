@@ -1,0 +1,38 @@
+{
+  ContainerId containerId=container.getContainerTokenIdentifier().getContainerID();
+  String containerIdStr=ConverterUtils.toString(containerId);
+  String user=container.getUser();
+  Signal signal=translateCommandToSignal(command);
+  if (signal.equals(Signal.NULL)) {
+    LOG.info("ignore signal command " + command);
+    return;
+  }
+  LOG.info("Sending signal " + command + " to container "+ containerIdStr);
+  boolean alreadyLaunched=!shouldLaunchContainer.compareAndSet(false,true);
+  if (!alreadyLaunched) {
+    LOG.info("Container " + containerIdStr + " not launched."+ " Not sending the signal");
+    return;
+  }
+  if (LOG.isDebugEnabled()) {
+    LOG.debug("Getting pid for container " + containerIdStr + " to send signal to from pid file "+ (pidFilePath != null ? pidFilePath.toString() : "null"));
+  }
+  try {
+    String processId=null;
+    if (pidFilePath != null) {
+      processId=getContainerPid(pidFilePath);
+    }
+    if (processId != null) {
+      if (LOG.isDebugEnabled()) {
+        LOG.debug("Sending signal to pid " + processId + " as user "+ user+ " for container "+ containerIdStr);
+      }
+      boolean result=exec.signalContainer(new ContainerSignalContext.Builder().setContainer(container).setUser(user).setPid(processId).setSignal(signal).build());
+      String diagnostics="Sent signal " + command + " ("+ signal+ ") to pid "+ processId+ " as user "+ user+ " for container "+ containerIdStr+ ", result="+ (result ? "success" : "failed");
+      LOG.info(diagnostics);
+      dispatcher.getEventHandler().handle(new ContainerDiagnosticsUpdateEvent(containerId,diagnostics));
+    }
+  }
+ catch (  Exception e) {
+    String message="Exception when sending signal to container " + containerIdStr + ": "+ StringUtils.stringifyException(e);
+    LOG.warn(message);
+  }
+}
