@@ -1,0 +1,39 @@
+{
+  if (producer == null) {
+    throw new MetricsException("Producer in KafkaSink is null!");
+  }
+  StringBuilder jsonLines=new StringBuilder();
+  Long timestamp=record.timestamp();
+  Date currDate=new Date(timestamp);
+  SimpleDateFormat dateFormat=new SimpleDateFormat("yyyy-MM-dd");
+  SimpleDateFormat timeFormat=new SimpleDateFormat("hh:mm:ss");
+  String date=dateFormat.format(currDate);
+  String time=timeFormat.format(currDate);
+  jsonLines.append("{\"hostname\": \"" + hostname);
+  jsonLines.append("\", \"timestamp\": " + timestamp);
+  jsonLines.append(", \"date\": \"" + date);
+  jsonLines.append("\",\"time\": \"" + time);
+  jsonLines.append("\",\"name\": \"" + record.name() + "\" ");
+  for (  MetricsTag tag : record.tags()) {
+    jsonLines.append(", \"" + tag.name().toString().replaceAll("[\\p{Cc}]","") + "\": ");
+    jsonLines.append(" \"" + tag.value().toString() + "\"");
+  }
+  for (  AbstractMetric metric : record.metrics()) {
+    jsonLines.append(", \"" + metric.name().toString().replaceAll("[\\p{Cc}]","") + "\": ");
+    jsonLines.append(" \"" + metric.value().toString() + "\"");
+  }
+  jsonLines.append("}");
+  LOG.debug("kafka message: " + jsonLines.toString());
+  ProducerRecord<Integer,byte[]> data=new ProducerRecord<Integer,byte[]>(topic,jsonLines.toString().getBytes(Charset.forName("UTF-8")));
+  Future<RecordMetadata> future=producer.send(data);
+  jsonLines.setLength(0);
+  try {
+    future.get();
+  }
+ catch (  InterruptedException e) {
+    throw new MetricsException("Error sending data",e);
+  }
+catch (  ExecutionException e) {
+    throw new MetricsException("Error sending data",e);
+  }
+}
