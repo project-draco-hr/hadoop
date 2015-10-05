@@ -1,17 +1,22 @@
 {
   Set<NodeLabel> nodeLabelsForHeartbeat=nodeLabelsProvider.getNodeLabels();
   nodeLabelsForHeartbeat=(nodeLabelsForHeartbeat == null) ? CommonNodeLabelsManager.EMPTY_NODELABEL_SET : nodeLabelsForHeartbeat;
-  boolean areNodeLabelsUpdated=nodeLabelsForHeartbeat.size() != previousNodeLabels.size() || !previousNodeLabels.containsAll(nodeLabelsForHeartbeat) || checkResendLabelOnFailure();
-  updatedLabelsSentToRM=false;
-  if (areNodeLabelsUpdated) {
+  boolean areNodeLabelsUpdated=nodeLabelsForHeartbeat.size() != previousNodeLabels.size() || !previousNodeLabels.containsAll(nodeLabelsForHeartbeat);
+  areLabelsSentToRM=false;
+  if (areNodeLabelsUpdated || isResyncIntervalElapsed()) {
     previousNodeLabels=nodeLabelsForHeartbeat;
     try {
-      LOG.info("Modified labels from provider: " + StringUtils.join(",",previousNodeLabels));
+      if (LOG.isDebugEnabled()) {
+        LOG.debug("Labels from provider: " + StringUtils.join(",",previousNodeLabels));
+      }
       validateNodeLabels(nodeLabelsForHeartbeat);
-      updatedLabelsSentToRM=true;
+      areLabelsSentToRM=true;
     }
  catch (    IOException e) {
       nodeLabelsForHeartbeat=null;
+    }
+ finally {
+      lastNodeLabelSendMills=System.currentTimeMillis();
     }
   }
  else {
