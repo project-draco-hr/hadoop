@@ -2,24 +2,20 @@
   if (reduceResourceRequest.equals(Resources.none())) {
     return;
   }
-  if (scheduledRequests.maps.size() > 0) {
-    Resource resourceLimit=getResourceLimit();
-    Resource availableResourceForMap=Resources.subtract(resourceLimit,Resources.multiply(reduceResourceRequest,assignedRequests.reduces.size() - assignedRequests.preemptionWaitingReduces.size()));
-    if (ResourceCalculatorUtils.computeAvailableContainers(availableResourceForMap,mapResourceRequest,getSchedulerResourceTypes()) <= 0) {
-      LOG.info("Ramping down all scheduled reduces:" + scheduledRequests.reduces.size());
-      for (      ContainerRequest req : scheduledRequests.reduces.values()) {
-        pendingReduces.add(req);
-      }
-      scheduledRequests.reduces.clear();
-      int hangingMapRequests=getNumOfHangingRequests(scheduledRequests.maps);
-      if (hangingMapRequests > 0) {
-        int preemptionReduceNumForOneMap=ResourceCalculatorUtils.divideAndCeilContainers(mapResourceRequest,reduceResourceRequest,getSchedulerResourceTypes());
-        int preemptionReduceNumForPreemptionLimit=ResourceCalculatorUtils.divideAndCeilContainers(Resources.multiply(resourceLimit,maxReducePreemptionLimit),reduceResourceRequest,getSchedulerResourceTypes());
-        int preemptionReduceNumForAllMaps=ResourceCalculatorUtils.divideAndCeilContainers(Resources.multiply(mapResourceRequest,hangingMapRequests),reduceResourceRequest,getSchedulerResourceTypes());
-        int toPreempt=Math.min(Math.max(preemptionReduceNumForOneMap,preemptionReduceNumForPreemptionLimit),preemptionReduceNumForAllMaps);
-        LOG.info("Going to preempt " + toPreempt + " due to lack of space for maps");
-        assignedRequests.preemptReduce(toPreempt);
-      }
+  if (assignedRequests.maps.size() > 0) {
+    return;
+  }
+  if (scheduledRequests.maps.size() <= 0) {
+    return;
+  }
+  if (reducerUnconditionalPreemptionDelayMs >= 0) {
+    if (preemptReducersForHangingMapRequests(reducerUnconditionalPreemptionDelayMs)) {
+      return;
     }
   }
+  Resource availableResourceForMap=getAvailableResources();
+  if (ResourceCalculatorUtils.computeAvailableContainers(availableResourceForMap,mapResourceRequest,getSchedulerResourceTypes()) > 0) {
+    return;
+  }
+  preemptReducersForHangingMapRequests(reducerNoHeadroomPreemptionDelayMs);
 }
