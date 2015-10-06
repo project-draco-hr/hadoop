@@ -19,6 +19,8 @@
   final DFSStripedOutputStream stripedOut=(DFSStripedOutputStream)out.getWrappedStream();
   long firstGS=-1;
   long oldGS=-1;
+  List<Long> gsList=new ArrayList<>();
+  final List<DatanodeInfo> killedDN=new ArrayList<>();
   int numKilled=0;
   for (; pos.get() < length; ) {
     final int i=pos.getAndIncrement();
@@ -36,7 +38,7 @@
         DFSTestUtil.flushInternal(stripedOut);
         waitTokenExpires(out);
       }
-      killDatanode(cluster,stripedOut,dnIndex[numKilled],pos);
+      killedDN.add(killDatanode(cluster,stripedOut,dnIndex[numKilled],pos));
       numKilled++;
     }
     write(out,i);
@@ -44,16 +46,14 @@
       firstGS=getGenerationStamp(stripedOut);
       oldGS=firstGS;
     }
-  }
-  out.close();
-  assertEquals(dnIndex.length,numKilled);
-  short expectedReported=StripedFileTestUtil.getRealTotalBlockNum(length);
-  for (  int idx : dnIndex) {
-    if (length > idx * CELL_SIZE || idx >= NUM_DATA_BLOCKS) {
-      expectedReported--;
+    if (i > 0 && (i + 1) % BLOCK_GROUP_SIZE == 0) {
+      gsList.add(oldGS);
     }
   }
-  DFSTestUtil.waitReplication(dfs,p,expectedReported);
+  gsList.add(oldGS);
+  out.close();
+  assertEquals(dnIndex.length,numKilled);
+  StripedFileTestUtil.waitBlockGroupsReported(dfs,fullPath,numKilled);
   cluster.triggerBlockReports();
-  StripedFileTestUtil.checkData(dfs,p,length,dnIndex,oldGS);
+  StripedFileTestUtil.checkData(dfs,p,length,killedDN,gsList);
 }

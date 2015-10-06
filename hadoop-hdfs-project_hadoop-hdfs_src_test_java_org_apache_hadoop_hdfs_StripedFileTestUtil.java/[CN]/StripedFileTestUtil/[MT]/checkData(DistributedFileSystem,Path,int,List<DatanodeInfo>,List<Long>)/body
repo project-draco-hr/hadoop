@@ -1,6 +1,5 @@
 {
   StripedFileTestUtil.verifyLength(dfs,srcPath,length);
-  Arrays.sort(killedDnIndex);
   List<List<LocatedBlock>> blockGroupList=new ArrayList<>();
   LocatedBlocks lbs=dfs.getClient().getLocatedBlocks(srcPath.toString(),0L,Long.MAX_VALUE);
   int expectedNumGroup=0;
@@ -8,9 +7,11 @@
     expectedNumGroup=(length - 1) / BLOCK_GROUP_SIZE + 1;
   }
   assertEquals(expectedNumGroup,lbs.getLocatedBlocks().size());
+  int index=0;
   for (  LocatedBlock firstBlock : lbs.getLocatedBlocks()) {
     Assert.assertTrue(firstBlock instanceof LocatedStripedBlock);
     final long gs=firstBlock.getBlock().getGenerationStamp();
+    final long oldGS=oldGSList != null ? oldGSList.get(index++) : -1L;
     final String s="gs=" + gs + ", oldGS="+ oldGS;
     LOG.info(s);
     Assert.assertTrue(s,gs >= oldGS);
@@ -26,6 +27,7 @@
     List<LocatedBlock> blockList=blockGroupList.get(group);
     byte[][] dataBlockBytes=new byte[NUM_DATA_BLOCKS][];
     byte[][] parityBlockBytes=new byte[NUM_PARITY_BLOCKS][];
+    Set<Integer> checkSet=new HashSet<>();
     for (int i=0; i < blockList.size(); i++) {
       final int j=i >= NUM_DATA_BLOCKS ? 0 : i;
       final int numCellInBlock=(numCellInGroup - 1) / NUM_DATA_BLOCKS + (j <= lastCellIndex ? 1 : 0);
@@ -47,16 +49,19 @@
       if (block.getNumBytes() == 0) {
         continue;
       }
-      if (Arrays.binarySearch(killedDnIndex,i) < 0) {
+      DatanodeInfo dn=blockList.get(i).getLocations()[0];
+      if (!killedList.contains(dn)) {
         final BlockReader blockReader=BlockReaderTestUtil.getBlockReader(dfs,lb,0,block.getNumBytes());
         blockReader.readAll(blockBytes,0,(int)block.getNumBytes());
         blockReader.close();
+        checkSet.add(i);
       }
     }
+    LOG.info("Internal blocks to check: " + checkSet);
     final int groupPosInFile=group * BLOCK_GROUP_SIZE;
     for (int i=0; i < dataBlockBytes.length; i++) {
       boolean killed=false;
-      if (Arrays.binarySearch(killedDnIndex,i) >= 0) {
+      if (!checkSet.contains(i)) {
         killed=true;
       }
       final byte[] actual=dataBlockBytes[i];
@@ -75,6 +80,6 @@
         }
       }
     }
-    verifyParityBlocks(dfs.getConf(),lbs.getLocatedBlocks().get(group).getBlockSize(),BLOCK_STRIPED_CELL_SIZE,dataBlockBytes,parityBlockBytes,killedDnIndex);
+    verifyParityBlocks(dfs.getConf(),lbs.getLocatedBlocks().get(group).getBlockSize(),BLOCK_STRIPED_CELL_SIZE,dataBlockBytes,parityBlockBytes,checkSet);
   }
 }
