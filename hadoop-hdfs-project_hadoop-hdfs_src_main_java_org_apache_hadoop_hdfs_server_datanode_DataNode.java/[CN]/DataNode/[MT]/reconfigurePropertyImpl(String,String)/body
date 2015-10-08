@@ -1,11 +1,28 @@
 {
   if (property.equals(DFS_DATANODE_DATA_DIR_KEY)) {
+    IOException rootException=null;
     try {
       LOG.info("Reconfiguring " + property + " to "+ newVal);
       this.refreshVolumes(newVal);
     }
  catch (    IOException e) {
-      throw new ReconfigurationException(property,newVal,getConf().get(property),e);
+      rootException=e;
+    }
+ finally {
+      try {
+        triggerBlockReport(new BlockReportOptions.Factory().setIncremental(false).build());
+      }
+ catch (      IOException e) {
+        LOG.warn("Exception while sending the block report after refreshing" + " volumes " + property + " to "+ newVal,e);
+        if (rootException == null) {
+          rootException=e;
+        }
+      }
+ finally {
+        if (rootException != null) {
+          throw new ReconfigurationException(property,newVal,getConf().get(property),rootException);
+        }
+      }
     }
   }
  else {
