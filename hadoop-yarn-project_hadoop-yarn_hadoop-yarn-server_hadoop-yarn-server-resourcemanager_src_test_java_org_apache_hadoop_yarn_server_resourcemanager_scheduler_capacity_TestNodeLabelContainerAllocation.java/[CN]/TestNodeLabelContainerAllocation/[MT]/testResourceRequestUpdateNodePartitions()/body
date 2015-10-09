@@ -1,0 +1,68 @@
+{
+  mgr.addToCluserNodeLabels(ImmutableSet.of(NodeLabel.newInstance("x"),NodeLabel.newInstance("y",false),NodeLabel.newInstance("z",false)));
+  mgr.addLabelsToNode(ImmutableMap.of(NodeId.newInstance("h1",0),toSet("y")));
+  MockRM rm1=new MockRM(getConfigurationWithQueueLabels(conf)){
+    @Override public RMNodeLabelsManager createNodeLabelManager(){
+      return mgr;
+    }
+  }
+;
+  rm1.getRMContext().setNodeLabelManager(mgr);
+  rm1.start();
+  MockNM nm1=rm1.registerNode("h1:1234",8 * GB);
+  MockNM nm2=rm1.registerNode("h2:1234",40 * GB);
+  RMApp app1=rm1.submitApp(1 * GB,"app","user",null,"b1");
+  MockAM am1=MockRM.launchAndRegisterAM(app1,rm1,nm2);
+  List<ResourceRequest> resourceRequest=new ArrayList<ResourceRequest>();
+  resourceRequest.add(am1.createResourceReq("/default-rack",1024,3,1,RMNodeLabelsManager.NO_LABEL));
+  resourceRequest.add(am1.createResourceReq("*",1024,3,5,"y"));
+  resourceRequest.add(am1.createResourceReq("h1:1234",1024,3,2,RMNodeLabelsManager.NO_LABEL));
+  resourceRequest.add(am1.createResourceReq("*",1024,2,3,"y"));
+  resourceRequest.add(am1.createResourceReq("h2:1234",1024,2,4,null));
+  resourceRequest.add(am1.createResourceReq("*",1024,4,3,null));
+  resourceRequest.add(am1.createResourceReq("h2:1234",1024,4,4,null));
+  am1.allocate(resourceRequest,new ArrayList<ContainerId>());
+  CapacityScheduler cs=(CapacityScheduler)rm1.getRMContext().getScheduler();
+  FiCaSchedulerApp app=cs.getApplicationAttempt(am1.getApplicationAttemptId());
+  List<ResourceRequest> allResourceRequests=app.getAppSchedulingInfo().getAllResourceRequests();
+  for (  ResourceRequest changeReq : allResourceRequests) {
+    if (changeReq.getPriority().getPriority() == 2 || changeReq.getPriority().getPriority() == 3) {
+      Assert.assertEquals("Expected label y","y",changeReq.getNodeLabelExpression());
+    }
+ else     if (changeReq.getPriority().getPriority() == 4) {
+      Assert.assertEquals("Expected label EMPTY",RMNodeLabelsManager.NO_LABEL,changeReq.getNodeLabelExpression());
+    }
+  }
+  List<ResourceRequest> newReq=new ArrayList<ResourceRequest>();
+  newReq.add(am1.createResourceReq("h2:1234",1024,3,4,null));
+  newReq.add(am1.createResourceReq("*",1024,3,5,"z"));
+  newReq.add(am1.createResourceReq("h1:1234",1024,3,4,null));
+  newReq.add(am1.createResourceReq("*",1024,4,5,"z"));
+  am1.allocate(newReq,new ArrayList<ContainerId>());
+  allResourceRequests=app.getAppSchedulingInfo().getAllResourceRequests();
+  for (  ResourceRequest changeReq : allResourceRequests) {
+    if (changeReq.getPriority().getPriority() == 3 || changeReq.getPriority().getPriority() == 4) {
+      Assert.assertEquals("Expected label z","z",changeReq.getNodeLabelExpression());
+    }
+ else     if (changeReq.getPriority().getPriority() == 2) {
+      Assert.assertEquals("Expected label y","y",changeReq.getNodeLabelExpression());
+    }
+  }
+  List<ResourceRequest> resourceRequest1=new ArrayList<ResourceRequest>();
+  resourceRequest1.add(am1.createResourceReq("/default-rack",1024,3,1,null));
+  resourceRequest1.add(am1.createResourceReq("*",1024,3,5,null));
+  resourceRequest1.add(am1.createResourceReq("h1:1234",1024,3,2,RMNodeLabelsManager.NO_LABEL));
+  resourceRequest1.add(am1.createResourceReq("/default-rack",1024,2,1,null));
+  resourceRequest1.add(am1.createResourceReq("*",1024,2,3,RMNodeLabelsManager.NO_LABEL));
+  resourceRequest1.add(am1.createResourceReq("h2:1234",1024,2,4,null));
+  am1.allocate(resourceRequest1,new ArrayList<ContainerId>());
+  allResourceRequests=app.getAppSchedulingInfo().getAllResourceRequests();
+  for (  ResourceRequest changeReq : allResourceRequests) {
+    if (changeReq.getPriority().getPriority() == 3) {
+      Assert.assertEquals("Expected label Empty",RMNodeLabelsManager.NO_LABEL,changeReq.getNodeLabelExpression());
+    }
+ else     if (changeReq.getPriority().getPriority() == 2) {
+      Assert.assertEquals("Expected label y",RMNodeLabelsManager.NO_LABEL,changeReq.getNodeLabelExpression());
+    }
+  }
+}
