@@ -1,0 +1,32 @@
+{
+  Set<NodeId> nodesToUpdateLabels=null;
+  boolean isUpdatingAllNodes=false;
+  if (allNodesLabelUpdateInterval != DISABLE_DELEGATED_NODE_LABELS_UPDATE) {
+    long elapsedTimeSinceLastUpdate=System.currentTimeMillis() - lastAllNodesLabelUpdateMills;
+    if (elapsedTimeSinceLastUpdate > allNodesLabelUpdateInterval) {
+      nodesToUpdateLabels=Collections.unmodifiableSet(rmContext.getRMNodes().keySet());
+      isUpdatingAllNodes=true;
+    }
+  }
+  if (nodesToUpdateLabels == null && !newlyRegisteredNodes.isEmpty()) {
+synchronized (lock) {
+      if (!newlyRegisteredNodes.isEmpty()) {
+        nodesToUpdateLabels=new HashSet<NodeId>(newlyRegisteredNodes);
+      }
+    }
+  }
+  try {
+    if (nodesToUpdateLabels != null && !nodesToUpdateLabels.isEmpty()) {
+      updateNodeLabelsInternal(nodesToUpdateLabels);
+      if (isUpdatingAllNodes) {
+        lastAllNodesLabelUpdateMills=System.currentTimeMillis();
+      }
+synchronized (lock) {
+        newlyRegisteredNodes.removeAll(nodesToUpdateLabels);
+      }
+    }
+  }
+ catch (  IOException e) {
+    LOG.error("Failed to update node Labels",e);
+  }
+}
