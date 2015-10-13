@@ -1,14 +1,35 @@
 {
-  if (UserGroupInformation.isSecurityEnabled()) {
-    return tokenUGI();
+  UserGroupInformation ugi;
+  try {
+    if (UserGroupInformation.isSecurityEnabled()) {
+      final Token<DelegationTokenIdentifier> token=params.delegationToken();
+      ugi=ugiCache.get(buildTokenCacheKey(token),new Callable<UserGroupInformation>(){
+        @Override public UserGroupInformation call() throws Exception {
+          return tokenUGI(token);
+        }
+      }
+);
+    }
+ else {
+      final String usernameFromQuery=params.userName();
+      final String doAsUserFromQuery=params.doAsUser();
+      final String remoteUser=usernameFromQuery == null ? JspHelper.getDefaultWebUserName(params.conf()) : usernameFromQuery;
+      ugi=ugiCache.get(buildNonTokenCacheKey(doAsUserFromQuery,remoteUser),new Callable<UserGroupInformation>(){
+        @Override public UserGroupInformation call() throws Exception {
+          return nonTokenUGI(usernameFromQuery,doAsUserFromQuery,remoteUser);
+        }
+      }
+);
+    }
   }
-  final String usernameFromQuery=params.userName();
-  final String doAsUserFromQuery=params.doAsUser();
-  final String remoteUser=usernameFromQuery == null ? JspHelper.getDefaultWebUserName(params.conf()) : usernameFromQuery;
-  UserGroupInformation ugi=UserGroupInformation.createRemoteUser(remoteUser);
-  JspHelper.checkUsername(ugi.getShortUserName(),usernameFromQuery);
-  if (doAsUserFromQuery != null) {
-    ugi=UserGroupInformation.createProxyUser(doAsUserFromQuery,ugi);
+ catch (  ExecutionException e) {
+    Throwable cause=e.getCause();
+    if (cause instanceof IOException) {
+      throw (IOException)cause;
+    }
+ else {
+      throw new IOException(cause);
+    }
   }
   return ugi;
 }
