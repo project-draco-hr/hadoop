@@ -9,34 +9,30 @@
   List<String> logDirs=dirsHandler.getLogDirs();
   verifyUsernamePattern(user);
   String runAsUser=getRunAsUser(user);
-  List<String> command=new ArrayList<String>();
-  addSchedPriorityCommand(command);
-  command.addAll(Arrays.asList(containerExecutorExe,runAsUser,user,Integer.toString(PrivilegedOperation.RunAsUserCommand.INITIALIZE_CONTAINER.getValue()),appId,nmPrivateContainerTokensPath.toUri().getPath().toString(),StringUtils.join(PrivilegedOperation.LINUX_FILE_PATH_SEPARATOR,localDirs),StringUtils.join(PrivilegedOperation.LINUX_FILE_PATH_SEPARATOR,logDirs)));
+  PrivilegedOperation initializeContainerOp=new PrivilegedOperation(PrivilegedOperation.OperationType.INITIALIZE_CONTAINER,(String)null);
+  List<String> prefixCommands=new ArrayList<>();
+  addSchedPriorityCommand(prefixCommands);
+  initializeContainerOp.appendArgs(runAsUser,user,Integer.toString(PrivilegedOperation.RunAsUserCommand.INITIALIZE_CONTAINER.getValue()),appId,nmPrivateContainerTokensPath.toUri().getPath().toString(),StringUtils.join(PrivilegedOperation.LINUX_FILE_PATH_SEPARATOR,localDirs),StringUtils.join(PrivilegedOperation.LINUX_FILE_PATH_SEPARATOR,logDirs));
   File jvm=new File(new File(System.getProperty("java.home"),"bin"),"java");
-  command.add(jvm.toString());
-  command.add("-classpath");
-  command.add(System.getProperty("java.class.path"));
+  initializeContainerOp.appendArgs(jvm.toString());
+  initializeContainerOp.appendArgs("-classpath");
+  initializeContainerOp.appendArgs(System.getProperty("java.class.path"));
   String javaLibPath=System.getProperty("java.library.path");
   if (javaLibPath != null) {
-    command.add("-Djava.library.path=" + javaLibPath);
+    initializeContainerOp.appendArgs("-Djava.library.path=" + javaLibPath);
   }
-  command.addAll(ContainerLocalizer.getJavaOpts(getConf()));
-  buildMainArgs(command,user,appId,locId,nmAddr,localDirs);
-  String[] commandArray=command.toArray(new String[command.size()]);
-  ShellCommandExecutor shExec=new ShellCommandExecutor(commandArray);
-  if (LOG.isDebugEnabled()) {
-    LOG.debug("initApplication: " + Arrays.toString(commandArray));
-  }
+  initializeContainerOp.appendArgs(ContainerLocalizer.getJavaOpts(getConf()));
+  List<String> localizerArgs=new ArrayList<>();
+  buildMainArgs(localizerArgs,user,appId,locId,nmAddr,localDirs);
+  initializeContainerOp.appendArgs(localizerArgs);
   try {
-    shExec.execute();
-    if (LOG.isDebugEnabled()) {
-      logOutput(shExec.getOutput());
-    }
+    Configuration conf=super.getConf();
+    PrivilegedOperationExecutor privilegedOperationExecutor=PrivilegedOperationExecutor.getInstance(conf);
+    privilegedOperationExecutor.executePrivilegedOperation(prefixCommands,initializeContainerOp,null,null,false);
   }
- catch (  ExitCodeException e) {
-    int exitCode=shExec.getExitCode();
+ catch (  PrivilegedOperationException e) {
+    int exitCode=e.getExitCode();
     LOG.warn("Exit code from container " + locId + " startLocalizer is : "+ exitCode,e);
-    logOutput(shExec.getOutput());
-    throw new IOException("Application " + appId + " initialization failed"+ " (exitCode="+ exitCode+ ") with output: "+ shExec.getOutput(),e);
+    throw new IOException("Application " + appId + " initialization failed"+ " (exitCode="+ exitCode+ ") with output: "+ e.getOutput(),e);
   }
 }
