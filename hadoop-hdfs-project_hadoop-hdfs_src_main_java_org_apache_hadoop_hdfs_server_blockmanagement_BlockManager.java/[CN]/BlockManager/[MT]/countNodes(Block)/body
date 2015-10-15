@@ -1,0 +1,42 @@
+{
+  int decommissioned=0;
+  int decommissioning=0;
+  int live=0;
+  int readonly=0;
+  int corrupt=0;
+  int excess=0;
+  int stale=0;
+  Collection<DatanodeDescriptor> nodesCorrupt=corruptReplicas.getNodes(b);
+  for (  DatanodeStorageInfo storage : blocksMap.getStorages(b)) {
+    if (storage.getState() == State.FAILED) {
+      continue;
+    }
+ else     if (storage.getState() == State.READ_ONLY_SHARED) {
+      readonly++;
+      continue;
+    }
+    final DatanodeDescriptor node=storage.getDatanodeDescriptor();
+    if ((nodesCorrupt != null) && (nodesCorrupt.contains(node))) {
+      corrupt++;
+    }
+ else     if (node.isDecommissionInProgress()) {
+      decommissioning++;
+    }
+ else     if (node.isDecommissioned()) {
+      decommissioned++;
+    }
+ else {
+      LightWeightHashSet<BlockInfo> blocksExcess=excessReplicateMap.get(node.getDatanodeUuid());
+      if (blocksExcess != null && blocksExcess.contains(b)) {
+        excess++;
+      }
+ else {
+        live++;
+      }
+    }
+    if (storage.areBlockContentsStale()) {
+      stale++;
+    }
+  }
+  return new NumberReplicas(live,readonly,decommissioned,decommissioning,corrupt,excess,stale);
+}
