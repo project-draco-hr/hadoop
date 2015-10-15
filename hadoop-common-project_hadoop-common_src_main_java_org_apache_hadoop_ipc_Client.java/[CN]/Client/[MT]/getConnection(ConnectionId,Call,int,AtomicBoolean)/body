@@ -4,28 +4,19 @@
   }
   Connection connection;
   while (true) {
-    try {
-      connection=connections.get(remoteId,new Callable<Connection>(){
-        @Override public Connection call() throws Exception {
-          return new Connection(remoteId,serviceClass);
-        }
-      }
-);
-    }
- catch (    ExecutionException e) {
-      Throwable cause=e.getCause();
-      if (cause instanceof IOException) {
-        throw (IOException)cause;
-      }
- else {
-        throw new IOException(cause);
+    connection=connections.get(remoteId);
+    if (connection == null) {
+      connection=new Connection(remoteId,serviceClass);
+      Connection existing=connections.putIfAbsent(remoteId,connection);
+      if (existing != null) {
+        connection=existing;
       }
     }
     if (connection.addCall(call)) {
       break;
     }
  else {
-      connections.invalidate(remoteId);
+      connections.remove(remoteId,connection);
     }
   }
   connection.setupIOstreams(fallbackToSimpleAuth);
