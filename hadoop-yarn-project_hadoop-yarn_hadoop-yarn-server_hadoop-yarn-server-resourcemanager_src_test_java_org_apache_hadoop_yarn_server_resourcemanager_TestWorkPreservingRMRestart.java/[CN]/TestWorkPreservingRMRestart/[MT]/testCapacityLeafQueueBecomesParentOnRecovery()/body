@@ -1,0 +1,23 @@
+{
+  if (getSchedulerType() != SchedulerType.CAPACITY) {
+    return;
+  }
+  conf.setBoolean(CapacitySchedulerConfiguration.ENABLE_USER_METRICS,true);
+  conf.set(CapacitySchedulerConfiguration.RESOURCE_CALCULATOR_CLASS,DominantResourceCalculator.class.getName());
+  CapacitySchedulerConfiguration csConf=new CapacitySchedulerConfiguration(conf);
+  setupQueueConfiguration(csConf);
+  MemoryRMStateStore memStore=new MemoryRMStateStore();
+  memStore.init(csConf);
+  rm1=new MockRM(csConf,memStore);
+  rm1.start();
+  MockNM nm=new MockNM("127.1.1.1:4321",8192,rm1.getResourceTrackerService());
+  nm.registerNode();
+  RMApp app=rm1.submitApp(1024,"app",USER_2,null,B);
+  MockRM.launchAndRegisterAM(app,rm1,nm);
+  assertEquals(rm1.getApplicationReport(app.getApplicationId()).getYarnApplicationState(),YarnApplicationState.RUNNING);
+  RMState state=memStore.loadState();
+  csConf=new CapacitySchedulerConfiguration(conf);
+  setupQueueConfigurationChildOfB(csConf);
+  String diags="Application killed on recovery as it was submitted to " + "queue QueueB which is no longer a leaf queue after restart.";
+  verifyAppRecoveryWithWrongQueueConfig(csConf,app,diags,memStore,state);
+}

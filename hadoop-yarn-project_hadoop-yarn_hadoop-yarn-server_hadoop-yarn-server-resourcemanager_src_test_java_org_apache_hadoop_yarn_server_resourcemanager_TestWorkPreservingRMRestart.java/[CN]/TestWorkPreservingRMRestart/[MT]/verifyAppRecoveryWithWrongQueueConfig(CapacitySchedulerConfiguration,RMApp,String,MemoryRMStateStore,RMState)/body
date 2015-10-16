@@ -1,0 +1,29 @@
+{
+  csConf.setBoolean(YarnConfiguration.RM_FAIL_FAST,false);
+  rm2=new MockRM(csConf,memStore);
+  rm2.start();
+  rm2.waitForState(app.getApplicationId(),RMAppState.KILLED);
+  ApplicationReport report=rm2.getApplicationReport(app.getApplicationId());
+  assertEquals(report.getFinalApplicationStatus(),FinalApplicationStatus.KILLED);
+  assertEquals(report.getYarnApplicationState(),YarnApplicationState.KILLED);
+  assertEquals(report.getDiagnostics(),diagnostics);
+  for (  Map.Entry<ApplicationId,ApplicationStateData> entry : state.getApplicationState().entrySet()) {
+    ApplicationStateData appState=mock(ApplicationStateData.class);
+    ApplicationSubmissionContext ctxt=mock(ApplicationSubmissionContext.class);
+    when(appState.getApplicationSubmissionContext()).thenReturn(ctxt);
+    when(ctxt.getApplicationId()).thenReturn(entry.getKey());
+    memStore.removeApplicationStateInternal(appState);
+    memStore.storeApplicationStateInternal(entry.getKey(),entry.getValue());
+  }
+  csConf.setBoolean(YarnConfiguration.RM_FAIL_FAST,true);
+  MockRM rm=new MockRM(csConf,memStore);
+  try {
+    rm.start();
+    Assert.fail("QueueException must have been thrown");
+  }
+ catch (  QueueInvalidException e) {
+  }
+ finally {
+    rm.close();
+  }
+}

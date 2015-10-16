@@ -1,6 +1,6 @@
 {
   if (getSchedulerType() != SchedulerType.CAPACITY) {
-    throw new QueueNotFoundException("Dummy");
+    return;
   }
   conf.setBoolean(CapacitySchedulerConfiguration.ENABLE_USER_METRICS,true);
   conf.set(CapacitySchedulerConfiguration.RESOURCE_CALCULATOR_CLASS,DominantResourceCalculator.class.getName());
@@ -20,12 +20,14 @@
   MockAM am1_2=MockRM.launchAndRegisterAM(app1_2,rm1,nm2);
   RMApp app2=rm1.submitApp(1024,"app2",USER_2,null,B);
   MockAM am2=MockRM.launchAndRegisterAM(app2,rm1,nm2);
+  assertEquals(rm1.getApplicationReport(app2.getApplicationId()).getYarnApplicationState(),YarnApplicationState.RUNNING);
   RMApp appNA=rm1.submitApp(1024,"app1_2",USER_1,null,QUEUE_DOESNT_EXIST,false);
   rm1.clearQueueMetrics(app1_1);
   rm1.clearQueueMetrics(app1_2);
   rm1.clearQueueMetrics(app2);
+  RMState state=memStore.loadState();
   csConf=new CapacitySchedulerConfiguration(conf);
   setupQueueConfigurationOnlyA(csConf);
-  rm2=new MockRM(csConf,memStore);
-  rm2.start();
+  String diags="Application killed on recovery as it was submitted to " + "queue QueueB which no longer exists after restart.";
+  verifyAppRecoveryWithWrongQueueConfig(csConf,app2,diags,memStore,state);
 }
