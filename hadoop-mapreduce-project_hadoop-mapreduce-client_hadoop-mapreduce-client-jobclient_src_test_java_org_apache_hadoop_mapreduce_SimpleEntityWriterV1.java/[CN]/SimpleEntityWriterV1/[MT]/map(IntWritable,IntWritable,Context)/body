@@ -1,0 +1,40 @@
+{
+  TimelineClient tlc=new TimelineClientImpl();
+  Configuration conf=context.getConfiguration();
+  final int kbs=conf.getInt(KBS_SENT,KBS_SENT_DEFAULT);
+  long totalTime=0;
+  final int testtimes=conf.getInt(TEST_TIMES,TEST_TIMES_DEFAULT);
+  final Random rand=new Random();
+  final TaskAttemptID taskAttemptId=context.getTaskAttemptID();
+  final char[] payLoad=new char[kbs * 1024];
+  for (int i=0; i < testtimes; i++) {
+    for (int xx=0; xx < kbs * 1024; xx++) {
+      int alphaNumIdx=rand.nextInt(ALPHA_NUMS.length);
+      payLoad[xx]=ALPHA_NUMS[alphaNumIdx];
+    }
+    String entId=taskAttemptId + "_" + Integer.toString(i);
+    final TimelineEntity entity=new TimelineEntity();
+    entity.setEntityId(entId);
+    entity.setEntityType("FOO_ATTEMPT");
+    entity.addOtherInfo("PERF_TEST",payLoad);
+    TimelineEvent event=new TimelineEvent();
+    event.setTimestamp(System.currentTimeMillis());
+    event.setEventType("foo_event");
+    entity.addEvent(event);
+    UserGroupInformation ugi=UserGroupInformation.getCurrentUser();
+    long startWrite=System.nanoTime();
+    try {
+      tlc.putEntities(entity);
+    }
+ catch (    Exception e) {
+      context.getCounter(PerfCounters.TIMELINE_SERVICE_WRITE_FAILURES).increment(1);
+      LOG.error("writing to the timeline service failed",e);
+    }
+    long endWrite=System.nanoTime();
+    totalTime+=TimeUnit.NANOSECONDS.toMillis(endWrite - startWrite);
+  }
+  LOG.info("wrote " + testtimes + " entities ("+ kbs * testtimes + " kB) in " + totalTime + " ms");
+  context.getCounter(PerfCounters.TIMELINE_SERVICE_WRITE_TIME).increment(totalTime);
+  context.getCounter(PerfCounters.TIMELINE_SERVICE_WRITE_COUNTER).increment(testtimes);
+  context.getCounter(PerfCounters.TIMELINE_SERVICE_WRITE_KBS).increment(kbs * testtimes);
+}
