@@ -3,13 +3,13 @@
   logAggregationContextWithInterval.setRolledLogsIncludePattern(".*");
   logAggregationContextWithInterval.setRolledLogsExcludePattern("std_final");
   this.conf.set(YarnConfiguration.NM_LOG_DIRS,localLogDir.getAbsolutePath());
-  this.conf.set(YarnConfiguration.NM_REMOTE_APP_LOG_DIR,"file://" + this.remoteRootLogDir.getAbsolutePath());
+  this.conf.set(YarnConfiguration.NM_REMOTE_APP_LOG_DIR,this.remoteRootLogDir.toURI().toString());
   this.conf.setLong(YarnConfiguration.NM_LOG_AGGREGATION_ROLL_MONITORING_INTERVAL_SECONDS,3600);
   if (retentionSizeLimitation) {
     this.conf.setInt(YarnConfiguration.NM_PREFIX + "log-aggregation.num-log-files-per-app",1);
   }
   this.conf.setLong(YarnConfiguration.DEBUG_NM_DELETE_DELAY_SEC,3600);
-  ApplicationId application=BuilderUtils.newApplicationId(123456,1);
+  ApplicationId application=BuilderUtils.newApplicationId(System.currentTimeMillis(),1);
   ApplicationAttemptId appAttemptId=BuilderUtils.newApplicationAttemptId(application,1);
   ContainerId container=createContainer(appAttemptId,1,ContainerType.APPLICATION_MASTER);
   ConcurrentMap<ApplicationId,Application> maps=this.context.getApplications();
@@ -41,7 +41,7 @@
   Assert.assertFalse(logFileStatusInLastCycle.getLogFileTypesInLastCycle().contains("std_final"));
   Thread.sleep(2000);
   aggregator.doLogAggregationOutOfBand();
-  Assert.assertEquals(numOfLogsAvailable(logAggregationService,application,true,null),1);
+  Assert.assertTrue("Only one aggregated log file in Remote file directory expected",waitAndCheckLogNum(logAggregationService,application,50,1,true,null));
   Thread.sleep(2000);
   String[] logFiles2=new String[]{"stdout_1","stderr_1","syslog_1"};
   writeContainerLogs(appLogDir,container,logFiles2);
