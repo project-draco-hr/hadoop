@@ -1,0 +1,31 @@
+{
+  Map<String,String> environment=container.getLaunchContext().getEnvironment();
+  String runPrivilegedContainerEnvVar=environment.get(ENV_DOCKER_CONTAINER_RUN_PRIVILEGED_CONTAINER);
+  if (runPrivilegedContainerEnvVar == null) {
+    return false;
+  }
+  if (!runPrivilegedContainerEnvVar.equalsIgnoreCase("true")) {
+    LOG.warn("NOT running a privileged container. Value of " + ENV_DOCKER_CONTAINER_RUN_PRIVILEGED_CONTAINER + "is invalid: "+ runPrivilegedContainerEnvVar);
+    return false;
+  }
+  if (LOG.isInfoEnabled()) {
+    LOG.info("Privileged container requested for : " + container.getContainerId().toString());
+  }
+  boolean privilegedContainersEnabledOnCluster=conf.getBoolean(YarnConfiguration.NM_DOCKER_ALLOW_PRIVILEGED_CONTAINERS,YarnConfiguration.DEFAULT_NM_DOCKER_ALLOW_PRIVILEGED_CONTAINERS);
+  if (!privilegedContainersEnabledOnCluster) {
+    String message="Privileged container being requested but privileged " + "containers are not enabled on this cluster";
+    LOG.warn(message);
+    throw new ContainerExecutionException(message);
+  }
+  String submittingUser=container.getUser();
+  UserGroupInformation submitterUgi=UserGroupInformation.createRemoteUser(submittingUser);
+  if (!privilegedContainersAcl.isUserAllowed(submitterUgi)) {
+    String message="Cannot launch privileged container. Submitting user (" + submittingUser + ") fails ACL check.";
+    LOG.warn(message);
+    throw new ContainerExecutionException(message);
+  }
+  if (LOG.isInfoEnabled()) {
+    LOG.info("All checks pass. Launching privileged container for : " + container.getContainerId().toString());
+  }
+  return true;
+}
