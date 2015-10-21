@@ -2,8 +2,8 @@
   int handlers=1;
   final Configuration conf=new Configuration();
   conf.setInt(CommonConfigurationKeys.IPC_SERVER_RPC_READ_CONNECTION_QUEUE_SIZE_KEY,readerQ);
-  int initialClients=readers + callQ + handlers;
-  int maxAccept=initialClients + readers * readerQ + 1;
+  final int initialClients=readers + callQ + handlers;
+  final int maxAccept=initialClients + readers * readerQ + 1;
   int clients=maxAccept * 2;
   final AtomicInteger failures=new AtomicInteger(0);
   final CountDownLatch callFinishedLatch=new CountDownLatch(clients);
@@ -43,11 +43,18 @@
       }
     }
   }
-  Thread.sleep(10);
-  if (server.getNumOpenConnections() < initialClients) {
-    LOG.info("(initial clients) need:" + initialClients + " connections have:"+ server.getNumOpenConnections());
-    Thread.sleep(100);
+  try {
+    GenericTestUtils.waitFor(new Supplier<Boolean>(){
+      @Override public Boolean get(){
+        return server.getNumOpenConnections() >= initialClients;
+      }
+    }
+,100,3000);
   }
+ catch (  TimeoutException e) {
+    fail("timed out while waiting for connections to open.");
+  }
+  LOG.info("(initial clients) need:" + initialClients + " connections have:"+ server.getNumOpenConnections());
   LOG.info("ipc layer should be blocked");
   assertEquals(callQ,server.getCallQueueLen());
   assertEquals(initialClients,server.getNumOpenConnections());
@@ -55,10 +62,18 @@
     threads[i].start();
   }
   Thread.sleep(10);
-  if (server.getNumOpenConnections() < maxAccept) {
-    LOG.info("(max clients) need:" + maxAccept + " connections have:"+ server.getNumOpenConnections());
-    Thread.sleep(100);
+  try {
+    GenericTestUtils.waitFor(new Supplier<Boolean>(){
+      @Override public Boolean get(){
+        return server.getNumOpenConnections() >= maxAccept;
+      }
+    }
+,100,3000);
   }
+ catch (  TimeoutException e) {
+    fail("timed out while waiting for connections to open until maxAccept.");
+  }
+  LOG.info("(max clients) need:" + maxAccept + " connections have:"+ server.getNumOpenConnections());
   for (int i=0; i < 4; i++) {
     assertEquals(maxAccept,server.getNumOpenConnections());
     Thread.sleep(100);
