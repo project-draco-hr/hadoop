@@ -3,24 +3,26 @@
   if (acquireLease && existingLease != null) {
     throw new IOException("Cannot acquire new lease if one already exists.");
   }
+  CloudBlobWrapper srcBlob=null;
+  CloudBlobWrapper dstBlob=null;
+  SelfRenewingLease lease=null;
   try {
     if (null == storageInteractionLayer) {
       final String errMsg=String.format("Storage session expected for URI '%s' but does not exist.",sessionUri);
       throw new AssertionError(errMsg);
     }
     checkContainer(ContainerAccessType.ReadThenWrite);
-    CloudBlobWrapper srcBlob=getBlobReference(srcKey);
+    srcBlob=getBlobReference(srcKey);
     if (!srcBlob.exists(getInstrumentedContext())) {
       throw new AzureException("Source blob " + srcKey + " does not exist.");
     }
-    SelfRenewingLease lease=null;
     if (acquireLease) {
       lease=srcBlob.acquireLease();
     }
  else     if (existingLease != null) {
       lease=existingLease;
     }
-    CloudBlobWrapper dstBlob=getBlobReference(dstKey);
+    dstBlob=getBlobReference(dstKey);
     try {
       dstBlob.startCopyFromBlob(srcBlob,null,getInstrumentedContext());
     }
@@ -42,7 +44,40 @@
     safeDelete(srcBlob,lease);
   }
  catch (  StorageException e) {
-    throw new AzureException(e);
+    if (e.getErrorCode().equals(StorageErrorCode.SERVER_BUSY.toString())) {
+      LOG.warn("Rename: CopyBlob: StorageException: ServerBusy: Retry complete, will attempt client side copy for page blob");
+      InputStream ipStream=null;
+      OutputStream opStream=null;
+      try {
+        if (srcBlob.getProperties().getBlobType() == BlobType.PAGE_BLOB) {
+          ipStream=openInputStream(srcBlob);
+          opStream=openOutputStream(dstBlob);
+          byte[] buffer=new byte[PageBlobFormatHelpers.PAGE_SIZE];
+          int len;
+          while ((len=ipStream.read(buffer)) != -1) {
+            opStream.write(buffer,0,len);
+          }
+          opStream.flush();
+          opStream.close();
+          ipStream.close();
+        }
+ else {
+          throw new AzureException(e);
+        }
+        safeDelete(srcBlob,lease);
+      }
+ catch (      StorageException se) {
+        LOG.warn("Rename: CopyBlob: StorageException: Failed");
+        throw new AzureException(se);
+      }
+ finally {
+        IOUtils.closeStream(ipStream);
+        IOUtils.closeStream(opStream);
+      }
+    }
+ else {
+      throw new AzureException(e);
+    }
   }
 catch (  URISyntaxException e) {
     throw new AzureException(e);
