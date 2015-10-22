@@ -10,8 +10,33 @@
   }
  else   if (srcExists && dstExists) {
     String srcName=fs.pathToKey(srcFile);
-    SelfRenewingLease lease=fs.acquireLease(srcFile);
-    fs.getStoreInterface().delete(srcName,lease);
+    SelfRenewingLease lease=null;
+    try {
+      lease=fs.acquireLease(srcFile);
+      fs.getStoreInterface().delete(srcName,lease);
+    }
+ catch (    AzureException e) {
+      String errorCode="";
+      try {
+        StorageException e2=(StorageException)e.getCause();
+        errorCode=e2.getErrorCode();
+      }
+ catch (      Exception e3) {
+      }
+      if (!errorCode.equals("BlobNotFound")) {
+        throw e;
+      }
+    }
+ finally {
+      try {
+        if (lease != null) {
+          lease.free();
+        }
+      }
+ catch (      StorageException e) {
+        LOG.warn("Unable to free lease because: " + e.getMessage());
+      }
+    }
   }
  else   if (!srcExists && dstExists) {
     ;
