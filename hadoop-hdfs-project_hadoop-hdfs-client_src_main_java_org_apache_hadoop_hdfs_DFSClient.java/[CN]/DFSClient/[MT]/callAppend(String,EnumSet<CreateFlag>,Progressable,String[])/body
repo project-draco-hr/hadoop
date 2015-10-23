@@ -2,7 +2,12 @@
   CreateFlag.validateForAppend(flag);
   try {
     LastBlockWithStatus blkWithStatus=namenode.append(src,clientName,new EnumSetWritable<>(flag,CreateFlag.class));
-    return DFSOutputStream.newStreamForAppend(this,src,flag,progress,blkWithStatus.getLastBlock(),blkWithStatus.getFileStatus(),dfsClientConf.createChecksum(null),favoredNodes);
+    HdfsFileStatus status=blkWithStatus.getFileStatus();
+    if (status == null) {
+      DFSClient.LOG.debug("NameNode is on an older version, request file " + "info with additional RPC call for file: " + src);
+      status=getFileInfo(src);
+    }
+    return DFSOutputStream.newStreamForAppend(this,src,flag,progress,blkWithStatus.getLastBlock(),status,dfsClientConf.createChecksum(null),favoredNodes);
   }
  catch (  RemoteException re) {
     throw re.unwrapRemoteException(AccessControlException.class,FileNotFoundException.class,SafeModeException.class,DSQuotaExceededException.class,QuotaByStorageTypeExceededException.class,UnsupportedOperationException.class,UnresolvedPathException.class,SnapshotAccessControlException.class);
