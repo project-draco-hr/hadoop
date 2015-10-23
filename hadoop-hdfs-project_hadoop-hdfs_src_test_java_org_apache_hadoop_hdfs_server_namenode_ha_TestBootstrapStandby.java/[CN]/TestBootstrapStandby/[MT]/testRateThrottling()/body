@@ -1,0 +1,47 @@
+{
+  cluster.getConfiguration(0).setLong(DFSConfigKeys.DFS_IMAGE_TRANSFER_RATE_KEY,1);
+  cluster.restartNameNode(0);
+  cluster.waitActive();
+  nn0=cluster.getNameNode(0);
+  cluster.transitionToActive(0);
+  for (int i=0; i < 5; i++) {
+    nn0.getRpcServer().rollEditLog();
+  }
+  GenericTestUtils.waitFor(new Supplier<Boolean>(){
+    public Boolean get(){
+      try {
+        testSuccessfulBaseCase();
+        return true;
+      }
+ catch (      Exception e) {
+        return false;
+      }
+    }
+  }
+,500,5000);
+  shutdownCluster();
+  setupCluster();
+  cluster.getConfiguration(0).setLong(DFSConfigKeys.DFS_IMAGE_TRANSFER_BOOTSTRAP_STANDBY_RATE_KEY,1);
+  cluster.restartNameNode(0);
+  cluster.waitActive();
+  nn0=cluster.getNameNode(0);
+  cluster.transitionToActive(0);
+  try {
+    GenericTestUtils.waitFor(new Supplier<Boolean>(){
+      public Boolean get(){
+        try {
+          testSuccessfulBaseCase();
+          return true;
+        }
+ catch (        Exception e) {
+          return false;
+        }
+      }
+    }
+,500,5000);
+    fail("Did not timeout");
+  }
+ catch (  TimeoutException e) {
+    LOG.info("Encountered expected timeout.");
+  }
+}
