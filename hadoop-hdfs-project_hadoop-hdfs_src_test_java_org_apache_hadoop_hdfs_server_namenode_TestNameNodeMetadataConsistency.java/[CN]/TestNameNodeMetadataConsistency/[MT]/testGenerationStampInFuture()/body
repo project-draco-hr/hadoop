@@ -1,0 +1,30 @@
+{
+  String testData=" This is test data";
+  int datalen=testData.length();
+  cluster.waitActive();
+  FileSystem fs=cluster.getFileSystem();
+  OutputStream ostream=fs.create(filePath1);
+  ostream.write(testData.getBytes());
+  ostream.close();
+  ExtendedBlock block=DFSTestUtil.getFirstBlock(fs,filePath1);
+  long genStamp=block.getGenerationStamp();
+  cluster.changeGenStampOfBlock(0,block,genStamp + 1);
+  MiniDFSCluster.DataNodeProperties dnProps=cluster.stopDataNode(0);
+  cluster.restartNameNode(true);
+  BlockInfo bInfo=cluster.getNameNode().getNamesystem().getBlockManager().getStoredBlock(block.getLocalBlock());
+  cluster.getNameNode().getNamesystem().writeLock();
+  cluster.getNameNode().getNamesystem().getBlockManager().removeBlock(bInfo);
+  cluster.getNameNode().getNamesystem().writeUnlock();
+  FSNamesystem spyNameSystem=spy(cluster.getNameNode().getNamesystem());
+  spyNameSystem.enableSafeModeForTesting(conf);
+  Whitebox.setInternalState(cluster.getNameNode().getNamesystem().getBlockManager(),"namesystem",spyNameSystem);
+  Whitebox.setInternalState(cluster.getNameNode(),"namesystem",spyNameSystem);
+  Mockito.doReturn(true).when(spyNameSystem).isInStartupSafeMode();
+  cluster.restartDataNode(dnProps);
+  waitTil(TimeUnit.SECONDS.toMillis(SCAN_WAIT));
+  cluster.triggerBlockReports();
+  waitTil(TimeUnit.SECONDS.toMillis(SCAN_WAIT));
+  assertEquals(datalen,cluster.getNameNode().getBytesWithFutureGenerationStamps());
+  String safeModeMessage=cluster.getNameNode().getNamesystem().getSafeModeTip();
+  assertThat(safeModeMessage,CoreMatchers.containsString("Name node " + "detected blocks with generation stamps in future"));
+}
