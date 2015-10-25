@@ -1,14 +1,16 @@
 {
-  FSQueue queue=queueMgr.getQueue(queueName);
-  if ((queue == null) || !allocConf.isReservable(queue.getQueueName())) {
+  CSQueue queue=getQueue(queueName);
+  if ((queue == null) || !(queue instanceof PlanQueue)) {
     return queueName;
   }
-  queueName=queue.getQueueName();
   if (reservationID != null) {
-    String resQName=queueName + "." + reservationID.toString();
-    queue=queueMgr.getQueue(resQName);
+    String resQName=reservationID.toString();
+    queue=getQueue(resQName);
     if (queue == null) {
-      String message="Application " + applicationId + " submitted to a reservation which is not yet currently active: "+ resQName;
+      if (isRecovering && conf.getMoveOnExpiry(getQueue(queueName).getQueuePath())) {
+        return getDefaultReservationQueueName(queueName);
+      }
+      String message="Application " + applicationId + " submitted to a reservation which is not currently active: "+ resQName;
       this.rmContext.getDispatcher().getEventHandler().handle(new RMAppEvent(applicationId,RMAppEventType.APP_REJECTED,message));
       return null;
     }
@@ -20,7 +22,7 @@
     queueName=resQName;
   }
  else {
-    queueName=getDefaultQueueForPlanQueue(queueName);
+    queueName=getDefaultReservationQueueName(queueName);
   }
   return queueName;
 }
