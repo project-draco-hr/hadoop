@@ -19,8 +19,11 @@
   rm1.start();
   MockNM nm1=new MockNM("127.0.0.1:1234",8000,rm1.getResourceTrackerService());
   nm1.registerNode();
-  MockNM nm2=new MockNM("127.0.0.2:2345",8000,rm1.getResourceTrackerService());
-  nm2.registerNode();
+  MockNM nm2=null;
+  if (!singleNode) {
+    nm2=new MockNM("127.0.0.2:2345",8000,rm1.getResourceTrackerService());
+    nm2.registerNode();
+  }
   RMApp app1=rm1.submitApp(200);
   MockAM am1=MockRM.launchAndRegisterAM(app1,rm1,nm1);
   CapacityScheduler scheduler=(CapacityScheduler)rm1.getResourceScheduler();
@@ -28,33 +31,48 @@
   RMContainer rmContainer=scheduler.getRMContainer(amContainer);
   NodeId nodeWhereAMRan=rmContainer.getAllocatedNode();
   MockNM currentNode, otherNode;
-  if (nodeWhereAMRan == nm1.getNodeId()) {
+  if (singleNode) {
+    Assert.assertEquals(nm1.getNodeId(),nodeWhereAMRan);
     currentNode=nm1;
-    otherNode=nm2;
+    otherNode=null;
   }
  else {
-    currentNode=nm2;
-    otherNode=nm1;
+    if (nodeWhereAMRan == nm1.getNodeId()) {
+      currentNode=nm1;
+      otherNode=nm2;
+    }
+ else {
+      currentNode=nm2;
+      otherNode=nm1;
+    }
   }
-  ContainerStatus containerStatus=BuilderUtils.newContainerStatus(amContainer,ContainerState.COMPLETE,"",ContainerExitStatus.DISKS_FAILED,Resources.createResource(200));
+  int exitStatus=singleNode ? ContainerExitStatus.PREEMPTED : ContainerExitStatus.INVALID;
+  ContainerStatus containerStatus=BuilderUtils.newContainerStatus(amContainer,ContainerState.COMPLETE,"",exitStatus,Resources.createResource(200));
   currentNode.containerStatus(containerStatus);
   am1.waitForState(RMAppAttemptState.FAILED);
   rm1.waitForState(app1.getApplicationId(),RMAppState.ACCEPTED);
-  RMAppAttempt attempt=rm1.waitForAttemptScheduled(app1,rm1);
+  RMAppAttempt attempt=MockRM.waitForAttemptScheduled(app1,rm1);
   System.out.println("Launch AM " + attempt.getAppAttemptId());
   currentNode.nodeHeartbeat(true);
   dispatcher.await();
-  Assert.assertEquals("AppAttemptState should still be SCHEDULED if currentNode is " + "blacklisted correctly",RMAppAttemptState.SCHEDULED,attempt.getAppAttemptState());
-  otherNode.nodeHeartbeat(true);
-  dispatcher.await();
+  if (!singleNode) {
+    Assert.assertEquals("AppAttemptState should still be SCHEDULED if currentNode is " + "blacklisted correctly",RMAppAttemptState.SCHEDULED,attempt.getAppAttemptState());
+    otherNode.nodeHeartbeat(true);
+    dispatcher.await();
+  }
   MockAM am2=rm1.sendAMLaunched(attempt.getAppAttemptId());
   rm1.waitForState(attempt.getAppAttemptId(),RMAppAttemptState.LAUNCHED);
   amContainer=ContainerId.newContainerId(am2.getApplicationAttemptId(),1);
   rmContainer=scheduler.getRMContainer(amContainer);
   nodeWhereAMRan=rmContainer.getAllocatedNode();
-  Assert.assertEquals("After blacklisting AM should have run on the other node",otherNode.getNodeId(),nodeWhereAMRan);
-  am2.registerAppAttempt();
-  rm1.waitForState(app1.getApplicationId(),RMAppState.RUNNING);
-  List<Container> allocatedContainers=allocateContainers(currentNode,am2,1);
-  Assert.assertEquals("Even though AM is blacklisted from the node, application can still " + "allocate containers there",currentNode.getNodeId(),allocatedContainers.get(0).getNodeId());
+  if (singleNode) {
+    Assert.assertEquals("AM should still have been able to run on the same node",currentNode.getNodeId(),nodeWhereAMRan);
+  }
+ else {
+    Assert.assertEquals("After blacklisting AM should have run on the other node",otherNode.getNodeId(),nodeWhereAMRan);
+    am2.registerAppAttempt();
+    rm1.waitForState(app1.getApplicationId(),RMAppState.RUNNING);
+    List<Container> allocatedContainers=allocateContainers(currentNode,am2,1);
+    Assert.assertEquals("Even though AM is blacklisted from the node, application can " + "still allocate containers there",currentNode.getNodeId(),allocatedContainers.get(0).getNodeId());
+  }
 }
