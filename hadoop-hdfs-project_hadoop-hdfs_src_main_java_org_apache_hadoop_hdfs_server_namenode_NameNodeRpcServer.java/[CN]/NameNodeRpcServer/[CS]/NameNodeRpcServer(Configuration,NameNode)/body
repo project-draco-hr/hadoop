@@ -52,6 +52,24 @@
     serviceRpcServer=null;
     serviceRPCAddress=null;
   }
+  InetSocketAddress lifelineRpcAddr=nn.getLifelineRpcServerAddress(conf);
+  if (lifelineRpcAddr != null) {
+    RPC.setProtocolEngine(conf,HAServiceProtocolPB.class,ProtobufRpcEngine.class);
+    String bindHost=nn.getLifelineRpcServerBindHost(conf);
+    if (bindHost == null) {
+      bindHost=lifelineRpcAddr.getHostName();
+    }
+    LOG.info("Lifeline RPC server is binding to {}:{}",bindHost,lifelineRpcAddr.getPort());
+    int lifelineHandlerCount=conf.getInt(DFS_NAMENODE_LIFELINE_HANDLER_COUNT_KEY,DFS_NAMENODE_LIFELINE_HANDLER_COUNT_DEFAULT);
+    lifelineRpcServer=new RPC.Builder(conf).setProtocol(HAServiceProtocolPB.class).setInstance(haPbService).setBindAddress(bindHost).setPort(lifelineRpcAddr.getPort()).setNumHandlers(lifelineHandlerCount).setVerbose(false).setSecretManager(namesystem.getDelegationTokenSecretManager()).build();
+    InetSocketAddress listenAddr=lifelineRpcServer.getListenerAddress();
+    lifelineRPCAddress=new InetSocketAddress(lifelineRpcAddr.getHostName(),listenAddr.getPort());
+    nn.setRpcLifelineServerAddress(conf,lifelineRPCAddress);
+  }
+ else {
+    lifelineRpcServer=null;
+    lifelineRPCAddress=null;
+  }
   InetSocketAddress rpcAddr=nn.getRpcServerAddress(conf);
   String bindHost=nn.getRpcServerBindHost(conf);
   if (bindHost == null) {
@@ -73,6 +91,9 @@
     if (serviceRpcServer != null) {
       serviceRpcServer.refreshServiceAcl(conf,new HDFSPolicyProvider());
     }
+    if (lifelineRpcServer != null) {
+      lifelineRpcServer.refreshServiceAcl(conf,new HDFSPolicyProvider());
+    }
   }
   InetSocketAddress listenAddr=clientRpcServer.getListenerAddress();
   clientRpcAddress=new InetSocketAddress(rpcAddr.getHostName(),listenAddr.getPort());
@@ -82,5 +103,8 @@
   clientRpcServer.setTracer(nn.tracer);
   if (serviceRpcServer != null) {
     serviceRpcServer.setTracer(nn.tracer);
+  }
+  if (lifelineRpcServer != null) {
+    lifelineRpcServer.setTracer(nn.tracer);
   }
 }
