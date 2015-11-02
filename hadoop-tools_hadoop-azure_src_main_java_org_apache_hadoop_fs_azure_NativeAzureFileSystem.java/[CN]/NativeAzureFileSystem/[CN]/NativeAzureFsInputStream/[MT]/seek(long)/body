@@ -1,6 +1,19 @@
 {
-  in.close();
-  in=store.retrieve(key);
-  this.pos=in.skip(pos);
-  LOG.debug("Seek to position {}. Bytes skipped {}",pos,this.pos);
+  try {
+    checkNotClosed();
+    if (pos < 0) {
+      throw new EOFException(FSExceptionMessages.NEGATIVE_SEEK);
+    }
+    IOUtils.closeStream(in);
+    in=store.retrieve(key);
+    this.pos=in.skip(pos);
+    LOG.debug("Seek to position {}. Bytes skipped {}",pos,this.pos);
+  }
+ catch (  IOException e) {
+    Throwable innerException=checkForAzureStorageException(e);
+    if (innerException instanceof StorageException && isFileNotFoundException((StorageException)innerException)) {
+      throw new FileNotFoundException(String.format("%s is not found",key));
+    }
+    throw e;
+  }
 }
