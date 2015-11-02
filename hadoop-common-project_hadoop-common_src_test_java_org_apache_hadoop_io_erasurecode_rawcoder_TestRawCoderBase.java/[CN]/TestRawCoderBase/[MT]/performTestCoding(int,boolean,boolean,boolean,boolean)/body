@@ -1,6 +1,7 @@
 {
   setChunkSize(chunkSize);
   prepareBufferAllocator(usingSlicedBuffer);
+  setAllowChangeInputs(allowChangeInputs);
   dumpSetting();
   ECChunk[] dataChunks=prepareDataChunksForEncoding();
   if (useBadInput) {
@@ -9,8 +10,13 @@
   dumpChunks("Testing data chunks",dataChunks);
   ECChunk[] parityChunks=prepareParityChunksForEncoding();
   ECChunk[] clonedDataChunks=cloneChunksWithData(dataChunks);
+  markChunks(dataChunks);
   encoder.encode(dataChunks,parityChunks);
   dumpChunks("Encoded parity chunks",parityChunks);
+  if (!allowChangeInputs) {
+    restoreChunksFromMark(dataChunks);
+    compareAndVerify(clonedDataChunks,dataChunks);
+  }
   ECChunk[] backupChunks=backupAndEraseChunks(clonedDataChunks,parityChunks);
   ECChunk[] inputChunks=prepareInputChunksForDecoding(clonedDataChunks,parityChunks);
   ensureOnlyLeastRequiredChunks(inputChunks);
@@ -18,8 +24,17 @@
   if (useBadOutput) {
     corruptSomeChunk(recoveredChunks);
   }
+  ECChunk[] clonedInputChunks=null;
+  if (!allowChangeInputs) {
+    markChunks(inputChunks);
+    clonedInputChunks=cloneChunksWithData(inputChunks);
+  }
   dumpChunks("Decoding input chunks",inputChunks);
   decoder.decode(inputChunks,getErasedIndexesForDecoding(),recoveredChunks);
   dumpChunks("Decoded/recovered chunks",recoveredChunks);
+  if (!allowChangeInputs) {
+    restoreChunksFromMark(inputChunks);
+    compareAndVerify(clonedInputChunks,inputChunks);
+  }
   compareAndVerify(backupChunks,recoveredChunks);
 }
