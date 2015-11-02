@@ -1,0 +1,59 @@
+{
+  LOG.info("Starting test");
+  final String FILE_KEY="fileWithLease";
+  Path path=new Path(FILE_KEY);
+  fs.create(path);
+  assertTrue(fs.exists(path));
+  NativeAzureFileSystem nfs=(NativeAzureFileSystem)fs;
+  final String fullKey=nfs.pathToKey(nfs.makeAbsolute(path));
+  final AzureNativeFileSystemStore store=nfs.getStore();
+  final CountDownLatch leaseAttemptComplete=new CountDownLatch(1);
+  final CountDownLatch beginningDeleteAttempt=new CountDownLatch(1);
+  Thread t=new Thread(){
+    @Override public void run(){
+      SelfRenewingLease lease=null;
+      try {
+        lease=store.acquireLease(fullKey);
+        LOG.info("Lease acquired: " + lease.getLeaseID());
+      }
+ catch (      AzureException e) {
+        LOG.warn("Lease acqusition thread unable to acquire lease",e);
+      }
+ finally {
+        leaseAttemptComplete.countDown();
+      }
+      try {
+        beginningDeleteAttempt.await();
+      }
+ catch (      InterruptedException e) {
+        Thread.currentThread().interrupt();
+      }
+      try {
+        Thread.sleep(SelfRenewingLease.LEASE_ACQUIRE_RETRY_INTERVAL * 3);
+      }
+ catch (      InterruptedException ex) {
+        Thread.currentThread().interrupt();
+      }
+      try {
+        if (lease != null) {
+          LOG.info("Freeing lease");
+          lease.free();
+        }
+      }
+ catch (      StorageException se) {
+        LOG.warn("Unable to free lease.",se);
+      }
+    }
+  }
+;
+  t.start();
+  try {
+    leaseAttemptComplete.await();
+  }
+ catch (  InterruptedException ex) {
+    Thread.currentThread().interrupt();
+  }
+  beginningDeleteAttempt.countDown();
+  store.delete(fullKey);
+  assertFalse(fs.exists(path));
+}
