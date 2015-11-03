@@ -1,0 +1,37 @@
+{
+  int numOfDatanodes=capacities.length;
+  cluster=new MiniDFSCluster.Builder(conf).numDataNodes(capacities.length).hosts(hosts).racks(racks).simulatedCapacities(capacities).build();
+  DatanodeManager dm=cluster.getNamesystem().getBlockManager().getDatanodeManager();
+  if (UDs != null) {
+    for (int i=0; i < UDs.length; i++) {
+      DatanodeID datanodeId=cluster.getDataNodes().get(i).getDatanodeId();
+      dm.getDatanode(datanodeId).setUpgradeDomain(UDs[i]);
+    }
+  }
+  try {
+    cluster.waitActive();
+    client=NameNodeProxies.createProxy(conf,cluster.getFileSystem(0).getUri(),ClientProtocol.class).getProxy();
+    long totalCapacity=sum(capacities);
+    long totalUsedSpace=totalCapacity * 8 / 10;
+    final long fileSize=totalUsedSpace / numOfDatanodes;
+    DFSTestUtil.createFile(cluster.getFileSystem(0),filePath,false,1024,fileSize,DEFAULT_BLOCK_SIZE,(short)numOfDatanodes,0,false);
+    cluster.startDataNodes(conf,1,true,null,new String[]{newRack},new String[]{newHost},new long[]{newCapacity});
+    if (newUD != null) {
+      DatanodeID newId=cluster.getDataNodes().get(numOfDatanodes).getDatanodeId();
+      dm.getDatanode(newId).setUpgradeDomain(newUD);
+    }
+    totalCapacity+=newCapacity;
+    waitForHeartBeat(totalUsedSpace,totalCapacity,client,cluster);
+    Collection<URI> namenodes=DFSUtil.getNsServiceRpcUris(conf);
+    Balancer.run(namenodes,BalancerParameters.DEFAULT,conf);
+    BlockPlacementPolicy placementPolicy=cluster.getNamesystem().getBlockManager().getBlockPlacementPolicy();
+    List<LocatedBlock> locatedBlocks=client.getBlockLocations(fileName,0,fileSize).getLocatedBlocks();
+    for (    LocatedBlock locatedBlock : locatedBlocks) {
+      BlockPlacementStatus status=placementPolicy.verifyBlockPlacement(locatedBlock.getLocations(),numOfDatanodes);
+      assertTrue(status.isPlacementPolicySatisfied());
+    }
+  }
+  finally {
+    cluster.shutdown();
+  }
+}
