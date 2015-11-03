@@ -13,24 +13,19 @@
   Block[][] blocksDN=distributeBlocks(blocks,(short)(numDatanodes - 1),distribution);
   conf.set(DFSConfigKeys.DFS_NAMENODE_SAFEMODE_THRESHOLD_PCT_KEY,"0.0f");
   cluster=new MiniDFSCluster.Builder(conf).numDataNodes(numDatanodes).format(false).racks(racks).simulatedCapacities(capacities).build();
-  try {
-    cluster.waitActive();
-    client=NameNodeProxies.createProxy(conf,cluster.getFileSystem(0).getUri(),ClientProtocol.class).getProxy();
-    for (int i=0; i < 3; i++) {
-      cluster.injectBlocks(i,Arrays.asList(blocksDN[i]),null);
-    }
-    cluster.startDataNodes(conf,1,true,null,new String[]{RACK0},null,new long[]{CAPACITY});
-    cluster.triggerHeartbeats();
-    Collection<URI> namenodes=DFSUtil.getNsServiceRpcUris(conf);
-    Set<String> datanodes=new HashSet<String>();
-    datanodes.add(cluster.getDataNodes().get(0).getDatanodeId().getHostName());
-    BalancerParameters.Builder pBuilder=new BalancerParameters.Builder();
-    pBuilder.setExcludedNodes(datanodes);
-    pBuilder.setRunDuringUpgrade(false);
-    final int r=Balancer.run(namenodes,pBuilder.build(),conf);
-    assertEquals(ExitStatus.SUCCESS.getExitCode(),r);
+  cluster.waitActive();
+  client=NameNodeProxies.createProxy(conf,cluster.getFileSystem(0).getUri(),ClientProtocol.class).getProxy();
+  for (int i=0; i < 3; i++) {
+    cluster.injectBlocks(i,Arrays.asList(blocksDN[i]),null);
   }
-  finally {
-    cluster.shutdown();
-  }
+  cluster.startDataNodes(conf,1,true,null,new String[]{RACK0},null,new long[]{CAPACITY});
+  cluster.triggerHeartbeats();
+  Collection<URI> namenodes=DFSUtil.getNsServiceRpcUris(conf);
+  Set<String> datanodes=new HashSet<String>();
+  datanodes.add(cluster.getDataNodes().get(0).getDatanodeId().getHostName());
+  BalancerParameters.Builder pBuilder=new BalancerParameters.Builder();
+  pBuilder.setExcludedNodes(datanodes);
+  pBuilder.setRunDuringUpgrade(false);
+  final int r=Balancer.run(namenodes,pBuilder.build(),conf);
+  assertEquals(ExitStatus.SUCCESS.getExitCode(),r);
 }
