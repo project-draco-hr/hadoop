@@ -5,54 +5,25 @@
     conf.setLong(DFSConfigKeys.DFS_NAMENODE_REPLICATION_PENDING_TIMEOUT_SEC_KEY,1);
     cluster=new MiniDFSCluster.Builder(conf).numDataNodes(3).build();
     FileSystem fs=cluster.getFileSystem();
-    FSDataOutputStream create=fs.create(new Path("/test"));
-    fs.setReplication(new Path("/test"),(short)1);
+    Path filePath=new Path("/test");
+    FSDataOutputStream create=fs.create(filePath);
+    fs.setReplication(filePath,(short)1);
     create.write(new byte[1024]);
     create.close();
-    List<File> nonParticipatedNodeDirs=new ArrayList<File>();
-    File participatedNodeDirs=null;
-    for (int i=0; i < cluster.getDataNodes().size(); i++) {
-      File storageDir=cluster.getInstanceStorageDir(i,0);
-      String bpid=cluster.getNamesystem().getBlockPoolId();
-      File data_dir=MiniDFSCluster.getFinalizedDir(storageDir,bpid);
-      if (data_dir.listFiles().length == 0) {
-        nonParticipatedNodeDirs.add(data_dir);
-      }
- else {
-        assertNull("participatedNodeDirs has already been set.",participatedNodeDirs);
-        participatedNodeDirs=data_dir;
-      }
-    }
-    assertEquals(2,nonParticipatedNodeDirs.size());
-    String blockFile=null;
-    final List<File> listFiles=new ArrayList<>();
-    Files.walkFileTree(participatedNodeDirs.toPath(),new SimpleFileVisitor<java.nio.file.Path>(){
-      @Override public FileVisitResult visitFile(      java.nio.file.Path file,      BasicFileAttributes attrs) throws IOException {
-        listFiles.add(file.toFile());
-        return FileVisitResult.CONTINUE;
-      }
-    }
-);
-    assertFalse(listFiles.isEmpty());
+    ExtendedBlock block=DFSTestUtil.getFirstBlock(fs,filePath);
     int numReplicaCreated=0;
-    for (    File file : listFiles) {
-      if (file.getName().startsWith(Block.BLOCK_FILE_PREFIX) && !file.getName().endsWith("meta")) {
-        blockFile=file.getName();
-        for (        File file1 : nonParticipatedNodeDirs) {
-          file1.mkdirs();
-          new File(file1,blockFile).createNewFile();
-          new File(file1,blockFile + "_1000.meta").createNewFile();
-          numReplicaCreated++;
-        }
-        break;
+    for (    final DataNode dn : cluster.getDataNodes()) {
+      if (!dn.getFSDataset().contains(block)) {
+        cluster.getFsDatasetTestUtils(dn).injectCorruptReplica(block);
+        numReplicaCreated++;
       }
     }
     assertEquals(2,numReplicaCreated);
-    fs.setReplication(new Path("/test"),(short)3);
+    fs.setReplication(filePath,(short)3);
     cluster.restartDataNodes();
     cluster.waitActive();
     cluster.triggerBlockReports();
-    DFSTestUtil.waitReplication(fs,new Path("/test"),(short)3);
+    DFSTestUtil.waitReplication(fs,filePath,(short)3);
   }
   finally {
     if (cluster != null) {

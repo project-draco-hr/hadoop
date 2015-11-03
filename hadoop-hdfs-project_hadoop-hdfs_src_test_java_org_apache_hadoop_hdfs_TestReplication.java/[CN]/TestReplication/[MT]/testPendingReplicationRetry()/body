@@ -18,36 +18,24 @@
     out.close();
     waitForBlockReplication(testFile,dfsClient.getNamenode(),numDataNodes,-1);
     ExtendedBlock block=dfsClient.getNamenode().getBlockLocations(testFile,0,Long.MAX_VALUE).get(0).getBlock();
-    cluster.shutdown();
-    for (int i=0; i < 25; i++) {
-      buffer[i]='0';
-    }
-    int fileCount=0;
+    List<MaterializedReplica> replicas=new ArrayList<>();
     for (int dnIndex=0; dnIndex < 3; dnIndex++) {
-      File blockFile=cluster.getBlockFile(dnIndex,block);
-      LOG.info("Checking for file " + blockFile);
-      if (blockFile != null && blockFile.exists()) {
-        if (fileCount == 0) {
-          LOG.info("Deleting file " + blockFile);
-          assertTrue(blockFile.delete());
-        }
- else {
-          LOG.info("Corrupting file " + blockFile);
-          long len=blockFile.length();
-          assertTrue(len > 50);
-          RandomAccessFile blockOut=new RandomAccessFile(blockFile,"rw");
-          try {
-            blockOut.seek(len / 3);
-            blockOut.write(buffer,0,25);
-          }
-  finally {
-            blockOut.close();
-          }
-        }
-        fileCount++;
-      }
+      replicas.add(cluster.getMaterializedReplica(dnIndex,block));
     }
-    assertEquals(3,fileCount);
+    assertEquals(3,replicas.size());
+    cluster.shutdown();
+    int fileCount=0;
+    for (    MaterializedReplica replica : replicas) {
+      if (fileCount == 0) {
+        LOG.info("Deleting block " + replica);
+        replica.deleteData();
+      }
+ else {
+        LOG.info("Corrupting file " + replica);
+        replica.corruptData();
+      }
+      fileCount++;
+    }
     LOG.info("Restarting minicluster after deleting a replica and corrupting 2 crcs");
     conf=new HdfsConfiguration();
     conf.set(DFSConfigKeys.DFS_REPLICATION_KEY,Integer.toString(numDataNodes));
