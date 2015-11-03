@@ -5,8 +5,9 @@
   Path file=new Path("/testRecoveryFile");
   DistributedFileSystem dfs=cluster.getFileSystem();
   FSDataOutputStream out=dfs.create(file);
+  final int FILE_SIZE=2 * 1024 * 1024;
   int count=0;
-  while (count < 2 * 1024 * 1024) {
+  while (count < FILE_SIZE) {
     out.writeBytes("Data");
     count+=4;
   }
@@ -14,13 +15,11 @@
   ((DFSOutputStream)out.getWrappedStream()).abort();
   LocatedBlocks locations=cluster.getNameNodeRpc().getBlockLocations(file.toString(),0,count);
   ExtendedBlock block=locations.get(0).getBlock();
-  DataNode dn=cluster.getDataNodes().get(0);
-  BlockLocalPathInfo localPathInfo=dn.getBlockLocalPathInfo(block,null);
-  File metafile=new File(localPathInfo.getMetaPath());
-  assertTrue(metafile.exists());
-  RandomAccessFile raf=new RandomAccessFile(metafile,"rw");
-  raf.setLength(metafile.length() - 20);
-  raf.close();
+  final int CHECKSUM_SIZE=4;
+  final int bytesPerChecksum=conf.getInt(DFSConfigKeys.DFS_BYTES_PER_CHECKSUM_KEY,DFSConfigKeys.DFS_BYTES_PER_CHECKSUM_DEFAULT);
+  final int metaFileSize=(FILE_SIZE + bytesPerChecksum - 1) / bytesPerChecksum * CHECKSUM_SIZE + 8;
+  final int newMetaFileSize=metaFileSize - CHECKSUM_SIZE;
+  cluster.truncateMeta(0,block,newMetaFileSize);
   DataNodeProperties dnProp=cluster.stopDataNode(0);
   cluster.restartDataNode(dnProp,true);
   DistributedFileSystem newdfs=(DistributedFileSystem)FileSystem.newInstance(cluster.getConfiguration(0));
@@ -29,4 +28,7 @@
     Thread.sleep(1000);
   }
   assertTrue("File should be closed",newdfs.recoverLease(file));
+  final long expectedNewFileLen=FILE_SIZE - bytesPerChecksum;
+  final long newFileLen=newdfs.getFileStatus(file).getLen();
+  assertEquals(newFileLen,expectedNewFileLen);
 }
