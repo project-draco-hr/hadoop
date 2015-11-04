@@ -1,12 +1,16 @@
 {
-  String directoryName="metricsTestDirectory_ClientError";
-  Path directoryPath=new Path("/" + directoryName);
-  assertTrue(fs.mkdirs(directoryPath));
-  String leaseID=testAccount.acquireShortLease(directoryName);
+  String fileName="metricsTestFile_ClientError";
+  Path filePath=new Path("/" + fileName);
+  final int FILE_SIZE=100;
+  OutputStream outputStream=null;
+  String leaseID=null;
   try {
+    outputStream=fs.create(filePath);
+    leaseID=testAccount.acquireShortLease(fileName);
     try {
-      fs.delete(directoryPath,true);
-      assertTrue("Should've thrown.",false);
+      outputStream.write(new byte[FILE_SIZE]);
+      outputStream.close();
+      assertTrue("Should've thrown",false);
     }
  catch (    AzureException ex) {
       assertTrue("Unexpected exception: " + ex,ex.getMessage().contains("lease"));
@@ -15,6 +19,9 @@
     assertEquals(0,AzureMetricsTestUtil.getLongCounterValue(getInstrumentation(),WASB_SERVER_ERRORS));
   }
   finally {
-    testAccount.releaseLease(leaseID,directoryName);
+    if (leaseID != null) {
+      testAccount.releaseLease(leaseID,fileName);
+    }
+    IOUtils.closeStream(outputStream);
   }
 }
