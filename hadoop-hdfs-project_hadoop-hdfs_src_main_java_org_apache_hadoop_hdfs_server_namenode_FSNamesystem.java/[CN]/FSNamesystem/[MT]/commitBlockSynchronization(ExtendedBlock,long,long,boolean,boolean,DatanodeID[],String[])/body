@@ -1,7 +1,7 @@
 {
   LOG.info("commitBlockSynchronization(oldBlock=" + oldBlock + ", newgenerationstamp="+ newgenerationstamp+ ", newlength="+ newlength+ ", newtargets="+ Arrays.asList(newtargets)+ ", closeFile="+ closeFile+ ", deleteBlock="+ deleteblock+ ")");
   checkOperation(OperationCategory.WRITE);
-  String src="";
+  final String src;
   waitForLoadingFSImage();
   writeLock();
   boolean copyTruncate=false;
@@ -28,8 +28,9 @@
     }
     long bcId=storedBlock.getBlockCollectionId();
     INodeFile iFile=((INode)getBlockCollection(bcId)).asFile();
+    src=iFile.getFullPathName();
     if (isFileDeleted(iFile)) {
-      throw new FileNotFoundException("File not found: " + iFile.getFullPathName() + ", likely due to delayed block"+ " removal");
+      throw new FileNotFoundException("File not found: " + src + ", likely due to delayed block removal");
     }
     if ((!iFile.isUnderConstruction() || storedBlock.isComplete()) && iFile.getLastBlock().isComplete()) {
       if (LOG.isDebugEnabled()) {
@@ -82,7 +83,7 @@
           }
         }
       }
-      DatanodeStorageInfo[] trimmedStorageInfos=blockManager.getDatanodeManager().getDatanodeStorageInfos(trimmedTargets.toArray(new DatanodeID[trimmedTargets.size()]),trimmedStorages.toArray(new String[trimmedStorages.size()]));
+      DatanodeStorageInfo[] trimmedStorageInfos=blockManager.getDatanodeManager().getDatanodeStorageInfos(trimmedTargets.toArray(new DatanodeID[trimmedTargets.size()]),trimmedStorages.toArray(new String[trimmedStorages.size()]),"src=%s, oldBlock=%s, newgenerationstamp=%d, newlength=%d",src,oldBlock,newgenerationstamp,newlength);
       if (copyTruncate) {
         iFile.convertLastBlockToUC(truncatedBlock,trimmedStorageInfos);
       }
@@ -95,17 +96,16 @@
     }
     if (closeFile) {
       if (copyTruncate) {
-        src=closeFileCommitBlocks(iFile,truncatedBlock);
+        closeFileCommitBlocks(src,iFile,truncatedBlock);
         if (!iFile.isBlockInLatestSnapshot((BlockInfoContiguous)storedBlock)) {
           blockManager.removeBlock(storedBlock);
         }
       }
  else {
-        src=closeFileCommitBlocks(iFile,storedBlock);
+        closeFileCommitBlocks(src,iFile,storedBlock);
       }
     }
  else {
-      src=iFile.getFullPathName();
       FSDirWriteFileOp.persistBlocks(dir,src,iFile,false);
     }
   }
