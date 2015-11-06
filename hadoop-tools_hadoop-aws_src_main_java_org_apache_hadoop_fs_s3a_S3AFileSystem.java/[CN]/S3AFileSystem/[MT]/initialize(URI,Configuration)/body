@@ -89,17 +89,17 @@
     multiPartThreshold=5 * 1024 * 1024;
   }
   int maxThreads=conf.getInt(MAX_THREADS,DEFAULT_MAX_THREADS);
-  int coreThreads=conf.getInt(CORE_THREADS,DEFAULT_CORE_THREADS);
-  if (maxThreads == 0) {
-    maxThreads=Runtime.getRuntime().availableProcessors() * 8;
+  if (maxThreads < 2) {
+    LOG.warn(MAX_THREADS + " must be at least 2: forcing to 2.");
+    maxThreads=2;
   }
-  if (coreThreads == 0) {
-    coreThreads=Runtime.getRuntime().availableProcessors() * 8;
+  int totalTasks=conf.getInt(MAX_TOTAL_TASKS,DEFAULT_MAX_TOTAL_TASKS);
+  if (totalTasks < 1) {
+    LOG.warn(MAX_TOTAL_TASKS + "must be at least 1: forcing to 1.");
+    totalTasks=1;
   }
   long keepAliveTime=conf.getLong(KEEPALIVE_TIME,DEFAULT_KEEPALIVE_TIME);
-  LinkedBlockingQueue<Runnable> workQueue=new LinkedBlockingQueue<>(maxThreads * conf.getInt(MAX_TOTAL_TASKS,DEFAULT_MAX_TOTAL_TASKS));
-  threadPoolExecutor=new ThreadPoolExecutor(coreThreads,maxThreads,keepAliveTime,TimeUnit.SECONDS,workQueue,newDaemonThreadFactory("s3a-transfer-shared-"));
-  threadPoolExecutor.allowCoreThreadTimeOut(true);
+  threadPoolExecutor=new BlockingThreadPoolExecutorService(maxThreads,maxThreads + totalTasks,keepAliveTime,TimeUnit.SECONDS,"s3a-transfer-shared");
   TransferManagerConfiguration transferConfiguration=new TransferManagerConfiguration();
   transferConfiguration.setMinimumUploadPartSize(partSize);
   transferConfiguration.setMultipartUploadThreshold(multiPartThreshold);
