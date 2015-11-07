@@ -1,2 +1,25 @@
 {
+  int nrDatanodes=getNumDatanodes();
+  int nrBlocks=(int)Math.ceil((double)blocksPerReport * nrDatanodes / replication);
+  int nrFiles=(int)Math.ceil((double)nrBlocks / blocksPerFile);
+  datanodes=new TinyDatanode[nrDatanodes];
+  for (int idx=0; idx < nrDatanodes; idx++) {
+    datanodes[idx]=new TinyDatanode(idx,blocksPerReport);
+    datanodes[idx].register();
+    datanodes[idx].sendHeartbeat();
+  }
+  LOG.info("Creating " + nrFiles + " files with "+ blocksPerFile+ " blocks each.");
+  FileNameGenerator nameGenerator;
+  nameGenerator=new FileNameGenerator(getBaseDir(),100);
+  String clientName=getClientName(007);
+  clientProto.setSafeMode(HdfsConstants.SafeModeAction.SAFEMODE_LEAVE,false);
+  for (int idx=0; idx < nrFiles; idx++) {
+    String fileName=nameGenerator.getNextFileName("ThroughputBench");
+    clientProto.create(fileName,FsPermission.getDefault(),clientName,new EnumSetWritable<CreateFlag>(EnumSet.of(CreateFlag.CREATE,CreateFlag.OVERWRITE)),true,replication,BLOCK_SIZE,CryptoProtocolVersion.supported());
+    ExtendedBlock lastBlock=addBlocks(fileName,clientName);
+    clientProto.complete(fileName,clientName,lastBlock,HdfsConstants.GRANDFATHER_INODE_ID);
+  }
+  for (int idx=0; idx < nrDatanodes; idx++) {
+    datanodes[idx].formBlockReport();
+  }
 }
