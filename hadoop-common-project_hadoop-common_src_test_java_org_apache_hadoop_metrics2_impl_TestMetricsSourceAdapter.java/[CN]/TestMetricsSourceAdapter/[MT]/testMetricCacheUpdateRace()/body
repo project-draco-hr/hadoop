@@ -1,0 +1,22 @@
+{
+  TestMetricsSource source=new TestMetricsSource();
+  MetricsSourceBuilder sourceBuilder=MetricsAnnotations.newSourceBuilder(source);
+  final long JMX_CACHE_TTL=250;
+  List<MetricsTag> injectedTags=new ArrayList<>();
+  MetricsSourceAdapter sourceAdapter=new MetricsSourceAdapter("test","test","test JMX cache update race condition",sourceBuilder.build(),injectedTags,null,null,JMX_CACHE_TTL,false);
+  ScheduledExecutorService updaterExecutor=Executors.newScheduledThreadPool(1,new ThreadFactoryBuilder().build());
+  ScheduledExecutorService readerExecutor=Executors.newScheduledThreadPool(1,new ThreadFactoryBuilder().build());
+  final AtomicBoolean hasError=new AtomicBoolean(false);
+  SourceUpdater srcUpdater=new SourceUpdater(sourceAdapter,hasError);
+  ScheduledFuture<?> updaterFuture=updaterExecutor.scheduleAtFixedRate(srcUpdater,sourceAdapter.getJmxCacheTTL(),sourceAdapter.getJmxCacheTTL(),TimeUnit.MILLISECONDS);
+  srcUpdater.setFuture(updaterFuture);
+  SourceReader srcReader=new SourceReader(source,sourceAdapter,hasError);
+  ScheduledFuture<?> readerFuture=readerExecutor.scheduleAtFixedRate(srcReader,0,2 * sourceAdapter.getJmxCacheTTL(),TimeUnit.MILLISECONDS);
+  srcReader.setFuture(readerFuture);
+  Thread.sleep(RACE_TEST_RUNTIME);
+  assertFalse("Hit error",hasError.get());
+  updaterExecutor.shutdownNow();
+  readerExecutor.shutdownNow();
+  updaterExecutor.awaitTermination(1000,TimeUnit.MILLISECONDS);
+  readerExecutor.awaitTermination(1000,TimeUnit.MILLISECONDS);
+}
