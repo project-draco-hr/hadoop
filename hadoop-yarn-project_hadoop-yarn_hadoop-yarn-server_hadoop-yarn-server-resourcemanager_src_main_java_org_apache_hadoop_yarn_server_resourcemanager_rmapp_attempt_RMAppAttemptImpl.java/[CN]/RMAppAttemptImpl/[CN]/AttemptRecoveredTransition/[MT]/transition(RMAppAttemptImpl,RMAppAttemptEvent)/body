@@ -1,7 +1,7 @@
 {
+  RMApp rmApp=appAttempt.rmContext.getRMApps().get(appAttempt.getAppAttemptId().getApplicationId());
   if (appAttempt.recoveredFinalState != null) {
     appAttempt.progress=1.0f;
-    RMApp rmApp=appAttempt.rmContext.getRMApps().get(appAttempt.getAppAttemptId().getApplicationId());
     if (appAttempt.submissionContext.getKeepContainersAcrossApplicationAttempts() && !appAttempt.submissionContext.getUnmanagedAM() && rmApp.getCurrentAppAttempt() != appAttempt) {
       appAttempt.transferStateFromAttempt(rmApp.getCurrentAppAttempt());
     }
@@ -11,12 +11,25 @@
     }
     return appAttempt.recoveredFinalState;
   }
+ else   if (RMAppImpl.isAppInFinalState(rmApp)) {
+    RMAppState appState=((RMAppImpl)rmApp).getRecoveredFinalState();
+    LOG.warn(rmApp.getApplicationId() + " final state (" + appState+ ") was recorded, but "+ appAttempt.applicationAttemptId+ " final state ("+ appAttempt.recoveredFinalState+ ") was not recorded.");
+switch (appState) {
+case FINISHED:
+      return RMAppAttemptState.FINISHED;
+case FAILED:
+    return RMAppAttemptState.FAILED;
+case KILLED:
+  return RMAppAttemptState.KILLED;
+}
+return RMAppAttemptState.FAILED;
+}
  else {
-    if (appAttempt.rmContext.isWorkPreservingRecoveryEnabled()) {
-      appAttempt.masterService.registerAppAttempt(appAttempt.applicationAttemptId);
-      appAttempt.scheduler.handle(new AppAttemptAddedSchedulerEvent(appAttempt.getAppAttemptId(),false,true));
-    }
-    (new AMLaunchedTransition()).transition(appAttempt,event);
-    return RMAppAttemptState.LAUNCHED;
-  }
+if (appAttempt.rmContext.isWorkPreservingRecoveryEnabled()) {
+appAttempt.masterService.registerAppAttempt(appAttempt.applicationAttemptId);
+appAttempt.scheduler.handle(new AppAttemptAddedSchedulerEvent(appAttempt.getAppAttemptId(),false,true));
+}
+(new AMLaunchedTransition()).transition(appAttempt,event);
+return RMAppAttemptState.LAUNCHED;
+}
 }
