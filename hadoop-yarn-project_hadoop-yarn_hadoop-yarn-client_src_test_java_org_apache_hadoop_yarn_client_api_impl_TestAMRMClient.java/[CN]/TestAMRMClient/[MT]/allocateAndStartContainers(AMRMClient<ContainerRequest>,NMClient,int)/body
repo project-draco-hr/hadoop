@@ -1,0 +1,33 @@
+{
+  for (int i=0; i < num; ++i) {
+    amClient.addContainerRequest(new ContainerRequest(capability,nodes,racks,priority));
+  }
+  amClient.allocate(0.1f);
+  sleep(150);
+  AllocateResponse allocResponse=amClient.allocate(0.1f);
+  List<Container> containers=allocResponse.getAllocatedContainers();
+  Assert.assertEquals(num,containers.size());
+  Credentials ts=new Credentials();
+  DataOutputBuffer dob=new DataOutputBuffer();
+  ts.writeTokenStorageToStream(dob);
+  ByteBuffer securityTokens=ByteBuffer.wrap(dob.getData(),0,dob.getLength());
+  ContainerLaunchContext clc=BuilderUtils.newContainerLaunchContext(Collections.<String,LocalResource>emptyMap(),new HashMap<String,String>(),Arrays.asList("sleep","100"),new HashMap<String,ByteBuffer>(),securityTokens,new HashMap<ApplicationAccessType,String>());
+  try {
+    for (int i=0; i < num; i++) {
+      Container container=containers.get(i);
+      nmClient.startContainer(container,clc);
+      while (true) {
+        ContainerStatus status=nmClient.getContainerStatus(container.getId(),container.getNodeId());
+        if (status.getState() == ContainerState.RUNNING) {
+          break;
+        }
+        sleep(100);
+      }
+    }
+  }
+ catch (  YarnException e) {
+    throw new AssertionError("Exception is not expected: " + e);
+  }
+  sleep(200);
+  return containers;
+}

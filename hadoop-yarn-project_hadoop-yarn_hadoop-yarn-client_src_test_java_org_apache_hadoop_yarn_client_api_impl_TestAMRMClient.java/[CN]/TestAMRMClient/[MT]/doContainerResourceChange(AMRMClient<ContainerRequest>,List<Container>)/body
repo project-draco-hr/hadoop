@@ -1,0 +1,31 @@
+{
+  Assert.assertEquals(3,containers.size());
+  Container container1=containers.get(0);
+  Container container2=containers.get(1);
+  Container container3=containers.get(2);
+  AMRMClientImpl<ContainerRequest> amClientImpl=(AMRMClientImpl<ContainerRequest>)amClient;
+  Assert.assertEquals(0,amClientImpl.change.size());
+  amClientImpl.requestContainerResourceChange(container1,Resource.newInstance(2048,1));
+  amClientImpl.requestContainerResourceChange(container1,Resource.newInstance(4096,1));
+  Assert.assertEquals(Resource.newInstance(4096,1),amClientImpl.change.get(container1.getId()).getValue());
+  amClientImpl.requestContainerResourceChange(container1,Resource.newInstance(512,1));
+  Assert.assertEquals(Resource.newInstance(512,1),amClientImpl.change.get(container1.getId()).getValue());
+  amClientImpl.requestContainerResourceChange(container2,Resource.newInstance(2048,1));
+  Assert.assertEquals(Resource.newInstance(2048,1),amClientImpl.change.get(container2.getId()).getValue());
+  amClientImpl.requestContainerResourceChange(container3,Resource.newInstance(2048,1));
+  Assert.assertEquals(3,amClientImpl.pendingChange.size());
+  amClientImpl.releaseAssignedContainer(container3.getId());
+  Assert.assertEquals(2,amClientImpl.pendingChange.size());
+  AllocateResponse allocResponse=amClient.allocate(0.1f);
+  Assert.assertEquals(0,amClientImpl.change.size());
+  List<Container> decreasedContainers=allocResponse.getDecreasedContainers();
+  List<Container> increasedContainers=allocResponse.getIncreasedContainers();
+  Assert.assertEquals(1,decreasedContainers.size());
+  Assert.assertEquals(0,increasedContainers.size());
+  sleep(150);
+  allocResponse=amClient.allocate(0.1f);
+  decreasedContainers=allocResponse.getDecreasedContainers();
+  increasedContainers=allocResponse.getIncreasedContainers();
+  Assert.assertEquals(1,increasedContainers.size());
+  Assert.assertEquals(0,decreasedContainers.size());
+}
