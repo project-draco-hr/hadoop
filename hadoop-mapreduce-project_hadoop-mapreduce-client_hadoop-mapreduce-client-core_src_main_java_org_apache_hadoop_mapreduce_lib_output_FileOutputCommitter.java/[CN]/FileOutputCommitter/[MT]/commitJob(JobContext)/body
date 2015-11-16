@@ -1,34 +1,19 @@
 {
-  if (hasOutputPath()) {
-    Path finalOutput=getOutputPath();
-    FileSystem fs=finalOutput.getFileSystem(context.getConfiguration());
-    if (algorithmVersion == 1) {
-      for (      FileStatus stat : getAllCommittedTaskPaths(context)) {
-        mergePaths(fs,stat,finalOutput);
+  int maxAttemptsOnFailure=isCommitJobRepeatable(context) ? context.getConfiguration().getInt(FILEOUTPUTCOMMITTER_FAILURE_ATTEMPTS,FILEOUTPUTCOMMITTER_FAILURE_ATTEMPTS_DEFAULT) : 1;
+  int attempt=0;
+  boolean jobCommitNotFinished=true;
+  while (jobCommitNotFinished) {
+    try {
+      commitJobInternal(context);
+      jobCommitNotFinished=false;
+    }
+ catch (    Exception e) {
+      if (++attempt >= maxAttemptsOnFailure) {
+        throw e;
+      }
+ else {
+        LOG.warn("Exception get thrown in job commit, retry (" + attempt + ") time.",e);
       }
     }
-    if (skipCleanup) {
-      LOG.info("Skip cleanup the _temporary folders under job's output " + "directory in commitJob.");
-    }
- else {
-      try {
-        cleanupJob(context);
-      }
- catch (      IOException e) {
-        if (ignoreCleanupFailures) {
-          LOG.error("Error in cleanup job, manually cleanup is needed.",e);
-        }
- else {
-          throw e;
-        }
-      }
-    }
-    if (context.getConfiguration().getBoolean(SUCCESSFUL_JOB_OUTPUT_DIR_MARKER,true)) {
-      Path markerPath=new Path(outputPath,SUCCEEDED_FILE_NAME);
-      fs.create(markerPath).close();
-    }
-  }
- else {
-    LOG.warn("Output Path is null in commitJob()");
   }
 }

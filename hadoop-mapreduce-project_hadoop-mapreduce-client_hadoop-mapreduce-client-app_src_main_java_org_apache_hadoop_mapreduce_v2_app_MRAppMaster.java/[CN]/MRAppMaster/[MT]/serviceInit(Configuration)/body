@@ -17,6 +17,7 @@
     LOG.info("Using mapred newApiCommitter.");
   }
   boolean copyHistory=false;
+  committer=createOutputCommitter(conf);
   try {
     String user=UserGroupInformation.getCurrentUser().getShortUserName();
     Path stagingDir=MRApps.getStagingAreaDir(conf,user);
@@ -50,8 +51,14 @@
         forcedState=JobStateInternal.FAILED;
       }
  else {
-        shutDownMessage="Job commit from a prior MRAppMaster attempt is " + "potentially in progress. Preventing multiple commit executions";
-        forcedState=JobStateInternal.ERROR;
+        if (isCommitJobRepeatable()) {
+          errorHappenedShutDown=false;
+          cleanupInterruptedCommit(conf,fs,startCommitFile);
+        }
+ else {
+          shutDownMessage="Job commit from a prior MRAppMaster attempt is " + "potentially in progress. Preventing multiple commit executions";
+          forcedState=JobStateInternal.ERROR;
+        }
       }
     }
   }
@@ -82,7 +89,6 @@
     }
   }
  else {
-    committer=createOutputCommitter(conf);
     clientService=createClientService(context);
     clientService.init(conf);
     containerAllocator=createContainerAllocator(clientService,context);
