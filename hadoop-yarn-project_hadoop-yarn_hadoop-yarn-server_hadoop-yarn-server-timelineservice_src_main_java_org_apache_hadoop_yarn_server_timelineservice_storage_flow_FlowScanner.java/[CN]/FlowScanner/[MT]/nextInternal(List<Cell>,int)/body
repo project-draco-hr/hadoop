@@ -7,19 +7,27 @@
   SortedSet<Cell> currentColumnCells=new TreeSet<>(KeyValue.COMPARATOR);
   Set<String> alreadySeenAggDim=new HashSet<>();
   int addedCnt=0;
+  ValueConverter converter=null;
   while (((cell=peekAtNextCell(limit)) != null) && (limit <= 0 || addedCnt < limit)) {
     byte[] newColumnQualifier=CellUtil.cloneQualifier(cell);
     if (comp.compare(currentColumnQualifier,newColumnQualifier) != 0) {
-      addedCnt+=emitCells(cells,currentColumnCells,currentAggOp);
+      if (converter != null && isNumericConverter(converter)) {
+        addedCnt+=emitCells(cells,currentColumnCells,currentAggOp,(NumericValueConverter)converter);
+      }
       resetState(currentColumnCells,alreadySeenAggDim);
       currentColumnQualifier=newColumnQualifier;
       currentAggOp=getCurrentAggOp(cell);
+      converter=getValueConverter(newColumnQualifier);
     }
-    collectCells(currentColumnCells,currentAggOp,cell,alreadySeenAggDim);
+    if (!isNumericConverter(converter)) {
+      nextCell(limit);
+      continue;
+    }
+    collectCells(currentColumnCells,currentAggOp,cell,alreadySeenAggDim,(NumericValueConverter)converter);
     nextCell(limit);
   }
   if (!currentColumnCells.isEmpty()) {
-    emitCells(cells,currentColumnCells,currentAggOp);
+    emitCells(cells,currentColumnCells,currentAggOp,(NumericValueConverter)converter);
   }
   return hasMore();
 }
