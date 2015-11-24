@@ -1,25 +1,26 @@
 {
   ApplicationId applicationId=request.getApplicationId();
+  CallerContext callerContext=CallerContext.getCurrent();
   UserGroupInformation callerUGI;
   try {
     callerUGI=UserGroupInformation.getCurrentUser();
   }
  catch (  IOException ie) {
     LOG.info("Error getting UGI ",ie);
-    RMAuditLogger.logFailure("UNKNOWN",AuditConstants.KILL_APP_REQUEST,"UNKNOWN","ClientRMService","Error getting UGI",applicationId);
+    RMAuditLogger.logFailure("UNKNOWN",AuditConstants.KILL_APP_REQUEST,"UNKNOWN","ClientRMService","Error getting UGI",applicationId,callerContext);
     throw RPCUtil.getRemoteException(ie);
   }
   RMApp application=this.rmContext.getRMApps().get(applicationId);
   if (application == null) {
-    RMAuditLogger.logFailure(callerUGI.getUserName(),AuditConstants.KILL_APP_REQUEST,"UNKNOWN","ClientRMService","Trying to kill an absent application",applicationId);
+    RMAuditLogger.logFailure(callerUGI.getUserName(),AuditConstants.KILL_APP_REQUEST,"UNKNOWN","ClientRMService","Trying to kill an absent application",applicationId,callerContext);
     throw new ApplicationNotFoundException("Trying to kill an absent" + " application " + applicationId);
   }
   if (!checkAccess(callerUGI,application.getUser(),ApplicationAccessType.MODIFY_APP,application)) {
-    RMAuditLogger.logFailure(callerUGI.getShortUserName(),AuditConstants.KILL_APP_REQUEST,"User doesn't have permissions to " + ApplicationAccessType.MODIFY_APP.toString(),"ClientRMService",AuditConstants.UNAUTHORIZED_USER,applicationId);
+    RMAuditLogger.logFailure(callerUGI.getShortUserName(),AuditConstants.KILL_APP_REQUEST,"User doesn't have permissions to " + ApplicationAccessType.MODIFY_APP.toString(),"ClientRMService",AuditConstants.UNAUTHORIZED_USER,applicationId,callerContext);
     throw RPCUtil.getRemoteException(new AccessControlException("User " + callerUGI.getShortUserName() + " cannot perform operation "+ ApplicationAccessType.MODIFY_APP.name()+ " on "+ applicationId));
   }
   if (application.isAppFinalStateStored()) {
-    RMAuditLogger.logSuccess(callerUGI.getShortUserName(),AuditConstants.KILL_APP_REQUEST,"ClientRMService",applicationId);
+    RMAuditLogger.logSuccess(callerUGI.getShortUserName(),AuditConstants.KILL_APP_REQUEST,"ClientRMService",applicationId,callerContext);
     return KillApplicationResponse.newInstance(true);
   }
   this.rmContext.getDispatcher().getEventHandler().handle(new RMAppEvent(applicationId,RMAppEventType.KILL,"Application killed by user."));
