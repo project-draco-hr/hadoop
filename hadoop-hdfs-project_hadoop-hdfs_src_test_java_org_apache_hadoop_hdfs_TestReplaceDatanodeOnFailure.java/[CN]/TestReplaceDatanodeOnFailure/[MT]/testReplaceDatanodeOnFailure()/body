@@ -1,23 +1,32 @@
 {
   final Configuration conf=new HdfsConfiguration();
+  conf.setBoolean(DFSConfigKeys.DFS_NAMENODE_REPLICATION_CONSIDERLOAD_KEY,false);
   ReplaceDatanodeOnFailure.write(Policy.ALWAYS,true,conf);
   final String[] racks=new String[REPLICATION];
   Arrays.fill(racks,RACK0);
   final MiniDFSCluster cluster=new MiniDFSCluster.Builder(conf).racks(racks).numDataNodes(REPLICATION).build();
   try {
+    cluster.waitActive();
     final DistributedFileSystem fs=cluster.getFileSystem();
     final Path dir=new Path(DIR);
-    final SlowWriter[] slowwriters=new SlowWriter[10];
+    final int NUM_WRITERS=10;
+    final int FIRST_BATCH=5;
+    final SlowWriter[] slowwriters=new SlowWriter[NUM_WRITERS];
     for (int i=1; i <= slowwriters.length; i++) {
       slowwriters[i - 1]=new SlowWriter(fs,new Path(dir,"file" + i),i * 200L);
     }
-    for (    SlowWriter s : slowwriters) {
-      s.start();
+    for (int i=0; i < FIRST_BATCH; i++) {
+      slowwriters[i].start();
     }
-    sleepSeconds(1);
+    sleepSeconds(3);
     cluster.startDataNodes(conf,2,true,null,new String[]{RACK1,RACK1});
-    cluster.stopDataNode(AppendTestUtil.nextInt(REPLICATION));
-    sleepSeconds(5);
+    cluster.waitActive();
+    cluster.waitFirstBRCompleted(0,10000);
+    MiniDFSCluster.DataNodeProperties dnprop=cluster.stopDataNode(AppendTestUtil.nextInt(REPLICATION));
+    for (int i=FIRST_BATCH; i < slowwriters.length; i++) {
+      slowwriters[i].start();
+    }
+    waitForBlockReplication(slowwriters);
     for (    SlowWriter s : slowwriters) {
       s.checkReplication();
       s.interruptRunning();
