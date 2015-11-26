@@ -1,35 +1,20 @@
 {
   handleOpts(args);
-  String remoteAppLogDir=remoteLogDir + File.separator + user+ File.separator+ suffix+ File.separator+ appId;
-  Configuration haConf=new Configuration(getConf());
-  haConf.set("mapreduce.framework.name","local");
-  HadoopArchives ha=new HadoopArchives(haConf);
-  String[] haArgs={"-archiveName",appId + ".har","-p",remoteAppLogDir,"*",workingDir};
-  StringBuilder sb=new StringBuilder("Executing 'hadoop archives'");
-  for (  String haArg : haArgs) {
-    sb.append("\n\t").append(haArg);
+  Integer exitCode=1;
+  UserGroupInformation loginUser=UserGroupInformation.getLoginUser();
+  if (!proxy || loginUser.getShortUserName().equals(user)) {
+    LOG.info("Running as " + user);
+    exitCode=runInternal();
   }
-  LOG.info(sb.toString());
-  ha.run(haArgs);
-  FileSystem fs=null;
-  try {
-    fs=FileSystem.get(conf);
-    LOG.info("Moving har to original location");
-    fs.rename(new Path(workingDir,appId + ".har"),new Path(remoteAppLogDir,appId + ".har"));
-    LOG.info("Deleting original logs");
-    for (    FileStatus original : fs.listStatus(new Path(remoteAppLogDir),new PathFilter(){
-      @Override public boolean accept(      Path path){
-        return !path.getName().endsWith(".har");
+ else {
+    LOG.info("Running as " + loginUser.getShortUserName() + " but will "+ "impersonate "+ user);
+    UserGroupInformation proxyUser=UserGroupInformation.createProxyUser(user,loginUser);
+    exitCode=proxyUser.doAs(new PrivilegedExceptionAction<Integer>(){
+      @Override public Integer run() throws Exception {
+        return runInternal();
       }
     }
-)) {
-      fs.delete(original.getPath(),false);
-    }
+);
   }
-  finally {
-    if (fs != null) {
-      fs.close();
-    }
-  }
-  return 0;
+  return exitCode;
 }

@@ -1,0 +1,35 @@
+{
+  String remoteAppLogDir=remoteLogDir + File.separator + user+ File.separator+ suffix+ File.separator+ appId;
+  conf.set("mapreduce.framework.name","local");
+  conf.set("fs.permissions.umask-mode","027");
+  HadoopArchives ha=new HadoopArchives(conf);
+  String[] haArgs={"-archiveName",appId + ".har","-p",remoteAppLogDir,"*",workingDir};
+  StringBuilder sb=new StringBuilder("Executing 'hadoop archives'");
+  for (  String haArg : haArgs) {
+    sb.append("\n\t").append(haArg);
+  }
+  LOG.info(sb.toString());
+  ha.run(haArgs);
+  FileSystem fs=null;
+  try {
+    fs=FileSystem.get(conf);
+    Path harDest=new Path(remoteAppLogDir,appId + ".har");
+    LOG.info("Moving har to original location");
+    fs.rename(new Path(workingDir,appId + ".har"),harDest);
+    LOG.info("Deleting original logs");
+    for (    FileStatus original : fs.listStatus(new Path(remoteAppLogDir),new PathFilter(){
+      @Override public boolean accept(      Path path){
+        return !path.getName().endsWith(".har");
+      }
+    }
+)) {
+      fs.delete(original.getPath(),false);
+    }
+  }
+  finally {
+    if (fs != null) {
+      fs.close();
+    }
+  }
+  return 0;
+}
