@@ -1,0 +1,23 @@
+{
+  WebResource r=resource();
+  MockNM nm1=rm.registerNode("h1:1234",5120);
+  rm.sendNodeStarted(nm1);
+  rm.NMwaitForState(nm1.getNodeId(),NodeState.RUNNING);
+  RMNodeImpl node=(RMNodeImpl)rm.getRMContext().getRMNodes().get(nm1.getNodeId());
+  NodeHealthStatus nodeHealth=NodeHealthStatus.newInstance(true,"test health report",System.currentTimeMillis());
+  ResourceUtilization nodeResource=ResourceUtilization.newInstance(4096,0,(float)10.5);
+  ResourceUtilization containerResource=ResourceUtilization.newInstance(2048,0,(float)5.05);
+  NodeStatus nodeStatus=NodeStatus.newInstance(nm1.getNodeId(),0,new ArrayList<ContainerStatus>(),null,nodeHealth,containerResource,nodeResource,null);
+  node.handle(new RMNodeStatusEvent(nm1.getNodeId(),nodeStatus,null));
+  rm.NMwaitForState(nm1.getNodeId(),NodeState.RUNNING);
+  ClientResponse response=r.path("ws").path("v1").path("cluster").path("nodes").accept(MediaType.APPLICATION_JSON).get(ClientResponse.class);
+  assertEquals(MediaType.APPLICATION_JSON_TYPE,response.getType());
+  JSONObject json=response.getEntity(JSONObject.class);
+  assertEquals("incorrect number of elements",1,json.length());
+  JSONObject nodes=json.getJSONObject("nodes");
+  assertEquals("incorrect number of elements",1,nodes.length());
+  JSONArray nodeArray=nodes.getJSONArray("node");
+  assertEquals("incorrect number of elements",1,nodeArray.length());
+  JSONObject info=nodeArray.getJSONObject(0);
+  verifyNodeInfo(info,nm1);
+}
