@@ -1,23 +1,10 @@
 {
   Path mirrorPath=new Path(fsWorkingPath,MIRROR_FILENAME);
   Path oldMirrorPath=new Path(fsWorkingPath,MIRROR_FILENAME + ".old");
-  FSDataInputStream is=null;
-  if (fs.exists(mirrorPath)) {
-    is=fs.open(mirrorPath);
-  }
- else   if (fs.exists(oldMirrorPath)) {
-    is=fs.open(oldMirrorPath);
-  }
-  if (null != is) {
-    List<NodeLabel> labels=new AddToClusterNodeLabelsRequestPBImpl(AddToClusterNodeLabelsRequestProto.parseDelimitedFrom(is)).getNodeLabels();
-    Map<NodeId,Set<String>> nodeToLabels=new ReplaceLabelsOnNodeRequestPBImpl(ReplaceLabelsOnNodeRequestProto.parseDelimitedFrom(is)).getNodeToLabels();
-    mgr.addToCluserNodeLabels(labels);
-    mgr.replaceLabelsOnNode(nodeToLabels);
-    is.close();
-  }
+  loadFromMirror(mirrorPath,oldMirrorPath);
   editLogPath=new Path(fsWorkingPath,EDITLOG_FILENAME);
   if (fs.exists(editLogPath)) {
-    is=fs.open(editLogPath);
+    FSDataInputStream is=fs.open(editLogPath);
     while (true) {
       try {
         SerializedLogType type=SerializedLogType.values()[is.readInt()];
@@ -37,7 +24,7 @@ case REMOVE_LABELS:
 case NODE_TO_LABELS:
 {
         Map<NodeId,Set<String>> map=new ReplaceLabelsOnNodeRequestPBImpl(ReplaceLabelsOnNodeRequestProto.parseDelimitedFrom(is)).getNodeToLabels();
-        if (!ignoreNodeToLabelsMappings) {
+        if (mgr.isCentralizedConfiguration()) {
           mgr.replaceLabelsOnNode(map);
         }
         break;
