@@ -1,0 +1,28 @@
+{
+  ReentrantReadWriteLock.ReadLock readLock=mgr.readLock;
+  try {
+    readLock.lock();
+    List<NodeLabel> nodeLabels=mgr.getClusterNodeLabels();
+    Map<NodeId,Set<String>> nodeToLabels=mgr.getNodeLabels();
+    Path newTmpPath=new Path(fsWorkingPath,MIRROR_FILENAME + ".new.tmp");
+    FSDataOutputStream os=fs.create(newTmpPath,true);
+    ((AddToClusterNodeLabelsRequestPBImpl)AddToClusterNodeLabelsRequest.newInstance(nodeLabels)).getProto().writeDelimitedTo(os);
+    if (mgr.isCentralizedConfiguration()) {
+      ((ReplaceLabelsOnNodeRequestPBImpl)ReplaceLabelsOnNodeRequest.newInstance(nodeToLabels)).getProto().writeDelimitedTo(os);
+    }
+    os.close();
+    Path newPath=new Path(fsWorkingPath,MIRROR_FILENAME + ".new");
+    if (fs.exists(newPath)) {
+      fs.delete(newPath,false);
+    }
+    fs.rename(newTmpPath,newPath);
+    Path mirrorPath=new Path(fsWorkingPath,MIRROR_FILENAME);
+    if (fs.exists(mirrorPath)) {
+      fs.delete(mirrorPath,false);
+    }
+    fs.rename(newPath,mirrorPath);
+  }
+  finally {
+    readLock.unlock();
+  }
+}
