@@ -3,14 +3,16 @@
   if (!path.isAbsolute())   path=new Path(fs.getWorkingDirectory(),path);
   if (!fs.exists(path))   throw new FileNotFoundException(path.toString());
   String qpath=fs.makeQualified(path).toString();
-  if (qpath.startsWith(trash.toString())) {
+  Path trashRoot=fs.getTrashRoot(path);
+  Path trashCurrent=new Path(trashRoot,CURRENT);
+  if (qpath.startsWith(trashRoot.toString())) {
     return false;
   }
-  if (trash.getParent().toString().startsWith(qpath)) {
+  if (trashRoot.getParent().toString().startsWith(qpath)) {
     throw new IOException("Cannot move \"" + path + "\" to the trash, as it contains the trash");
   }
-  Path trashPath=makeTrashRelativePath(current,path);
-  Path baseTrashPath=makeTrashRelativePath(current,path.getParent());
+  Path trashPath=makeTrashRelativePath(trashCurrent,path);
+  Path baseTrashPath=makeTrashRelativePath(trashCurrent,path.getParent());
   IOException cause=null;
   for (int i=0; i < 2; i++) {
     try {
@@ -29,7 +31,10 @@
       while (fs.exists(trashPath)) {
         trashPath=new Path(orig + Time.now());
       }
-      if (fs.rename(path,trashPath))       return true;
+      if (fs.rename(path,trashPath)) {
+        LOG.info("Moved: '" + path + "' to trash at: "+ trashPath);
+        return true;
+      }
     }
  catch (    IOException e) {
       cause=e;
