@@ -15,10 +15,7 @@
     Assert.fail(e.getMessage());
   }
   doAssertions(plan,rAllocation);
-  for (int i=0; i < alloc1.length; i++) {
-    Assert.assertEquals(Resource.newInstance(1024 * (alloc1[i]),(alloc1[i])),plan.getTotalCommittedResources(start + i));
-    Assert.assertEquals(Resource.newInstance(1024 * (alloc1[i]),(alloc1[i])),plan.getConsumptionForUser(user,start + i));
-  }
+  checkAllocation(plan,alloc1,start);
   ReservationId reservationID2=ReservationSystemTestUtil.getNewReservationId();
   int[] alloc2={0,5,10,5,0};
   Map<ReservationInterval,ReservationRequest> allocations2=generateAllocation(start,alloc2,true);
@@ -33,9 +30,10 @@
     Assert.fail(e.getMessage());
   }
   Assert.assertNotNull(plan.getReservationById(reservationID2));
+  RLESparseResourceAllocation userCons=plan.getConsumptionForUserOverTime(user,start,start + alloc2.length);
   for (int i=0; i < alloc2.length; i++) {
     Assert.assertEquals(Resource.newInstance(1024 * (alloc1[i] + alloc2[i] + i),alloc1[i] + alloc2[i] + i),plan.getTotalCommittedResources(start + i));
-    Assert.assertEquals(Resource.newInstance(1024 * (alloc1[i] + alloc2[i] + i),alloc1[i] + alloc2[i] + i),plan.getConsumptionForUser(user,start + i));
+    Assert.assertEquals(Resource.newInstance(1024 * (alloc1[i] + alloc2[i] + i),alloc1[i] + alloc2[i] + i),userCons.getCapacityAtTime(start + i));
   }
   when(clock.getTime()).thenReturn(106L);
   when(policy.getValidWindow()).thenReturn(1L);
@@ -47,10 +45,7 @@
   }
   Assert.assertNotNull(plan.getReservationById(reservationID1));
   Assert.assertNull(plan.getReservationById(reservationID2));
-  for (int i=0; i < alloc1.length; i++) {
-    Assert.assertEquals(Resource.newInstance(1024 * (alloc1[i]),(alloc1[i])),plan.getTotalCommittedResources(start + i));
-    Assert.assertEquals(Resource.newInstance(1024 * (alloc1[i]),(alloc1[i])),plan.getConsumptionForUser(user,start + i));
-  }
+  checkAllocation(plan,alloc1,start);
   when(clock.getTime()).thenReturn(107L);
   try {
     plan.archiveCompletedReservations(clock.getTime());
@@ -58,9 +53,10 @@
  catch (  PlanningException e) {
     Assert.fail(e.getMessage());
   }
+  userCons=plan.getConsumptionForUserOverTime(user,start,start + alloc1.length);
   Assert.assertNull(plan.getReservationById(reservationID1));
   for (int i=0; i < alloc1.length; i++) {
     Assert.assertEquals(Resource.newInstance(0,0),plan.getTotalCommittedResources(start + i));
-    Assert.assertEquals(Resource.newInstance(0,0),plan.getConsumptionForUser(user,start + i));
+    Assert.assertEquals(Resource.newInstance(0,0),userCons.getCapacityAtTime(start + i));
   }
 }

@@ -1,0 +1,50 @@
+{
+  initialize(plan,reservation);
+  ReservationAllocation oldReservation=plan.getReservationById(reservationId);
+  if (oldReservation != null) {
+    ignoreOldAllocation(oldReservation);
+  }
+  RLESparseResourceAllocation allocations=new RLESparseResourceAllocation(plan.getResourceCalculator());
+  ListIterator<ReservationRequest> li=reservation.getReservationRequests().getReservationResources().listIterator(reservation.getReservationRequests().getReservationResources().size());
+  ReservationRequest currentReservationStage;
+  int index=reservation.getReservationRequests().getReservationResources().size();
+  long stageDeadline=stepRoundDown(reservation.getDeadline(),step);
+  long successorStartingTime=-1;
+  while (li.hasPrevious()) {
+    currentReservationStage=li.previous();
+    index-=1;
+    validateInputStage(plan,currentReservationStage);
+    long stageArrivalTime=reservation.getArrival();
+    if (jobType == ReservationRequestInterpreter.R_ORDER || jobType == ReservationRequestInterpreter.R_ORDER_NO_GAP) {
+      stageArrivalTime=computeEarliestStartingTime(plan,reservation,index,currentReservationStage,stageDeadline);
+    }
+    stageArrivalTime=stepRoundUp(stageArrivalTime,step);
+    stageArrivalTime=Math.max(stageArrivalTime,reservation.getArrival());
+    Map<ReservationInterval,Resource> curAlloc=computeStageAllocation(plan,currentReservationStage,stageArrivalTime,stageDeadline,user,reservationId);
+    if (curAlloc == null) {
+      if (jobType == ReservationRequestInterpreter.R_ANY) {
+        continue;
+      }
+      return null;
+    }
+    Long stageStartTime=findEarliestTime(curAlloc);
+    Long stageEndTime=findLatestTime(curAlloc);
+    for (    Entry<ReservationInterval,Resource> entry : curAlloc.entrySet()) {
+      allocations.addInterval(entry.getKey(),entry.getValue());
+    }
+    if (jobType == ReservationRequestInterpreter.R_ANY) {
+      break;
+    }
+    if (jobType == ReservationRequestInterpreter.R_ORDER || jobType == ReservationRequestInterpreter.R_ORDER_NO_GAP) {
+      if (jobType == ReservationRequestInterpreter.R_ORDER_NO_GAP && successorStartingTime != -1 && successorStartingTime > stageEndTime) {
+        return null;
+      }
+      successorStartingTime=stageStartTime;
+      stageDeadline=stageStartTime;
+    }
+  }
+  if (allocations.isEmpty()) {
+    return null;
+  }
+  return allocations;
+}
