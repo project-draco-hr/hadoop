@@ -2,7 +2,13 @@
   conf.setInt(YarnConfiguration.RM_AM_MAX_ATTEMPTS,1);
   MemoryRMStateStore memStore=new MemoryRMStateStore();
   memStore.init(conf);
-  MockRM rm1=createMockRM(conf,memStore);
+  MockRM rm1=new MockRM(conf,memStore){
+    @Override protected SystemMetricsPublisher createSystemMetricsPublisher(){
+      return spy(super.createSystemMetricsPublisher());
+    }
+  }
+;
+  rms.add(rm1);
   rm1.start();
   MockNM nm1=new MockNM("127.0.0.1:1234",15120,rm1.getResourceTrackerService());
   nm1.registerNode();
@@ -19,14 +25,19 @@
   rm1.killApp(app2.getApplicationId());
   rm1.waitForState(app2.getApplicationId(),RMAppState.KILLED);
   rm1.waitForState(am2.getApplicationAttemptId(),RMAppAttemptState.KILLED);
+  verify(rm1.getRMContext().getSystemMetricsPublisher(),Mockito.times(3)).appCreated(any(RMApp.class),anyLong());
   MockRM rm2=new MockRM(conf,memStore){
     @Override protected RMAppManager createRMAppManager(){
       return spy(super.createRMAppManager());
+    }
+    @Override protected SystemMetricsPublisher createSystemMetricsPublisher(){
+      return spy(super.createSystemMetricsPublisher());
     }
   }
 ;
   rms.add(rm2);
   rm2.start();
+  verify(rm2.getRMContext().getSystemMetricsPublisher(),Mockito.times(3)).appCreated(any(RMApp.class),anyLong());
   GetApplicationsRequest request1=GetApplicationsRequest.newInstance(EnumSet.of(YarnApplicationState.FINISHED,YarnApplicationState.KILLED,YarnApplicationState.FAILED));
   GetApplicationsResponse response1=rm2.getClientRMService().getApplications(request1);
   List<ApplicationReport> appList1=response1.getApplicationList();
