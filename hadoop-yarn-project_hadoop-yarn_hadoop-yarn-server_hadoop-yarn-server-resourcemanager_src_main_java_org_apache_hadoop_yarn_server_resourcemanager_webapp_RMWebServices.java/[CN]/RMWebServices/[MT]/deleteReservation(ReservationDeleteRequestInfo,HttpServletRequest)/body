@@ -1,0 +1,30 @@
+{
+  init();
+  UserGroupInformation callerUGI=getCallerUserGroupInformation(hsr,true);
+  if (callerUGI == null) {
+    throw new AuthorizationException("Unable to obtain user name, " + "user not authenticated");
+  }
+  if (UserGroupInformation.isSecurityEnabled() && isStaticUser(callerUGI)) {
+    String msg="The default static user cannot carry out this operation.";
+    return Response.status(Status.FORBIDDEN).entity(msg).build();
+  }
+  final ReservationDeleteRequest reservation=createReservationDeleteRequest(resContext);
+  ReservationDeleteResponseInfo resRespInfo;
+  try {
+    resRespInfo=callerUGI.doAs(new PrivilegedExceptionAction<ReservationDeleteResponseInfo>(){
+      @Override public ReservationDeleteResponseInfo run() throws IOException, YarnException {
+        rm.getClientRMService().deleteReservation(reservation);
+        return new ReservationDeleteResponseInfo();
+      }
+    }
+);
+  }
+ catch (  UndeclaredThrowableException ue) {
+    if (ue.getCause() instanceof YarnException) {
+      throw new BadRequestException(ue.getCause().getMessage());
+    }
+    LOG.info("Update reservation request failed",ue);
+    throw ue;
+  }
+  return Response.status(Status.OK).entity(resRespInfo).build();
+}
