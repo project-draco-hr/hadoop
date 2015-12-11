@@ -55,7 +55,7 @@
               LOG.debug("Node's resource is updated to " + newResource.toString());
             }
           }
-          if (YarnConfiguration.systemMetricsPublisherEnabled(context.getConf())) {
+          if (YarnConfiguration.timelineServiceV2Enabled(context.getConf())) {
             updateTimelineClientsAddress(response);
           }
         }
@@ -93,17 +93,25 @@ synchronized (heartbeatMonitor) {
       return false;
     }
     private void updateTimelineClientsAddress(    NodeHeartbeatResponse response){
-      Set<Map.Entry<ApplicationId,String>> rmKnownCollectors=response.getAppCollectorsMap().entrySet();
-      for (      Map.Entry<ApplicationId,String> entry : rmKnownCollectors) {
-        ApplicationId appId=entry.getKey();
-        String collectorAddr=entry.getValue();
-        Application application=context.getApplications().get(appId);
-        if (application != null && !context.getRegisteredCollectors().containsKey(appId)) {
-          if (LOG.isDebugEnabled()) {
-            LOG.debug("Sync a new collector address: " + collectorAddr + " for application: "+ appId+ " from RM.");
+      Map<ApplicationId,String> knownCollectorsMap=response.getAppCollectorsMap();
+      if (knownCollectorsMap == null) {
+        LOG.warn("the collectors map is null");
+      }
+ else {
+        Set<Map.Entry<ApplicationId,String>> rmKnownCollectors=knownCollectorsMap.entrySet();
+        for (        Map.Entry<ApplicationId,String> entry : rmKnownCollectors) {
+          ApplicationId appId=entry.getKey();
+          String collectorAddr=entry.getValue();
+          Application application=context.getApplications().get(appId);
+          if (application != null && !context.getRegisteredCollectors().containsKey(appId)) {
+            if (LOG.isDebugEnabled()) {
+              LOG.debug("Sync a new collector address: " + collectorAddr + " for application: "+ appId+ " from RM.");
+            }
+            TimelineClient client=application.getTimelineClient();
+            if (client != null) {
+              client.setTimelineServiceAddress(collectorAddr);
+            }
           }
-          TimelineClient client=application.getTimelineClient();
-          client.setTimelineServiceAddress(collectorAddr);
         }
       }
     }
