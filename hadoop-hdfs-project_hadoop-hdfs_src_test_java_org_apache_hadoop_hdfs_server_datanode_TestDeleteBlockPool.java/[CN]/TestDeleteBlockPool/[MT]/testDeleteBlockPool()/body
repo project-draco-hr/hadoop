@@ -13,10 +13,6 @@
     DataNode dn2=cluster.getDataNodes().get(1);
     String bpid1=cluster.getNamesystem(0).getBlockPoolId();
     String bpid2=cluster.getNamesystem(1).getBlockPoolId();
-    File dn1StorageDir1=cluster.getInstanceStorageDir(0,0);
-    File dn1StorageDir2=cluster.getInstanceStorageDir(0,1);
-    File dn2StorageDir1=cluster.getInstanceStorageDir(1,0);
-    File dn2StorageDir2=cluster.getInstanceStorageDir(1,1);
     try {
       dn1.deleteBlockPool(bpid1,true);
       fail("Must not delete a running block pool");
@@ -33,15 +29,11 @@
     }
  catch (    IOException expected) {
     }
-    verifyBlockPoolDirectories(true,dn1StorageDir1,bpid1);
-    verifyBlockPoolDirectories(true,dn1StorageDir2,bpid1);
+    cluster.getFsDatasetTestUtils(0).verifyBlockPoolExists(bpid1);
     dn1.deleteBlockPool(bpid1,true);
-    verifyBlockPoolDirectories(false,dn1StorageDir1,bpid1);
-    verifyBlockPoolDirectories(false,dn1StorageDir2,bpid1);
+    cluster.getFsDatasetTestUtils(0).verifyBlockPoolMissing(bpid1);
     fs1.delete(new Path("/alpha"),true);
-    File finalDir1=MiniDFSCluster.getFinalizedDir(dn2StorageDir1,bpid1);
-    File finalDir2=MiniDFSCluster.getFinalizedDir(dn2StorageDir1,bpid2);
-    while ((!DatanodeUtil.dirNoFilesRecursive(finalDir1)) || (!DatanodeUtil.dirNoFilesRecursive(finalDir2))) {
+    while (cluster.getFsDatasetTestUtils(1).getStoredReplicas(bpid1).hasNext()) {
       try {
         Thread.sleep(3000);
       }
@@ -57,15 +49,11 @@
     }
     dn2.refreshNamenodes(nn1Conf);
     assertEquals(1,dn2.getAllBpOs().size());
-    verifyBlockPoolDirectories(true,dn2StorageDir1,bpid1);
-    verifyBlockPoolDirectories(true,dn2StorageDir2,bpid1);
+    cluster.getFsDatasetTestUtils(1).verifyBlockPoolExists(bpid1);
     dn2.deleteBlockPool(bpid1,false);
-    verifyBlockPoolDirectories(false,dn2StorageDir1,bpid1);
-    verifyBlockPoolDirectories(false,dn2StorageDir2,bpid1);
-    verifyBlockPoolDirectories(true,dn1StorageDir1,bpid2);
-    verifyBlockPoolDirectories(true,dn1StorageDir2,bpid2);
-    verifyBlockPoolDirectories(true,dn2StorageDir1,bpid2);
-    verifyBlockPoolDirectories(true,dn2StorageDir2,bpid2);
+    cluster.getFsDatasetTestUtils(1).verifyBlockPoolMissing(bpid1);
+    cluster.getFsDatasetTestUtils(0).verifyBlockPoolExists(bpid2);
+    cluster.getFsDatasetTestUtils(1).verifyBlockPoolExists(bpid2);
     Path gammaFile=new Path("/gamma");
     DFSTestUtil.createFile(fs2,gammaFile,1024,(short)1,55);
     fs2.setReplication(gammaFile,(short)2);
