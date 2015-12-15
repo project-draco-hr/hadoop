@@ -7,6 +7,10 @@
   if (cache.size() > maxSize) {
     Iterator<JobId> keys=cache.navigableKeySet().iterator();
     long cutoff=System.currentTimeMillis() - maxAge;
+    JobId firstInIntermediateKey=null;
+    int inIntermediateCount=0;
+    JobId firstMoveFailedKey=null;
+    int moveFailedCount=0;
     while (cache.size() > maxSize && keys.hasNext()) {
       JobId key=keys.next();
       HistoryFileInfo firstValue=cache.get(key);
@@ -23,7 +27,18 @@ synchronized (firstValue) {
               }
             }
  else {
-              LOG.warn("Waiting to remove " + key + " from JobListCache because it is not in done yet.");
+              if (firstValue.didMoveFail()) {
+                if (moveFailedCount == 0) {
+                  firstMoveFailedKey=key;
+                }
+                moveFailedCount+=1;
+              }
+ else {
+                if (inIntermediateCount == 0) {
+                  firstInIntermediateKey=key;
+                }
+                inIntermediateCount+=1;
+              }
             }
           }
  else {
@@ -31,6 +46,12 @@ synchronized (firstValue) {
           }
         }
       }
+    }
+    if (inIntermediateCount > 0) {
+      LOG.warn("Waiting to remove IN_INTERMEDIATE state histories " + "(e.g. " + firstInIntermediateKey + ") from JobListCache "+ "because it is not in done yet. Total count is "+ inIntermediateCount+ ".");
+    }
+    if (moveFailedCount > 0) {
+      LOG.warn("Waiting to remove MOVE_FAILED state histories " + "(e.g. " + firstMoveFailedKey + ") from JobListCache "+ "because it is not in done yet. Total count is "+ moveFailedCount+ ".");
     }
   }
   return old;
