@@ -1,0 +1,26 @@
+{
+  final FSDataOutputStream out=dfs.create(p);
+  final DFSStripedOutputStream stripedOut=(DFSStripedOutputStream)out.getWrappedStream();
+  int length=(STRIPES_PER_BLOCK - 1) * STRIPE_SIZE;
+  int[] posToKill=getPosToKill(blockLengths);
+  int checkingPos=nextCheckingPos(posToKill,0);
+  try {
+    for (int pos=0; pos < length; pos++) {
+      out.write(StripedFileTestUtil.getByte(pos));
+      if (pos == checkingPos) {
+        for (        int index : getIndexToStop(posToKill,pos)) {
+          out.flush();
+          stripedOut.enqueueAllCurrentPackets();
+          StripedDataStreamer s=stripedOut.getStripedDataStreamer(index);
+          waitStreamerAllAcked(s);
+          waitByteSent(s,blockLengths[index]);
+          stopBlockStream(s);
+        }
+        checkingPos=nextCheckingPos(posToKill,pos);
+      }
+    }
+  }
+  finally {
+    DFSTestUtil.abortStream(stripedOut);
+  }
+}
