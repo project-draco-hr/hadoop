@@ -1,0 +1,38 @@
+{
+  FSDataInputStream in=fs.open(fn);
+  in.read();
+  final WebHdfsInputStream webIn=(WebHdfsInputStream)(in.getWrappedStream());
+  final InputStream spyInputStream=spy(webIn.getReadRunner().getInputStream());
+  doThrow(ex).when(spyInputStream).read((byte[])any(),anyInt(),anyInt());
+  final WebHdfsFileSystem.ReadRunner rr=spy(webIn.getReadRunner());
+  doReturn(spyInputStream).when(rr).initializeInputStream((HttpURLConnection)any());
+  rr.setInputStream(spyInputStream);
+  webIn.setReadRunner(rr);
+  final RetryAction retryAction=new RetryAction(RetryDecision.RETRY);
+  final RetryAction failAction=new RetryAction(RetryDecision.FAIL);
+  RetryPolicy rp=new RetryPolicy(){
+    @Override public RetryAction shouldRetry(    Exception e,    int retries,    int failovers,    boolean isIdempotentOrAtMostOnce) throws Exception {
+      attemptedRetry=true;
+      if (retries > 3) {
+        return failAction;
+      }
+ else {
+        return retryAction;
+      }
+    }
+  }
+;
+  fs.setRetryPolicy(rp);
+  attemptedRetry=false;
+  try {
+    webIn.read();
+    fail(msg + ": Read should have thrown exception.");
+  }
+ catch (  Exception e) {
+    assertTrue(e.getMessage().contains(msg));
+  }
+  assertEquals(msg + ": Read should " + (shouldAttemptRetry ? "" : "not ")+ "have called shouldRetry. ",attemptedRetry,shouldAttemptRetry);
+  verify(rr,times(numTimesTried)).getResponse((HttpURLConnection)any());
+  webIn.close();
+  in.close();
+}
