@@ -1,0 +1,31 @@
+{
+  ApplicationId appId=ApplicationId.newInstance(System.currentTimeMillis(),1);
+  TimelineEntityGroupId groupId=TimelineEntityGroupId.newInstance(appId,"1");
+  TimelineEntityGroupId groupId2=TimelineEntityGroupId.newInstance(appId,"2");
+  TimelineEntity[] entities=new TimelineEntity[2];
+  entities[0]=generateEntity("entity_type");
+  entities[1]=generateEntity("summary_type");
+  try {
+    client.putEntities(null,null,entities);
+    verify(spyTimelineWriter,times(1)).putEntities(entities);
+    reset(spyTimelineWriter);
+    ApplicationAttemptId attemptId1=ApplicationAttemptId.newInstance(appId,1);
+    client.putEntities(attemptId1,null,entities);
+    TimelineEntity[] entityTDB=new TimelineEntity[1];
+    entityTDB[0]=entities[0];
+    verify(spyTimelineWriter,times(1)).putEntities(entityTDB);
+    Assert.assertTrue(localFS.util().exists(new Path(getAppAttemptDir(attemptId1),"summarylog-" + attemptId1.toString())));
+    reset(spyTimelineWriter);
+    ApplicationAttemptId attemptId2=ApplicationAttemptId.newInstance(appId,2);
+    client.putEntities(attemptId2,groupId,entities);
+    client.putEntities(attemptId2,groupId2,entities);
+    verify(spyTimelineWriter,times(0)).putEntities(any(TimelineEntity[].class));
+    Assert.assertTrue(localFS.util().exists(new Path(getAppAttemptDir(attemptId2),"summarylog-" + attemptId2.toString())));
+    Assert.assertTrue(localFS.util().exists(new Path(getAppAttemptDir(attemptId2),"entitylog-" + groupId.toString())));
+    Assert.assertTrue(localFS.util().exists(new Path(getAppAttemptDir(attemptId2),"entitylog-" + groupId2.toString())));
+    reset(spyTimelineWriter);
+  }
+ catch (  Exception e) {
+    Assert.fail("Exception is not expected. " + e);
+  }
+}

@@ -1,0 +1,34 @@
+{
+  try {
+    entityTableLocker.lock();
+    if (serviceStopped) {
+      return;
+    }
+    HashMap<TimelineEntityGroupId,EntityLogFD> logFDMap=logFDs.get(attemptId);
+    if (logFDMap == null) {
+      logFDMap=new HashMap<TimelineEntityGroupId,EntityLogFD>();
+    }
+    EntityLogFD logFD=logFDMap.get(groupId);
+    if (logFD == null) {
+      logFD=new EntityLogFD(fs,logPath,objMapper,isAppendSupported);
+    }
+    try {
+      logFD.lock();
+      logFD.writeEntities(entities);
+      try {
+        entityTableCopyLocker.lock();
+        logFDMap.put(groupId,logFD);
+        logFDs.put(attemptId,logFDMap);
+      }
+  finally {
+        entityTableCopyLocker.unlock();
+      }
+    }
+  finally {
+      logFD.unlock();
+    }
+  }
+  finally {
+    entityTableLocker.unlock();
+  }
+}
