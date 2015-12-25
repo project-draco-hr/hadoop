@@ -9,6 +9,7 @@
     dispatcher.getEventHandler().handle(new ContainerExitEvent(containerID,ContainerEventType.CONTAINER_KILLED_ON_REQUEST,Shell.WINDOWS ? ExitCode.FORCE_KILLED.getExitCode() : ExitCode.TERMINATED.getExitCode(),"Container terminated before launch."));
     return 0;
   }
+  Path containerLogDir;
   try {
     localResources=container.getLocalizedResources();
     if (localResources == null) {
@@ -18,7 +19,7 @@
     List<String> newCmds=new ArrayList<String>(command.size());
     String appIdStr=app.getAppId().toString();
     String relativeContainerLogDir=ContainerLaunch.getRelativeContainerLogDir(appIdStr,containerIdStr);
-    Path containerLogDir=dirsHandler.getLogPathForWrite(relativeContainerLogDir,false);
+    containerLogDir=dirsHandler.getLogPathForWrite(relativeContainerLogDir,false);
     for (    String str : command) {
       newCmds.add(expandEnvironment(str,containerLogDir));
     }
@@ -96,13 +97,15 @@
   if (LOG.isDebugEnabled()) {
     LOG.debug("Container " + containerIdStr + " completed with exit code "+ ret);
   }
+  StringBuilder diagnosticInfo=new StringBuilder("Container exited with a non-zero exit code ");
+  diagnosticInfo.append(ret);
+  diagnosticInfo.append(". ");
   if (ret == ExitCode.FORCE_KILLED.getExitCode() || ret == ExitCode.TERMINATED.getExitCode()) {
-    dispatcher.getEventHandler().handle(new ContainerExitEvent(containerID,ContainerEventType.CONTAINER_KILLED_ON_REQUEST,ret,"Container exited with a non-zero exit code " + ret));
+    dispatcher.getEventHandler().handle(new ContainerExitEvent(containerID,ContainerEventType.CONTAINER_KILLED_ON_REQUEST,ret,diagnosticInfo.toString()));
     return ret;
   }
   if (ret != 0) {
-    LOG.warn("Container exited with a non-zero exit code " + ret);
-    this.dispatcher.getEventHandler().handle(new ContainerExitEvent(containerID,ContainerEventType.CONTAINER_EXITED_WITH_FAILURE,ret,"Container exited with a non-zero exit code " + ret));
+    handleContainerExitWithFailure(containerID,ret,containerLogDir,diagnosticInfo);
     return ret;
   }
   LOG.info("Container " + containerIdStr + " succeeded ");
