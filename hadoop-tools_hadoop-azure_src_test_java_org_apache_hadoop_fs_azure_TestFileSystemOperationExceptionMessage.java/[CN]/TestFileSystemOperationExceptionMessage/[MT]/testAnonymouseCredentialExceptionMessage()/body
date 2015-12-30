@@ -1,0 +1,32 @@
+{
+  Configuration conf=AzureBlobStorageTestAccount.createTestConfiguration();
+  String testStorageAccount=conf.get("fs.azure.test.account.name");
+  conf=new Configuration();
+  conf.set("fs.AbstractFileSystem.wasb.impl","org.apache.hadoop.fs.azure.Wasb");
+  conf.set("fs.azure.skip.metrics","true");
+  String testContainer=UUID.randomUUID().toString();
+  String wasbUri=String.format("wasb://%s@%s",testContainer,testStorageAccount);
+  String expectedErrorMessage=String.format("Container %s in account %s not found, and we can't create it " + "using anoynomous credentials, and no credentials found for " + "them in the configuration.",testContainer,testStorageAccount);
+  fs=new NativeAzureFileSystem();
+  try {
+    fs.initialize(new URI(wasbUri),conf);
+  }
+ catch (  Exception ex) {
+    Throwable innerException=ex.getCause();
+    while (innerException != null && !(innerException instanceof AzureException)) {
+      innerException=innerException.getCause();
+    }
+    if (innerException != null) {
+      String exceptionMessage=innerException.getMessage();
+      if (exceptionMessage == null || exceptionMessage.length() == 0) {
+        Assert.fail();
+      }
+ else {
+        Assert.assertTrue(exceptionMessage.equals(expectedErrorMessage));
+      }
+    }
+ else {
+      Assert.fail();
+    }
+  }
+}
