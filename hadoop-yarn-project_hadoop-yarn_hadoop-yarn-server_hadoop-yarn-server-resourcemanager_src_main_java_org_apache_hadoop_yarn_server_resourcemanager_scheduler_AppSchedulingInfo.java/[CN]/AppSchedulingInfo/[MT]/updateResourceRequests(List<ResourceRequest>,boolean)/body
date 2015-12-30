@@ -1,66 +1,26 @@
 {
-  QueueMetrics metrics=queue.getMetrics();
   boolean anyResourcesUpdated=false;
   for (  ResourceRequest request : requests) {
     Priority priority=request.getPriority();
     String resourceName=request.getResourceName();
-    boolean updatePendingResources=false;
-    ResourceRequest lastRequest=null;
-    if (resourceName.equals(ResourceRequest.ANY)) {
-      if (LOG.isDebugEnabled()) {
-        LOG.debug("update:" + " application=" + applicationId + " request="+ request);
-      }
-      updatePendingResources=true;
-      anyResourcesUpdated=true;
-      if (request.getNumContainers() > 0) {
-        activeUsersManager.activateApplication(user,applicationId);
-      }
-      ResourceRequest previousAnyRequest=getResourceRequest(priority,resourceName);
-      if ((null == previousAnyRequest) || isRequestLabelChanged(previousAnyRequest,request)) {
-        Map<String,ResourceRequest> resourceRequest=getResourceRequests(priority);
-        if (resourceRequest != null) {
-          for (          ResourceRequest r : resourceRequest.values()) {
-            if (!r.getResourceName().equals(ResourceRequest.ANY)) {
-              r.setNodeLabelExpression(request.getNodeLabelExpression());
-            }
-          }
-        }
-      }
-    }
- else {
-      ResourceRequest anyRequest=getResourceRequest(priority,ResourceRequest.ANY);
-      if (anyRequest != null) {
-        request.setNodeLabelExpression(anyRequest.getNodeLabelExpression());
-      }
-    }
+    updateNodeLabels(request);
     Map<String,ResourceRequest> asks=this.resourceRequestMap.get(priority);
     if (asks == null) {
-      asks=new ConcurrentHashMap<String,ResourceRequest>();
+      asks=new ConcurrentHashMap<>();
       this.resourceRequestMap.put(priority,asks);
       this.priorities.add(priority);
     }
-    lastRequest=asks.get(resourceName);
+    ResourceRequest lastRequest=asks.get(resourceName);
     if (recoverPreemptedRequest && lastRequest != null) {
       request.setNumContainers(lastRequest.getNumContainers() + 1);
     }
     asks.put(resourceName,request);
-    if (updatePendingResources) {
-      if (request.getNumContainers() <= 0) {
-        LOG.info("checking for deactivate of application :" + this.applicationId);
-        checkForDeactivation();
+    if (resourceName.equals(ResourceRequest.ANY)) {
+      anyResourcesUpdated=true;
+      if (request.getNumContainers() > 0) {
+        activeUsersManager.activateApplication(user,applicationId);
       }
-      int lastRequestContainers=lastRequest != null ? lastRequest.getNumContainers() : 0;
-      Resource lastRequestCapability=lastRequest != null ? lastRequest.getCapability() : Resources.none();
-      metrics.incrPendingResources(user,request.getNumContainers(),request.getCapability());
-      metrics.decrPendingResources(user,lastRequestContainers,lastRequestCapability);
-      Resource increasedResource=Resources.multiply(request.getCapability(),request.getNumContainers());
-      queue.incPendingResource(request.getNodeLabelExpression(),increasedResource);
-      appResourceUsage.incPending(request.getNodeLabelExpression(),increasedResource);
-      if (lastRequest != null) {
-        Resource decreasedResource=Resources.multiply(lastRequestCapability,lastRequestContainers);
-        queue.decPendingResource(lastRequest.getNodeLabelExpression(),decreasedResource);
-        appResourceUsage.decPending(lastRequest.getNodeLabelExpression(),decreasedResource);
-      }
+      updatePendingResources(lastRequest,request,queue.getMetrics());
     }
   }
   return anyResourcesUpdated;
