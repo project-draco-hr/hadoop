@@ -7,7 +7,10 @@
   conf.setInt(CommonConfigurationKeys.IPC_CLIENT_CONNECT_MAX_RETRIES_KEY,0);
   conf.setBoolean(CommonConfigurationKeys.IPC_CALLQUEUE_NAMESPACE + ".0." + CommonConfigurationKeys.IPC_BACKOFF_ENABLE,true);
   final Server server=new RPC.Builder(conf).setProtocol(TestProtocol.class).setInstance(new TestImpl()).setBindAddress(ADDRESS).setPort(0).setQueueSizePerHandler(1).setNumHandlers(1).setVerbose(true).build();
+  @SuppressWarnings("unchecked") CallQueueManager<Call> spy=spy((CallQueueManager<Call>)Whitebox.getInternalState(server,"callQueue"));
+  Whitebox.setInternalState(server,"callQueue",spy);
   server.start();
+  Exception lastException=null;
   final TestProtocol proxy=RPC.getProxy(TestProtocol.class,TestProtocol.versionID,NetUtils.getConnectAddress(server),conf);
   try {
     for (int i=0; i < numClients; i++) {
@@ -18,9 +21,7 @@
         }
       }
 ));
-    }
-    while (server.getCallQueueLen() != 1 && countThreads(CallQueueManager.class.getName()) != 1) {
-      Thread.sleep(100);
+      verify(spy,timeout(500).times(i + 1)).offer(Mockito.<Call>anyObject());
     }
     try {
       proxy.sleep(100);
@@ -30,12 +31,18 @@
       if (unwrapExeption instanceof RetriableException) {
         succeeded=true;
       }
+ else {
+        lastException=unwrapExeption;
+      }
     }
   }
   finally {
     server.stop();
     RPC.stopProxy(proxy);
     executorService.shutdown();
+  }
+  if (lastException != null) {
+    LOG.error("Last received non-RetriableException:",lastException);
   }
   assertTrue("RetriableException not received",succeeded);
 }
