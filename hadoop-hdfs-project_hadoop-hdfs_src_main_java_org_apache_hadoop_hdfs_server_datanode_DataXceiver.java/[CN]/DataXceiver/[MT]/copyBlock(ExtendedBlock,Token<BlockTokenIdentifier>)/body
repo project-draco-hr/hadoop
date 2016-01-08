@@ -1,15 +1,7 @@
 {
   updateCurrentThreadName("Copying block " + block);
-  if (datanode.isBlockTokenEnabled) {
-    try {
-      datanode.blockPoolTokenSecretManager.checkAccess(blockToken,null,block,BlockTokenIdentifier.AccessMode.COPY);
-    }
- catch (    InvalidToken e) {
-      LOG.warn("Invalid access token in request from " + remoteAddress + " for OP_COPY_BLOCK for block "+ block+ " : "+ e.getLocalizedMessage());
-      sendResponse(ERROR_ACCESS_TOKEN,"Invalid access token");
-      return;
-    }
-  }
+  DataOutputStream reply=getBufferedOutputStream();
+  checkAccess(reply,true,block,blockToken,Op.COPY_BLOCK,BlockTokenIdentifier.AccessMode.COPY);
   if (datanode.data.getPinning(block)) {
     String msg="Not able to copy block " + block.getBlockId() + " "+ "to "+ peer.getRemoteAddressString()+ " because it's pinned ";
     LOG.info(msg);
@@ -22,12 +14,10 @@
     return;
   }
   BlockSender blockSender=null;
-  DataOutputStream reply=null;
   boolean isOpSuccess=true;
   try {
     blockSender=new BlockSender(block,0,-1,false,false,true,datanode,null,CachingStrategy.newDropBehind());
     OutputStream baseStream=getOutputStream();
-    reply=new DataOutputStream(new BufferedOutputStream(baseStream,smallBufferSize));
     writeSuccessWithChecksumInfo(blockSender,reply);
     long beginRead=Time.monotonicNow();
     long read=blockSender.sendBlock(reply,baseStream,dataXceiverServer.balanceThrottler);
