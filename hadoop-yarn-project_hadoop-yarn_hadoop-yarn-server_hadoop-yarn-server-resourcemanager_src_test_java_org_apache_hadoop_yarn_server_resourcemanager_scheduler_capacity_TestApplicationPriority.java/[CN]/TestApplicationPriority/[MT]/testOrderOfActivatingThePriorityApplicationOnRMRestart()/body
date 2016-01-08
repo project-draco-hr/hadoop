@@ -1,0 +1,88 @@
+{
+  conf.setBoolean(YarnConfiguration.RECOVERY_ENABLED,true);
+  conf.setBoolean(YarnConfiguration.RM_WORK_PRESERVING_RECOVERY_ENABLED,true);
+  conf.set(YarnConfiguration.RM_STORE,MemoryRMStateStore.class.getName());
+  conf.setInt(YarnConfiguration.RM_AM_MAX_ATTEMPTS,YarnConfiguration.DEFAULT_RM_AM_MAX_ATTEMPTS);
+  conf.setInt(YarnConfiguration.MAX_CLUSTER_LEVEL_APPLICATION_PRIORITY,10);
+  final DrainDispatcher dispatcher=new DrainDispatcher();
+  MemoryRMStateStore memStore=new MemoryRMStateStore();
+  memStore.init(conf);
+  MockRM rm1=new MockRM(conf,memStore){
+    @Override protected Dispatcher createDispatcher(){
+      return dispatcher;
+    }
+  }
+;
+  rm1.start();
+  MockNM nm1=new MockNM("127.0.0.1:1234",16384,rm1.getResourceTrackerService());
+  nm1.registerNode();
+  dispatcher.await();
+  ResourceScheduler scheduler=rm1.getRMContext().getScheduler();
+  LeafQueue defaultQueue=(LeafQueue)((CapacityScheduler)scheduler).getQueue("default");
+  int memory=defaultQueue.getAMResourceLimit().getMemory() / 2;
+  Priority appPriority1=Priority.newInstance(5);
+  RMApp app1=rm1.submitApp(memory,appPriority1);
+  MockAM am1=MockRM.launchAM(app1,rm1,nm1);
+  am1.registerAppAttempt();
+  Priority appPriority2=Priority.newInstance(6);
+  RMApp app2=rm1.submitApp(memory,appPriority2);
+  MockAM am2=MockRM.launchAM(app2,rm1,nm1);
+  am2.registerAppAttempt();
+  dispatcher.await();
+  Assert.assertEquals(2,defaultQueue.getNumActiveApplications());
+  Assert.assertEquals(0,defaultQueue.getNumPendingApplications());
+  Priority appPriority3=Priority.newInstance(7);
+  RMApp app3=rm1.submitApp(memory,appPriority3);
+  dispatcher.await();
+  Assert.assertEquals(2,defaultQueue.getNumActiveApplications());
+  Assert.assertEquals(1,defaultQueue.getNumPendingApplications());
+  Iterator<FiCaSchedulerApp> iterator=defaultQueue.getOrderingPolicy().getSchedulableEntities().iterator();
+  FiCaSchedulerApp fcApp2=iterator.next();
+  Assert.assertEquals(app2.getCurrentAppAttempt().getAppAttemptId(),fcApp2.getApplicationAttemptId());
+  FiCaSchedulerApp fcApp1=iterator.next();
+  Assert.assertEquals(app1.getCurrentAppAttempt().getAppAttemptId(),fcApp1.getApplicationAttemptId());
+  iterator=defaultQueue.getPendingApplications().iterator();
+  FiCaSchedulerApp fcApp3=iterator.next();
+  Assert.assertEquals(app3.getCurrentAppAttempt().getAppAttemptId(),fcApp3.getApplicationAttemptId());
+  final DrainDispatcher dispatcher1=new DrainDispatcher();
+  MockRM rm2=new MockRM(conf,memStore){
+    @Override protected Dispatcher createDispatcher(){
+      return dispatcher1;
+    }
+  }
+;
+  rm2.start();
+  nm1.setResourceTrackerService(rm2.getResourceTrackerService());
+  Assert.assertEquals(3,rm2.getRMContext().getRMApps().size());
+  dispatcher1.await();
+  scheduler=rm2.getRMContext().getScheduler();
+  defaultQueue=(LeafQueue)((CapacityScheduler)scheduler).getQueue("default");
+  int count=5;
+  while (count-- > 0) {
+    if ((defaultQueue.getNumActiveApplications() + defaultQueue.getNumPendingApplications()) == 3) {
+      break;
+    }
+    Thread.sleep(500);
+  }
+  Assert.assertEquals(1,defaultQueue.getNumActiveApplications());
+  Assert.assertEquals(2,defaultQueue.getNumPendingApplications());
+  nm1.registerNode();
+  dispatcher1.await();
+  count=5;
+  while (count-- > 0) {
+    if (defaultQueue.getOrderingPolicy().getSchedulableEntities().size() == 2) {
+      break;
+    }
+    Thread.sleep(500);
+  }
+  iterator=defaultQueue.getOrderingPolicy().getSchedulableEntities().iterator();
+  fcApp2=iterator.next();
+  Assert.assertEquals(app2.getCurrentAppAttempt().getAppAttemptId(),fcApp2.getApplicationAttemptId());
+  fcApp1=iterator.next();
+  Assert.assertEquals(app1.getCurrentAppAttempt().getAppAttemptId(),fcApp1.getApplicationAttemptId());
+  iterator=defaultQueue.getPendingApplications().iterator();
+  fcApp3=iterator.next();
+  Assert.assertEquals(app3.getCurrentAppAttempt().getAppAttemptId(),fcApp3.getApplicationAttemptId());
+  rm2.stop();
+  rm1.stop();
+}
