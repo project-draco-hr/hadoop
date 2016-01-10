@@ -3,17 +3,47 @@
   Path absolutePath=makeAbsolute(f);
   String key=pathToKey(absolutePath);
   Set<FileStatus> status=new TreeSet<FileStatus>();
-  FileMetadata meta=store.retrieveMetadata(key);
+  FileMetadata meta=null;
+  try {
+    meta=store.retrieveMetadata(key);
+  }
+ catch (  IOException ex) {
+    Throwable innerException=NativeAzureFileSystem.checkForAzureStorageException(ex);
+    if (innerException instanceof StorageException && NativeAzureFileSystem.isFileNotFoundException((StorageException)innerException)) {
+      throw new FileNotFoundException(String.format("%s is not found",f));
+    }
+    throw ex;
+  }
   if (meta != null) {
     if (!meta.isDir()) {
       LOG.debug("Found path as a file");
       return new FileStatus[]{newFile(meta,absolutePath)};
     }
     String partialKey=null;
-    PartialListing listing=store.list(key,AZURE_LIST_ALL,1,partialKey);
+    PartialListing listing=null;
+    try {
+      listing=store.list(key,AZURE_LIST_ALL,1,partialKey);
+    }
+ catch (    IOException ex) {
+      Throwable innerException=NativeAzureFileSystem.checkForAzureStorageException(ex);
+      if (innerException instanceof StorageException && NativeAzureFileSystem.isFileNotFoundException((StorageException)innerException)) {
+        throw new FileNotFoundException(String.format("%s is not found",key));
+      }
+      throw ex;
+    }
     boolean renamed=conditionalRedoFolderRenames(listing);
     if (renamed) {
-      listing=store.list(key,AZURE_LIST_ALL,1,partialKey);
+      listing=null;
+      try {
+        listing=store.list(key,AZURE_LIST_ALL,1,partialKey);
+      }
+ catch (      IOException ex) {
+        Throwable innerException=NativeAzureFileSystem.checkForAzureStorageException(ex);
+        if (innerException instanceof StorageException && NativeAzureFileSystem.isFileNotFoundException((StorageException)innerException)) {
+          throw new FileNotFoundException(String.format("%s is not found",key));
+        }
+        throw ex;
+      }
     }
     for (    FileMetadata fileMetadata : listing.getFiles()) {
       Path subpath=keyToPath(fileMetadata.getKey());

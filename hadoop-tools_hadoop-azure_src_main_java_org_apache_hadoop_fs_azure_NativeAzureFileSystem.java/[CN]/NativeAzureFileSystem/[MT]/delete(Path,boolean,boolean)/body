@@ -2,7 +2,17 @@
   LOG.debug("Deleting file: {}",f.toString());
   Path absolutePath=makeAbsolute(f);
   String key=pathToKey(absolutePath);
-  FileMetadata metaFile=store.retrieveMetadata(key);
+  FileMetadata metaFile=null;
+  try {
+    metaFile=store.retrieveMetadata(key);
+  }
+ catch (  IOException e) {
+    Throwable innerException=NativeAzureFileSystem.checkForAzureStorageException(e);
+    if (innerException instanceof StorageException && NativeAzureFileSystem.isFileNotFoundException((StorageException)innerException)) {
+      return false;
+    }
+    throw e;
+  }
   if (null == metaFile) {
     return false;
   }
@@ -10,7 +20,22 @@
     Path parentPath=absolutePath.getParent();
     if (parentPath.getParent() != null) {
       String parentKey=pathToKey(parentPath);
-      FileMetadata parentMetadata=store.retrieveMetadata(parentKey);
+      FileMetadata parentMetadata=null;
+      try {
+        parentMetadata=store.retrieveMetadata(parentKey);
+      }
+ catch (      IOException e) {
+        Throwable innerException=NativeAzureFileSystem.checkForAzureStorageException(e);
+        if (innerException instanceof StorageException) {
+          if (NativeAzureFileSystem.isFileNotFoundException((StorageException)innerException)) {
+            throw new IOException("File " + f + " has a parent directory "+ parentPath+ " whose metadata cannot be retrieved. Can't resolve");
+          }
+        }
+        throw e;
+      }
+      if (parentMetadata == null) {
+        throw new IOException("File " + f + " has a parent directory "+ parentPath+ " whose metadata cannot be retrieved. Can't resolve");
+      }
       if (!parentMetadata.isDir()) {
         throw new AzureException("File " + f + " has a parent directory "+ parentPath+ " which is also a file. Can't resolve.");
       }
@@ -24,22 +49,59 @@
         }
       }
     }
-    store.delete(key);
-    instrumentation.fileDeleted();
+    try {
+      store.delete(key);
+      instrumentation.fileDeleted();
+    }
+ catch (    IOException e) {
+      Throwable innerException=NativeAzureFileSystem.checkForAzureStorageException(e);
+      if (innerException instanceof StorageException && NativeAzureFileSystem.isFileNotFoundException((StorageException)innerException)) {
+        return false;
+      }
+      throw e;
+    }
   }
  else {
     LOG.debug("Directory Delete encountered: {}",f.toString());
     Path parentPath=absolutePath.getParent();
     if (parentPath.getParent() != null) {
       String parentKey=pathToKey(parentPath);
-      FileMetadata parentMetadata=store.retrieveMetadata(parentKey);
+      FileMetadata parentMetadata=null;
+      try {
+        parentMetadata=store.retrieveMetadata(parentKey);
+      }
+ catch (      IOException e) {
+        Throwable innerException=NativeAzureFileSystem.checkForAzureStorageException(e);
+        if (innerException instanceof StorageException) {
+          if (NativeAzureFileSystem.isFileNotFoundException((StorageException)innerException)) {
+            throw new IOException("File " + f + " has a parent directory "+ parentPath+ " whose metadata cannot be retrieved. Can't resolve");
+          }
+        }
+        throw e;
+      }
+      if (parentMetadata == null) {
+        throw new IOException("File " + f + " has a parent directory "+ parentPath+ " whose metadata cannot be retrieved. Can't resolve");
+      }
       if (parentMetadata.getBlobMaterialization() == BlobMaterialization.Implicit) {
         LOG.debug("Found an implicit parent directory while trying to" + " delete the directory {}. Creating the directory blob for" + " it in {}. ",f,parentKey);
         store.storeEmptyFolder(parentKey,createPermissionStatus(FsPermission.getDefault()));
       }
     }
     String priorLastKey=null;
-    PartialListing listing=store.listAll(key,AZURE_LIST_ALL,1,priorLastKey);
+    PartialListing listing=null;
+    try {
+      listing=store.listAll(key,AZURE_LIST_ALL,1,priorLastKey);
+    }
+ catch (    IOException e) {
+      Throwable innerException=NativeAzureFileSystem.checkForAzureStorageException(e);
+      if (innerException instanceof StorageException && NativeAzureFileSystem.isFileNotFoundException((StorageException)innerException)) {
+        return false;
+      }
+      throw e;
+    }
+    if (listing == null) {
+      return false;
+    }
     FileMetadata[] contents=listing.getFiles();
     if (!recursive && contents.length > 0) {
       throw new IOException("Non-recursive delete of non-empty directory " + f.toString());
@@ -47,8 +109,17 @@
     for (    FileMetadata p : contents) {
       String suffix=p.getKey().substring(p.getKey().lastIndexOf(PATH_DELIMITER));
       if (!p.isDir()) {
-        store.delete(key + suffix);
-        instrumentation.fileDeleted();
+        try {
+          store.delete(key + suffix);
+          instrumentation.fileDeleted();
+        }
+ catch (        IOException e) {
+          Throwable innerException=NativeAzureFileSystem.checkForAzureStorageException(e);
+          if (innerException instanceof StorageException && NativeAzureFileSystem.isFileNotFoundException((StorageException)innerException)) {
+            return false;
+          }
+          throw e;
+        }
       }
  else {
         if (!delete(new Path(f.toString() + suffix),true)) {
@@ -56,7 +127,16 @@
         }
       }
     }
-    store.delete(key);
+    try {
+      store.delete(key);
+    }
+ catch (    IOException e) {
+      Throwable innerException=NativeAzureFileSystem.checkForAzureStorageException(e);
+      if (innerException instanceof StorageException && NativeAzureFileSystem.isFileNotFoundException((StorageException)innerException)) {
+        return false;
+      }
+      throw e;
+    }
     Path parent=absolutePath.getParent();
     if (parent != null && parent.getParent() != null) {
       if (!skipParentFolderLastModifidedTimeUpdate) {

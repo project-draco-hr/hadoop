@@ -10,7 +10,21 @@
   }
   Path absoluteDst=makeAbsolute(dst);
   String dstKey=pathToKey(absoluteDst);
-  FileMetadata dstMetadata=store.retrieveMetadata(dstKey);
+  FileMetadata dstMetadata=null;
+  try {
+    dstMetadata=store.retrieveMetadata(dstKey);
+  }
+ catch (  IOException ex) {
+    Throwable innerException=NativeAzureFileSystem.checkForAzureStorageException(ex);
+    if (innerException instanceof StorageException) {
+      if (NativeAzureFileSystem.isFileNotFoundException((StorageException)innerException)) {
+        LOG.debug("BlobNotFound exception encountered for Destination key : {}. " + "Swallowin the exception to handle race condition gracefully",dstKey);
+      }
+    }
+ else {
+      throw ex;
+    }
+  }
   if (dstMetadata != null && dstMetadata.isDir()) {
     dstKey=pathToKey(makeAbsolute(new Path(dst,src.getName())));
     LOG.debug("Destination {} " + " is a directory, adjusted the destination to be {}",dst,dstKey);
@@ -20,7 +34,18 @@
     return false;
   }
  else {
-    FileMetadata parentOfDestMetadata=store.retrieveMetadata(pathToKey(absoluteDst.getParent()));
+    FileMetadata parentOfDestMetadata=null;
+    try {
+      parentOfDestMetadata=store.retrieveMetadata(pathToKey(absoluteDst.getParent()));
+    }
+ catch (    IOException ex) {
+      Throwable innerException=NativeAzureFileSystem.checkForAzureStorageException(ex);
+      if (innerException instanceof StorageException && NativeAzureFileSystem.isFileNotFoundException((StorageException)innerException)) {
+        LOG.debug("Parent of destination {} doesn't exists. Failing rename",dst);
+        return false;
+      }
+      throw ex;
+    }
     if (parentOfDestMetadata == null) {
       LOG.debug("Parent of the destination {}" + " doesn't exist, failing the rename.",dst);
       return false;
@@ -30,14 +55,35 @@
       return false;
     }
   }
-  FileMetadata srcMetadata=store.retrieveMetadata(srcKey);
+  FileMetadata srcMetadata=null;
+  try {
+    srcMetadata=store.retrieveMetadata(srcKey);
+  }
+ catch (  IOException ex) {
+    Throwable innerException=NativeAzureFileSystem.checkForAzureStorageException(ex);
+    if (innerException instanceof StorageException && NativeAzureFileSystem.isFileNotFoundException((StorageException)innerException)) {
+      LOG.debug("Source {} doesn't exists. Failing rename",src);
+      return false;
+    }
+    throw ex;
+  }
   if (srcMetadata == null) {
     LOG.debug("Source {} doesn't exist, failing the rename.",src);
     return false;
   }
  else   if (!srcMetadata.isDir()) {
     LOG.debug("Source {} found as a file, renaming.",src);
-    store.rename(srcKey,dstKey);
+    try {
+      store.rename(srcKey,dstKey);
+    }
+ catch (    IOException ex) {
+      Throwable innerException=NativeAzureFileSystem.checkForAzureStorageException(ex);
+      if (innerException instanceof StorageException && NativeAzureFileSystem.isFileNotFoundException((StorageException)innerException)) {
+        LOG.debug("BlobNotFoundException encountered. Failing rename",src);
+        return false;
+      }
+      throw ex;
+    }
   }
  else {
     renamePending=prepareAtomicFolderRename(srcKey,dstKey);
