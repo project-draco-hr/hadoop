@@ -1,0 +1,66 @@
+{
+  List<String> cmd=new LinkedList<String>();
+  cmd.add("make");
+  cmd.add("-j");
+  cmd.add(String.valueOf(availableProcessors));
+  cmd.add("VERBOSE=1");
+  if (target != null) {
+    cmd.add(target);
+  }
+  StringBuilder bld=new StringBuilder();
+  String prefix="";
+  for (  String c : cmd) {
+    bld.append(prefix).append(c);
+    prefix=" ";
+  }
+  getLog().info("Running " + bld.toString());
+  ProcessBuilder pb=new ProcessBuilder(cmd);
+  pb.directory(output);
+  Process proc=null;
+  int retCode=-1;
+  OutputBufferThread stdoutThread=null, stderrThread=null;
+  try {
+    proc=pb.start();
+    stdoutThread=new OutputBufferThread(proc.getInputStream());
+    stderrThread=new OutputBufferThread(proc.getErrorStream());
+    stdoutThread.start();
+    stderrThread.start();
+    retCode=proc.waitFor();
+    if (retCode != 0) {
+      throw new MojoExecutionException("make failed with error code " + retCode);
+    }
+  }
+ catch (  InterruptedException e) {
+    throw new MojoExecutionException("Interrupted during Process#waitFor",e);
+  }
+catch (  IOException e) {
+    throw new MojoExecutionException("Error executing make",e);
+  }
+ finally {
+    if (stdoutThread != null) {
+      try {
+        stdoutThread.join();
+      }
+ catch (      InterruptedException e) {
+        getLog().error("Interrupted while joining stdoutThread",e);
+      }
+      if (retCode != 0) {
+        for (        String line : stdoutThread.getOutput()) {
+          getLog().warn(line);
+        }
+      }
+    }
+    if (stderrThread != null) {
+      try {
+        stderrThread.join();
+      }
+ catch (      InterruptedException e) {
+        getLog().error("Interrupted while joining stderrThread",e);
+      }
+      for (      String line : stderrThread.getOutput()) {
+        getLog().warn(line);
+      }
+    }
+    if (proc != null)     proc.destroy();
+  }
+}
