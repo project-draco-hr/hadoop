@@ -1,0 +1,38 @@
+{
+  List<NamespaceInfo> nsInfos=Lists.newArrayList();
+  nsInfos.add(new NamespaceInfo(0,CLUSTER_ID,BLOCK_POOL_IDS[0],1));
+  String CURRENT_DIR="current";
+  String DU_CACHE_FILE=BlockPoolSlice.DU_CACHE_FILE;
+  String path=BASE_DIR + "/newData0";
+  String pathUri=new Path(path).toUri().toString();
+  StorageLocation loc=StorageLocation.parse(pathUri);
+  Storage.StorageDirectory sd=createStorageDirectory(new File(path));
+  DataStorage.VolumeBuilder builder=new DataStorage.VolumeBuilder(storage,sd);
+  when(storage.prepareVolume(eq(datanode),eq(loc.getFile()),anyListOf(NamespaceInfo.class))).thenReturn(builder);
+  String cacheFilePath=String.format("%s/%s/%s/%s/%s",path,CURRENT_DIR,BLOCK_POOL_IDS[0],CURRENT_DIR,DU_CACHE_FILE);
+  File outFile=new File(cacheFilePath);
+  if (!outFile.getParentFile().exists()) {
+    outFile.getParentFile().mkdirs();
+  }
+  if (outFile.exists()) {
+    outFile.delete();
+  }
+  FakeTimer timer=new FakeTimer();
+  try {
+    try (Writer out=new OutputStreamWriter(new FileOutputStream(outFile),StandardCharsets.UTF_8)){
+      out.write(Long.toString(cacheDfsUsed) + " " + Long.toString(timer.now()));
+      out.flush();
+    }
+   }
+ catch (  IOException ioe) {
+  }
+  dataset.setTimer(timer);
+  timer.advance(waitIntervalTime);
+  dataset.addVolume(loc,nsInfos);
+  FsVolumeImpl newVolume;
+  try (FsDatasetSpi.FsVolumeReferences volumes=dataset.getFsVolumeReferences()){
+    newVolume=(FsVolumeImpl)volumes.get(volumes.size() - 1);
+  }
+   long dfsUsed=newVolume.getDfsUsed();
+  return dfsUsed;
+}
