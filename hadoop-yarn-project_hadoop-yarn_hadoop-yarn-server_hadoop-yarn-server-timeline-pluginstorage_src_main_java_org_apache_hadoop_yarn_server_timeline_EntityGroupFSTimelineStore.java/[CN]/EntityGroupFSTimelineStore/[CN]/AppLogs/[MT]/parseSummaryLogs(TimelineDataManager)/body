@@ -1,0 +1,24 @@
+{
+  if (!isDone()) {
+    LOG.debug("Try to parse summary log for log {} in {}",appId,appDirPath);
+    appState=EntityGroupFSTimelineStore.getAppState(appId,yarnClient);
+    long recentLogModTime=scanForLogs();
+    if (appState == AppState.UNKNOWN) {
+      if (Time.now() - recentLogModTime > unknownActiveMillis) {
+        LOG.info("{} state is UNKNOWN and logs are stale, assuming COMPLETED",appId);
+        appState=AppState.COMPLETED;
+      }
+    }
+  }
+  List<LogInfo> removeList=new ArrayList<LogInfo>();
+  for (  LogInfo log : summaryLogs) {
+    if (fs.exists(log.getPath(appDirPath))) {
+      log.parseForStore(tdm,appDirPath,isDone(),jsonFactory,objMapper,fs);
+    }
+ else {
+      removeList.add(log);
+      LOG.info("File {} no longer exists, remove it from log list",log.getPath(appDirPath));
+    }
+  }
+  summaryLogs.removeAll(removeList);
+}

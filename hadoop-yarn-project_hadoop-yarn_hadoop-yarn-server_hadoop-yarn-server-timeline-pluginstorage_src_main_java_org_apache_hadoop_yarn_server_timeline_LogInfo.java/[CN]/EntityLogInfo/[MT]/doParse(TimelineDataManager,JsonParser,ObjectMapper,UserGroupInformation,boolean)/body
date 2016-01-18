@@ -1,0 +1,51 @@
+{
+  long count=0;
+  TimelineEntities entities=new TimelineEntities();
+  ArrayList<TimelineEntity> entityList=new ArrayList<TimelineEntity>(1);
+  long bytesParsed;
+  long bytesParsedLastBatch=0;
+  boolean postError=false;
+  try {
+    MappingIterator<TimelineEntity> iter=objMapper.readValues(parser,TimelineEntity.class);
+    while (iter.hasNext()) {
+      TimelineEntity entity=iter.next();
+      String etype=entity.getEntityType();
+      String eid=entity.getEntityId();
+      LOG.trace("Read entity {}",etype);
+      ++count;
+      bytesParsed=parser.getCurrentLocation().getCharOffset() + 1;
+      LOG.trace("Parser now at offset {}",bytesParsed);
+      try {
+        LOG.debug("Adding {}({}) to store",eid,etype);
+        entityList.add(entity);
+        entities.setEntities(entityList);
+        TimelinePutResponse response=tdm.postEntities(entities,ugi);
+        for (        TimelinePutResponse.TimelinePutError e : response.getErrors()) {
+          LOG.warn("Error putting entity: {} ({}): {}",e.getEntityId(),e.getEntityType(),e.getErrorCode());
+        }
+        setOffset(getOffset() + bytesParsed - bytesParsedLastBatch);
+        bytesParsedLastBatch=bytesParsed;
+        entityList.clear();
+      }
+ catch (      YarnException e) {
+        postError=true;
+        throw new IOException("Error posting entities",e);
+      }
+catch (      IOException e) {
+        postError=true;
+        throw new IOException("Error posting entities",e);
+      }
+    }
+  }
+ catch (  IOException e) {
+    if (appCompleted || postError) {
+      throw e;
+    }
+  }
+catch (  RuntimeException e) {
+    if (appCompleted || !(e.getCause() instanceof JsonParseException)) {
+      throw e;
+    }
+  }
+  return count;
+}

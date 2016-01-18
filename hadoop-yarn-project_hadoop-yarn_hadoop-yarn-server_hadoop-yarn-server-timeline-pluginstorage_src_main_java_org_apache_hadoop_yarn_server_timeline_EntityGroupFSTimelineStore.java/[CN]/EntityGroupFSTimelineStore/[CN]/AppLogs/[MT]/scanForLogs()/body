@@ -1,0 +1,43 @@
+{
+  LOG.debug("scanForLogs on {}",appDirPath);
+  long newestModTime=0;
+  RemoteIterator<FileStatus> iterAttempt=fs.listStatusIterator(appDirPath);
+  while (iterAttempt.hasNext()) {
+    FileStatus statAttempt=iterAttempt.next();
+    LOG.debug("scanForLogs on {}",statAttempt.getPath().getName());
+    if (!statAttempt.isDirectory() || !statAttempt.getPath().getName().startsWith(ApplicationAttemptId.appAttemptIdStrPrefix)) {
+      LOG.debug("Scanner skips for unknown dir/file {}",statAttempt.getPath());
+      continue;
+    }
+    String attemptDirName=statAttempt.getPath().getName();
+    RemoteIterator<FileStatus> iterCache=fs.listStatusIterator(statAttempt.getPath());
+    while (iterCache.hasNext()) {
+      FileStatus statCache=iterCache.next();
+      if (!statCache.isFile()) {
+        continue;
+      }
+      String filename=statCache.getPath().getName();
+      boolean shouldSetTime=true;
+      LOG.debug("scan for log file: {}",filename);
+      if (filename.startsWith(DOMAIN_LOG_PREFIX)) {
+        addSummaryLog(attemptDirName,filename,statCache.getOwner(),true);
+      }
+ else       if (filename.startsWith(SUMMARY_LOG_PREFIX)) {
+        addSummaryLog(attemptDirName,filename,statCache.getOwner(),false);
+      }
+ else       if (filename.startsWith(ENTITY_LOG_PREFIX)) {
+        addDetailLog(attemptDirName,filename,statCache.getOwner());
+      }
+ else {
+        shouldSetTime=false;
+      }
+      if (shouldSetTime) {
+        newestModTime=Math.max(statCache.getModificationTime(),newestModTime);
+      }
+    }
+  }
+  if (newestModTime == 0) {
+    newestModTime=fs.getFileStatus(appDirPath).getModificationTime();
+  }
+  return newestModTime;
+}

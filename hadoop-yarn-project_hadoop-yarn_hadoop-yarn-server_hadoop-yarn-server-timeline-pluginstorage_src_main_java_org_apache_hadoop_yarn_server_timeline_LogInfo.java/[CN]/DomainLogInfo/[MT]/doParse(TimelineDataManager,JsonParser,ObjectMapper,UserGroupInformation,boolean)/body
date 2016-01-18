@@ -1,0 +1,41 @@
+{
+  long count=0;
+  long bytesParsed;
+  long bytesParsedLastBatch=0;
+  boolean putError=false;
+  try {
+    MappingIterator<TimelineDomain> iter=objMapper.readValues(parser,TimelineDomain.class);
+    while (iter.hasNext()) {
+      TimelineDomain domain=iter.next();
+      domain.setOwner(ugi.getShortUserName());
+      LOG.trace("Read domain {}",domain.getId());
+      ++count;
+      bytesParsed=parser.getCurrentLocation().getCharOffset() + 1;
+      LOG.trace("Parser now at offset {}",bytesParsed);
+      try {
+        tdm.putDomain(domain,ugi);
+        setOffset(getOffset() + bytesParsed - bytesParsedLastBatch);
+        bytesParsedLastBatch=bytesParsed;
+      }
+ catch (      YarnException e) {
+        putError=true;
+        throw new IOException("Error posting domain",e);
+      }
+catch (      IOException e) {
+        putError=true;
+        throw new IOException("Error posting domain",e);
+      }
+    }
+  }
+ catch (  IOException e) {
+    if (appCompleted || putError) {
+      throw e;
+    }
+  }
+catch (  RuntimeException e) {
+    if (appCompleted || !(e.getCause() instanceof JsonParseException)) {
+      throw e;
+    }
+  }
+  return count;
+}

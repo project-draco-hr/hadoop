@@ -1,0 +1,32 @@
+{
+  summaryStore=createSummaryStore();
+  summaryStore.init(conf);
+  long logRetainSecs=conf.getLong(YarnConfiguration.TIMELINE_SERVICE_ENTITYGROUP_FS_STORE_RETAIN_SECONDS,YarnConfiguration.TIMELINE_SERVICE_ENTITYGROUP_FS_STORE_RETAIN_SECONDS_DEFAULT);
+  logRetainMillis=logRetainSecs * 1000;
+  LOG.info("Cleaner set to delete logs older than {} seconds",logRetainSecs);
+  long unknownActiveSecs=conf.getLong(YarnConfiguration.TIMELINE_SERVICE_ENTITYGROUP_FS_STORE_UNKNOWN_ACTIVE_SECONDS,YarnConfiguration.TIMELINE_SERVICE_ENTITYGROUP_FS_STORE_UNKNOWN_ACTIVE_SECONDS_DEFAULT);
+  unknownActiveMillis=unknownActiveSecs * 1000;
+  LOG.info("Unknown apps will be treated as complete after {} seconds",unknownActiveSecs);
+  appCacheMaxSize=conf.getInt(YarnConfiguration.TIMELINE_SERVICE_ENTITYGROUP_FS_STORE_APP_CACHE_SIZE,YarnConfiguration.TIMELINE_SERVICE_ENTITYGROUP_FS_STORE_APP_CACHE_SIZE_DEFAULT);
+  LOG.info("Application cache size is {}",appCacheMaxSize);
+  cachedLogs=Collections.synchronizedMap(new LinkedHashMap<TimelineEntityGroupId,EntityCacheItem>(appCacheMaxSize + 1,0.75f,true){
+    @Override protected boolean removeEldestEntry(    Map.Entry<TimelineEntityGroupId,EntityCacheItem> eldest){
+      if (super.size() > appCacheMaxSize) {
+        TimelineEntityGroupId groupId=eldest.getKey();
+        LOG.debug("Evicting {} due to space limitations",groupId);
+        EntityCacheItem cacheItem=eldest.getValue();
+        cacheItem.releaseCache(groupId);
+        if (cacheItem.getAppLogs().isDone()) {
+          appIdLogMap.remove(groupId.getApplicationId());
+        }
+        return true;
+      }
+      return false;
+    }
+  }
+);
+  cacheIdPlugins=loadPlugIns(conf);
+  yarnClient=YarnClient.createYarnClient();
+  yarnClient.init(conf);
+  super.serviceInit(conf);
+}

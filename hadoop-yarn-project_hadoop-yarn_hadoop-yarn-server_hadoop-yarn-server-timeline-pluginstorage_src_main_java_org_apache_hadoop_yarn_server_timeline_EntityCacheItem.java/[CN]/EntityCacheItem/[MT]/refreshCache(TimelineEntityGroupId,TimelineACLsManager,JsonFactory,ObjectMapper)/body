@@ -1,0 +1,42 @@
+{
+  if (needRefresh()) {
+    if (!appLogs.isDone()) {
+      appLogs.parseSummaryLogs();
+    }
+ else     if (appLogs.getDetailLogs().isEmpty()) {
+      appLogs.scanForLogs();
+    }
+    if (!appLogs.getDetailLogs().isEmpty()) {
+      if (store == null) {
+        store=new MemoryTimelineStore();
+        store.init(config);
+        store.start();
+      }
+      TimelineDataManager tdm=new TimelineDataManager(store,aclManager);
+      tdm.init(config);
+      tdm.start();
+      List<LogInfo> removeList=new ArrayList<LogInfo>();
+      for (      LogInfo log : appLogs.getDetailLogs()) {
+        LOG.debug("Try refresh logs for {}",log.getFilename());
+        if (log.matchesGroupId(groupId)) {
+          Path appDirPath=appLogs.getAppDirPath();
+          if (fs.exists(log.getPath(appDirPath))) {
+            LOG.debug("Refresh logs for cache id {}",groupId);
+            log.parseForStore(tdm,appDirPath,appLogs.isDone(),jsonFactory,objMapper,fs);
+          }
+ else {
+            removeList.add(log);
+            LOG.info("File {} no longer exists, remove it from log list",log.getPath(appDirPath));
+          }
+        }
+      }
+      appLogs.getDetailLogs().removeAll(removeList);
+      tdm.close();
+    }
+    updateRefreshTimeToNow();
+  }
+ else {
+    LOG.debug("Cache new enough, skip refreshing");
+  }
+  return store;
+}
