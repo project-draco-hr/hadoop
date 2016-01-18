@@ -1,0 +1,25 @@
+{
+  if (!initialized) {
+    throw new IOException("Trying to write to an un-initialized Append stream");
+  }
+  if (closed) {
+    throw new IOException(FSExceptionMessages.STREAM_IS_CLOSED);
+  }
+  if (leaseFreed) {
+    throw new IOException(String.format("Write called on a append stream not holding lease. Failing Write"));
+  }
+  byte[] currentData=new byte[length];
+  System.arraycopy(data,offset,currentData,0,length);
+  while ((outBuffer.size() + currentData.length) > bufferSize) {
+    byte[] payload=new byte[bufferSize];
+    System.arraycopy(outBuffer.toByteArray(),0,payload,0,outBuffer.size());
+    int availableSpaceInPayload=bufferSize - outBuffer.size();
+    System.arraycopy(currentData,0,payload,outBuffer.size(),availableSpaceInPayload);
+    uploadBlockToStorage(payload);
+    byte[] tempBuffer=new byte[currentData.length - availableSpaceInPayload];
+    System.arraycopy(currentData,availableSpaceInPayload,tempBuffer,0,currentData.length - availableSpaceInPayload);
+    currentData=tempBuffer;
+    outBuffer=new ByteArrayOutputStream(bufferSize);
+  }
+  outBuffer.write(currentData);
+}

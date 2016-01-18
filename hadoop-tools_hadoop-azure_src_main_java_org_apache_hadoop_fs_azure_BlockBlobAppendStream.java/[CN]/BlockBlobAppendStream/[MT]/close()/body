@@ -1,0 +1,34 @@
+{
+  if (!initialized) {
+    throw new IOException("Trying to close an uninitialized Append stream");
+  }
+  if (closed) {
+    return;
+  }
+  if (leaseFreed) {
+    throw new IOException(String.format("Attempting to close an append stream on blob : %s " + " that does not have lease on the Blob. Failing close",key));
+  }
+  if (outBuffer.size() > 0) {
+    uploadBlockToStorage(outBuffer.toByteArray());
+  }
+  ioThreadPool.shutdown();
+  try {
+    if (!ioThreadPool.awaitTermination(10,TimeUnit.MINUTES)) {
+      LOG.error("Time out occured while waiting for IO request to finish in append" + " for blob : {}",key);
+      NativeAzureFileSystemHelper.logAllLiveStackTraces();
+      throw new IOException("Timed out waiting for IO requests to finish");
+    }
+  }
+ catch (  InterruptedException intrEx) {
+    Thread.currentThread().interrupt();
+    LOG.error("Upload block operation in append interrupted for blob {}. Failing close",key);
+    throw new IOException("Append Commit interrupted.");
+  }
+  if (lastError == null) {
+    commitAppendBlocks();
+  }
+  cleanup();
+  if (lastError != null) {
+    throw lastError;
+  }
+}

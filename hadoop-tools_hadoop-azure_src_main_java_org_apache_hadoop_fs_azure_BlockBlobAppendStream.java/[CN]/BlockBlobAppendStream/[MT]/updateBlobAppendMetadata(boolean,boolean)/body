@@ -1,0 +1,59 @@
+{
+  SelfRenewingLease lease=null;
+  StorageException lastStorageException=null;
+  int leaseRenewalRetryCount=0;
+  while (leaseRenewalRetryCount < MAX_LEASE_RENEWAL_RETRY_COUNT) {
+    lastStorageException=null;
+synchronized (this) {
+      try {
+        final Calendar currentCalendar=Calendar.getInstance(Locale.US);
+        currentCalendar.setTimeZone(TimeZone.getTimeZone(UTC_STR));
+        long currentTime=currentCalendar.getTime().getTime();
+        lease=new SelfRenewingLease(blob);
+        blob.downloadAttributes(opContext);
+        HashMap<String,String> metadata=blob.getMetadata();
+        if (metadata.containsKey(APPEND_LEASE) && currentTime - Long.parseLong(metadata.get(APPEND_LEASE_LAST_MODIFIED)) <= BlockBlobAppendStream.APPEND_LEASE_TIMEOUT && !metadata.get(APPEND_LEASE).equals(Boolean.toString(testCondition))) {
+          return false;
+        }
+        metadata.put(APPEND_LEASE,Boolean.toString(holdLease));
+        metadata.put(APPEND_LEASE_LAST_MODIFIED,Long.toString(currentTime));
+        blob.setMetadata(metadata);
+        AccessCondition accessCondition=new AccessCondition();
+        accessCondition.setLeaseID(lease.getLeaseID());
+        blob.uploadMetadata(accessCondition,null,opContext);
+        return true;
+      }
+ catch (      StorageException ex) {
+        lastStorageException=ex;
+        LOG.debug("Lease renewal for Blob : {} encountered Storage Exception : {} " + "Error Code : {}",key,ex,ex.getErrorCode());
+        leaseRenewalRetryCount++;
+      }
+ finally {
+        if (lease != null) {
+          try {
+            lease.free();
+          }
+ catch (          StorageException ex) {
+            LOG.debug("Encountered Storage exception while releasing lease for Blob {} " + "during Append  metadata operation. Storage Exception {} " + "Error Code : {} ",key,ex,ex.getErrorCode());
+          }
+ finally {
+            lease=null;
+          }
+        }
+      }
+    }
+    if (leaseRenewalRetryCount == MAX_LEASE_RENEWAL_RETRY_COUNT) {
+      throw lastStorageException;
+    }
+ else {
+      try {
+        Thread.sleep(LEASE_RENEWAL_RETRY_SLEEP_PERIOD);
+      }
+ catch (      InterruptedException ex) {
+        LOG.debug("Blob append metadata updated method interrupted");
+        Thread.currentThread().interrupt();
+      }
+    }
+  }
+  return false;
+}
