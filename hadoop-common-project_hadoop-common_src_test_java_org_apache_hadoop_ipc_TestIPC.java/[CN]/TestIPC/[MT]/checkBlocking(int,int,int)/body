@@ -8,6 +8,8 @@
   final AtomicInteger failures=new AtomicInteger(0);
   final CountDownLatch callFinishedLatch=new CountDownLatch(clients);
   final TestServerQueue server=new TestServerQueue(clients,readers,callQ,handlers,conf);
+  CallQueueManager<Call> spy=spy((CallQueueManager<Call>)Whitebox.getInternalState(server,"callQueue"));
+  Whitebox.setInternalState(server,"callQueue",spy);
   final InetSocketAddress addr=NetUtils.getConnectAddress(server);
   server.start();
   Client.setConnectTimeout(conf,10000);
@@ -37,11 +39,7 @@
     if (i == 0) {
       server.firstCallLatch.await();
     }
- else     if (i <= callQ) {
-      while (server.getCallQueueLen() != i) {
-        Thread.sleep(1);
-      }
-    }
+    verify(spy,timeout(100).times(i + 1)).put(Mockito.<Call>anyObject());
   }
   try {
     GenericTestUtils.waitFor(new Supplier<Boolean>(){
