@@ -6,8 +6,25 @@
   conf.setInt(DFSConfigKeys.DFS_HA_TAILEDITS_PERIOD_KEY,1);
   HAUtil.setAllowStandbyReads(conf,true);
   if (clusterType == TestType.SHARED_DIR_HA) {
-    MiniDFSNNTopology topology=MiniQJMHACluster.createDefaultTopology(10000);
-    cluster=new MiniDFSCluster.Builder(conf).nnTopology(topology).numDataNodes(0).checkExitOnShutdown(false).build();
+    int basePort=10000;
+    int retryCount=0;
+    while (true) {
+      try {
+        basePort=10000 + RANDOM.nextInt(1000) * 4;
+        LOG.info("Set SHARED_DIR_HA cluster's basePort to " + basePort);
+        MiniDFSNNTopology topology=MiniQJMHACluster.createDefaultTopology(basePort);
+        cluster=new MiniDFSCluster.Builder(conf).nnTopology(topology).numDataNodes(0).checkExitOnShutdown(false).build();
+        break;
+      }
+ catch (      BindException e) {
+        if (cluster != null) {
+          cluster.shutdown(true);
+          cluster=null;
+        }
+        ++retryCount;
+        LOG.info("SHARED_DIR_HA: MiniQJMHACluster port conflicts, retried " + retryCount + " times "+ e);
+      }
+    }
   }
  else {
     Builder builder=new MiniQJMHACluster.Builder(conf);

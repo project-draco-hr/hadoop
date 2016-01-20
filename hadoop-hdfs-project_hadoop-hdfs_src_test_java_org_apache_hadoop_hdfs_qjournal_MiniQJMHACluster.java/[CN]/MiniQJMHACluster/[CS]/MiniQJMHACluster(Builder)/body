@@ -1,14 +1,16 @@
 {
   this.conf=builder.conf;
   int retryCount=0;
+  int basePort=10000;
   while (true) {
     try {
       basePort=10000 + RANDOM.nextInt(1000) * 4;
+      LOG.info("Set MiniQJMHACluster basePort to " + basePort);
       journalCluster=new MiniJournalCluster.Builder(conf).format(true).build();
       journalCluster.waitActive();
       URI journalURI=journalCluster.getQuorumJournalURI(NAMESERVICE);
       MiniDFSNNTopology topology=createDefaultTopology(builder.numNNs,basePort);
-      initHAConf(journalURI,builder.conf,builder.numNNs);
+      initHAConf(journalURI,builder.conf,builder.numNNs,basePort);
       cluster=builder.dfsBuilder.nnTopology(topology).manageNameDfsSharedDirs(false).build();
       cluster.waitActive();
       cluster.shutdownNameNodes();
@@ -18,10 +20,14 @@
         nn.setStartOpt(builder.startOpt);
       }
       cluster.restartNameNodes();
-      ++retryCount;
       break;
     }
  catch (    BindException e) {
+      if (cluster != null) {
+        cluster.shutdown(true);
+        cluster=null;
+      }
+      ++retryCount;
       LOG.info("MiniQJMHACluster port conflicts, retried " + retryCount + " times");
     }
   }
