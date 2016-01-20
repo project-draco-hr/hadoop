@@ -1,0 +1,22 @@
+{
+  String zkHostPort=conf.get(YarnConfiguration.RM_ZK_ADDRESS);
+  if (zkHostPort == null) {
+    throw new YarnRuntimeException(YarnConfiguration.RM_ZK_ADDRESS + " is not configured.");
+  }
+  int numRetries=conf.getInt(YarnConfiguration.RM_ZK_NUM_RETRIES,YarnConfiguration.DEFAULT_ZK_RM_NUM_RETRIES);
+  int zkSessionTimeout=conf.getInt(YarnConfiguration.RM_ZK_TIMEOUT_MS,YarnConfiguration.DEFAULT_RM_ZK_TIMEOUT_MS);
+  int zkRetryInterval=conf.getInt(YarnConfiguration.RM_ZK_RETRY_INTERVAL_MS,YarnConfiguration.DEFAULT_RM_ZK_RETRY_INTERVAL_MS);
+  List<ZKUtil.ZKAuthInfo> zkAuths=RMZKUtils.getZKAuths(conf);
+  List<AuthInfo> authInfos=new ArrayList<>();
+  for (  ZKUtil.ZKAuthInfo zkAuth : zkAuths) {
+    authInfos.add(new AuthInfo(zkAuth.getScheme(),zkAuth.getAuth()));
+  }
+  if (HAUtil.isHAEnabled(conf) && HAUtil.getConfValueForRMInstance(YarnConfiguration.ZK_RM_STATE_STORE_ROOT_NODE_ACL,conf) == null) {
+    String zkRootNodeUsername=HAUtil.getConfValueForRMInstance(YarnConfiguration.RM_ADDRESS,YarnConfiguration.DEFAULT_RM_ADDRESS,conf);
+    byte[] defaultFencingAuth=(zkRootNodeUsername + ":" + zkRootNodePassword).getBytes(Charset.forName("UTF-8"));
+    authInfos.add(new AuthInfo(new DigestAuthenticationProvider().getScheme(),defaultFencingAuth));
+  }
+  CuratorFramework client=CuratorFrameworkFactory.builder().connectString(zkHostPort).sessionTimeoutMs(zkSessionTimeout).retryPolicy(new RetryNTimes(numRetries,zkRetryInterval)).authorization(authInfos).build();
+  client.start();
+  return client;
+}
