@@ -1,0 +1,31 @@
+{
+  ByteBuffer fisrtValidInput=HHUtil.findFirstValidInput(inputs[0]);
+  int bufSize=fisrtValidInput.remaining();
+  ByteBuffer piggybacks=allocateByteBuffer(fisrtValidInput.isDirect(),bufSize);
+  if (pbParityIndex < numParityUnits) {
+    int inputIdx=numDataUnits + pbParityIndex;
+    int inputPos=inputs[1][inputIdx].position();
+    int outputPos=outputs[1][pbParityIndex].position();
+    for (int m=0, k=inputPos, n=outputPos; m < bufSize; k++, m++, n++) {
+      int valueWithPb=0xFF & inputs[1][inputIdx].get(k);
+      int valueWithoutPb=0xFF & outputs[1][pbParityIndex].get(n);
+      piggybacks.put(m,(byte)RSUtil.GF.add(valueWithPb,valueWithoutPb));
+    }
+  }
+ else {
+    int sum=0;
+    for (int k=0; k < bufSize; k++) {
+      sum=0;
+      for (int i=1; i < numParityUnits; i++) {
+        int inIdx=numDataUnits + i;
+        int inPos=inputs[1][numDataUnits + i].position();
+        int outPos=outputs[1][i].position();
+        sum=RSUtil.GF.add(sum,(0xFF & inputs[1][inIdx].get(inPos + k)));
+        sum=RSUtil.GF.add(sum,(0xFF & outputs[1][i].get(outPos + k)));
+      }
+      sum=RSUtil.GF.add(sum,(0xFF & inputs[0][numDataUnits + pbIndex].get(inputs[0][numDataUnits + pbIndex].position() + k)));
+      piggybacks.put(k,(byte)sum);
+    }
+  }
+  return piggybacks;
+}

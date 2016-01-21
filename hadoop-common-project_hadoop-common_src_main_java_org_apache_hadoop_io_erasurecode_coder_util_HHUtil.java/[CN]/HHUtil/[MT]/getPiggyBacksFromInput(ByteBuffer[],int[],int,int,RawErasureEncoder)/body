@@ -1,0 +1,40 @@
+{
+  ByteBuffer[] emptyInput=new ByteBuffer[inputs.length];
+  ByteBuffer[] tempInput=new ByteBuffer[inputs.length];
+  int[] inputPositions=new int[inputs.length];
+  for (int m=0; m < inputs.length; ++m) {
+    if (inputs[m] != null) {
+      emptyInput[m]=allocateByteBuffer(inputs[m].isDirect(),inputs[m].remaining());
+    }
+  }
+  ByteBuffer[] tempOutput=new ByteBuffer[numParityUnits];
+  for (int m=0; m < numParityUnits; ++m) {
+    tempOutput[m]=allocateByteBuffer(inputs[m].isDirect(),inputs[0].remaining());
+  }
+  ByteBuffer[] piggyBacks=new ByteBuffer[numParityUnits - 1];
+  assert(piggyBackIndex.length >= numParityUnits);
+  for (int i=0; i < numParityUnits - 1; ++i) {
+    for (int k=piggyBackIndex[i]; k < piggyBackIndex[i + 1]; ++k) {
+      tempInput[k]=inputs[k];
+      inputPositions[k]=inputs[k].position();
+    }
+    for (int n=0; n < emptyInput.length; ++n) {
+      if (tempInput[n] == null) {
+        tempInput[n]=emptyInput[n];
+        inputPositions[n]=emptyInput[n].position();
+      }
+    }
+    encoder.encode(tempInput,tempOutput);
+    piggyBacks[i]=cloneBufferData(tempOutput[pgIndex]);
+    for (int j=0; j < tempInput.length; j++) {
+      if (tempInput[j] != null) {
+        tempInput[j].position(inputPositions[j]);
+        tempInput[j]=null;
+      }
+    }
+    for (int j=0; j < tempOutput.length; j++) {
+      tempOutput[j].clear();
+    }
+  }
+  return piggyBacks;
+}

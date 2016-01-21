@@ -1,0 +1,54 @@
+{
+  final int numDataUnits=rsRawDecoder.getNumDataUnits();
+  final int numParityUnits=rsRawDecoder.getNumParityUnits();
+  final int numTotalUnits=numDataUnits + numParityUnits;
+  int[] parityToFixFlag=new int[numTotalUnits];
+  for (int i=0; i < erasedLocationToFix.length; ++i) {
+    if (erasedLocationToFix[i] >= numDataUnits) {
+      parityToFixFlag[erasedLocationToFix[i]]=1;
+    }
+  }
+  int[] inputPositions=new int[inputs[0].length];
+  for (int i=0; i < inputPositions.length; i++) {
+    if (inputs[0][i] != null) {
+      inputPositions[i]=inputs[0][i].position();
+    }
+  }
+  rsRawDecoder.decode(inputs[0],erasedLocationToFix,outputs[0]);
+  for (int i=0; i < inputs[0].length; i++) {
+    if (inputs[0][i] != null) {
+      inputs[0][i].position(inputPositions[i]);
+    }
+  }
+  ByteBuffer[] tempInput=new ByteBuffer[numDataUnits];
+  for (int i=0; i < numDataUnits; ++i) {
+    tempInput[i]=inputs[0][i];
+  }
+  for (int i=0; i < erasedLocationToFix.length; ++i) {
+    if (erasedLocationToFix[i] < numDataUnits) {
+      tempInput[erasedLocationToFix[i]]=outputs[0][i];
+    }
+  }
+  ByteBuffer[] piggyBack=HHUtil.getPiggyBacksFromInput(tempInput,piggyBackIndex,numParityUnits,0,xorRawEncoder);
+  for (int j=numDataUnits + 1; j < numTotalUnits; ++j) {
+    if (parityToFixFlag[j] == 0 && inputs[1][j] != null) {
+      for (int k=inputs[1][j].position(), m=piggyBack[j - numDataUnits - 1].position(); k < inputs[1][j].limit(); ++k, ++m) {
+        inputs[1][j].put(k,(byte)(inputs[1][j].get(k) ^ piggyBack[j - numDataUnits - 1].get(m)));
+      }
+    }
+  }
+  rsRawDecoder.decode(inputs[1],erasedLocationToFix,outputs[1]);
+  for (int j=0; j < erasedLocationToFix.length; ++j) {
+    if (erasedLocationToFix[j] < numTotalUnits && erasedLocationToFix[j] > numDataUnits) {
+      int parityIndex=erasedLocationToFix[j] - numDataUnits - 1;
+      for (int k=outputs[1][j].position(), m=piggyBack[parityIndex].position(); k < outputs[1][j].limit(); ++k, ++m) {
+        outputs[1][j].put(k,(byte)(outputs[1][j].get(k) ^ piggyBack[parityIndex].get(m)));
+      }
+    }
+  }
+  for (int i=0; i < inputs[0].length; i++) {
+    if (inputs[0][i] != null) {
+      inputs[0][i].position(inputPositions[i] + bufSize);
+    }
+  }
+}

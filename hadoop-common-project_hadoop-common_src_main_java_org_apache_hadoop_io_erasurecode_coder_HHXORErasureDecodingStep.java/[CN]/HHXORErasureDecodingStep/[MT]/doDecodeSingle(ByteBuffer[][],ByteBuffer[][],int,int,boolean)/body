@@ -1,0 +1,74 @@
+{
+  final int numDataUnits=rsRawDecoder.getNumDataUnits();
+  final int numParityUnits=rsRawDecoder.getNumParityUnits();
+  final int subPacketSize=getSubPacketSize();
+  int[][] inputPositions=new int[subPacketSize][inputs[0].length];
+  for (int i=0; i < subPacketSize; ++i) {
+    for (int j=0; j < inputs[i].length; ++j) {
+      if (inputs[i][j] != null) {
+        inputPositions[i][j]=inputs[i][j].position();
+      }
+    }
+  }
+  ByteBuffer[] tempInputs=new ByteBuffer[numDataUnits + numParityUnits];
+  for (int i=0; i < tempInputs.length; ++i) {
+    tempInputs[i]=inputs[1][i];
+  }
+  ByteBuffer[][] tmpOutputs=new ByteBuffer[subPacketSize][numParityUnits];
+  for (int i=0; i < getSubPacketSize(); ++i) {
+    for (int j=0; j < erasedIndexes.length; ++j) {
+      tmpOutputs[i][j]=outputs[i][j];
+    }
+    for (int m=erasedIndexes.length; m < numParityUnits; ++m) {
+      tmpOutputs[i][m]=HHUtil.allocateByteBuffer(isDirect,bufSize);
+    }
+  }
+  int[] erasedLocation=new int[numParityUnits];
+  erasedLocation[0]=erasedLocationToFix;
+  for (int i=1; i < numParityUnits; i++) {
+    erasedLocation[i]=numDataUnits + i;
+    tempInputs[numDataUnits + i]=null;
+  }
+  rsRawDecoder.decode(tempInputs,erasedLocation,tmpOutputs[1]);
+  int piggyBackParityIndex=piggyBackFullIndex[erasedLocationToFix];
+  ByteBuffer piggyBack=HHUtil.getPiggyBackForDecode(inputs,tmpOutputs,piggyBackParityIndex,numDataUnits,numParityUnits,pbIndex);
+  if (isDirect) {
+    int idxToWrite=0;
+    doDecodeByPiggyBack(inputs[0],tmpOutputs[0][idxToWrite],piggyBack,erasedLocationToFix);
+  }
+ else {
+    ByteBuffer buffer;
+    byte[][][] newInputs=new byte[getSubPacketSize()][inputs[0].length][];
+    int[][] inputOffsets=new int[getSubPacketSize()][inputs[0].length];
+    byte[][][] newOutputs=new byte[getSubPacketSize()][numParityUnits][];
+    int[][] outOffsets=new int[getSubPacketSize()][numParityUnits];
+    for (int i=0; i < getSubPacketSize(); ++i) {
+      for (int j=0; j < inputs[0].length; ++j) {
+        buffer=inputs[i][j];
+        if (buffer != null) {
+          inputOffsets[i][j]=buffer.arrayOffset() + buffer.position();
+          newInputs[i][j]=buffer.array();
+        }
+      }
+    }
+    for (int i=0; i < getSubPacketSize(); ++i) {
+      for (int j=0; j < numParityUnits; ++j) {
+        buffer=tmpOutputs[i][j];
+        if (buffer != null) {
+          outOffsets[i][j]=buffer.arrayOffset() + buffer.position();
+          newOutputs[i][j]=buffer.array();
+        }
+      }
+    }
+    byte[] newPiggyBack=piggyBack.array();
+    int idxToWrite=0;
+    doDecodeByPiggyBack(newInputs[0],inputOffsets[0],newOutputs[0][idxToWrite],outOffsets[0][idxToWrite],newPiggyBack,erasedLocationToFix,bufSize);
+  }
+  for (int i=0; i < subPacketSize; ++i) {
+    for (int j=0; j < inputs[i].length; ++j) {
+      if (inputs[i][j] != null) {
+        inputs[i][j].position(inputPositions[i][j] + bufSize);
+      }
+    }
+  }
+}
