@@ -32,19 +32,26 @@
       String error="All targets are failed.";
       throw new IOException(error);
     }
-    long firstStripedBlockLength=getBlockLen(blockGroup,0);
-    while (positionInBlock < firstStripedBlockLength) {
-      int toRead=Math.min(bufferSize,(int)(firstStripedBlockLength - positionInBlock));
-      success=readMinimumStripedData4Recovery(success);
-      long remaining=firstStripedBlockLength - positionInBlock;
-      int toRecoverLen=remaining < bufferSize ? (int)remaining : bufferSize;
-      recoverTargets(success,targetsStatus,toRecoverLen);
+    long maxTargetLength=0;
+    for (    short targetIndex : targetIndices) {
+      maxTargetLength=Math.max(maxTargetLength,getBlockLen(blockGroup,targetIndex));
+    }
+    while (positionInBlock < maxTargetLength) {
+      final int toRecover=(int)Math.min(bufferSize,maxTargetLength - positionInBlock);
+      Map<ExtendedBlock,Set<DatanodeInfo>> corruptionMap=new HashMap<>();
+      try {
+        success=readMinimumStripedData4Recovery(success,toRecover,corruptionMap);
+      }
+  finally {
+        reportCorruptedBlocks(corruptionMap);
+      }
+      recoverTargets(success,targetsStatus,toRecover);
       if (transferData2Targets(targetsStatus) == 0) {
         String error="Transfer failed for all targets.";
         throw new IOException(error);
       }
       clearBuffers();
-      positionInBlock+=toRead;
+      positionInBlock+=toRecover;
     }
     endTargetBlocks(targetsStatus);
   }

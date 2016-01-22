@@ -1,9 +1,11 @@
 {
   StripedReader reader=null;
   int m=stripedReaders.size();
+  int toRead=0;
   while (reader == null && m < sources.length) {
     reader=addStripedReader(m,positionInBlock);
-    if (getReadLength(liveIndices[m]) > 0) {
+    toRead=getReadLength(liveIndices[m],recoverLength);
+    if (toRead > 0) {
       if (reader.blockReader == null) {
         reader=null;
         m++;
@@ -17,10 +19,12 @@
   for (int i=0; reader == null && i < stripedReaders.size(); i++) {
     if (!used.get(i)) {
       StripedReader r=stripedReaders.get(i);
-      if (getReadLength(liveIndices[i]) > 0) {
+      toRead=getReadLength(liveIndices[i],recoverLength);
+      if (toRead > 0) {
         closeBlockReader(r.blockReader);
         r.blockReader=newBlockReader(getBlock(blockGroup,liveIndices[i]),positionInBlock,sources[i]);
         if (r.blockReader != null) {
+          r.buffer.position(0);
           m=i;
           reader=r;
         }
@@ -33,7 +37,7 @@
     }
   }
   if (reader != null) {
-    Callable<Void> readCallable=readFromBlock(reader.blockReader,reader.buffer);
+    Callable<Void> readCallable=readFromBlock(reader,reader.buffer,toRead,corruptionMap);
     Future<Void> f=readService.submit(readCallable);
     futures.put(f,m);
     used.set(m);

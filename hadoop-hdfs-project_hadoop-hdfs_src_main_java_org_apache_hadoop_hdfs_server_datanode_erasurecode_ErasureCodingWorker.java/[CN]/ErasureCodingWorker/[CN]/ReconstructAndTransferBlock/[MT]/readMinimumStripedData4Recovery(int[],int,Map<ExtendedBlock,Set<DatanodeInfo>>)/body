@@ -1,11 +1,13 @@
 {
+  Preconditions.checkArgument(recoverLength >= 0 && recoverLength <= bufferSize);
   int nsuccess=0;
   int[] newSuccess=new int[minRequiredSources];
   BitSet used=new BitSet(sources.length);
   for (int i=0; i < minRequiredSources; i++) {
     StripedReader reader=stripedReaders.get(success[i]);
-    if (getReadLength(liveIndices[success[i]]) > 0) {
-      Callable<Void> readCallable=readFromBlock(reader.blockReader,reader.buffer);
+    final int toRead=getReadLength(liveIndices[success[i]],recoverLength);
+    if (toRead > 0) {
+      Callable<Void> readCallable=readFromBlock(reader,reader.buffer,toRead,corruptionMap);
       Future<Void> f=readService.submit(readCallable);
       futures.put(f,success[i]);
     }
@@ -26,10 +28,10 @@
         StripedReader failedReader=stripedReaders.get(result.index);
         closeBlockReader(failedReader.blockReader);
         failedReader.blockReader=null;
-        resultIndex=scheduleNewRead(used);
+        resultIndex=scheduleNewRead(used,recoverLength,corruptionMap);
       }
  else       if (result.state == StripingChunkReadResult.TIMEOUT) {
-        resultIndex=scheduleNewRead(used);
+        resultIndex=scheduleNewRead(used,recoverLength,corruptionMap);
       }
       if (resultIndex >= 0) {
         newSuccess[nsuccess++]=resultIndex;
