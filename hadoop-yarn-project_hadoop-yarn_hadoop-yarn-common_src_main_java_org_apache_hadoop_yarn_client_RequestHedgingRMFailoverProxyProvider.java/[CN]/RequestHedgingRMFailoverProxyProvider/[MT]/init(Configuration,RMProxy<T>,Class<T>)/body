@@ -1,0 +1,17 @@
+{
+  super.init(configuration,rmProxy,protocol);
+  Map<String,ProxyInfo<T>> retriableProxies=new HashMap<>();
+  String originalId=HAUtil.getRMHAId(conf);
+  for (  String rmId : rmServiceIds) {
+    conf.set(YarnConfiguration.RM_HA_ID,rmId);
+    nonRetriableProxy.put(rmId,super.getProxyInternal());
+    T proxy=createRetriableProxy();
+    ProxyInfo<T> pInfo=new ProxyInfo<T>(proxy,rmId);
+    retriableProxies.put(rmId,pInfo);
+  }
+  conf.set(YarnConfiguration.RM_HA_ID,originalId);
+  T proxyInstance=(T)Proxy.newProxyInstance(RMRequestHedgingInvocationHandler.class.getClassLoader(),new Class<?>[]{protocol},new RMRequestHedgingInvocationHandler(retriableProxies));
+  String combinedInfo=Arrays.toString(rmServiceIds);
+  wrappedProxy=new ProxyInfo<T>(proxyInstance,combinedInfo);
+  LOG.info("Created wrapped proxy for " + combinedInfo);
+}
