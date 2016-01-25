@@ -28,8 +28,16 @@
     DataNodeTestUtils.setHeartbeatsDisabledForTests(dn,true);
   }
   cluster.setLeasePeriod(LONG_LEASE_PERIOD,SHORT_LEASE_PERIOD);
-  Thread.sleep(HdfsServerConstants.NAMENODE_LEASE_RECHECK_INTERVAL * 2);
-  checkLease(fileStr,size);
+  final String path=fileStr;
+  GenericTestUtils.waitFor(new Supplier<Boolean>(){
+    @Override public Boolean get(){
+      return HdfsServerConstants.NAMENODE_LEASE_HOLDER.equals(NameNodeAdapter.getLeaseHolderForPath(cluster.getNameNode(),path));
+    }
+  }
+,(int)SHORT_LEASE_PERIOD,(int)SHORT_LEASE_PERIOD * 10);
+  FSEditLog spyLog=spy(cluster.getNameNode().getFSImage().getEditLog());
+  doNothing().when(spyLog).endCurrentLogSegment(Mockito.anyBoolean());
+  DFSTestUtil.setEditLogForTesting(cluster.getNamesystem(),spyLog);
   cluster.restartNameNode(false);
   checkLease(fileStr,size);
   for (  DataNode dn : cluster.getDataNodes()) {
