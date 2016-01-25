@@ -1,40 +1,47 @@
 {
-  if ("datanode".equals(nodeType)) {
-    ClientDatanodeProtocol dnProxy=getDataNodeProxy(address);
-    try {
-      ReconfigurationTaskStatus status=dnProxy.getReconfigurationStatus();
-      out.print("Reconfiguring status for DataNode[" + address + "]: ");
-      if (!status.hasTask()) {
-        out.println("no task was found.");
-        return 0;
-      }
-      out.print("started at " + new Date(status.getStartTime()));
-      if (!status.stopped()) {
-        out.println(" and is still running.");
-        return 0;
-      }
-      out.println(" and finished at " + new Date(status.getEndTime()).toString() + ".");
-      if (status.getStatus() == null) {
-        return 0;
-      }
-      for (      Map.Entry<PropertyChange,Optional<String>> result : status.getStatus().entrySet()) {
-        if (!result.getValue().isPresent()) {
-          out.printf("SUCCESS: Changed property %s%n\tFrom: \"%s\"%n\tTo: \"%s\"%n",result.getKey().prop,result.getKey().oldVal,result.getKey().newVal);
-        }
+  String outMsg=null;
+  String errMsg=null;
+  ReconfigurationTaskStatus status=null;
+  try {
+    status=getReconfigurationStatusDispatch(nodeType,address,out,err);
+    outMsg=String.format("Reconfiguring status for node [%s]: ",address);
+  }
+ catch (  IOException e) {
+    errMsg=String.format("Node [%s] reloading configuration: %s.",address,e.toString());
+  }
+  if (errMsg != null) {
+    err.println(errMsg);
+    return 1;
+  }
  else {
-          final String errorMsg=result.getValue().get();
-          out.printf("FAILED: Change property %s%n\tFrom: \"%s\"%n\tTo: \"%s\"%n",result.getKey().prop,result.getKey().oldVal,result.getKey().newVal);
-          out.println("\tError: " + errorMsg + ".");
-        }
-      }
+    out.print(outMsg);
+  }
+  if (status != null) {
+    if (!status.hasTask()) {
+      out.println("no task was found.");
+      return 0;
     }
- catch (    IOException e) {
-      err.println("DataNode reloading configuration: " + e + ".");
-      return 1;
+    out.print("started at " + new Date(status.getStartTime()));
+    if (!status.stopped()) {
+      out.println(" and is still running.");
+      return 0;
+    }
+    out.println(" and finished at " + new Date(status.getEndTime()).toString() + ".");
+    if (status.getStatus() == null) {
+      return 0;
+    }
+    for (    Map.Entry<PropertyChange,Optional<String>> result : status.getStatus().entrySet()) {
+      if (!result.getValue().isPresent()) {
+        out.printf("SUCCESS: Changed property %s%n\tFrom: \"%s\"%n\tTo: \"%s\"%n",result.getKey().prop,result.getKey().oldVal,result.getKey().newVal);
+      }
+ else {
+        final String errorMsg=result.getValue().get();
+        out.printf("FAILED: Change property %s%n\tFrom: \"%s\"%n\tTo: \"%s\"%n",result.getKey().prop,result.getKey().oldVal,result.getKey().newVal);
+        out.println("\tError: " + errorMsg + ".");
+      }
     }
   }
  else {
-    err.println("Node type " + nodeType + " does not support reconfiguration.");
     return 1;
   }
   return 0;
