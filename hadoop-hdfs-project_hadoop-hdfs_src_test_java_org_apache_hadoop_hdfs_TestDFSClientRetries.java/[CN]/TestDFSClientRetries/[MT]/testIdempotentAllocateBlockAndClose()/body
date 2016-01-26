@@ -10,15 +10,29 @@
     NamenodeProtocols spyNN=spy(preSpyNN);
     DFSClient client=new DFSClient(null,spyNN,conf,null);
     doAnswer(new Answer<LocatedBlock>(){
-      @Override public LocatedBlock answer(      InvocationOnMock invocation) throws Throwable {
-        LocatedBlock ret=(LocatedBlock)invocation.callRealMethod();
+      private int getBlockCount(      LocatedBlock ret) throws IOException {
         LocatedBlocks lb=cluster.getNameNodeRpc().getBlockLocations(src,0,Long.MAX_VALUE);
-        int blockCount=lb.getLocatedBlocks().size();
         assertEquals(lb.getLastLocatedBlock().getBlock(),ret.getBlock());
-        LocatedBlock ret2=(LocatedBlock)invocation.callRealMethod();
-        lb=cluster.getNameNodeRpc().getBlockLocations(src,0,Long.MAX_VALUE);
-        int blockCount2=lb.getLocatedBlocks().size();
-        assertEquals(lb.getLastLocatedBlock().getBlock(),ret2.getBlock());
+        return lb.getLocatedBlocks().size();
+      }
+      @Override public LocatedBlock answer(      InvocationOnMock invocation) throws Throwable {
+        LOG.info("Called addBlock: " + Arrays.toString(invocation.getArguments()));
+        final LocatedBlock ret;
+        try {
+          ret=(LocatedBlock)invocation.callRealMethod();
+        }
+ catch (        NotReplicatedYetException e) {
+          throw new RemoteException(e.getClass().getName(),e.getMessage());
+        }
+        final int blockCount=getBlockCount(ret);
+        final LocatedBlock ret2;
+        try {
+          ret2=(LocatedBlock)invocation.callRealMethod();
+        }
+ catch (        NotReplicatedYetException e) {
+          throw new AssertionError("Unexpected exception",e);
+        }
+        final int blockCount2=getBlockCount(ret2);
         assertEquals(blockCount,blockCount2);
         return ret2;
       }
