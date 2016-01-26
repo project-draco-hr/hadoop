@@ -1,0 +1,26 @@
+{
+  String cgroupId=container.getContainerId().toString();
+  Resource containerResource=container.getResource();
+  cGroupsHandler.createCGroup(CPU,cgroupId);
+  try {
+    int containerVCores=containerResource.getVirtualCores();
+    int cpuShares=CPU_DEFAULT_WEIGHT * containerVCores;
+    cGroupsHandler.updateCGroupParam(CPU,cgroupId,CGroupsHandler.CGROUP_CPU_SHARES,String.valueOf(cpuShares));
+    if (strictResourceUsageMode) {
+      if (nodeVCores != containerVCores) {
+        float containerCPU=(containerVCores * yarnProcessors) / (float)nodeVCores;
+        int[] limits=getOverallLimits(containerCPU);
+        cGroupsHandler.updateCGroupParam(CPU,cgroupId,CGroupsHandler.CGROUP_CPU_PERIOD_US,String.valueOf(limits[0]));
+        cGroupsHandler.updateCGroupParam(CPU,cgroupId,CGroupsHandler.CGROUP_CPU_QUOTA_US,String.valueOf(limits[1]));
+      }
+    }
+  }
+ catch (  ResourceHandlerException re) {
+    cGroupsHandler.deleteCGroup(CPU,cgroupId);
+    LOG.warn("Could not update cgroup for container",re);
+    throw re;
+  }
+  List<PrivilegedOperation> ret=new ArrayList<>();
+  ret.add(new PrivilegedOperation(PrivilegedOperation.OperationType.ADD_PID_TO_CGROUP,PrivilegedOperation.CGROUP_ARG_PREFIX + cGroupsHandler.getPathForCGroupTasks(CPU,cgroupId)));
+  return ret;
+}
