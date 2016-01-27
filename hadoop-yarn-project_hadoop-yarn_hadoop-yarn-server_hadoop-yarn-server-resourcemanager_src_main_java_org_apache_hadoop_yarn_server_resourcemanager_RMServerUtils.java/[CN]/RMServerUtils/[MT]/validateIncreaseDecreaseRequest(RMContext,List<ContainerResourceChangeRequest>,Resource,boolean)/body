@@ -9,6 +9,15 @@
     if (request.getCapability().getVirtualCores() < 0 || request.getCapability().getVirtualCores() > maximumAllocation.getVirtualCores()) {
       throw new InvalidResourceRequestException("Invalid " + (increase ? "increase" : "decrease") + " request"+ ", requested virtual cores < 0"+ ", or requested virtual cores > max configured"+ ", requestedVirtualCores="+ request.getCapability().getVirtualCores()+ ", maxVirtualCores="+ maximumAllocation.getVirtualCores());
     }
-    checkAndNormalizeContainerChangeRequest(rmContext,request,increase);
+    ContainerId containerId=request.getContainerId();
+    ResourceScheduler scheduler=rmContext.getScheduler();
+    RMContainer rmContainer=scheduler.getRMContainer(containerId);
+    if (null == rmContainer) {
+      String msg="Failed to get rmContainer for " + (increase ? "increase" : "decrease") + " request, with container-id="+ containerId;
+      throw new InvalidResourceRequestException(msg);
+    }
+    ResourceCalculator rc=scheduler.getResourceCalculator();
+    Resource targetResource=Resources.normalize(rc,request.getCapability(),scheduler.getMinimumResourceCapability(),scheduler.getMaximumResourceCapability(),scheduler.getMinimumResourceCapability());
+    request.setCapability(targetResource);
   }
 }

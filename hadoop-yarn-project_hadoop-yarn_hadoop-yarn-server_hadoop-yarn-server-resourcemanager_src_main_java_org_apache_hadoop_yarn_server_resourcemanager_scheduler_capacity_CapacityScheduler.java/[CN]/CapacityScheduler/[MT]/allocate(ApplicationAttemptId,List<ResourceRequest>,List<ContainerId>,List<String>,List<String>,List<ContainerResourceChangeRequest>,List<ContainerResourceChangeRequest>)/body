@@ -3,12 +3,11 @@
   if (application == null) {
     return EMPTY_ALLOCATION;
   }
-  SchedulerUtils.normalizeRequests(ask,getResourceCalculator(),getClusterResource(),getMinimumResourceCapability(),getMaximumResourceCapability());
-  List<SchedContainerChangeRequest> normalizedIncreaseRequests=checkAndNormalizeContainerChangeRequests(increaseRequests,true);
-  List<SchedContainerChangeRequest> normalizedDecreaseRequests=checkAndNormalizeContainerChangeRequests(decreaseRequests,false);
   releaseContainers(release,application);
+  LeafQueue updateDemandForQueue=updateIncreaseRequests(increaseRequests,application);
+  decreaseContainers(decreaseRequests,application);
+  SchedulerUtils.normalizeRequests(ask,getResourceCalculator(),getClusterResource(),getMinimumResourceCapability(),getMaximumResourceCapability());
   Allocation allocation;
-  LeafQueue updateDemandForQueue=null;
 synchronized (application) {
     if (application.isStopped()) {
       return EMPTY_ALLOCATION;
@@ -18,7 +17,7 @@ synchronized (application) {
         LOG.debug("allocate: pre-update " + applicationAttemptId + " ask size ="+ ask.size());
         application.showRequests();
       }
-      if (application.updateResourceRequests(ask)) {
+      if (application.updateResourceRequests(ask) && (updateDemandForQueue == null)) {
         updateDemandForQueue=(LeafQueue)application.getQueue();
       }
       if (LOG.isDebugEnabled()) {
@@ -26,16 +25,12 @@ synchronized (application) {
         application.showRequests();
       }
     }
-    if (application.updateIncreaseRequests(normalizedIncreaseRequests) && (updateDemandForQueue == null)) {
-      updateDemandForQueue=(LeafQueue)application.getQueue();
-    }
     if (application.isWaitingForAMContainer()) {
       application.updateAMBlacklist(blacklistAdditions,blacklistRemovals);
     }
  else {
       application.updateBlacklist(blacklistAdditions,blacklistRemovals);
     }
-    decreaseContainers(normalizedDecreaseRequests,application);
     allocation=application.getAllocation(getResourceCalculator(),clusterResource,getMinimumResourceCapability());
   }
   if (updateDemandForQueue != null && !application.isWaitingForAMContainer()) {
