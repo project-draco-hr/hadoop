@@ -2,8 +2,11 @@
   org.apache.hadoop.yarn.api.records.timelineservice.TimelineEntity tEntity=null;
   String taskId=null;
   String taskAttemptId=null;
+  boolean setCreatedTime=false;
 switch (event.getEventType()) {
 case JOB_SUBMITTED:
+    setCreatedTime=true;
+  break;
 case JOB_STATUS_CHANGED:
 case JOB_INFO_CHANGED:
 case JOB_INITED:
@@ -15,9 +18,10 @@ case JOB_ERROR:
 case JOB_FINISHED:
 case AM_STARTED:
 case NORMALIZED_RESOURCE:
-    break;
+break;
 case TASK_STARTED:
-  taskId=((TaskStartedEvent)event).getTaskId().toString();
+setCreatedTime=true;
+taskId=((TaskStartedEvent)event).getTaskId().toString();
 break;
 case TASK_FAILED:
 taskId=((TaskFailedEvent)event).getTaskId().toString();
@@ -29,8 +33,12 @@ case TASK_FINISHED:
 taskId=((TaskFinishedEvent)event).getTaskId().toString();
 break;
 case MAP_ATTEMPT_STARTED:
-case CLEANUP_ATTEMPT_STARTED:
 case REDUCE_ATTEMPT_STARTED:
+setCreatedTime=true;
+taskId=((TaskAttemptStartedEvent)event).getTaskId().toString();
+taskAttemptId=((TaskAttemptStartedEvent)event).getTaskAttemptId().toString();
+break;
+case CLEANUP_ATTEMPT_STARTED:
 case SETUP_ATTEMPT_STARTED:
 taskId=((TaskAttemptStartedEvent)event).getTaskId().toString();
 taskAttemptId=((TaskAttemptStartedEvent)event).getTaskAttemptId().toString();
@@ -64,14 +72,14 @@ LOG.warn("EventType: " + event.getEventType() + " cannot be recognized"+ " and h
 return;
 }
 if (taskId == null) {
-tEntity=createJobEntity(event,timestamp,jobId,MAPREDUCE_JOB_ENTITY_TYPE);
+tEntity=createJobEntity(event,timestamp,jobId,MAPREDUCE_JOB_ENTITY_TYPE,setCreatedTime);
 }
  else {
 if (taskAttemptId == null) {
-tEntity=createTaskEntity(event,timestamp,taskId,MAPREDUCE_TASK_ENTITY_TYPE,MAPREDUCE_JOB_ENTITY_TYPE,jobId);
+tEntity=createTaskEntity(event,timestamp,taskId,MAPREDUCE_TASK_ENTITY_TYPE,MAPREDUCE_JOB_ENTITY_TYPE,jobId,setCreatedTime);
 }
  else {
-tEntity=createTaskAttemptEntity(event,timestamp,taskAttemptId,MAPREDUCE_TASK_ATTEMPT_ENTITY_TYPE,MAPREDUCE_TASK_ENTITY_TYPE,taskId);
+tEntity=createTaskAttemptEntity(event,timestamp,taskAttemptId,MAPREDUCE_TASK_ATTEMPT_ENTITY_TYPE,MAPREDUCE_TASK_ENTITY_TYPE,taskId,setCreatedTime);
 }
 }
 putEntityWithoutBlocking(timelineClient,tEntity);
