@@ -1,0 +1,25 @@
+{
+  String url=req.getRequestURI() + (req.getQueryString() == null ? "" : QUERY_STRING_SEP + req.getQueryString());
+  UserGroupInformation callerUGI=TimelineReaderWebServicesUtils.getUser(req);
+  LOG.info("Received URL " + url + " from user "+ TimelineReaderWebServicesUtils.getUserName(callerUGI));
+  long startTime=Time.monotonicNow();
+  init(res);
+  TimelineReaderManager timelineReaderManager=getTimelineReaderManager();
+  Set<TimelineEntity> entities=null;
+  try {
+    TimelineReaderContext context=TimelineUIDConverter.FLOW_UID.decodeUID(uId);
+    if (context == null) {
+      throw new BadRequestException("Incorrect UID " + uId);
+    }
+    entities=timelineReaderManager.getEntities(context.getUserId(),context.getClusterId(),context.getFlowName(),null,null,TimelineEntityType.YARN_FLOW_RUN.toString(),TimelineReaderWebServicesUtils.parseLongStr(limit),TimelineReaderWebServicesUtils.parseLongStr(createdTimeStart),TimelineReaderWebServicesUtils.parseLongStr(createdTimeEnd),null,null,null,null,null,null,TimelineReaderWebServicesUtils.parseFieldsStr(fields,COMMA_DELIMITER));
+  }
+ catch (  Exception e) {
+    handleException(e,url,startTime,"createdTime start/end or limit");
+  }
+  long endTime=Time.monotonicNow();
+  if (entities == null) {
+    entities=Collections.emptySet();
+  }
+  LOG.info("Processed URL " + url + " (Took "+ (endTime - startTime)+ " ms.)");
+  return entities;
+}
