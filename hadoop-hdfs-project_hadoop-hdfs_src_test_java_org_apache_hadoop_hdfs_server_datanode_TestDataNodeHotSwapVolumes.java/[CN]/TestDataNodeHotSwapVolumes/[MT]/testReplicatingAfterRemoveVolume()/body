@@ -6,9 +6,23 @@
   createFile(testFile,4,replFactor);
   DataNode dn=cluster.getDataNodes().get(0);
   Collection<String> oldDirs=getDataDirs(dn);
-  String newDirs=oldDirs.iterator().next();
+  ExtendedBlock block=DFSTestUtil.getAllBlocks(fs,testFile).get(1).getBlock();
+  FsVolumeSpi volumeWithBlock=dn.getFSDataset().getVolume(block);
+  String basePath=volumeWithBlock.getBasePath();
+  File storageDir=new File(basePath);
+  URI fileUri=storageDir.toURI();
+  String dirWithBlock="[" + volumeWithBlock.getStorageType() + "]"+ fileUri;
+  String newDirs=dirWithBlock;
+  for (  String dir : oldDirs) {
+    if (dirWithBlock.startsWith(dir)) {
+      continue;
+    }
+    newDirs=dir;
+    break;
+  }
   dn.reconfigurePropertyImpl(DFSConfigKeys.DFS_DATANODE_DATA_DIR_KEY,newDirs);
-  assertFileLocksReleased(new ArrayList<String>(oldDirs).subList(1,oldDirs.size()));
+  oldDirs.remove(newDirs);
+  assertFileLocksReleased(oldDirs);
   triggerDeleteReport(dn);
   waitReplication(fs,testFile,1,1);
   DFSTestUtil.waitReplication(fs,testFile,replFactor);
