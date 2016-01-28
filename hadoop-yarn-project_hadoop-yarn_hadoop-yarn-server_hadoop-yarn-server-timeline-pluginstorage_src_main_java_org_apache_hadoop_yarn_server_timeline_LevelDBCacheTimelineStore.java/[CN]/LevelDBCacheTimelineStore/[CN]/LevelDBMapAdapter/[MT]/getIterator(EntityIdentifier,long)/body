@@ -1,0 +1,43 @@
+{
+  final DBIterator internalDbIterator=entityDb.iterator();
+  LeveldbUtils.KeyBuilder entityPrefixKeyBuilder=LeveldbUtils.KeyBuilder.newInstance();
+  entityPrefixKeyBuilder.add(ENTITY_STORAGE_PREFIX);
+  final byte[] prefixBytes=entityPrefixKeyBuilder.getBytesForLookup();
+  final byte[] startTimeBytes=GenericObjectMapper.writeReverseOrderedLong(startTimeMax);
+  entityPrefixKeyBuilder.add(startTimeBytes,true);
+  if (startId != null) {
+    entityPrefixKeyBuilder.add(startId.getId());
+  }
+  final byte[] startPrefixBytes=entityPrefixKeyBuilder.getBytesForLookup();
+  internalDbIterator.seek(startPrefixBytes);
+  return new Iterator<V>(){
+    @Override public boolean hasNext(){
+      if (!internalDbIterator.hasNext()) {
+        return false;
+      }
+      Map.Entry<byte[],byte[]> nextEntry=internalDbIterator.peekNext();
+      if (LeveldbUtils.prefixMatches(prefixBytes,prefixBytes.length,nextEntry.getKey())) {
+        return true;
+      }
+      return false;
+    }
+    @Override public V next(){
+      if (hasNext()) {
+        Map.Entry<byte[],byte[]> nextRaw=internalDbIterator.next();
+        try {
+          V result=getEntityForKey(nextRaw.getKey());
+          return result;
+        }
+ catch (        IOException e) {
+          LOG.error("GenericObjectMapper cannot read key from key " + nextRaw.getKey() + " into an object. Read aborted! ");
+          LOG.error(e.getMessage());
+        }
+      }
+      return null;
+    }
+    @Override public void remove(){
+      LOG.error("LevelDB map adapter does not support iterate-and-remove" + " use cases. ");
+    }
+  }
+;
+}

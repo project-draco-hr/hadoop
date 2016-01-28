@@ -1,0 +1,79 @@
+{
+  if (getServiceStopped()) {
+    LOG.info("Service stopped, return null for the storage");
+    return null;
+  }
+  if (limit == null) {
+    limit=DEFAULT_LIMIT;
+  }
+  if (windowStart == null) {
+    windowStart=Long.MIN_VALUE;
+  }
+  if (windowEnd == null) {
+    windowEnd=Long.MAX_VALUE;
+  }
+  if (fields == null) {
+    fields=EnumSet.allOf(Field.class);
+  }
+  Iterator<TimelineEntity> entityIterator=null;
+  if (fromId != null) {
+    TimelineEntity firstEntity=entities.get(new EntityIdentifier(fromId,entityType));
+    if (firstEntity == null) {
+      return new TimelineEntities();
+    }
+ else {
+      entityIterator=entities.valueSetIterator(firstEntity);
+    }
+  }
+  if (entityIterator == null) {
+    entityIterator=entities.valueSetIterator();
+  }
+  List<TimelineEntity> entitiesSelected=new ArrayList<TimelineEntity>();
+  while (entityIterator.hasNext()) {
+    TimelineEntity entity=entityIterator.next();
+    if (entitiesSelected.size() >= limit) {
+      break;
+    }
+    if (!entity.getEntityType().equals(entityType)) {
+      continue;
+    }
+    if (entity.getStartTime() <= windowStart) {
+      continue;
+    }
+    if (entity.getStartTime() > windowEnd) {
+      continue;
+    }
+    if (fromTs != null && entityInsertTimes.get(new EntityIdentifier(entity.getEntityId(),entity.getEntityType())) > fromTs) {
+      continue;
+    }
+    if (primaryFilter != null && !KeyValueBasedTimelineStoreUtils.matchPrimaryFilter(entity.getPrimaryFilters(),primaryFilter)) {
+      continue;
+    }
+    if (secondaryFilters != null) {
+      boolean flag=true;
+      for (      NameValuePair secondaryFilter : secondaryFilters) {
+        if (secondaryFilter != null && !KeyValueBasedTimelineStoreUtils.matchPrimaryFilter(entity.getPrimaryFilters(),secondaryFilter) && !KeyValueBasedTimelineStoreUtils.matchFilter(entity.getOtherInfo(),secondaryFilter)) {
+          flag=false;
+          break;
+        }
+      }
+      if (!flag) {
+        continue;
+      }
+    }
+    if (entity.getDomainId() == null) {
+      entity.setDomainId(DEFAULT_DOMAIN_ID);
+    }
+    if (checkAcl == null || checkAcl.check(entity)) {
+      entitiesSelected.add(entity);
+    }
+  }
+  List<TimelineEntity> entitiesToReturn=new ArrayList<TimelineEntity>();
+  for (  TimelineEntity entitySelected : entitiesSelected) {
+    entitiesToReturn.add(KeyValueBasedTimelineStoreUtils.maskFields(entitySelected,fields));
+  }
+  Collections.sort(entitiesToReturn);
+  TimelineEntities entitiesWrapper=new TimelineEntities();
+  entitiesWrapper.setEntities(entitiesToReturn);
+  return entitiesWrapper;
+}

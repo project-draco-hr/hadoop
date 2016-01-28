@@ -1,0 +1,123 @@
+{
+  TimelinePutResponse response=new TimelinePutResponse();
+  if (getServiceStopped()) {
+    LOG.info("Service stopped, return null for the storage");
+    TimelinePutError error=new TimelinePutError();
+    error.setErrorCode(TimelinePutError.IO_EXCEPTION);
+    response.addError(error);
+    return response;
+  }
+  for (  TimelineEntity entity : data.getEntities()) {
+    EntityIdentifier entityId=new EntityIdentifier(entity.getEntityId(),entity.getEntityType());
+    TimelineEntity existingEntity=entities.get(entityId);
+    boolean needsPut=false;
+    if (existingEntity == null) {
+      existingEntity=new TimelineEntity();
+      existingEntity.setEntityId(entity.getEntityId());
+      existingEntity.setEntityType(entity.getEntityType());
+      existingEntity.setStartTime(entity.getStartTime());
+      if (entity.getDomainId() == null || entity.getDomainId().length() == 0) {
+        TimelinePutError error=new TimelinePutError();
+        error.setEntityId(entityId.getId());
+        error.setEntityType(entityId.getType());
+        error.setErrorCode(TimelinePutError.NO_DOMAIN);
+        response.addError(error);
+        continue;
+      }
+      existingEntity.setDomainId(entity.getDomainId());
+      entityInsertTimes.put(entityId,System.currentTimeMillis());
+      needsPut=true;
+    }
+    if (entity.getEvents() != null) {
+      if (existingEntity.getEvents() == null) {
+        existingEntity.setEvents(entity.getEvents());
+      }
+ else {
+        existingEntity.addEvents(entity.getEvents());
+      }
+      Collections.sort(existingEntity.getEvents());
+      needsPut=true;
+    }
+    if (existingEntity.getStartTime() == null) {
+      if (existingEntity.getEvents() == null || existingEntity.getEvents().isEmpty()) {
+        TimelinePutError error=new TimelinePutError();
+        error.setEntityId(entityId.getId());
+        error.setEntityType(entityId.getType());
+        error.setErrorCode(TimelinePutError.NO_START_TIME);
+        response.addError(error);
+        entities.remove(entityId);
+        entityInsertTimes.remove(entityId);
+        continue;
+      }
+ else {
+        Long min=Long.MAX_VALUE;
+        for (        TimelineEvent e : entity.getEvents()) {
+          if (min > e.getTimestamp()) {
+            min=e.getTimestamp();
+          }
+        }
+        existingEntity.setStartTime(min);
+        needsPut=true;
+      }
+    }
+    if (entity.getPrimaryFilters() != null) {
+      if (existingEntity.getPrimaryFilters() == null) {
+        existingEntity.setPrimaryFilters(new HashMap<String,Set<Object>>());
+      }
+      for (      Entry<String,Set<Object>> pf : entity.getPrimaryFilters().entrySet()) {
+        for (        Object pfo : pf.getValue()) {
+          existingEntity.addPrimaryFilter(pf.getKey(),KeyValueBasedTimelineStoreUtils.compactNumber(pfo));
+          needsPut=true;
+        }
+      }
+    }
+    if (entity.getOtherInfo() != null) {
+      if (existingEntity.getOtherInfo() == null) {
+        existingEntity.setOtherInfo(new HashMap<String,Object>());
+      }
+      for (      Entry<String,Object> info : entity.getOtherInfo().entrySet()) {
+        existingEntity.addOtherInfo(info.getKey(),KeyValueBasedTimelineStoreUtils.compactNumber(info.getValue()));
+        needsPut=true;
+      }
+    }
+    if (needsPut) {
+      entities.put(entityId,existingEntity);
+    }
+    if (entity.getRelatedEntities() == null) {
+      continue;
+    }
+    for (    Entry<String,Set<String>> partRelatedEntities : entity.getRelatedEntities().entrySet()) {
+      if (partRelatedEntities == null) {
+        continue;
+      }
+      for (      String idStr : partRelatedEntities.getValue()) {
+        EntityIdentifier relatedEntityId=new EntityIdentifier(idStr,partRelatedEntities.getKey());
+        TimelineEntity relatedEntity=entities.get(relatedEntityId);
+        if (relatedEntity != null) {
+          if (relatedEntity.getDomainId().equals(existingEntity.getDomainId())) {
+            relatedEntity.addRelatedEntity(existingEntity.getEntityType(),existingEntity.getEntityId());
+            entities.put(relatedEntityId,relatedEntity);
+          }
+ else {
+            TimelinePutError error=new TimelinePutError();
+            error.setEntityType(existingEntity.getEntityType());
+            error.setEntityId(existingEntity.getEntityId());
+            error.setErrorCode(TimelinePutError.FORBIDDEN_RELATION);
+            response.addError(error);
+          }
+        }
+ else {
+          relatedEntity=new TimelineEntity();
+          relatedEntity.setEntityId(relatedEntityId.getId());
+          relatedEntity.setEntityType(relatedEntityId.getType());
+          relatedEntity.setStartTime(existingEntity.getStartTime());
+          relatedEntity.addRelatedEntity(existingEntity.getEntityType(),existingEntity.getEntityId());
+          relatedEntity.setDomainId(existingEntity.getDomainId());
+          entities.put(relatedEntityId,relatedEntity);
+          entityInsertTimes.put(relatedEntityId,System.currentTimeMillis());
+        }
+      }
+    }
+  }
+  return response;
+}
