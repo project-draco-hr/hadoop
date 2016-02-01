@@ -2,12 +2,16 @@
   RMNodeStartedEvent startEvent=(RMNodeStartedEvent)event;
   List<NMContainerStatus> containers=null;
   NodeId nodeId=rmNode.nodeId;
-  if (rmNode.context.getInactiveRMNodes().containsKey(nodeId)) {
-    RMNode previouRMNode=rmNode.context.getInactiveRMNodes().get(nodeId);
-    rmNode.context.getInactiveRMNodes().remove(nodeId);
-    rmNode.updateMetricsForRejoinedNode(previouRMNode.getState());
+  RMNode previousRMNode=rmNode.context.getInactiveRMNodes().remove(nodeId);
+  if (previousRMNode != null) {
+    rmNode.updateMetricsForRejoinedNode(previousRMNode.getState());
   }
  else {
+    NodesListManager.UnknownNodeId unknownNodeId=new NodesListManager.UnknownNodeId(nodeId.getHost());
+    previousRMNode=rmNode.context.getInactiveRMNodes().remove(unknownNodeId);
+    if (previousRMNode != null) {
+      ClusterMetrics.getMetrics().decrDecommisionedNMs();
+    }
     ClusterMetrics.getMetrics().incrNumActiveNodes();
     containers=startEvent.getNMContainerStatuses();
     if (containers != null && !containers.isEmpty()) {
