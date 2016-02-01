@@ -1,15 +1,39 @@
 {
+  Map<Future<Void>,Integer> flushAllFuturesMap=new HashMap<>();
+  Future<Void> future=null;
   int current=getCurrentIndex();
   for (int i=0; i < numAllBlocks; i++) {
     final StripedDataStreamer s=setCurrentStreamer(i);
     if (s.isHealthy()) {
       try {
-        flushInternal();
+        final long toWaitFor=flushInternalWithoutWaitingAck();
+        future=flushAllExecutorCompletionService.submit(new Callable<Void>(){
+          @Override public Void call() throws Exception {
+            s.waitForAckedSeqno(toWaitFor);
+            return null;
+          }
+        }
+);
+        flushAllFuturesMap.put(future,i);
       }
  catch (      Exception e) {
-        handleStreamerFailure("flushInternal " + s,e);
+        handleCurrentStreamerFailure("flushInternal " + s,e);
       }
     }
   }
   setCurrentStreamer(current);
+  for (int i=0; i < flushAllFuturesMap.size(); i++) {
+    try {
+      future=flushAllExecutorCompletionService.take();
+      future.get();
+    }
+ catch (    InterruptedException ie) {
+      throw DFSUtilClient.toInterruptedIOException("Interrupted during waiting all streamer flush, ",ie);
+    }
+catch (    ExecutionException ee) {
+      LOG.warn("Caught ExecutionException while waiting all streamer flush, ",ee);
+      StripedDataStreamer s=streamers.get(flushAllFuturesMap.get(future));
+      handleStreamerFailure("flushInternal " + s,(Exception)ee.getCause(),s);
+    }
+  }
 }
