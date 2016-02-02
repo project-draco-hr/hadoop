@@ -3,6 +3,7 @@
   if (args.size() < 2 || !args.get(0).startsWith("-op"))   printUsage();
   String type=args.get(1);
   boolean runAll=OperationStatsBase.OP_ALL_NAME.equals(type);
+  final URI nnUri=FileSystem.getDefaultUri(config);
   String[] argv=new String[]{};
   List<OperationStatsBase> ops=new ArrayList<OperationStatsBase>();
   OperationStatsBase opStat=null;
@@ -36,8 +37,8 @@
       ops.add(opStat);
     }
     if (runAll || ReplicationStats.OP_REPLICATION_NAME.equals(type)) {
-      if (namenodeUri != null || args.contains("-namenode")) {
-        LOG.warn("The replication test is ignored as it does not support " + "standalone namenode in another process or on another host. " + "Please run replication test without -namenode argument.");
+      if (nnUri.getScheme() != null && nnUri.getScheme().equals("hdfs")) {
+        LOG.warn("The replication test is ignored as it does not support " + "standalone namenode in another process or on another host. ");
       }
  else {
         opStat=new ReplicationStats(args);
@@ -51,7 +52,10 @@
     if (ops.isEmpty()) {
       printUsage();
     }
-    if (namenodeUri == null) {
+    if (nnUri.getScheme() == null || nnUri.getScheme().equals("file")) {
+      LOG.info("Remote NameNode is not specified. Creating one.");
+      FileSystem.setDefaultUri(config,"hdfs://localhost:0");
+      config.set(DFSConfigKeys.DFS_NAMENODE_HTTP_ADDRESS_KEY,"0.0.0.0:0");
       nameNode=NameNode.createNameNode(argv,config);
       NamenodeProtocols nnProtos=nameNode.getRpcServer();
       nameNodeProto=nnProtos;
@@ -61,9 +65,7 @@
       bpid=nameNode.getNamesystem().getBlockPoolId();
     }
  else {
-      FileSystem.setDefaultUri(getConf(),namenodeUri);
       DistributedFileSystem dfs=(DistributedFileSystem)FileSystem.get(getConf());
-      final URI nnUri=new URI(namenodeUri);
       nameNodeProto=DFSTestUtil.getNamenodeProtocolProxy(config,nnUri,UserGroupInformation.getCurrentUser());
       clientProto=dfs.getClient().getNamenode();
       dataNodeProto=new DatanodeProtocolClientSideTranslatorPB(DFSUtilClient.getNNAddress(nnUri),config);
