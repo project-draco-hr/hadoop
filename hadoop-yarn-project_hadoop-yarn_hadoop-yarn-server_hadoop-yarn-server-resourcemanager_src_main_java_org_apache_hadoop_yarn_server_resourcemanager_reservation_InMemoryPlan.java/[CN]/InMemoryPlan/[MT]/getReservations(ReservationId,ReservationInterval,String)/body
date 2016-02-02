@@ -1,0 +1,36 @@
+{
+  if (reservationID != null) {
+    ReservationAllocation allocation=getReservationById(reservationID);
+    if (allocation == null) {
+      return Collections.emptySet();
+    }
+    return Collections.singleton(allocation);
+  }
+  long startTime=interval == null ? 0 : interval.getStartTime();
+  long endTime=interval == null ? Long.MAX_VALUE : interval.getEndTime();
+  ReservationInterval searchInterval=new ReservationInterval(endTime,Long.MAX_VALUE);
+  readLock.lock();
+  try {
+    SortedMap<ReservationInterval,Set<InMemoryReservationAllocation>> reservations=currentReservations.headMap(searchInterval,true);
+    if (!reservations.isEmpty()) {
+      Set<ReservationAllocation> flattenedReservations=new HashSet<>();
+      for (      Set<InMemoryReservationAllocation> reservationEntries : reservations.values()) {
+        for (        InMemoryReservationAllocation res : reservationEntries) {
+          if (res.getEndTime() > startTime) {
+            if (user != null && !user.isEmpty() && !res.getUser().equals(user)) {
+              continue;
+            }
+            flattenedReservations.add(res);
+          }
+        }
+      }
+      return Collections.unmodifiableSet(flattenedReservations);
+    }
+ else {
+      return Collections.emptySet();
+    }
+  }
+  finally {
+    readLock.unlock();
+  }
+}
