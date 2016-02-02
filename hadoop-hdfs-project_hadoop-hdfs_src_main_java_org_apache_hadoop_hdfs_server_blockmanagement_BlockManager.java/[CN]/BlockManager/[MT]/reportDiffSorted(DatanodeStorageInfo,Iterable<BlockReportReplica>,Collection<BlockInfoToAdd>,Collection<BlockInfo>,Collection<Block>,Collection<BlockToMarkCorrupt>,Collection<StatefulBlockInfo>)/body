@@ -1,0 +1,50 @@
+{
+  Iterator<BlockInfo> storageBlocksIterator=storageInfo.getBlockIterator();
+  DatanodeDescriptor dn=storageInfo.getDatanodeDescriptor();
+  BlockInfo storageBlock=null;
+  for (  BlockReportReplica replica : newReport) {
+    long replicaID=replica.getBlockId();
+    if (BlockIdManager.isStripedBlockID(replicaID) && (!hasNonEcBlockUsingStripedID || !blocksMap.containsBlock(replica))) {
+      replicaID=BlockIdManager.convertToStripedID(replicaID);
+    }
+    ReplicaState reportedState=replica.getState();
+    if (LOG.isDebugEnabled()) {
+      LOG.debug("Reported block " + replica + " on "+ dn+ " size "+ replica.getNumBytes()+ " replicaState = "+ reportedState);
+    }
+    if (shouldPostponeBlocksFromFuture && isGenStampInFuture(replica)) {
+      queueReportedBlock(storageInfo,replica,reportedState,QUEUE_REASON_FUTURE_GENSTAMP);
+      continue;
+    }
+    if (storageBlock == null && storageBlocksIterator.hasNext()) {
+      storageBlock=storageBlocksIterator.next();
+    }
+    do {
+      int cmp;
+      if (storageBlock == null || (cmp=Long.compare(replicaID,storageBlock.getBlockId())) < 0) {
+        BlockInfo nnBlock=blocksMap.getStoredBlock(new Block(replicaID));
+        if (nnBlock != null) {
+          reportDiffSortedInner(storageInfo,replica,reportedState,nnBlock,toAdd,toCorrupt,toUC);
+        }
+ else {
+          toInvalidate.add(new Block(replica));
+        }
+        break;
+      }
+ else       if (cmp == 0) {
+        reportDiffSortedInner(storageInfo,replica,reportedState,storageBlock,toAdd,toCorrupt,toUC);
+        storageBlock=null;
+      }
+ else {
+        do {
+          toRemove.add(storageBlock);
+          storageBlock=storageBlocksIterator.hasNext() ? storageBlocksIterator.next() : null;
+        }
+ while (storageBlock != null && Long.compare(replicaID,storageBlock.getBlockId()) > 0);
+      }
+    }
+ while (storageBlock != null);
+  }
+  while (storageBlocksIterator.hasNext()) {
+    toRemove.add(storageBlocksIterator.next());
+  }
+}

@@ -1,0 +1,38 @@
+{
+  ArrayList<String> datanodesAndStorages=new ArrayList<>();
+  for (  DatanodeDescriptor node : datanodeManager.getDatanodeListForReport(DatanodeReportType.ALL)) {
+    for (    DatanodeStorageInfo storage : node.getStorageInfos()) {
+      try {
+        namesystem.readLock();
+        double ratio=storage.treeSetFillRatio();
+        if (ratio < storageInfoDefragmentRatio) {
+          datanodesAndStorages.add(node.getDatanodeUuid());
+          datanodesAndStorages.add(storage.getStorageID());
+        }
+        LOG.info("StorageInfo TreeSet fill ratio {} : {}{}",storage.getStorageID(),ratio,(ratio < storageInfoDefragmentRatio) ? " (queued for defragmentation)" : "");
+      }
+  finally {
+        namesystem.readUnlock();
+      }
+    }
+  }
+  if (!datanodesAndStorages.isEmpty()) {
+    for (int i=0; i < datanodesAndStorages.size(); i+=2) {
+      namesystem.writeLock();
+      try {
+        DatanodeStorageInfo storage=datanodeManager.getDatanode(datanodesAndStorages.get(i)).getStorageInfo(datanodesAndStorages.get(i + 1));
+        if (storage != null) {
+          boolean aborted=!storage.treeSetCompact(storageInfoDefragmentTimeout);
+          if (aborted) {
+            i-=2;
+          }
+          LOG.info("StorageInfo TreeSet defragmented {} : {}{}",storage.getStorageID(),storage.treeSetFillRatio(),aborted ? " (aborted)" : "");
+        }
+      }
+  finally {
+        namesystem.writeUnlock();
+      }
+      Thread.sleep(1000);
+    }
+  }
+}
