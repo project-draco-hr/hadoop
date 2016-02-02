@@ -1,0 +1,40 @@
+{
+  initDecoderIfNecessary();
+  ByteBuffer[] inputs=new ByteBuffer[dataBlkNum + parityBlkNum];
+  for (int i=0; i < success.length; i++) {
+    StripedReader reader=stripedReaders.get(success[i]);
+    ByteBuffer buffer=reader.buffer;
+    paddingBufferToLen(buffer,toReconstructLen);
+    inputs[reader.index]=(ByteBuffer)buffer.flip();
+  }
+  if (success.length < dataBlkNum) {
+    for (int i=0; i < zeroStripeBuffers.length; i++) {
+      ByteBuffer buffer=zeroStripeBuffers[i];
+      paddingBufferToLen(buffer,toReconstructLen);
+      int index=zeroStripeIndices[i];
+      inputs[index]=(ByteBuffer)buffer.flip();
+    }
+  }
+  int[] erasedIndices=getErasedIndices(targetsStatus);
+  ByteBuffer[] outputs=new ByteBuffer[erasedIndices.length];
+  int m=0;
+  for (int i=0; i < targetBuffers.length; i++) {
+    if (targetsStatus[i]) {
+      targetBuffers[i].limit(toReconstructLen);
+      outputs[m++]=targetBuffers[i];
+    }
+  }
+  decoder.decode(inputs,erasedIndices,outputs);
+  for (int i=0; i < targets.length; i++) {
+    if (targetsStatus[i]) {
+      long blockLen=getBlockLen(blockGroup,targetIndices[i]);
+      long remaining=blockLen - positionInBlock;
+      if (remaining <= 0) {
+        targetBuffers[i].limit(0);
+      }
+ else       if (remaining < toReconstructLen) {
+        targetBuffers[i].limit((int)remaining);
+      }
+    }
+  }
+}
