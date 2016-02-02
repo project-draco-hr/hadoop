@@ -9,7 +9,7 @@
     cluster=new MiniDFSCluster.Builder(conf).numDataNodes(1).build();
     cluster.waitActive();
     DistributedFileSystem hdfs=cluster.getFileSystem();
-    for (int i=0; i < NUM_DIRS; i++) {
+    for (int i=0; i < NUM_DIRS; i++, dirCount++) {
       Path dir=new Path("/dir" + i);
       hdfs.mkdirs(dir);
       writtenFiles.put(dir.toString(),pathToFileEntry(hdfs,dir.toString()));
@@ -23,20 +23,30 @@
     }
     Path emptydir=new Path("/emptydir");
     hdfs.mkdirs(emptydir);
+    dirCount++;
     writtenFiles.put(emptydir.toString(),hdfs.getFileStatus(emptydir));
     Path invalidXMLDir=new Path("/dirContainingInvalidXMLChar\u0000here");
     hdfs.mkdirs(invalidXMLDir);
+    dirCount++;
     Token<?>[] delegationTokens=hdfs.addDelegationTokens(TEST_RENEWER,null);
     for (    Token<?> t : delegationTokens) {
       LOG.debug("got token " + t);
     }
-    final Path snapshot=new Path("/snapshot");
-    hdfs.mkdirs(snapshot);
-    hdfs.allowSnapshot(snapshot);
-    hdfs.mkdirs(new Path("/snapshot/1"));
-    hdfs.delete(snapshot,true);
+    final Path src=new Path("/src");
+    hdfs.mkdirs(src);
+    dirCount++;
+    writtenFiles.put(src.toString(),hdfs.getFileStatus(src));
+    final Path orig=new Path("/src/orig");
+    hdfs.mkdirs(orig);
+    hdfs.allowSnapshot(src);
+    hdfs.createSnapshot(src,"snapshot");
+    final Path dst=new Path("/dst");
+    hdfs.rename(orig,dst);
+    dirCount++;
+    writtenFiles.put(dst.toString(),hdfs.getFileStatus(dst));
     final Path xattr=new Path("/xattr");
     hdfs.mkdirs(xattr);
+    dirCount++;
     hdfs.setXAttr(xattr,"user.a1",new byte[]{0x31,0x32,0x33});
     hdfs.setXAttr(xattr,"user.a2",new byte[]{0x37,0x38,0x39});
     hdfs.setXAttr(xattr,"user.a3",null);
