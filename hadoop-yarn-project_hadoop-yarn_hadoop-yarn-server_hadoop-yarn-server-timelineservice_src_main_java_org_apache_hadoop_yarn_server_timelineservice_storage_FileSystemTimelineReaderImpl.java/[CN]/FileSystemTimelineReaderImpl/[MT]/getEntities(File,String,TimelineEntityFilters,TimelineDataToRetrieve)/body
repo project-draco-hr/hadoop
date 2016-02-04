@@ -1,0 +1,59 @@
+{
+  Map<Long,Set<TimelineEntity>> sortedEntities=new TreeMap<>(new Comparator<Long>(){
+    @Override public int compare(    Long l1,    Long l2){
+      return l2.compareTo(l1);
+    }
+  }
+);
+  for (  File entityFile : dir.listFiles()) {
+    if (!entityFile.getName().contains(TIMELINE_SERVICE_STORAGE_EXTENSION)) {
+      continue;
+    }
+    try (BufferedReader reader=new BufferedReader(new InputStreamReader(new FileInputStream(entityFile),Charset.forName("UTF-8")))){
+      TimelineEntity entity=readEntityFromFile(reader);
+      if (!entity.getType().equals(entityType)) {
+        continue;
+      }
+      if (!isTimeInRange(entity.getCreatedTime(),filters.getCreatedTimeBegin(),filters.getCreatedTimeEnd())) {
+        continue;
+      }
+      if (filters.getRelatesTo() != null && !filters.getRelatesTo().isEmpty() && !TimelineStorageUtils.matchRelations(entity.getRelatesToEntities(),filters.getRelatesTo())) {
+        continue;
+      }
+      if (filters.getIsRelatedTo() != null && !filters.getIsRelatedTo().isEmpty() && !TimelineStorageUtils.matchRelations(entity.getIsRelatedToEntities(),filters.getIsRelatedTo())) {
+        continue;
+      }
+      if (filters.getInfoFilters() != null && !filters.getInfoFilters().isEmpty() && !TimelineStorageUtils.matchFilters(entity.getInfo(),filters.getInfoFilters())) {
+        continue;
+      }
+      if (filters.getConfigFilters() != null && !filters.getConfigFilters().isEmpty() && !TimelineStorageUtils.matchFilters(entity.getConfigs(),filters.getConfigFilters())) {
+        continue;
+      }
+      if (filters.getMetricFilters() != null && !filters.getMetricFilters().isEmpty() && !TimelineStorageUtils.matchMetricFilters(entity.getMetrics(),filters.getMetricFilters())) {
+        continue;
+      }
+      if (filters.getEventFilters() != null && !filters.getEventFilters().isEmpty() && !TimelineStorageUtils.matchEventFilters(entity.getEvents(),filters.getEventFilters())) {
+        continue;
+      }
+      TimelineEntity entityToBeReturned=createEntityToBeReturned(entity,dataToRetrieve.getFieldsToRetrieve());
+      Set<TimelineEntity> entitiesCreatedAtSameTime=sortedEntities.get(entityToBeReturned.getCreatedTime());
+      if (entitiesCreatedAtSameTime == null) {
+        entitiesCreatedAtSameTime=new HashSet<TimelineEntity>();
+      }
+      entitiesCreatedAtSameTime.add(entityToBeReturned);
+      sortedEntities.put(entityToBeReturned.getCreatedTime(),entitiesCreatedAtSameTime);
+    }
+   }
+  Set<TimelineEntity> entities=new HashSet<TimelineEntity>();
+  long entitiesAdded=0;
+  for (  Set<TimelineEntity> entitySet : sortedEntities.values()) {
+    for (    TimelineEntity entity : entitySet) {
+      entities.add(entity);
+      ++entitiesAdded;
+      if (entitiesAdded >= filters.getLimit()) {
+        return entities;
+      }
+    }
+  }
+  return entities;
+}
