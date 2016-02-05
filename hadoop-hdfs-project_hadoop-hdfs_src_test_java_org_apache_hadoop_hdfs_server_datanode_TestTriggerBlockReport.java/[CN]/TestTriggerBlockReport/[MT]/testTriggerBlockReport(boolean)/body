@@ -16,11 +16,12 @@
   ReceivedDeletedBlockInfo rdbi=new ReceivedDeletedBlockInfo(new Block(5678,512,1000),BlockStatus.DELETED_BLOCK,null);
   DataNode datanode=cluster.getDataNodes().get(0);
   BPServiceActor actor=datanode.getAllBpOs().get(0).getBPServiceActors().get(0);
-  String storageUuid;
-  try (FsDatasetSpi.FsVolumeReferences volumes=datanode.getFSDataset().getFsVolumeReferences()){
-    storageUuid=volumes.get(0).getStorageID();
+  final FsDatasetSpi<?> dataset=datanode.getFSDataset();
+  final DatanodeStorage storage;
+  try (FsDatasetSpi.FsVolumeReferences volumes=dataset.getFsVolumeReferences()){
+    storage=dataset.getStorage(volumes.get(0).getStorageID());
   }
-   actor.notifyNamenodeDeletedBlock(rdbi,storageUuid);
+   actor.getIbrManager().addRDBI(rdbi,storage);
   datanode.triggerBlockReport(new BlockReportOptions.Factory().setIncremental(incremental).build());
   if (incremental) {
     Mockito.verify(spy,timeout(60000).times(2)).blockReceivedAndDeleted(any(DatanodeRegistration.class),anyString(),any(StorageReceivedDeletedBlocks[].class));
