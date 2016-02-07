@@ -1,25 +1,27 @@
 {
-  rollLogDirIfNeeded();
-  if (currentOutStream != null) {
-    currentOutStream.printf("%d %s.%s",record.timestamp(),record.context(),record.name());
-    String separator=": ";
-    for (    MetricsTag tag : record.tags()) {
-      currentOutStream.printf("%s%s=%s",separator,tag.name(),tag.value());
-      separator=", ";
+synchronized (lock) {
+    rollLogDirIfNeeded();
+    if (currentOutStream != null) {
+      currentOutStream.printf("%d %s.%s",record.timestamp(),record.context(),record.name());
+      String separator=": ";
+      for (      MetricsTag tag : record.tags()) {
+        currentOutStream.printf("%s%s=%s",separator,tag.name(),tag.value());
+        separator=", ";
+      }
+      for (      AbstractMetric metric : record.metrics()) {
+        currentOutStream.printf("%s%s=%s",separator,metric.name(),metric.value());
+      }
+      currentOutStream.println();
+      try {
+        currentFSOutStream.hflush();
+      }
+ catch (      IOException ex) {
+        throwMetricsException("Failed flushing the stream",ex);
+      }
+      checkForErrors("Unable to write to log file");
     }
-    for (    AbstractMetric metric : record.metrics()) {
-      currentOutStream.printf("%s%s=%s",separator,metric.name(),metric.value());
+ else     if (!ignoreError) {
+      throwMetricsException("Unable to write to log file");
     }
-    currentOutStream.println();
-    try {
-      currentFSOutStream.hflush();
-    }
- catch (    IOException ex) {
-      throwMetricsException("Failed flushing the stream",ex);
-    }
-    checkForErrors("Unable to write to log file");
-  }
- else   if (!ignoreError) {
-    throwMetricsException("Unable to write to log file");
   }
 }
