@@ -1,0 +1,76 @@
+{
+  return new Runnable(){
+    @Override public void run(){
+      try {
+        EntitiesHolder entitiesHolder;
+        while (!Thread.currentThread().isInterrupted()) {
+          try {
+            entitiesHolder=timelineEntityQueue.take();
+          }
+ catch (          InterruptedException ie) {
+            LOG.info("Timeline dispatcher thread was interrupted ");
+            Thread.currentThread().interrupt();
+            return;
+          }
+          if (entitiesHolder != null) {
+            publishWithoutBlockingOnQueue(entitiesHolder);
+          }
+        }
+      }
+  finally {
+        if (!timelineEntityQueue.isEmpty()) {
+          LOG.info("Yet to publish " + timelineEntityQueue.size() + " timelineEntities, draining them now. ");
+        }
+        long timeTillweDrain=System.currentTimeMillis() + DRAIN_TIME_PERIOD;
+        while (!timelineEntityQueue.isEmpty()) {
+          publishWithoutBlockingOnQueue(timelineEntityQueue.poll());
+          if (System.currentTimeMillis() > timeTillweDrain) {
+            if (!timelineEntityQueue.isEmpty()) {
+              LOG.warn("Time to drain elapsed! Remaining " + timelineEntityQueue.size() + "timelineEntities will not"+ " be published");
+              EntitiesHolder nextEntityInTheQueue=null;
+              while ((nextEntityInTheQueue=timelineEntityQueue.poll()) != null) {
+                nextEntityInTheQueue.cancel(true);
+              }
+            }
+            break;
+          }
+        }
+      }
+    }
+    /** 
+ * Publishes the given EntitiesHolder and return immediately if sync
+ * call, else tries to fetch the EntitiesHolder from the queue in non
+ * blocking fashion and collate the Entities if possible before
+ * publishing through REST.
+ * @param entitiesHolder
+ */
+    private void publishWithoutBlockingOnQueue(    EntitiesHolder entitiesHolder){
+      if (entitiesHolder.isSync()) {
+        entitiesHolder.run();
+        return;
+      }
+      int count=1;
+      while (true) {
+        EntitiesHolder nextEntityInTheQueue=timelineEntityQueue.poll();
+        if (nextEntityInTheQueue == null) {
+          entitiesHolder.run();
+          break;
+        }
+ else         if (nextEntityInTheQueue.isSync()) {
+          entitiesHolder.run();
+          nextEntityInTheQueue.run();
+          break;
+        }
+ else {
+          entitiesHolder.getEntities().addEntities(nextEntityInTheQueue.getEntities().getEntities());
+          count++;
+          if (count == numberOfAsyncsToMerge) {
+            entitiesHolder.run();
+            break;
+          }
+        }
+      }
+    }
+  }
+;
+}
