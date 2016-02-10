@@ -1,0 +1,19 @@
+{
+  RollingFileSystemSink.isTest=true;
+  RollingFileSystemSink.hasFlushed=false;
+  String path="hdfs://" + cluster.getNameNode().getHostAndPort() + "/tmp";
+  MetricsSystem ms=initMetricsSystem(path,true,false);
+  new MyMetrics1().registerWith(ms);
+  ms.publishMetricsNow();
+  ms.publishMetricsNow();
+  while (!RollingFileSystemSink.hasFlushed) {
+    Thread.sleep(50L);
+  }
+  Calendar now=getNowNotTopOfHour();
+  FileSystem fs=FileSystem.newInstance(new URI(path),new Configuration());
+  Path currentDir=new Path(path,DATE_FORMAT.format(now.getTime()));
+  Path currentFile=findMostRecentLogFile(fs,new Path(currentDir,getLogFilename()));
+  FileStatus status=fs.getFileStatus(currentFile);
+  assertTrue("The flusher thread didn't flush the log contents. Expected " + "at least 236 bytes in the log file, but got " + status.getLen(),status.getLen() >= 236);
+  ms.stop();
+}
