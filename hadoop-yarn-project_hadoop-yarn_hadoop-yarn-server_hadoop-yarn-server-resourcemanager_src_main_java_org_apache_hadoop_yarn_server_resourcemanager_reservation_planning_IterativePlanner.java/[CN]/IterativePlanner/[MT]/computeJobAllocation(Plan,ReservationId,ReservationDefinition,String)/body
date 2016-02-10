@@ -1,31 +1,32 @@
 {
-  initialize(plan,reservation);
-  ReservationAllocation oldReservation=plan.getReservationById(reservationId);
-  if (oldReservation != null) {
-    ignoreOldAllocation(oldReservation);
-  }
+  initialize(plan,reservationId,reservation);
   RLESparseResourceAllocation allocations=new RLESparseResourceAllocation(plan.getResourceCalculator());
-  ListIterator<ReservationRequest> li=reservation.getReservationRequests().getReservationResources().listIterator(reservation.getReservationRequests().getReservationResources().size());
+  StageProvider stageProvider=new StageProvider(allocateLeft,reservation);
   ReservationRequest currentReservationStage;
-  int index=reservation.getReservationRequests().getReservationResources().size();
   long stageDeadline=stepRoundDown(reservation.getDeadline(),step);
   long successorStartingTime=-1;
-  while (li.hasPrevious()) {
-    currentReservationStage=li.previous();
-    index-=1;
+  long predecessorEndTime=stepRoundDown(reservation.getArrival(),step);
+  long stageArrivalTime=-1;
+  while (stageProvider.hasNext()) {
+    currentReservationStage=stageProvider.next();
     validateInputStage(plan,currentReservationStage);
-    long stageArrivalTime=reservation.getArrival();
-    if (jobType == ReservationRequestInterpreter.R_ORDER || jobType == ReservationRequestInterpreter.R_ORDER_NO_GAP) {
-      stageArrivalTime=computeEarliestStartingTime(plan,reservation,index,currentReservationStage,stageDeadline);
+    if (allocateLeft) {
+      stageArrivalTime=predecessorEndTime;
     }
-    stageArrivalTime=stepRoundUp(stageArrivalTime,step);
-    stageArrivalTime=Math.max(stageArrivalTime,reservation.getArrival());
+ else {
+      stageArrivalTime=reservation.getArrival();
+      if (jobType == ReservationRequestInterpreter.R_ORDER || jobType == ReservationRequestInterpreter.R_ORDER_NO_GAP) {
+        stageArrivalTime=computeEarliestStartingTime(plan,reservation,stageProvider.getCurrentIndex(),currentReservationStage,stageDeadline);
+      }
+      stageArrivalTime=stepRoundUp(stageArrivalTime,step);
+      stageArrivalTime=Math.max(stageArrivalTime,reservation.getArrival());
+    }
     Map<ReservationInterval,Resource> curAlloc=computeStageAllocation(plan,currentReservationStage,stageArrivalTime,stageDeadline,user,reservationId);
     if (curAlloc == null) {
       if (jobType == ReservationRequestInterpreter.R_ANY) {
         continue;
       }
-      return null;
+      throw new PlanningException("The request cannot be satisfied");
     }
     Long stageStartTime=findEarliestTime(curAlloc);
     Long stageEndTime=findLatestTime(curAlloc);
@@ -36,15 +37,20 @@
       break;
     }
     if (jobType == ReservationRequestInterpreter.R_ORDER || jobType == ReservationRequestInterpreter.R_ORDER_NO_GAP) {
-      if (jobType == ReservationRequestInterpreter.R_ORDER_NO_GAP && successorStartingTime != -1 && successorStartingTime > stageEndTime) {
-        return null;
+      if (jobType == ReservationRequestInterpreter.R_ORDER_NO_GAP && successorStartingTime != -1 && ((allocateLeft && predecessorEndTime < stageStartTime) || (!allocateLeft && (stageEndTime < successorStartingTime))) || (!isNonPreemptiveAllocation(curAlloc))) {
+        throw new PlanningException("The allocation found does not respect ORDER_NO_GAP");
       }
-      successorStartingTime=stageStartTime;
-      stageDeadline=stageStartTime;
+      if (allocateLeft) {
+        predecessorEndTime=stageEndTime;
+      }
+ else {
+        successorStartingTime=stageStartTime;
+        stageDeadline=stageStartTime;
+      }
     }
   }
   if (allocations.isEmpty()) {
-    return null;
+    throw new PlanningException("The request cannot be satisfied");
   }
   return allocations;
 }
