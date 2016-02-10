@@ -1,0 +1,30 @@
+{
+  init();
+  final ReservationListRequest request=ReservationListRequest.newInstance(queue,reservationId,startTime,endTime,includeResourceAllocations);
+  UserGroupInformation callerUGI=getCallerUserGroupInformation(hsr,true);
+  if (callerUGI == null) {
+    throw new AuthorizationException("Unable to obtain user name, " + "user not authenticated");
+  }
+  if (UserGroupInformation.isSecurityEnabled() && isStaticUser(callerUGI)) {
+    String msg="The default static user cannot carry out this operation.";
+    return Response.status(Status.FORBIDDEN).entity(msg).build();
+  }
+  ReservationListResponse resRespInfo;
+  try {
+    resRespInfo=callerUGI.doAs(new PrivilegedExceptionAction<ReservationListResponse>(){
+      @Override public ReservationListResponse run() throws IOException, YarnException {
+        return rm.getClientRMService().listReservations(request);
+      }
+    }
+);
+  }
+ catch (  UndeclaredThrowableException ue) {
+    if (ue.getCause() instanceof YarnException) {
+      throw new BadRequestException(ue.getCause().getMessage());
+    }
+    LOG.info("List reservation request failed",ue);
+    throw ue;
+  }
+  ReservationListInfo resResponse=new ReservationListInfo(resRespInfo,includeResourceAllocations);
+  return Response.status(Status.OK).entity(resResponse).build();
+}
