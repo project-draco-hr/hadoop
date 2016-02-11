@@ -2,6 +2,7 @@
   if (toRecoverBlockNum < 1 || toRecoverBlockNum > parityBlkNum) {
     Assert.fail("toRecoverBlockNum should be between 1 ~ " + parityBlkNum);
   }
+  assertTrue("File length must be positive.",fileLen > 0);
   Path file=new Path(fileName);
   final byte[] data=new byte[fileLen];
   Arrays.fill(data,(byte)1);
@@ -22,6 +23,7 @@
   int[] deadDnIndices=new int[toRecoverBlockNum];
   ExtendedBlock[] blocks=new ExtendedBlock[toRecoverBlockNum];
   File[] replicas=new File[toRecoverBlockNum];
+  long[] replicaLengths=new long[toRecoverBlockNum];
   File[] metadatas=new File[toRecoverBlockNum];
   byte[][] replicaContents=new byte[toRecoverBlockNum][];
   Map<ExtendedBlock,DataNode> errorMap=new HashMap<>(dead.length);
@@ -31,14 +33,16 @@
     blocks[i]=StripedBlockUtil.constructInternalBlock(lastBlock.getBlock(),cellSize,dataBlkNum,indices[dead[i]]);
     errorMap.put(blocks[i],cluster.getDataNodes().get(deadDnIndices[i]));
     replicas[i]=cluster.getBlockFile(deadDnIndices[i],blocks[i]);
+    replicaLengths[i]=replicas[i].length();
     metadatas[i]=cluster.getBlockMetadataFile(deadDnIndices[i],blocks[i]);
-    assertEquals(replicas[i].length(),StripedBlockUtil.getInternalBlockLength(lastBlock.getBlockSize(),cellSize,dataBlkNum,indices[dead[i]]));
+    assertEquals(replicaLengths[i],StripedBlockUtil.getInternalBlockLength(lastBlock.getBlockSize(),cellSize,dataBlkNum,indices[dead[i]]));
     assertTrue(metadatas[i].getName().endsWith(blocks[i].getGenerationStamp() + ".meta"));
     LOG.info("replica " + i + " locates in file: "+ replicas[i]);
     replicaContents[i]=DFSTestUtil.readFileAsBytes(replicas[i]);
   }
-  int cellsNum=(fileLen - 1) / cellSize + 1;
-  int groupSize=Math.min(cellsNum,dataBlkNum) + parityBlkNum;
+  int lastGroupDataLen=fileLen % (dataBlkNum * blockSize);
+  int lastGroupNumBlk=lastGroupDataLen == 0 ? dataBlkNum : Math.min(dataBlkNum,((lastGroupDataLen - 1) / cellSize + 1));
+  int groupSize=lastGroupNumBlk + parityBlkNum;
   int stoppedDN=generateErrors(errorMap,type);
   locatedBlocks=getLocatedBlocks(file);
   lastBlock=(LocatedStripedBlock)locatedBlocks.getLastLocatedBlock();
@@ -57,7 +61,7 @@
     File replicaAfterReconstruction=cluster.getBlockFile(targetDNs[i],blocks[i]);
     LOG.info("replica after reconstruction " + replicaAfterReconstruction);
     File metadataAfterReconstruction=cluster.getBlockMetadataFile(targetDNs[i],blocks[i]);
-    assertEquals(replicaAfterReconstruction.length(),replicas[i].length());
+    assertEquals(replicaLengths[i],replicaAfterReconstruction.length());
     LOG.info("replica before " + replicas[i]);
     assertTrue(metadataAfterReconstruction.getName().endsWith(blocks[i].getGenerationStamp() + ".meta"));
     byte[] replicaContentAfterReconstruction=DFSTestUtil.readFileAsBytes(replicaAfterReconstruction);
