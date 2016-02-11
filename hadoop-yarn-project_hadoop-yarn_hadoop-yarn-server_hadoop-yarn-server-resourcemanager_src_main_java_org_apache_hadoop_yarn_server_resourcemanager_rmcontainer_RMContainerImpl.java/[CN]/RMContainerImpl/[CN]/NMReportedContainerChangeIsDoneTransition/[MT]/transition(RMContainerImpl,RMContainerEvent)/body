@@ -1,3 +1,21 @@
 {
-  container.containerAllocationExpirer.unregister(event.getContainerId());
+  RMContainerNMDoneChangeResourceEvent nmDoneChangeResourceEvent=(RMContainerNMDoneChangeResourceEvent)event;
+  Resource rmContainerResource=container.getAllocatedResource();
+  Resource nmContainerResource=nmDoneChangeResourceEvent.getNMContainerResource();
+  if (Resources.equals(rmContainerResource,nmContainerResource)) {
+    container.lastConfirmedResource=nmContainerResource;
+    container.containerAllocationExpirer.unregister(new AllocationExpirationInfo(event.getContainerId()));
+  }
+ else   if (Resources.fitsIn(rmContainerResource,nmContainerResource)) {
+    container.lastConfirmedResource=rmContainerResource;
+    container.containerAllocationExpirer.unregister(new AllocationExpirationInfo(event.getContainerId()));
+    container.eventHandler.handle(new RMNodeDecreaseContainerEvent(container.nodeId,Collections.singletonList(container.getContainer())));
+  }
+ else   if (Resources.fitsIn(nmContainerResource,rmContainerResource)) {
+    container.lastConfirmedResource=Resources.componentwiseMax(nmContainerResource,container.lastConfirmedResource);
+  }
+ else {
+    LOG.warn("Something wrong happened, container size reported by NM" + " is not expected, ContainerID=" + container.containerId + " rm-size-resource:"+ rmContainerResource+ " nm-size-reosurce:"+ nmContainerResource);
+    container.eventHandler.handle(new RMNodeCleanContainerEvent(container.nodeId,container.containerId));
+  }
 }
