@@ -1,0 +1,38 @@
+{
+  UserGroupInformation callerUGI;
+  try {
+    callerUGI=UserGroupInformation.getCurrentUser();
+  }
+ catch (  IOException ie) {
+    RMAuditLogger.logFailure("UNKNOWN",auditConstant,queueName,"ClientRMService","Error getting UGI");
+    throw RPCUtil.getRemoteException(ie);
+  }
+  if (reservationSystem == null) {
+    return callerUGI.getShortUserName();
+  }
+  ReservationsACLsManager manager=reservationSystem.getReservationsACLsManager();
+  ReservationACL reservationACL=getReservationACLFromAuditConstant(auditConstant);
+  if (manager == null) {
+    return callerUGI.getShortUserName();
+  }
+  String reservationCreatorName="";
+  ReservationAllocation reservation;
+  Plan plan=reservationSystem.getPlan(queueName);
+  if (reservationId != null && plan != null) {
+    reservation=plan.getReservationById(reservationId);
+    if (reservation != null) {
+      reservationCreatorName=reservation.getUser();
+    }
+  }
+  if (reservationCreatorName != null && !reservationCreatorName.isEmpty() && reservationCreatorName.equals(callerUGI.getUserName())) {
+    return callerUGI.getShortUserName();
+  }
+  if (manager.checkAccess(callerUGI,reservationACL,queueName)) {
+    return callerUGI.getShortUserName();
+  }
+  if (manager.checkAccess(callerUGI,ReservationACL.ADMINISTER_RESERVATIONS,queueName)) {
+    return callerUGI.getShortUserName();
+  }
+  handleNoAccess(callerUGI.getShortUserName(),queueName,auditConstant,reservationACL.toString(),reservationACL.name());
+  throw new IllegalStateException();
+}
