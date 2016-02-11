@@ -19,7 +19,8 @@
   dirsHandler=new LocalDirsHandlerService(metrics);
   nodeHealthChecker=new NodeHealthCheckerService(getNodeHealthScriptRunner(conf),dirsHandler);
   addService(nodeHealthChecker);
-  this.context=createNMContext(containerTokenSecretManager,nmTokenSecretManager,nmStore);
+  boolean isDistSchedulingEnabled=conf.getBoolean(YarnConfiguration.DIST_SCHEDULING_ENABLED,YarnConfiguration.DIST_SCHEDULING_ENABLED_DEFAULT);
+  this.context=createNMContext(containerTokenSecretManager,nmTokenSecretManager,nmStore,isDistSchedulingEnabled);
   nodeLabelsProvider=createNodeLabelsProvider(conf);
   if (null == nodeLabelsProvider) {
     nodeStatusUpdater=createNodeStatusUpdater(context,dispatcher,nodeHealthChecker);
@@ -37,6 +38,7 @@
   WebServer webServer=createWebServer(context,containerManager.getContainersMonitor(),this.aclsManager,dirsHandler);
   addService(webServer);
   ((NMContext)context).setWebServer(webServer);
+  ((NMContext)context).setQueueableContainerAllocator(new OpportunisticContainerAllocator(nodeStatusUpdater,context,webServer.getPort()));
   dispatcher.register(ContainerManagerEventType.class,containerManager);
   dispatcher.register(NodeManagerEventType.class,this);
   addService(dispatcher);
