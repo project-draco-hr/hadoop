@@ -1,27 +1,33 @@
 {
   LOG.info("Starting reconfiguration task.");
-  Configuration oldConf=this.parent.getConf();
-  Configuration newConf=this.parent.getNewConf();
-  Collection<PropertyChange> changes=this.parent.getChangedProperties(newConf,oldConf);
+  final Configuration oldConf=parent.getConf();
+  final Configuration newConf=parent.getNewConf();
+  final Collection<PropertyChange> changes=parent.getChangedProperties(newConf,oldConf);
   Map<PropertyChange,Optional<String>> results=Maps.newHashMap();
   for (  PropertyChange change : changes) {
     String errorMessage=null;
-    if (!this.parent.isPropertyReconfigurable(change.prop)) {
+    if (!parent.isPropertyReconfigurable(change.prop)) {
       LOG.info(String.format("Property %s is not configurable: old value: %s, new value: %s",change.prop,change.oldVal,change.newVal));
       continue;
     }
     LOG.info("Change property: " + change.prop + " from \""+ ((change.oldVal == null) ? "<default>" : change.oldVal)+ "\" to \""+ ((change.newVal == null) ? "<default>" : change.newVal)+ "\".");
     try {
-      this.parent.reconfigurePropertyImpl(change.prop,change.newVal);
+      String effectiveValue=parent.reconfigurePropertyImpl(change.prop,change.newVal);
+      if (change.newVal != null) {
+        oldConf.set(change.prop,effectiveValue);
+      }
+ else {
+        oldConf.unset(change.prop);
+      }
     }
  catch (    ReconfigurationException e) {
       errorMessage=e.getCause().getMessage();
     }
     results.put(change,Optional.fromNullable(errorMessage));
   }
-synchronized (this.parent.reconfigLock) {
-    this.parent.endTime=Time.now();
-    this.parent.status=Collections.unmodifiableMap(results);
-    this.parent.reconfigThread=null;
+synchronized (parent.reconfigLock) {
+    parent.endTime=Time.now();
+    parent.status=Collections.unmodifiableMap(results);
+    parent.reconfigThread=null;
   }
 }
