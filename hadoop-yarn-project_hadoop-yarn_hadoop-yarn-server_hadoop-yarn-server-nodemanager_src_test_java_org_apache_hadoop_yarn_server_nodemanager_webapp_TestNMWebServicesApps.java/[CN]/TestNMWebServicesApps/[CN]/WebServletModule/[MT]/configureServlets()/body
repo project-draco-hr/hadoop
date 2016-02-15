@@ -1,0 +1,40 @@
+{
+  conf.set(YarnConfiguration.NM_LOCAL_DIRS,testRootDir.getAbsolutePath());
+  conf.set(YarnConfiguration.NM_LOG_DIRS,testLogDir.getAbsolutePath());
+  LocalDirsHandlerService dirsHandler=new LocalDirsHandlerService();
+  NodeHealthCheckerService healthChecker=new NodeHealthCheckerService(NodeManager.getNodeHealthScriptRunner(conf),dirsHandler);
+  healthChecker.init(conf);
+  dirsHandler=healthChecker.getDiskHandler();
+  aclsManager=new ApplicationACLsManager(conf);
+  nmContext=new NodeManager.NMContext(null,null,dirsHandler,aclsManager,null,false);
+  NodeId nodeId=NodeId.newInstance("testhost.foo.com",9999);
+  ((NodeManager.NMContext)nmContext).setNodeId(nodeId);
+  resourceView=new ResourceView(){
+    @Override public long getVmemAllocatedForContainers(){
+      return new Long("16642998272");
+    }
+    @Override public long getPmemAllocatedForContainers(){
+      return new Long("17179869184");
+    }
+    @Override public long getVCoresAllocatedForContainers(){
+      return new Long("4000");
+    }
+    @Override public boolean isVmemCheckEnabled(){
+      return true;
+    }
+    @Override public boolean isPmemCheckEnabled(){
+      return true;
+    }
+  }
+;
+  nmWebApp=new NMWebApp(resourceView,aclsManager,dirsHandler);
+  bind(JAXBContextResolver.class);
+  bind(NMWebServices.class);
+  bind(GenericExceptionHandler.class);
+  bind(Context.class).toInstance(nmContext);
+  bind(WebApp.class).toInstance(nmWebApp);
+  bind(ResourceView.class).toInstance(resourceView);
+  bind(ApplicationACLsManager.class).toInstance(aclsManager);
+  bind(LocalDirsHandlerService.class).toInstance(dirsHandler);
+  serve("/*").with(GuiceContainer.class);
+}
