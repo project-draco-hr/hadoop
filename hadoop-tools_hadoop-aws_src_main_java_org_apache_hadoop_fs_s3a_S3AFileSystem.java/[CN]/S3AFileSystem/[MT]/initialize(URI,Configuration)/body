@@ -2,20 +2,8 @@
   super.initialize(name,conf);
   uri=URI.create(name.getScheme() + "://" + name.getAuthority());
   workingDir=new Path("/user",System.getProperty("user.name")).makeQualified(this.uri,this.getWorkingDirectory());
-  String accessKey=conf.get(ACCESS_KEY,null);
-  String secretKey=conf.get(SECRET_KEY,null);
-  String userInfo=name.getUserInfo();
-  if (userInfo != null) {
-    int index=userInfo.indexOf(':');
-    if (index != -1) {
-      accessKey=userInfo.substring(0,index);
-      secretKey=userInfo.substring(index + 1);
-    }
- else {
-      accessKey=userInfo;
-    }
-  }
-  AWSCredentialsProviderChain credentials=new AWSCredentialsProviderChain(new BasicAWSCredentialsProvider(accessKey,secretKey),new InstanceProfileCredentialsProvider(),new AnonymousAWSCredentialsProvider());
+  AWSAccessKeys creds=getAWSAccessKeys(name,conf);
+  AWSCredentialsProviderChain credentials=new AWSCredentialsProviderChain(new BasicAWSCredentialsProvider(creds.getAccessKey(),creds.getAccessSecret()),new InstanceProfileCredentialsProvider(),new AnonymousAWSCredentialsProvider());
   bucket=name.getHost();
   ClientConfiguration awsConf=new ClientConfiguration();
   awsConf.setMaxConnections(conf.getInt(MAXIMUM_CONNECTIONS,DEFAULT_MAXIMUM_CONNECTIONS));
@@ -28,55 +16,8 @@
   if (!signerOverride.isEmpty()) {
     awsConf.setSignerOverride(signerOverride);
   }
-  String proxyHost=conf.getTrimmed(PROXY_HOST,"");
-  int proxyPort=conf.getInt(PROXY_PORT,-1);
-  if (!proxyHost.isEmpty()) {
-    awsConf.setProxyHost(proxyHost);
-    if (proxyPort >= 0) {
-      awsConf.setProxyPort(proxyPort);
-    }
- else {
-      if (secureConnections) {
-        LOG.warn("Proxy host set without port. Using HTTPS default 443");
-        awsConf.setProxyPort(443);
-      }
- else {
-        LOG.warn("Proxy host set without port. Using HTTP default 80");
-        awsConf.setProxyPort(80);
-      }
-    }
-    String proxyUsername=conf.getTrimmed(PROXY_USERNAME);
-    String proxyPassword=conf.getTrimmed(PROXY_PASSWORD);
-    if ((proxyUsername == null) != (proxyPassword == null)) {
-      String msg="Proxy error: " + PROXY_USERNAME + " or "+ PROXY_PASSWORD+ " set without the other.";
-      LOG.error(msg);
-      throw new IllegalArgumentException(msg);
-    }
-    awsConf.setProxyUsername(proxyUsername);
-    awsConf.setProxyPassword(proxyPassword);
-    awsConf.setProxyDomain(conf.getTrimmed(PROXY_DOMAIN));
-    awsConf.setProxyWorkstation(conf.getTrimmed(PROXY_WORKSTATION));
-    if (LOG.isDebugEnabled()) {
-      LOG.debug("Using proxy server {}:{} as user {} with password {} on " + "domain {} as workstation {}",awsConf.getProxyHost(),awsConf.getProxyPort(),String.valueOf(awsConf.getProxyUsername()),awsConf.getProxyPassword(),awsConf.getProxyDomain(),awsConf.getProxyWorkstation());
-    }
-  }
- else   if (proxyPort >= 0) {
-    String msg="Proxy error: " + PROXY_PORT + " set without "+ PROXY_HOST;
-    LOG.error(msg);
-    throw new IllegalArgumentException(msg);
-  }
-  s3=new AmazonS3Client(credentials,awsConf);
-  String endPoint=conf.getTrimmed(ENDPOINT,"");
-  if (!endPoint.isEmpty()) {
-    try {
-      s3.setEndpoint(endPoint);
-    }
- catch (    IllegalArgumentException e) {
-      String msg="Incorrect endpoint: " + e.getMessage();
-      LOG.error(msg);
-      throw new IllegalArgumentException(msg,e);
-    }
-  }
+  initProxySupport(conf,awsConf,secureConnections);
+  initAmazonS3Client(conf,credentials,awsConf);
   maxKeys=conf.getInt(MAX_PAGING_KEYS,DEFAULT_MAX_PAGING_KEYS);
   partSize=conf.getLong(MULTIPART_SIZE,DEFAULT_MULTIPART_SIZE);
   multiPartThreshold=conf.getLong(MIN_MULTIPART_THRESHOLD,DEFAULT_MIN_MULTIPART_THRESHOLD);
@@ -101,27 +42,12 @@
   }
   long keepAliveTime=conf.getLong(KEEPALIVE_TIME,DEFAULT_KEEPALIVE_TIME);
   threadPoolExecutor=new BlockingThreadPoolExecutorService(maxThreads,maxThreads + totalTasks,keepAliveTime,TimeUnit.SECONDS,"s3a-transfer-shared");
-  TransferManagerConfiguration transferConfiguration=new TransferManagerConfiguration();
-  transferConfiguration.setMinimumUploadPartSize(partSize);
-  transferConfiguration.setMultipartUploadThreshold(multiPartThreshold);
-  transfers=new TransferManager(s3,threadPoolExecutor);
-  transfers.setConfiguration(transferConfiguration);
-  String cannedACLName=conf.get(CANNED_ACL,DEFAULT_CANNED_ACL);
-  if (!cannedACLName.isEmpty()) {
-    cannedACL=CannedAccessControlList.valueOf(cannedACLName);
-  }
- else {
-    cannedACL=null;
-  }
+  initTransferManager();
+  initCannedAcls(conf);
   if (!s3.doesBucketExist(bucket)) {
     throw new IOException("Bucket " + bucket + " does not exist");
   }
-  boolean purgeExistingMultipart=conf.getBoolean(PURGE_EXISTING_MULTIPART,DEFAULT_PURGE_EXISTING_MULTIPART);
-  long purgeExistingMultipartAge=conf.getLong(PURGE_EXISTING_MULTIPART_AGE,DEFAULT_PURGE_EXISTING_MULTIPART_AGE);
-  if (purgeExistingMultipart) {
-    Date purgeBefore=new Date(new Date().getTime() - purgeExistingMultipartAge * 1000);
-    transfers.abortMultipartUploads(bucket,purgeBefore);
-  }
+  initMultipartUploads(conf);
   serverSideEncryptionAlgorithm=conf.get(SERVER_SIDE_ENCRYPTION_ALGORITHM);
   setConf(conf);
 }
