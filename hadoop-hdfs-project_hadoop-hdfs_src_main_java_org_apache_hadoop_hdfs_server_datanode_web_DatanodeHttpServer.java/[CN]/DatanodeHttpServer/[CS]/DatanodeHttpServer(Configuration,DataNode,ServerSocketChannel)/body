@@ -1,4 +1,5 @@
 {
+  this.restCsrfPreventionFilter=createRestCsrfPreventionFilter(conf);
   this.conf=conf;
   Configuration confForInfoServer=new Configuration(conf);
   confForInfoServer.setInt(HttpServer2.HTTP_MAX_THREADS,10);
@@ -19,7 +20,7 @@
   if (policy.isHttpEnabled()) {
     this.httpServer=new ServerBootstrap().group(bossGroup,workerGroup).childHandler(new ChannelInitializer<SocketChannel>(){
       @Override protected void initChannel(      SocketChannel ch) throws Exception {
-        ch.pipeline().addLast(new PortUnificationServerHandler(jettyAddr,conf,confForCreate));
+        ch.pipeline().addLast(new PortUnificationServerHandler(jettyAddr,conf,confForCreate,restCsrfPreventionFilter));
       }
     }
 );
@@ -55,7 +56,11 @@
     this.httpsServer=new ServerBootstrap().group(bossGroup,workerGroup).channel(NioServerSocketChannel.class).childHandler(new ChannelInitializer<SocketChannel>(){
       @Override protected void initChannel(      SocketChannel ch) throws Exception {
         ChannelPipeline p=ch.pipeline();
-        p.addLast(new SslHandler(sslFactory.createSSLEngine()),new HttpRequestDecoder(),new HttpResponseEncoder(),new ChunkedWriteHandler(),new URLDispatcher(jettyAddr,conf,confForCreate));
+        p.addLast(new SslHandler(sslFactory.createSSLEngine()),new HttpRequestDecoder(),new HttpResponseEncoder());
+        if (restCsrfPreventionFilter != null) {
+          p.addLast(new RestCsrfPreventionFilterHandler(restCsrfPreventionFilter));
+        }
+        p.addLast(new ChunkedWriteHandler(),new URLDispatcher(jettyAddr,conf,confForCreate));
       }
     }
 );
