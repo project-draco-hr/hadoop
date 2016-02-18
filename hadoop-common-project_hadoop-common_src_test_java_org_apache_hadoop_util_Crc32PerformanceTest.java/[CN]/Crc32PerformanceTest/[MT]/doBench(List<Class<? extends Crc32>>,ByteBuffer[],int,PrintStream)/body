@@ -1,0 +1,38 @@
+{
+  final ByteBuffer[] crcBufs=new ByteBuffer[dataBufs.length];
+  for (int i=0; i < crcBufs.length; i++) {
+    crcBufs[i]=computeCrc(dataBufs[i],bytePerCrc);
+  }
+  final String numBytesStr=" bpc ";
+  final String numThreadsStr="#T";
+  final String diffStr="% diff";
+  out.print('|');
+  printCell(numBytesStr,0,out);
+  printCell(numThreadsStr,0,out);
+  for (int i=0; i < crcs.size(); i++) {
+    final Class<? extends Crc32> c=crcs.get(i);
+    out.print('|');
+    printCell(c.getSimpleName(),8,out);
+    for (int j=0; j < i; j++) {
+      printCell(diffStr,diffStr.length(),out);
+    }
+  }
+  out.printf("\n");
+  for (int numThreads=1; numThreads <= dataBufs.length; numThreads<<=1) {
+    out.printf("|");
+    printCell(String.valueOf(bytePerCrc),numBytesStr.length(),out);
+    printCell(String.valueOf(numThreads),numThreadsStr.length(),out);
+    final List<BenchResult> previous=new ArrayList<BenchResult>();
+    for (    Class<? extends Crc32> c : crcs) {
+      System.gc();
+      final BenchResult result=doBench(c,numThreads,dataBufs,crcBufs,bytePerCrc);
+      printCell(String.format("%9.1f",result.mbps),c.getSimpleName().length() + 1,out);
+      for (      BenchResult p : previous) {
+        final double diff=(result.mbps - p.mbps) / p.mbps * 100;
+        printCell(String.format("%5.1f%%",diff),diffStr.length(),out);
+      }
+      previous.add(result);
+    }
+    out.printf("\n");
+  }
+}

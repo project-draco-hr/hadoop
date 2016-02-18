@@ -1,0 +1,37 @@
+{
+  final byte[] bytes=new byte[bytesPerCrc];
+  final int dataOffset=data.position();
+  final int dataLength=data.remaining();
+  data.mark();
+  crcs.mark();
+  try {
+    int i=0;
+    for (final int n=dataLength - bytesPerCrc + 1; i < n; i+=bytesPerCrc) {
+      data.get(bytes);
+      algorithm.reset();
+      algorithm.update(bytes,0,bytesPerCrc);
+      final int computed=(int)algorithm.getValue();
+      final int expected=crcs.getInt();
+      if (computed != expected) {
+        long errPos=basePos + data.position() - dataOffset - bytesPerCrc;
+        throwChecksumException(type,algorithm,filename,errPos,expected,computed);
+      }
+    }
+    final int remainder=dataLength - i;
+    if (remainder > 0) {
+      data.get(bytes,0,remainder);
+      algorithm.reset();
+      algorithm.update(bytes,0,remainder);
+      final int computed=(int)algorithm.getValue();
+      final int expected=crcs.getInt();
+      if (computed != expected) {
+        long errPos=basePos + data.position() - dataOffset - remainder;
+        throwChecksumException(type,algorithm,filename,errPos,expected,computed);
+      }
+    }
+  }
+  finally {
+    data.reset();
+    crcs.reset();
+  }
+}
