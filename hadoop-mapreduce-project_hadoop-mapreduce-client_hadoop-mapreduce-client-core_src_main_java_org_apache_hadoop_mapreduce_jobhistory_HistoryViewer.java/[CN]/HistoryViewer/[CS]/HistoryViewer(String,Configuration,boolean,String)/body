@@ -1,0 +1,39 @@
+{
+  String errorMsg="Unable to initialize History Viewer";
+  try {
+    Path jobFile=new Path(historyFile);
+    fs=jobFile.getFileSystem(conf);
+    String[] jobDetails=jobFile.getName().split("_");
+    if (jobDetails.length < 2) {
+      System.err.println("Ignore unrecognized file: " + jobFile.getName());
+      throw new IOException(errorMsg);
+    }
+    final Path jobConfPath=new Path(jobFile.getParent(),jobDetails[0] + "_" + jobDetails[1]+ "_"+ jobDetails[2]+ "_conf.xml");
+    final Configuration jobConf=new Configuration(conf);
+    try {
+      jobConf.addResource(fs.open(jobConfPath),jobConfPath.toString());
+      Limits.reset(jobConf);
+    }
+ catch (    FileNotFoundException fnf) {
+      if (LOG.isWarnEnabled()) {
+        LOG.warn("Missing job conf in history",fnf);
+      }
+    }
+    JobHistoryParser parser=new JobHistoryParser(fs,jobFile);
+    job=parser.parse();
+    String scheme=WebAppUtils.getHttpSchemePrefix(fs.getConf());
+    if (HUMAN_FORMAT.equalsIgnoreCase(format)) {
+      jhvp=new HumanReadableHistoryViewerPrinter(job,printAll,scheme);
+    }
+ else     if (JSON_FORMAT.equalsIgnoreCase(format)) {
+      jhvp=new JSONHistoryViewerPrinter(job,printAll,scheme);
+    }
+ else {
+      System.err.println("Invalid format specified: " + format);
+      throw new IllegalArgumentException(errorMsg);
+    }
+  }
+ catch (  IOException e) {
+    throw new IOException(errorMsg,e);
+  }
+}

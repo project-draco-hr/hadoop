@@ -1,0 +1,44 @@
+{
+  Map<TaskID,JobHistoryParser.TaskInfo> tasks=job.getAllTasks();
+  JSONArray jTasks=new JSONArray();
+  for (  JobHistoryParser.TaskInfo task : tasks.values()) {
+    if (!task.getTaskType().equals(TaskType.TASK_CLEANUP) && ((printAll && task.getTaskStatus().equals(TaskStatus.State.SUCCEEDED.toString())) || task.getTaskStatus().equals(TaskStatus.State.KILLED.toString()) || task.getTaskStatus().equals(TaskStatus.State.FAILED.toString()))) {
+      JSONObject jTask=new JSONObject();
+      jTask.put("taskId",task.getTaskId().toString());
+      jTask.put("type",task.getTaskType().toString());
+      jTask.put("status",task.getTaskStatus());
+      jTask.put("startTime",task.getStartTime());
+      jTask.put("finishTime",task.getFinishTime());
+      if (!task.getError().isEmpty()) {
+        jTask.put("error",task.getError());
+      }
+      if (task.getTaskType().equals(TaskType.MAP)) {
+        jTask.put("inputSplits",task.getSplitLocations());
+      }
+      if (printAll) {
+        printTaskCounters(jTask,task.getCounters());
+        JSONObject jAtt=new JSONObject();
+        for (        JobHistoryParser.TaskAttemptInfo attempt : task.getAllTaskAttempts().values()) {
+          jAtt.put("attemptId",attempt.getAttemptId());
+          jAtt.put("startTime",attempt.getStartTime());
+          if (task.getTaskType().equals(TaskType.REDUCE)) {
+            jAtt.put("shuffleFinished",attempt.getShuffleFinishTime());
+            jAtt.put("sortFinished",attempt.getSortFinishTime());
+          }
+          jAtt.put("finishTime",attempt.getFinishTime());
+          jAtt.put("hostName",attempt.getHostname());
+          if (!attempt.getError().isEmpty()) {
+            jAtt.put("error",task.getError());
+          }
+          String taskLogsUrl=HistoryViewer.getTaskLogsUrl(scheme,attempt);
+          if (taskLogsUrl != null) {
+            jAtt.put("taskLogs",taskLogsUrl);
+          }
+        }
+        jTask.put("attempts",jAtt);
+      }
+      jTasks.put(jTask);
+    }
+    json.put("tasks",jTasks);
+  }
+}
