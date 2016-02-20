@@ -1,2 +1,33 @@
 {
+  BlockInfo block=rw.getBlock();
+  int priority=rw.getPriority();
+  if (block.isDeleted() || !block.isCompleteOrCommitted()) {
+    neededReplications.remove(block,priority);
+    rw.resetTargets();
+    return false;
+  }
+  final short requiredReplication=getExpectedReplicaNum(block);
+  NumberReplicas numReplicas=countNodes(block);
+  final int pendingNum=pendingReplications.getNumReplicas(block);
+  if (hasEnoughEffectiveReplicas(block,numReplicas,pendingNum,requiredReplication)) {
+    neededReplications.remove(block,priority);
+    rw.resetTargets();
+    blockLog.debug("BLOCK* Removing {} from neededReplications as" + " it has enough replicas",block);
+    return false;
+  }
+  DatanodeStorageInfo[] targets=rw.getTargets();
+  if ((numReplicas.liveReplicas() >= requiredReplication) && (!isPlacementPolicySatisfied(block))) {
+    if (!isInNewRack(rw.getSrcNodes(),targets[0].getDatanodeDescriptor())) {
+      return false;
+    }
+  }
+  rw.addTaskToDatanode();
+  DatanodeStorageInfo.incrementBlocksScheduled(targets);
+  pendingReplications.increment(block,DatanodeStorageInfo.toDatanodeDescriptors(targets));
+  blockLog.debug("BLOCK* block {} is moved from neededReplications to " + "pendingReplications",block);
+  int numEffectiveReplicas=numReplicas.liveReplicas() + pendingNum;
+  if (numEffectiveReplicas + targets.length >= requiredReplication) {
+    neededReplications.remove(block,priority);
+  }
+  return true;
 }
