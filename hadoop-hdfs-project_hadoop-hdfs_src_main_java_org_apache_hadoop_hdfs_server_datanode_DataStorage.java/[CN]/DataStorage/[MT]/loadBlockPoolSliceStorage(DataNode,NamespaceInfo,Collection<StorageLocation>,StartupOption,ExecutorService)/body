@@ -1,0 +1,44 @@
+{
+  final String bpid=nsInfo.getBlockPoolID();
+  final BlockPoolSliceStorage bpStorage=getBlockPoolSliceStorage(nsInfo);
+  final List<StorageDirectory> success=Lists.newArrayList();
+  final List<UpgradeTask> tasks=Lists.newArrayList();
+  for (  StorageLocation dataDir : dataDirs) {
+    final File curDir=new File(dataDir.getFile(),STORAGE_DIR_CURRENT);
+    List<File> bpDataDirs=new ArrayList<File>();
+    bpDataDirs.add(BlockPoolSliceStorage.getBpRoot(bpid,curDir));
+    try {
+      makeBlockPoolDataDir(bpDataDirs,null);
+      final List<Callable<StorageDirectory>> callables=Lists.newArrayList();
+      final List<StorageDirectory> dirs=bpStorage.recoverTransitionRead(nsInfo,bpDataDirs,startOpt,callables,datanode.getConf());
+      if (callables.isEmpty()) {
+        for (        StorageDirectory sd : dirs) {
+          success.add(sd);
+        }
+      }
+ else {
+        for (        Callable<StorageDirectory> c : callables) {
+          tasks.add(new UpgradeTask(dataDir,executor.submit(c)));
+        }
+      }
+    }
+ catch (    IOException e) {
+      LOG.warn("Failed to add storage directory " + dataDir + " for block pool "+ bpid,e);
+    }
+  }
+  if (!tasks.isEmpty()) {
+    LOG.info("loadBlockPoolSliceStorage: " + tasks.size() + " upgrade tasks");
+    for (    UpgradeTask t : tasks) {
+      try {
+        success.add(t.future.get());
+      }
+ catch (      ExecutionException e) {
+        LOG.warn("Failed to upgrade storage directory " + t.dataDir + " for block pool "+ bpid,e);
+      }
+catch (      InterruptedException e) {
+        throw DFSUtilClient.toInterruptedIOException("Task interrupted",e);
+      }
+    }
+  }
+  return success;
+}

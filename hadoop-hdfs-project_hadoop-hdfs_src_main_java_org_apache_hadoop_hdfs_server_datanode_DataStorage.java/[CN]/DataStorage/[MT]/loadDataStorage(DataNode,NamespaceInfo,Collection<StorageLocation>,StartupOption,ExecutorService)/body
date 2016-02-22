@@ -1,0 +1,45 @@
+{
+  final List<StorageLocation> success=Lists.newArrayList();
+  final List<UpgradeTask> tasks=Lists.newArrayList();
+  for (  StorageLocation dataDir : dataDirs) {
+    File root=dataDir.getFile();
+    if (!containsStorageDir(root)) {
+      try {
+        final List<Callable<StorageDirectory>> callables=Lists.newArrayList();
+        final StorageDirectory sd=loadStorageDirectory(datanode,nsInfo,root,startOpt,callables);
+        if (callables.isEmpty()) {
+          addStorageDir(sd);
+          success.add(dataDir);
+        }
+ else {
+          for (          Callable<StorageDirectory> c : callables) {
+            tasks.add(new UpgradeTask(dataDir,executor.submit(c)));
+          }
+        }
+      }
+ catch (      IOException e) {
+        LOG.warn("Failed to add storage directory " + dataDir,e);
+      }
+    }
+ else {
+      LOG.info("Storage directory " + dataDir + " has already been used.");
+      success.add(dataDir);
+    }
+  }
+  if (!tasks.isEmpty()) {
+    LOG.info("loadDataStorage: " + tasks.size() + " upgrade tasks");
+    for (    UpgradeTask t : tasks) {
+      try {
+        addStorageDir(t.future.get());
+        success.add(t.dataDir);
+      }
+ catch (      ExecutionException e) {
+        LOG.warn("Failed to upgrade storage directory " + t.dataDir,e);
+      }
+catch (      InterruptedException e) {
+        throw DFSUtilClient.toInterruptedIOException("Task interrupted",e);
+      }
+    }
+  }
+  return success;
+}
