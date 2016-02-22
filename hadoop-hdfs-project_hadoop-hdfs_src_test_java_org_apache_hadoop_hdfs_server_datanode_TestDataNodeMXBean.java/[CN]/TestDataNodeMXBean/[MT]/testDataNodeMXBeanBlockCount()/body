@@ -1,0 +1,26 @@
+{
+  Configuration conf=new Configuration();
+  MiniDFSCluster cluster=new MiniDFSCluster.Builder(conf).build();
+  try {
+    List<DataNode> datanodes=cluster.getDataNodes();
+    assertEquals(datanodes.size(),1);
+    MBeanServer mbs=ManagementFactory.getPlatformMBeanServer();
+    ObjectName mxbeanName=new ObjectName("Hadoop:service=DataNode,name=DataNodeInfo");
+    FileSystem fs=cluster.getFileSystem();
+    for (int i=0; i < 5; i++) {
+      DFSTestUtil.createFile(fs,new Path("/tmp.txt" + i),1024,(short)1,1L);
+    }
+    assertEquals("Before restart DN",5,getTotalNumBlocks(mbs,mxbeanName));
+    cluster.restartDataNode(0);
+    cluster.waitActive();
+    assertEquals("After restart DN",5,getTotalNumBlocks(mbs,mxbeanName));
+    fs.delete(new Path("/tmp.txt1"),true);
+    Thread.sleep(5000);
+    assertEquals("After delete one file",4,getTotalNumBlocks(mbs,mxbeanName));
+  }
+  finally {
+    if (cluster != null) {
+      cluster.shutdown();
+    }
+  }
+}
