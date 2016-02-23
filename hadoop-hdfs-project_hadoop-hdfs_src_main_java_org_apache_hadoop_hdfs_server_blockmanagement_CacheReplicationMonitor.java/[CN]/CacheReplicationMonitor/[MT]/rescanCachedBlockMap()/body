@@ -1,4 +1,19 @@
 {
+  Set<DatanodeDescriptor> datanodes=blockManager.getDatanodeManager().getDatanodes();
+  for (  DatanodeDescriptor dn : datanodes) {
+    long remaining=dn.getCacheRemaining();
+    for (Iterator<CachedBlock> it=dn.getPendingCached().iterator(); it.hasNext(); ) {
+      CachedBlock cblock=it.next();
+      BlockInfo blockInfo=blockManager.getStoredBlock(new Block(cblock.getBlockId()));
+      if (blockInfo.getNumBytes() > remaining) {
+        LOG.debug("Block {}: removing from PENDING_CACHED for node {} " + "because it cannot fit in remaining cache size {}.",cblock.getBlockId(),dn.getDatanodeUuid(),remaining);
+        it.remove();
+      }
+ else {
+        remaining-=blockInfo.getNumBytes();
+      }
+    }
+  }
   for (Iterator<CachedBlock> cbIter=cachedBlocks.iterator(); cbIter.hasNext(); ) {
     scannedBlocks++;
     CachedBlock cblock=cbIter.next();
@@ -28,7 +43,7 @@
         DatanodeDescriptor datanode=iter.next();
         datanode.getPendingCached().remove(cblock);
         iter.remove();
-        LOG.trace("Block {}: removing from PENDING_CACHED for node {}" + "because we already have {} cached replicas and we only" + " need {}",cblock.getBlockId(),datanode.getDatanodeUuid(),numCached,neededCached);
+        LOG.trace("Block {}: removing from PENDING_CACHED for node {} " + "because we already have {} cached replicas and we only" + " need {}",cblock.getBlockId(),datanode.getDatanodeUuid(),numCached,neededCached);
       }
     }
     if (numCached < neededCached) {
