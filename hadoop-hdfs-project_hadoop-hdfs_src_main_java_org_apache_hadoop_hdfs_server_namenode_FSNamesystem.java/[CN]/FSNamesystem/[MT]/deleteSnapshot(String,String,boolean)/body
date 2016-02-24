@@ -1,20 +1,25 @@
 {
   boolean success=false;
+  String rootPath=null;
   writeLock();
   BlocksMapUpdateInfo blocksToBeDeleted=null;
   try {
     checkOperation(OperationCategory.WRITE);
     checkNameNodeSafeMode("Cannot delete snapshot for " + snapshotRoot);
+    rootPath=Snapshot.getSnapshotPath(snapshotRoot,snapshotName);
     blocksToBeDeleted=FSDirSnapshotOp.deleteSnapshot(dir,snapshotManager,snapshotRoot,snapshotName,logRetryCache);
     success=true;
   }
-  finally {
+ catch (  AccessControlException ace) {
+    logAuditEvent(success,"deleteSnapshot",rootPath,null,null);
+    throw ace;
+  }
+ finally {
     writeUnlock();
   }
   getEditLog().logSync();
   if (blocksToBeDeleted != null) {
     removeBlocks(blocksToBeDeleted);
   }
-  String rootPath=Snapshot.getSnapshotPath(snapshotRoot,snapshotName);
   logAuditEvent(success,"deleteSnapshot",rootPath,null,null);
 }
