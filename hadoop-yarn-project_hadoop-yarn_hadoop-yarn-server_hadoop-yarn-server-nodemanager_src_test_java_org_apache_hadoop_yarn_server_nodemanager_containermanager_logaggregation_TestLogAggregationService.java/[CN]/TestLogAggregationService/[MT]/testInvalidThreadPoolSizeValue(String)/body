@@ -1,0 +1,28 @@
+{
+  Supplier<Boolean> isInputInvalid=new Supplier<Boolean>(){
+    @Override public Boolean get(){
+      try {
+        int value=Integer.parseInt(threadPoolSize);
+        return value <= 0;
+      }
+ catch (      NumberFormatException ex) {
+        return true;
+      }
+    }
+  }
+;
+  assertTrue("The thread pool size must be invalid to use with this " + "method",isInputInvalid.get());
+  int initThreadPoolSize=conf.getInt(YarnConfiguration.NM_LOG_AGGREGATION_THREAD_POOL_SIZE,YarnConfiguration.DEFAULT_NM_LOG_AGGREGATION_THREAD_POOL_SIZE);
+  conf.set(YarnConfiguration.NM_LOG_AGGREGATION_THREAD_POOL_SIZE,threadPoolSize);
+  DeletionService delSrvc=mock(DeletionService.class);
+  LocalDirsHandlerService dirSvc=mock(LocalDirsHandlerService.class);
+  when(dirSvc.getLogDirs()).thenThrow(new RuntimeException());
+  LogAggregationService logAggregationService=new LogAggregationService(dispatcher,this.context,delSrvc,dirSvc);
+  logAggregationService.init(this.conf);
+  logAggregationService.start();
+  ThreadPoolExecutor executorService=(ThreadPoolExecutor)logAggregationService.threadPool;
+  assertEquals("The thread pool size should be set to the value of YARN" + ".DEFAULT_NM_LOG_AGGREGATION_THREAD_POOL_SIZE because the configured " + " thread pool size is "+ "invalid.",YarnConfiguration.DEFAULT_NM_LOG_AGGREGATION_THREAD_POOL_SIZE,executorService.getMaximumPoolSize());
+  logAggregationService.stop();
+  logAggregationService.close();
+  conf.setInt(YarnConfiguration.NM_LOG_AGGREGATION_THREAD_POOL_SIZE,initThreadPoolSize);
+}
