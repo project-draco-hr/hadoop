@@ -1,0 +1,57 @@
+{
+  CLI jc=createJobClient();
+  ByteArrayOutputStream out=new ByteArrayOutputStream();
+  String historyFileUri=null;
+  RemoteIterator<LocatedFileStatus> it=getFileSystem().listFiles(new Path("/"),true);
+  while (it.hasNext() && historyFileUri == null) {
+    LocatedFileStatus file=it.next();
+    if (file.getPath().getName().endsWith(".jhist")) {
+      historyFileUri=file.getPath().toUri().toString();
+    }
+  }
+  assertNotNull("Could not find jhist file",historyFileUri);
+  for (  String historyFileOrJobId : new String[]{historyFileUri,jobId}) {
+    int exitCode=runTool(conf,jc,new String[]{"-history","all",historyFileOrJobId},out);
+    assertEquals("Exit code",0,exitCode);
+    checkHistoryHumanOutput(jobId,out);
+    File outFile=File.createTempFile("myout",".txt");
+    exitCode=runTool(conf,jc,new String[]{"-history","all",historyFileOrJobId,"-outfile",outFile.getAbsolutePath()},out);
+    assertEquals("Exit code",0,exitCode);
+    checkHistoryHumanFileOutput(jobId,out,outFile);
+    outFile=File.createTempFile("myout",".txt");
+    exitCode=runTool(conf,jc,new String[]{"-history","all",historyFileOrJobId,"-outfile",outFile.getAbsolutePath(),"-format","human"},out);
+    assertEquals("Exit code",0,exitCode);
+    checkHistoryHumanFileOutput(jobId,out,outFile);
+    exitCode=runTool(conf,jc,new String[]{"-history",historyFileOrJobId,"-format","human"},out);
+    assertEquals("Exit code",0,exitCode);
+    checkHistoryHumanOutput(jobId,out);
+    exitCode=runTool(conf,jc,new String[]{"-history","all",historyFileOrJobId,"-format","json"},out);
+    assertEquals("Exit code",0,exitCode);
+    checkHistoryJSONOutput(jobId,out);
+    outFile=File.createTempFile("myout",".txt");
+    exitCode=runTool(conf,jc,new String[]{"-history","all",historyFileOrJobId,"-outfile",outFile.getAbsolutePath(),"-format","json"},out);
+    assertEquals("Exit code",0,exitCode);
+    checkHistoryJSONFileOutput(jobId,out,outFile);
+    exitCode=runTool(conf,jc,new String[]{"-history",historyFileOrJobId,"-format","json"},out);
+    assertEquals("Exit code",0,exitCode);
+    checkHistoryJSONOutput(jobId,out);
+    exitCode=runTool(conf,jc,new String[]{"-history",historyFileOrJobId,"foo"},out);
+    assertEquals("Exit code",-1,exitCode);
+    exitCode=runTool(conf,jc,new String[]{"-history",historyFileOrJobId,"-format"},out);
+    assertEquals("Exit code",-1,exitCode);
+    exitCode=runTool(conf,jc,new String[]{"-history",historyFileOrJobId,"-outfile"},out);
+    assertEquals("Exit code",-1,exitCode);
+    try {
+      runTool(conf,jc,new String[]{"-history",historyFileOrJobId,"-format","foo"},out);
+      fail();
+    }
+ catch (    IllegalArgumentException e) {
+    }
+  }
+  try {
+    runTool(conf,jc,new String[]{"-history","not_a_valid_history_file_or_job_id"},out);
+    fail();
+  }
+ catch (  IllegalArgumentException e) {
+  }
+}
