@@ -2,57 +2,46 @@
   containingNodes.clear();
   nodesContainingLiveReplicas.clear();
   List<DatanodeDescriptor> srcNodes=new ArrayList<>();
-  int live=0;
-  int readonly=0;
-  int decommissioned=0;
-  int decommissioning=0;
-  int corrupt=0;
-  int excess=0;
   liveBlockIndices.clear();
   final boolean isStriped=block.isStriped();
-  Collection<DatanodeDescriptor> nodesCorrupt=corruptReplicas.getNodes(block);
+  BitSet bitSet=isStriped ? new BitSet(((BlockInfoStriped)block).getTotalBlockNum()) : null;
   for (  DatanodeStorageInfo storage : blocksMap.getStorages(block)) {
     final DatanodeDescriptor node=storage.getDatanodeDescriptor();
-    LightWeightHashSet<BlockInfo> excessBlocks=excessReplicateMap.get(node.getDatanodeUuid());
-    int countableReplica=storage.getState() == State.NORMAL ? 1 : 0;
-    if ((nodesCorrupt != null) && (nodesCorrupt.contains(node)))     corrupt+=countableReplica;
- else     if (node.isDecommissionInProgress()) {
-      decommissioning+=countableReplica;
-    }
- else     if (node.isDecommissioned()) {
-      decommissioned+=countableReplica;
-    }
- else     if (excessBlocks != null && excessBlocks.contains(block)) {
-      excess+=countableReplica;
-    }
- else {
+    final StoredReplicaState state=checkReplicaOnStorage(numReplicas,block,storage,corruptReplicas.getNodes(block),false);
+    if (state == StoredReplicaState.LIVE) {
       nodesContainingLiveReplicas.add(storage);
-      live+=countableReplica;
-    }
-    if (storage.getState() == State.READ_ONLY_SHARED) {
-      readonly++;
     }
     containingNodes.add(node);
-    if ((nodesCorrupt != null) && nodesCorrupt.contains(node))     continue;
+    if (state == StoredReplicaState.CORRUPT || state == StoredReplicaState.EXCESS) {
+      continue;
+    }
     if (priority != UnderReplicatedBlocks.QUEUE_HIGHEST_PRIORITY && !node.isDecommissionInProgress() && node.getNumberOfBlocksToBeReplicated() >= maxReplicationStreams) {
       continue;
     }
     if (node.getNumberOfBlocksToBeReplicated() >= replicationStreamsHardLimit) {
       continue;
     }
-    if (excessBlocks != null && excessBlocks.contains(block))     continue;
-    if (node.isDecommissioned())     continue;
+    if (node.isDecommissioned()) {
+      continue;
+    }
     if (isStriped || srcNodes.isEmpty()) {
       srcNodes.add(node);
       if (isStriped) {
-        liveBlockIndices.add(((BlockInfoStriped)block).getStorageBlockIndex(storage));
+        byte blockIndex=((BlockInfoStriped)block).getStorageBlockIndex(storage);
+        liveBlockIndices.add(blockIndex);
+        if (!bitSet.get(blockIndex)) {
+          bitSet.set(blockIndex);
+        }
+ else         if (state == StoredReplicaState.LIVE) {
+          numReplicas.subtract(StoredReplicaState.LIVE,1);
+          numReplicas.add(StoredReplicaState.REDUNDANT,1);
+        }
       }
       continue;
     }
-    if (!isStriped && ThreadLocalRandom.current().nextBoolean()) {
+    if (ThreadLocalRandom.current().nextBoolean()) {
       srcNodes.set(0,node);
     }
   }
-  if (numReplicas != null)   numReplicas.set(live,readonly,decommissioned,decommissioning,corrupt,excess,0);
   return srcNodes.toArray(new DatanodeDescriptor[srcNodes.size()]);
 }
