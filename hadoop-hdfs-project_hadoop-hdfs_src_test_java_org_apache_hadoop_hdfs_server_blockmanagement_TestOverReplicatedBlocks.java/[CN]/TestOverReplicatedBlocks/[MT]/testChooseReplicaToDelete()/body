@@ -7,6 +7,7 @@
     cluster=new MiniDFSCluster.Builder(conf).numDataNodes(3).build();
     fs=cluster.getFileSystem();
     final FSNamesystem namesystem=cluster.getNamesystem();
+    final BlockManager bm=namesystem.getBlockManager();
     conf.setLong(DFSConfigKeys.DFS_HEARTBEAT_INTERVAL_KEY,300);
     cluster.startDataNodes(conf,1,true,null,null,null);
     DataNode lastDN=cluster.getDataNodes().get(3);
@@ -19,15 +20,15 @@
     long lastHeartbeat=0;
     long waitTime=DFSConfigKeys.DFS_HEARTBEAT_INTERVAL_DEFAULT * 1000 * (DFSConfigKeys.DFS_NAMENODE_TOLERATE_HEARTBEAT_MULTIPLIER_DEFAULT + 1);
     do {
-      nodeInfo=namesystem.getBlockManager().getDatanodeManager().getDatanode(dnReg);
+      nodeInfo=bm.getDatanodeManager().getDatanode(dnReg);
       lastHeartbeat=nodeInfo.getLastUpdateMonotonic();
     }
  while (monotonicNow() - lastHeartbeat < waitTime);
     fs.setReplication(fileName,(short)3);
     BlockLocation locs[]=fs.getFileBlockLocations(fs.getFileStatus(fileName),0,Long.MAX_VALUE);
     namesystem.readLock();
-    Collection<BlockInfo> dnBlocks=namesystem.getBlockManager().excessReplicateMap.get(lastDNid);
-    assertEquals("Replicas on node " + lastDNid + " should have been deleted",SMALL_FILE_LENGTH / SMALL_BLOCK_SIZE,dnBlocks.size());
+    final int dnBlocks=bm.getExcessSize4Testing(dnReg.getDatanodeUuid());
+    assertEquals("Replicas on node " + lastDNid + " should have been deleted",SMALL_FILE_LENGTH / SMALL_BLOCK_SIZE,dnBlocks);
     namesystem.readUnlock();
     for (    BlockLocation location : locs)     assertEquals("Block should still have 4 replicas",4,location.getNames().length);
   }
