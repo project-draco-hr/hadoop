@@ -1,0 +1,38 @@
+{
+  baseDir=new File(System.getProperty("test.build.dir","target/test-dir"),TestBalancer.class.getSimpleName());
+  FileUtil.fullyDelete(baseDir);
+  assertTrue(baseDir.mkdirs());
+  Properties kdcConf=MiniKdc.createConf();
+  kdc=new MiniKdc(kdcConf,baseDir);
+  kdc.start();
+  SecurityUtil.setAuthenticationMethod(UserGroupInformation.AuthenticationMethod.KERBEROS,conf);
+  UserGroupInformation.setConfiguration(conf);
+  assertTrue("Expected configuration to enable security",UserGroupInformation.isSecurityEnabled());
+  keytabFile=new File(baseDir,username + ".keytab");
+  String keytab=keytabFile.getAbsolutePath();
+  String krbInstance=Path.WINDOWS ? "127.0.0.1" : "localhost";
+  principal=username + "/" + krbInstance+ "@"+ kdc.getRealm();
+  String spnegoPrincipal="HTTP/" + krbInstance + "@"+ kdc.getRealm();
+  kdc.createPrincipal(keytabFile,username,username + "/" + krbInstance,"HTTP/" + krbInstance);
+  conf.set(DFS_NAMENODE_KERBEROS_PRINCIPAL_KEY,principal);
+  conf.set(DFS_NAMENODE_KEYTAB_FILE_KEY,keytab);
+  conf.set(DFS_DATANODE_KERBEROS_PRINCIPAL_KEY,principal);
+  conf.set(DFS_DATANODE_KEYTAB_FILE_KEY,keytab);
+  conf.set(DFS_WEB_AUTHENTICATION_KERBEROS_PRINCIPAL_KEY,spnegoPrincipal);
+  conf.setBoolean(DFS_BLOCK_ACCESS_TOKEN_ENABLE_KEY,true);
+  conf.set(DFS_DATA_TRANSFER_PROTECTION_KEY,"authentication");
+  conf.set(DFS_HTTP_POLICY_KEY,HttpConfig.Policy.HTTPS_ONLY.name());
+  conf.set(DFS_NAMENODE_HTTPS_ADDRESS_KEY,"localhost:0");
+  conf.set(DFS_DATANODE_HTTPS_ADDRESS_KEY,"localhost:0");
+  conf.setInt(IPC_CLIENT_CONNECT_MAX_RETRIES_ON_SASL_KEY,10);
+  conf.setBoolean(DFS_BALANCER_KEYTAB_ENABLED_KEY,true);
+  conf.set(DFS_BALANCER_ADDRESS_KEY,"localhost:0");
+  conf.set(DFS_BALANCER_KEYTAB_FILE_KEY,keytab);
+  conf.set(DFS_BALANCER_KERBEROS_PRINCIPAL_KEY,principal);
+  String keystoresDir=baseDir.getAbsolutePath();
+  String sslConfDir=KeyStoreTestUtil.getClasspathDir(TestBalancer.class);
+  KeyStoreTestUtil.setupSSLConfig(keystoresDir,sslConfDir,conf,false);
+  conf.set(DFS_CLIENT_HTTPS_KEYSTORE_RESOURCE_KEY,KeyStoreTestUtil.getClientSSLConfigFileName());
+  conf.set(DFS_SERVER_HTTPS_KEYSTORE_RESOURCE_KEY,KeyStoreTestUtil.getServerSSLConfigFileName());
+  initConf(conf);
+}
