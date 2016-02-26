@@ -1,0 +1,62 @@
+{
+  final ExecutorService executor=createExecutor();
+  final Random ran=new Random();
+  final Configuration conf=newConf(ibrInterval);
+  final MiniDFSCluster cluster=new MiniDFSCluster.Builder(conf).numDataNodes(NUM_DATANODES).build();
+  final DistributedFileSystem dfs=cluster.getFileSystem();
+  try {
+    final String dirPathString="/dir";
+    final Path dir=new Path(dirPathString);
+    dfs.mkdirs(dir);
+    final long testStartTime=Time.monotonicNow();
+    final ExecutorCompletionService<Path> createService=new ExecutorCompletionService<>(executor);
+    final AtomicLong createFileTime=new AtomicLong();
+    final AtomicInteger numBlockCreated=new AtomicInteger();
+    for (int i=0; i < NUM_FILES; i++) {
+      createService.submit(new Callable<Path>(){
+        @Override public Path call() throws Exception {
+          final long start=Time.monotonicNow();
+          try {
+            final long seed=ran.nextLong();
+            final int numBlocks=ran.nextInt(MAX_BLOCK_NUM) + 1;
+            numBlockCreated.addAndGet(numBlocks);
+            return createFile(dir,numBlocks,seed,dfs);
+          }
+  finally {
+            createFileTime.addAndGet(Time.monotonicNow() - start);
+          }
+        }
+      }
+);
+    }
+    final ExecutorCompletionService<Boolean> verifyService=new ExecutorCompletionService<>(executor);
+    final AtomicLong verifyFileTime=new AtomicLong();
+    for (int i=0; i < NUM_FILES; i++) {
+      final Path file=createService.take().get();
+      verifyService.submit(new Callable<Boolean>(){
+        @Override public Boolean call() throws Exception {
+          final long start=Time.monotonicNow();
+          try {
+            return verifyFile(file,dfs);
+          }
+  finally {
+            verifyFileTime.addAndGet(Time.monotonicNow() - start);
+          }
+        }
+      }
+);
+    }
+    for (int i=0; i < NUM_FILES; i++) {
+      Assert.assertTrue(verifyService.take().get());
+    }
+    final long testEndTime=Time.monotonicNow();
+    LOG.info("ibrInterval=" + ibrInterval + " ("+ toConfString(DFS_BLOCKREPORT_INCREMENTAL_INTERVAL_MSEC_KEY,conf)+ "), numBlockCreated="+ numBlockCreated);
+    LOG.info("duration=" + toSecondString(testEndTime - testStartTime) + ", createFileTime="+ toSecondString(createFileTime.get())+ ", verifyFileTime="+ toSecondString(verifyFileTime.get()));
+    LOG.info("NUM_FILES=" + NUM_FILES + ", MAX_BLOCK_NUM="+ MAX_BLOCK_NUM+ ", BLOCK_SIZE="+ BLOCK_SIZE+ ", NUM_THREADS="+ NUM_THREADS+ ", NUM_DATANODES="+ NUM_DATANODES);
+    logIbrCounts(cluster.getDataNodes());
+  }
+  finally {
+    executor.shutdown();
+    cluster.shutdown();
+  }
+}

@@ -28,14 +28,18 @@
   String firstBadLink="";
   Status mirrorInStatus=SUCCESS;
   final String storageUuid;
+  final boolean isOnTransientStorage;
   try {
+    final Replica replica;
     if (isDatanode || stage != BlockConstructionStage.PIPELINE_CLOSE_RECOVERY) {
       blockReceiver=getBlockReceiver(block,storageType,in,peer.getRemoteAddressString(),peer.getLocalAddressString(),stage,latestGenerationStamp,minBytesRcvd,maxBytesRcvd,clientname,srcDataNode,datanode,requestedChecksum,cachingStrategy,allowLazyPersist,pinning);
-      storageUuid=blockReceiver.getStorageUuid();
+      replica=blockReceiver.getReplica();
     }
  else {
-      storageUuid=datanode.data.recoverClose(block,latestGenerationStamp,minBytesRcvd);
+      replica=datanode.data.recoverClose(block,latestGenerationStamp,minBytesRcvd);
     }
+    storageUuid=replica.getStorageUuid();
+    isOnTransientStorage=replica.isOnTransientStorage();
     if (targets.length > 0) {
       InetSocketAddress mirrorTarget=null;
       mirrorNode=targets[0].getXferAddr(connectToDnViaHostname);
@@ -121,7 +125,7 @@
       block.setNumBytes(minBytesRcvd);
     }
     if (isDatanode || stage == BlockConstructionStage.PIPELINE_CLOSE_RECOVERY) {
-      datanode.closeBlock(block,DataNode.EMPTY_DEL_HINT,storageUuid);
+      datanode.closeBlock(block,null,storageUuid,isOnTransientStorage);
       LOG.info("Received " + block + " src: "+ remoteAddress+ " dest: "+ localAddress+ " of size "+ block.getNumBytes());
     }
     if (isClient) {
