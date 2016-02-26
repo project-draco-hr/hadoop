@@ -1,0 +1,53 @@
+{
+  inodeBld.setType(INodeSection.INode.Type.DIRECTORY);
+  INodeSection.INodeDirectory.Builder bld=INodeSection.INodeDirectory.newBuilder();
+  Long lval=node.removeChildLong("mtime");
+  if (lval != null) {
+    bld.setModificationTime(lval);
+  }
+  lval=node.removeChildLong("nsquota");
+  if (lval != null) {
+    bld.setNsQuota(lval);
+  }
+  lval=node.removeChildLong("dsquota");
+  if (lval != null) {
+    bld.setDsQuota(lval);
+  }
+  String perm=node.removeChildStr("permission");
+  if (perm != null) {
+    bld.setPermission(permissionXmlToU64(perm));
+  }
+  Node acls=node.removeChild("acls");
+  if (acls != null) {
+    bld.setAcl(aclXmlToProto(acls));
+  }
+  Node xattrs=node.removeChild("xattrs");
+  if (xattrs != null) {
+    bld.setXAttrs(xattrsXmlToProto(xattrs));
+  }
+  INodeSection.QuotaByStorageTypeFeatureProto.Builder qf=INodeSection.QuotaByStorageTypeFeatureProto.newBuilder();
+  while (true) {
+    Node typeQuota=node.removeChild("typeQuota");
+    if (typeQuota == null) {
+      break;
+    }
+    INodeSection.QuotaByStorageTypeEntryProto.Builder qbld=INodeSection.QuotaByStorageTypeEntryProto.newBuilder();
+    String type=typeQuota.removeChildStr("type");
+    if (type == null) {
+      throw new IOException("<typeQuota> was missing <type>");
+    }
+    HdfsProtos.StorageTypeProto storageType=HdfsProtos.StorageTypeProto.valueOf(type);
+    if (storageType == null) {
+      throw new IOException("<typeQuota> had unknown <type> " + type);
+    }
+    qbld.setStorageType(storageType);
+    Long quota=typeQuota.removeChildLong("quota");
+    if (quota == null) {
+      throw new IOException("<typeQuota> was missing <quota>");
+    }
+    qbld.setQuota(quota);
+    qf.addQuotas(qbld);
+  }
+  bld.setTypeQuotas(qf);
+  inodeBld.setDirectory(bld);
+}

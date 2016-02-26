@@ -1,0 +1,36 @@
+{
+  INodeSection.XAttrFeatureProto.Builder bld=INodeSection.XAttrFeatureProto.newBuilder();
+  while (true) {
+    Node xattr=xattrs.removeChild("xattr");
+    if (xattr == null) {
+      break;
+    }
+    INodeSection.XAttrCompactProto.Builder b=INodeSection.XAttrCompactProto.newBuilder();
+    String ns=xattr.removeChildStr("ns");
+    if (ns == null) {
+      throw new IOException("<xattr> had no <ns> entry.");
+    }
+    int nsIdx=XAttrProtos.XAttrProto.XAttrNamespaceProto.valueOf(ns).ordinal();
+    String name=xattr.removeChildStr("name");
+    String valStr=xattr.removeChildStr("val");
+    byte[] val=null;
+    if (valStr == null) {
+      String valHex=xattr.removeChildStr("valHex");
+      if (valHex == null) {
+        throw new IOException("<xattr> had no <val> or <valHex> entry.");
+      }
+      val=new HexBinaryAdapter().unmarshal(valHex);
+    }
+ else {
+      val=valStr.getBytes("UTF8");
+    }
+    b.setValue(ByteString.copyFrom(val));
+    int nameId=registerStringId(name);
+    int encodedName=(nameId << XATTR_NAME_OFFSET) | ((nsIdx & XATTR_NAMESPACE_MASK) << XATTR_NAMESPACE_OFFSET) | (((nsIdx >> 2) & XATTR_NAMESPACE_EXT_MASK) << XATTR_NAMESPACE_EXT_OFFSET);
+    b.setName(encodedName);
+    xattr.verifyNoRemainingKeys("xattr");
+    bld.addXAttrs(b);
+  }
+  xattrs.verifyNoRemainingKeys("xattrs");
+  return bld;
+}

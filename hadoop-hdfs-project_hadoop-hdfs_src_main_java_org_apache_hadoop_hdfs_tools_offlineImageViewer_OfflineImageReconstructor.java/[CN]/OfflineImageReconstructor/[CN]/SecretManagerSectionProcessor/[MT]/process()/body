@@ -1,0 +1,107 @@
+{
+  Node secretHeader=new Node();
+  loadNodeChildren(secretHeader,"SecretManager fields","delegationKey","token");
+  SecretManagerSection.Builder b=SecretManagerSection.newBuilder();
+  Integer currentId=secretHeader.removeChildInt("currentId");
+  if (currentId == null) {
+    throw new IOException("SecretManager section had no <currentId>");
+  }
+  b.setCurrentId(currentId);
+  Integer tokenSequenceNumber=secretHeader.removeChildInt("tokenSequenceNumber");
+  if (tokenSequenceNumber == null) {
+    throw new IOException("SecretManager section had no " + "<tokenSequenceNumber>");
+  }
+  b.setTokenSequenceNumber(tokenSequenceNumber);
+  Integer expectedNumKeys=secretHeader.removeChildInt("numDelegationKeys");
+  if (expectedNumKeys == null) {
+    throw new IOException("SecretManager section had no " + "<numDelegationKeys>");
+  }
+  b.setNumKeys(expectedNumKeys);
+  Integer expectedNumTokens=secretHeader.removeChildInt("numTokens");
+  if (expectedNumTokens == null) {
+    throw new IOException("SecretManager section had no " + "<numTokens>");
+  }
+  b.setNumTokens(expectedNumTokens);
+  secretHeader.verifyNoRemainingKeys("SecretManager");
+  b.build().writeDelimitedTo(out);
+  for (int actualNumKeys=0; actualNumKeys < expectedNumKeys; actualNumKeys++) {
+    try {
+      expectTag("delegationKey",false);
+    }
+ catch (    IOException e) {
+      throw new IOException("Only read " + actualNumKeys + " delegation keys out of "+ expectedNumKeys,e);
+    }
+    SecretManagerSection.DelegationKey.Builder dbld=SecretManagerSection.DelegationKey.newBuilder();
+    Node dkey=new Node();
+    loadNodeChildren(dkey,"Delegation key fields");
+    Integer id=dkey.removeChildInt("id");
+    if (id == null) {
+      throw new IOException("Delegation key stanza <delegationKey> " + "lacked an <id> field.");
+    }
+    dbld.setId(id);
+    String expiry=dkey.removeChildStr("expiry");
+    if (expiry == null) {
+      throw new IOException("Delegation key stanza <delegationKey> " + "lacked an <expiry> field.");
+    }
+    dbld.setExpiryDate(dateStrToLong(expiry));
+    String keyHex=dkey.removeChildStr("key");
+    if (keyHex == null) {
+      throw new IOException("Delegation key stanza <delegationKey> " + "lacked a <key> field.");
+    }
+    byte[] key=new HexBinaryAdapter().unmarshal(keyHex);
+    dkey.verifyNoRemainingKeys("delegationKey");
+    dbld.setKey(ByteString.copyFrom(key));
+    dbld.build().writeDelimitedTo(out);
+  }
+  for (int actualNumTokens=0; actualNumTokens < expectedNumTokens; actualNumTokens++) {
+    try {
+      expectTag("token",false);
+    }
+ catch (    IOException e) {
+      throw new IOException("Only read " + actualNumTokens + " tokens out of "+ expectedNumTokens,e);
+    }
+    SecretManagerSection.PersistToken.Builder tbld=SecretManagerSection.PersistToken.newBuilder();
+    Node token=new Node();
+    loadNodeChildren(token,"PersistToken key fields");
+    Integer version=token.removeChildInt("version");
+    if (version != null) {
+      tbld.setVersion(version);
+    }
+    String owner=token.removeChildStr("owner");
+    if (owner != null) {
+      tbld.setOwner(owner);
+    }
+    String renewer=token.removeChildStr("renewer");
+    if (renewer != null) {
+      tbld.setRenewer(renewer);
+    }
+    String realUser=token.removeChildStr("realUser");
+    if (realUser != null) {
+      tbld.setRealUser(realUser);
+    }
+    String issueDateStr=token.removeChildStr("issueDate");
+    if (issueDateStr != null) {
+      tbld.setIssueDate(dateStrToLong(issueDateStr));
+    }
+    String maxDateStr=token.removeChildStr("maxDate");
+    if (maxDateStr != null) {
+      tbld.setMaxDate(dateStrToLong(maxDateStr));
+    }
+    Integer seqNo=token.removeChildInt("sequenceNumber");
+    if (seqNo != null) {
+      tbld.setSequenceNumber(seqNo);
+    }
+    Integer masterKeyId=token.removeChildInt("masterKeyId");
+    if (masterKeyId != null) {
+      tbld.setMasterKeyId(masterKeyId);
+    }
+    String expiryDateStr=token.removeChildStr("expiryDate");
+    if (expiryDateStr != null) {
+      tbld.setExpiryDate(dateStrToLong(expiryDateStr));
+    }
+    token.verifyNoRemainingKeys("token");
+    tbld.build().writeDelimitedTo(out);
+  }
+  expectTagEnd("SecretManagerSection");
+  recordSectionLength(SectionName.SECRET_MANAGER.name());
+}

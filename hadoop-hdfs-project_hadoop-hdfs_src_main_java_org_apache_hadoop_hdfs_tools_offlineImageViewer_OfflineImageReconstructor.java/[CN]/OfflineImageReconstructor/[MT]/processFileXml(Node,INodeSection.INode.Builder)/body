@@ -1,0 +1,80 @@
+{
+  inodeBld.setType(INodeSection.INode.Type.FILE);
+  INodeSection.INodeFile.Builder bld=INodeSection.INodeFile.newBuilder();
+  Integer ival=node.removeChildInt("replication");
+  if (ival != null) {
+    bld.setReplication(ival);
+  }
+  Long lval=node.removeChildLong("mtime");
+  if (lval != null) {
+    bld.setModificationTime(lval);
+  }
+  lval=node.removeChildLong("atime");
+  if (lval != null) {
+    bld.setAccessTime(lval);
+  }
+  lval=node.removeChildLong("preferredBlockSize");
+  if (lval != null) {
+    bld.setPreferredBlockSize(lval);
+  }
+  String perm=node.removeChildStr("permission");
+  if (perm != null) {
+    bld.setPermission(permissionXmlToU64(perm));
+  }
+  Node blocks=node.removeChild("blocks");
+  if (blocks != null) {
+    while (true) {
+      Node block=blocks.removeChild("block");
+      if (block == null) {
+        break;
+      }
+      HdfsProtos.BlockProto.Builder blockBld=HdfsProtos.BlockProto.newBuilder();
+      Long id=block.removeChildLong("id");
+      if (id == null) {
+        throw new IOException("<block> found without <id>");
+      }
+      blockBld.setBlockId(id);
+      Long genstamp=block.removeChildLong("genstamp");
+      if (genstamp == null) {
+        throw new IOException("<block> found without <genstamp>");
+      }
+      blockBld.setGenStamp(genstamp);
+      Long numBytes=block.removeChildLong("numBytes");
+      if (numBytes == null) {
+        throw new IOException("<block> found without <numBytes>");
+      }
+      blockBld.setNumBytes(numBytes);
+      bld.addBlocks(blockBld);
+    }
+  }
+  Node fileUnderConstruction=node.removeChild("file-under-construction");
+  if (fileUnderConstruction != null) {
+    INodeSection.FileUnderConstructionFeature.Builder fb=INodeSection.FileUnderConstructionFeature.newBuilder();
+    String clientName=fileUnderConstruction.removeChildStr("clientName");
+    if (clientName == null) {
+      throw new IOException("<file-under-construction> found without " + "<clientName>");
+    }
+    fb.setClientName(clientName);
+    String clientMachine=fileUnderConstruction.removeChildStr("clientMachine");
+    if (clientMachine == null) {
+      throw new IOException("<file-under-construction> found without " + "<clientMachine>");
+    }
+    fb.setClientMachine(clientMachine);
+    bld.setFileUC(fb);
+  }
+  Node acls=node.removeChild("acls");
+  if (acls != null) {
+    bld.setAcl(aclXmlToProto(acls));
+  }
+  Node xattrs=node.removeChild("xattrs");
+  if (xattrs != null) {
+    bld.setXAttrs(xattrsXmlToProto(xattrs));
+  }
+  ival=node.removeChildInt("storagePolicyId");
+  if (ival != null) {
+    bld.setStoragePolicyID(ival);
+  }
+  Boolean bval=node.removeChildBool("isStriped");
+  bld.setIsStriped(bval);
+  inodeBld.setFile(bld);
+}

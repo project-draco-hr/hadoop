@@ -1,0 +1,41 @@
+{
+  LOG.debug("Loading <fsimage>.");
+  expectTag("fsimage",false);
+  readVersion();
+  out.write(FSImageUtil.MAGIC_HEADER);
+  sectionStartOffset=FSImageUtil.MAGIC_HEADER.length;
+  final HashSet<String> unprocessedSections=new HashSet<>(sections.keySet());
+  while (!unprocessedSections.isEmpty()) {
+    XMLEvent ev=expectTag("[section header]",true);
+    if (ev.getEventType() == XMLStreamConstants.END_ELEMENT) {
+      if (ev.asEndElement().getName().getLocalPart().equals("fsimage")) {
+        throw new IOException("FSImage XML ended prematurely, without " + "including section(s) " + StringUtils.join(", ",unprocessedSections));
+      }
+      throw new IOException("Got unexpected tag end event for " + ev.asEndElement().getName().getLocalPart() + " while looking "+ "for section header tag.");
+    }
+ else     if (ev.getEventType() != XMLStreamConstants.START_ELEMENT) {
+      throw new IOException("Expected section header START_ELEMENT; " + "got event of type " + ev.getEventType());
+    }
+    String sectionName=ev.asStartElement().getName().getLocalPart();
+    if (!unprocessedSections.contains(sectionName)) {
+      throw new IOException("Unknown or duplicate section found for " + sectionName);
+    }
+    SectionProcessor sectionProcessor=sections.get(sectionName);
+    if (sectionProcessor == null) {
+      throw new IOException("Unknown FSImage section " + sectionName + ".  Valid section names are ["+ StringUtils.join(", ",sections.keySet())+ "]");
+    }
+    unprocessedSections.remove(sectionName);
+    sectionProcessor.process();
+  }
+  writeStringTableSection();
+  long prevOffset=out.getCount();
+  FileSummary fileSummary=fileSummaryBld.build();
+  if (LOG.isDebugEnabled()) {
+    LOG.debug("Writing FileSummary: {" + TextFormat.printToString(fileSummary) + "}");
+  }
+  fileSummary.writeDelimitedTo(out);
+  int summaryLen=Ints.checkedCast(out.getCount() - prevOffset);
+  byte[] summaryLenBytes=new byte[4];
+  ByteBuffer.wrap(summaryLenBytes).asIntBuffer().put(summaryLen);
+  out.write(summaryLenBytes);
+}

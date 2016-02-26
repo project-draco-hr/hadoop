@@ -1,0 +1,50 @@
+{
+  FsImageProto.SnapshotSection.Builder bld=FsImageProto.SnapshotSection.newBuilder();
+  Node header=new Node();
+  loadNodeChildren(header,"SnapshotSection fields","snapshot");
+  Integer snapshotCounter=header.removeChildInt("snapshotCounter");
+  if (snapshotCounter == null) {
+    throw new IOException("No <snapshotCounter> entry found in " + "SnapshotSection header");
+  }
+  bld.setSnapshotCounter(snapshotCounter);
+  Integer expectedNumSnapshots=header.removeChildInt("numSnapshots");
+  if (expectedNumSnapshots == null) {
+    throw new IOException("No <numSnapshots> entry found in " + "SnapshotSection header");
+  }
+  bld.setNumSnapshots(expectedNumSnapshots);
+  while (true) {
+    Node sd=header.removeChild("snapshottableDir");
+    if (sd == null) {
+      break;
+    }
+    Long dir=sd.removeChildLong("dir");
+    sd.verifyNoRemainingKeys("<dir>");
+    bld.addSnapshottableDir(dir);
+  }
+  header.verifyNoRemainingKeys("SnapshotSection");
+  bld.build().writeDelimitedTo(out);
+  int actualNumSnapshots=0;
+  while (actualNumSnapshots < expectedNumSnapshots) {
+    try {
+      expectTag("snapshot",false);
+    }
+ catch (    IOException e) {
+      throw new IOException("Only read " + actualNumSnapshots + " <snapshot> entries out of "+ expectedNumSnapshots,e);
+    }
+    actualNumSnapshots++;
+    Node snapshot=new Node();
+    loadNodeChildren(snapshot,"snapshot fields");
+    FsImageProto.SnapshotSection.Snapshot.Builder s=FsImageProto.SnapshotSection.Snapshot.newBuilder();
+    Integer snapshotId=snapshot.removeChildInt("id");
+    if (snapshotId == null) {
+      throw new IOException("<snapshot> section was missing <id>");
+    }
+    s.setSnapshotId(snapshotId);
+    Node snapshotRoot=snapshot.removeChild("root");
+    INodeSection.INode.Builder inodeBld=processINodeXml(snapshotRoot);
+    s.setRoot(inodeBld);
+    s.build().writeDelimitedTo(out);
+  }
+  expectTagEnd("SnapshotSection");
+  recordSectionLength(SectionName.SNAPSHOT.name());
+}

@@ -1,0 +1,83 @@
+{
+  LOG.debug("Processing dirDiffEntry");
+  DiffEntry.Builder headerBld=DiffEntry.newBuilder();
+  headerBld.setType(DiffEntry.Type.DIRECTORYDIFF);
+  Node dirDiffHeader=new Node();
+  loadNodeChildren(dirDiffHeader,"dirDiffEntry fields","dirDiff");
+  Long inodeId=dirDiffHeader.removeChildLong("inodeId");
+  if (inodeId == null) {
+    throw new IOException("<dirDiffEntry> contained no <inodeId> entry.");
+  }
+  headerBld.setInodeId(inodeId);
+  Integer expectedDiffs=dirDiffHeader.removeChildInt("count");
+  if (expectedDiffs == null) {
+    throw new IOException("<dirDiffEntry> contained no <count> entry.");
+  }
+  headerBld.setNumOfDiff(expectedDiffs);
+  dirDiffHeader.verifyNoRemainingKeys("dirDiffEntry");
+  headerBld.build().writeDelimitedTo(out);
+  for (int actualDiffs=0; actualDiffs < expectedDiffs; actualDiffs++) {
+    try {
+      expectTag("dirDiff",false);
+    }
+ catch (    IOException e) {
+      throw new IOException("Only read " + (actualDiffs + 1) + " diffs out of "+ expectedDiffs,e);
+    }
+    Node dirDiff=new Node();
+    loadNodeChildren(dirDiff,"dirDiff fields");
+    FsImageProto.SnapshotDiffSection.DirectoryDiff.Builder bld=FsImageProto.SnapshotDiffSection.DirectoryDiff.newBuilder();
+    Integer snapshotId=dirDiff.removeChildInt("snapshotId");
+    if (snapshotId != null) {
+      bld.setSnapshotId(snapshotId);
+    }
+    Integer childrenSize=dirDiff.removeChildInt("childrenSize");
+    if (childrenSize == null) {
+      throw new IOException("Expected to find <childrenSize> in " + "<dirDiff> section.");
+    }
+    bld.setIsSnapshotRoot(dirDiff.removeChildBool("isSnapshotRoot"));
+    bld.setChildrenSize(childrenSize);
+    String name=dirDiff.removeChildStr("name");
+    if (name != null) {
+      bld.setName(ByteString.copyFrom(name,"UTF8"));
+    }
+    Integer expectedCreatedListSize=dirDiff.removeChildInt("createdListSize");
+    if (expectedCreatedListSize == null) {
+      throw new IOException("Expected to find <createdListSize> in " + "<dirDiff> section.");
+    }
+    bld.setCreatedListSize(expectedCreatedListSize);
+    while (true) {
+      Node deleted=dirDiff.removeChild("deletedInode");
+      if (deleted == null) {
+        break;
+      }
+      bld.addDeletedINode(Long.parseLong(deleted.getVal()));
+    }
+    while (true) {
+      Node deleted=dirDiff.removeChild("deletedInoderef");
+      if (deleted == null) {
+        break;
+      }
+      bld.addDeletedINodeRef(Integer.parseInt(deleted.getVal()));
+    }
+    bld.build().writeDelimitedTo(out);
+    int actualCreatedListSize=0;
+    while (true) {
+      Node created=dirDiff.removeChild("created");
+      if (created == null) {
+        break;
+      }
+      String cleName=created.removeChildStr("name");
+      if (cleName == null) {
+        throw new IOException("Expected <created> entry to have " + "a <name> field");
+      }
+      created.verifyNoRemainingKeys("created");
+      FsImageProto.SnapshotDiffSection.CreatedListEntry.newBuilder().setName(ByteString.copyFrom(cleName,"UTF8")).build().writeDelimitedTo(out);
+      actualCreatedListSize++;
+    }
+    if (actualCreatedListSize != expectedCreatedListSize) {
+      throw new IOException("<createdListSize> was " + expectedCreatedListSize + ", but there were "+ actualCreatedListSize+ " <created> entries.");
+    }
+    dirDiff.verifyNoRemainingKeys("dirDiff");
+  }
+  expectTagEnd("dirDiffEntry");
+}

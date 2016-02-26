@@ -1,0 +1,45 @@
+{
+  LOG.debug("Processing fileDiffEntry");
+  DiffEntry.Builder headerBld=DiffEntry.newBuilder();
+  headerBld.setType(DiffEntry.Type.FILEDIFF);
+  Node fileDiffHeader=new Node();
+  loadNodeChildren(fileDiffHeader,"fileDiffEntry fields","fileDiff");
+  Long inodeId=fileDiffHeader.removeChildLong("inodeid");
+  if (inodeId == null) {
+    throw new IOException("<fileDiffEntry> contained no <inodeid> entry.");
+  }
+  headerBld.setInodeId(inodeId);
+  Integer expectedDiffs=fileDiffHeader.removeChildInt("count");
+  if (expectedDiffs == null) {
+    throw new IOException("<fileDiffEntry> contained no <count> entry.");
+  }
+  headerBld.setNumOfDiff(expectedDiffs);
+  fileDiffHeader.verifyNoRemainingKeys("fileDiffEntry");
+  headerBld.build().writeDelimitedTo(out);
+  for (int actualDiffs=0; actualDiffs < expectedDiffs; actualDiffs++) {
+    try {
+      expectTag("fileDiff",false);
+    }
+ catch (    IOException e) {
+      throw new IOException("Only read " + (actualDiffs + 1) + " diffs out of "+ expectedDiffs,e);
+    }
+    Node fileDiff=new Node();
+    loadNodeChildren(fileDiff,"fileDiff fields");
+    FsImageProto.SnapshotDiffSection.FileDiff.Builder bld=FsImageProto.SnapshotDiffSection.FileDiff.newBuilder();
+    Integer snapshotId=fileDiff.removeChildInt("snapshotId");
+    if (snapshotId != null) {
+      bld.setSnapshotId(snapshotId);
+    }
+    Long size=fileDiff.removeChildLong("size");
+    if (size != null) {
+      bld.setFileSize(size);
+    }
+    String name=fileDiff.removeChildStr("name");
+    if (name != null) {
+      bld.setName(ByteString.copyFrom(name,"UTF8"));
+    }
+    fileDiff.verifyNoRemainingKeys("fileDiff");
+    bld.build().writeDelimitedTo(out);
+  }
+  expectTagEnd("fileDiffEntry");
+}
