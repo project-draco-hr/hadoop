@@ -6,7 +6,6 @@
   final FsPermission appCachePerm=new FsPermission(DefaultContainerExecutor.APPCACHE_PERM);
   final FsPermission fileCachePerm=new FsPermission(DefaultContainerExecutor.FILECACHE_PERM);
   final FsPermission appDirPerm=new FsPermission(DefaultContainerExecutor.APPDIR_PERM);
-  final FsPermission logDirPerm=new FsPermission(DefaultContainerExecutor.LOGDIR_PERM);
   List<String> localDirs=new ArrayList<String>();
   localDirs.add(new Path(BASE_TMP_PATH,"localDirA").toString());
   localDirs.add(new Path(BASE_TMP_PATH,"localDirB").toString());
@@ -17,6 +16,7 @@
   conf.set(CommonConfigurationKeys.FS_PERMISSIONS_UMASK_KEY,"077");
   FileContext lfs=FileContext.getLocalFSFileContext(conf);
   DefaultContainerExecutor executor=new DefaultContainerExecutor(lfs);
+  executor.setConf(conf);
   executor.init();
   try {
     executor.createUserLocalDirs(localDirs,user);
@@ -36,10 +36,17 @@
       stats=lfs.getFileStatus(new Path(appCachePath,appId));
       Assert.assertEquals(appDirPerm,stats.getPermission());
     }
-    executor.createAppLogDirs(appId,logDirs,user);
-    for (    String dir : logDirs) {
-      FileStatus stats=lfs.getFileStatus(new Path(dir,appId));
-      Assert.assertEquals(logDirPerm,stats.getPermission());
+    String[] permissionsArray={"000","111","555","710","777"};
+    for (    String perm : permissionsArray) {
+      conf.set(YarnConfiguration.NM_DEFAULT_CONTAINER_EXECUTOR_LOG_DIRS_PERMISSIONS,perm);
+      executor.clearLogDirPermissions();
+      FsPermission logDirPerm=new FsPermission(executor.getLogDirPermissions());
+      executor.createAppLogDirs(appId,logDirs,user);
+      for (      String dir : logDirs) {
+        FileStatus stats=lfs.getFileStatus(new Path(dir,appId));
+        Assert.assertEquals(logDirPerm,stats.getPermission());
+        lfs.delete(new Path(dir,appId),true);
+      }
     }
   }
   finally {
