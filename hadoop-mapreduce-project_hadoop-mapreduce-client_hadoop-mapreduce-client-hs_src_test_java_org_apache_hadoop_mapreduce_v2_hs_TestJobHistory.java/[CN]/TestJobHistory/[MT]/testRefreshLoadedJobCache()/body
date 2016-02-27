@@ -3,10 +3,11 @@
   jobHistory=spy(new JobHistory());
   doReturn(historyManager).when(jobHistory).createHistoryFileManager();
   Configuration conf=new Configuration();
-  conf.set(JHAdminConfig.MR_HISTORY_LOADED_JOB_CACHE_SIZE,"2");
+  conf.setInt(JHAdminConfig.MR_HISTORY_LOADED_JOB_CACHE_SIZE,2);
   jobHistory.init(conf);
   jobHistory.start();
   CachedHistoryStorage storage=spy((CachedHistoryStorage)jobHistory.getHistoryStorage());
+  assertFalse(storage.getUseLoadedTasksCache());
   Job[] jobs=new Job[3];
   JobId[] jobIds=new JobId[3];
   for (int i=0; i < 3; i++) {
@@ -20,10 +21,9 @@
   for (int i=0; i < 3; i++) {
     storage.getFullJob(jobs[i].getID());
   }
-  Map<JobId,Job> jobCache=storage.getLoadedJobCache();
-  assertFalse(jobCache.containsKey(jobs[0].getID()));
-  assertTrue(jobCache.containsKey(jobs[1].getID()) && jobCache.containsKey(jobs[2].getID()));
-  conf.set(JHAdminConfig.MR_HISTORY_LOADED_JOB_CACHE_SIZE,"3");
+  Cache<JobId,Job> jobCache=storage.getLoadedJobCache();
+  assertTrue(jobCache.size() > 0);
+  conf.setInt(JHAdminConfig.MR_HISTORY_LOADED_JOB_CACHE_SIZE,3);
   doReturn(conf).when(storage).createConf();
   when(fileInfo.loadJob()).thenReturn(jobs[0]).thenReturn(jobs[1]).thenReturn(jobs[2]);
   jobHistory.refreshLoadedJobCache();
@@ -31,7 +31,5 @@
     storage.getFullJob(jobs[i].getID());
   }
   jobCache=storage.getLoadedJobCache();
-  for (int i=0; i < 3; i++) {
-    assertTrue(jobCache.containsKey(jobs[i].getID()));
-  }
+  assertTrue(jobCache.size() > 0);
 }
