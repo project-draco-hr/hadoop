@@ -1,2 +1,45 @@
 {
+  MiniDFSCluster.DataNodeProperties host10=stopDataNode("host10");
+  final Path file=new Path("/foo");
+  DFSTestUtil.createFile(fs,file,BLOCK_STRIPED_CELL_SIZE * NUM_DATA_BLOCKS * 2,(short)1,0L);
+  Assert.assertEquals(0,bm.numOfUnderReplicatedBlocks());
+  final INodeFile fileNode=fsn.getFSDirectory().getINode4Write(file.toString()).asFile();
+  BlockInfoStriped blockInfo=(BlockInfoStriped)fileNode.getLastBlock();
+  Set<String> rackSet=new HashSet<>();
+  for (  DatanodeStorageInfo storage : blockInfo.storages) {
+    rackSet.add(storage.getDatanodeDescriptor().getNetworkLocation());
+  }
+  Assert.assertEquals(5,rackSet.size());
+  cluster.restartDataNode(host10);
+  cluster.waitActive();
+  NetworkTopology topology=bm.getDatanodeManager().getNetworkTopology();
+  Assert.assertEquals(hosts.length,topology.getNumOfLeaves());
+  Assert.assertEquals(6,topology.getNumOfRacks());
+  for (  DataNode dn : cluster.getDataNodes()) {
+    DataNodeTestUtils.setHeartbeatsDisabledForTests(dn,true);
+  }
+  fsn.writeLock();
+  try {
+    bm.processMisReplicatedBlocks();
+  }
+  finally {
+    fsn.writeUnlock();
+  }
+  boolean scheduled=false;
+  for (int i=0; i < 5; i++) {
+    for (    DatanodeStorageInfo storage : blockInfo.storages) {
+      if (storage != null) {
+        DatanodeDescriptor dn=storage.getDatanodeDescriptor();
+        Assert.assertEquals(0,dn.getNumberOfBlocksToBeErasureCoded());
+        if (dn.getNumberOfBlocksToBeReplicated() == 1) {
+          scheduled=true;
+        }
+      }
+    }
+    if (scheduled) {
+      break;
+    }
+    Thread.sleep(1000);
+  }
+  Assert.assertTrue(scheduled);
 }
