@@ -1,0 +1,33 @@
+{
+  try {
+    while (true) {
+      boolean doSync;
+      Edit edit=dequeueEdit();
+      if (edit != null) {
+        doSync=edit.logEdit();
+        syncWaitQ.add(edit);
+      }
+ else {
+        doSync=!syncWaitQ.isEmpty();
+      }
+      if (doSync) {
+        RuntimeException syncEx=null;
+        try {
+          logSync(getLastWrittenTxId());
+        }
+ catch (        RuntimeException ex) {
+          syncEx=ex;
+        }
+        while ((edit=syncWaitQ.poll()) != null) {
+          edit.logSyncNotify(syncEx);
+        }
+      }
+    }
+  }
+ catch (  InterruptedException ie) {
+    LOG.info(Thread.currentThread().getName() + " was interrupted, exiting");
+  }
+catch (  Throwable t) {
+    terminate(t);
+  }
+}

@@ -1,0 +1,81 @@
+{
+  long syncStart=0;
+  boolean sync=false;
+  long editsBatchedInSync=0;
+  try {
+    EditLogOutputStream logStream=null;
+synchronized (this) {
+      try {
+        printStatistics(false);
+        while (mytxid > synctxid && isSyncRunning) {
+          try {
+            wait(1000);
+          }
+ catch (          InterruptedException ie) {
+          }
+        }
+        if (mytxid <= synctxid) {
+          return;
+        }
+        editsBatchedInSync=txid - synctxid - 1;
+        syncStart=txid;
+        isSyncRunning=true;
+        sync=true;
+        try {
+          if (journalSet.isEmpty()) {
+            throw new IOException("No journals available to flush");
+          }
+          editLogStream.setReadyToFlush();
+        }
+ catch (        IOException e) {
+          final String msg="Could not sync enough journals to persistent storage " + "due to " + e.getMessage() + ". "+ "Unsynced transactions: "+ (txid - synctxid);
+          LOG.fatal(msg,new Exception());
+synchronized (journalSetLock) {
+            IOUtils.cleanup(LOG,journalSet);
+          }
+          terminate(1,msg);
+        }
+      }
+  finally {
+        doneWithAutoSyncScheduling();
+      }
+      logStream=editLogStream;
+    }
+    long start=monotonicNow();
+    try {
+      if (logStream != null) {
+        logStream.flush();
+      }
+    }
+ catch (    IOException ex) {
+synchronized (this) {
+        final String msg="Could not sync enough journals to persistent storage. " + "Unsynced transactions: " + (txid - synctxid);
+        LOG.fatal(msg,new Exception());
+synchronized (journalSetLock) {
+          IOUtils.cleanup(LOG,journalSet);
+        }
+        terminate(1,msg);
+      }
+    }
+    long elapsed=monotonicNow() - start;
+    if (metrics != null) {
+      metrics.addSync(elapsed);
+      metrics.incrTransactionsBatchedInSync(editsBatchedInSync);
+      numTransactionsBatchedInSync+=editsBatchedInSync;
+    }
+  }
+  finally {
+synchronized (this) {
+      if (sync) {
+        synctxid=syncStart;
+        for (        JournalManager jm : journalSet.getJournalManagers()) {
+          if (jm instanceof FileJournalManager) {
+            ((FileJournalManager)jm).setLastReadableTxId(syncStart);
+          }
+        }
+        isSyncRunning=false;
+      }
+      this.notifyAll();
+    }
+  }
+}
