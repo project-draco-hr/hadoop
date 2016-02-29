@@ -1,15 +1,15 @@
 {
-  Configuration configuration=new Configuration();
+  Server server;
+  TestRpcService proxy=null;
   final int interval=1;
-  configuration.setBoolean(CommonConfigurationKeys.RPC_METRICS_QUANTILE_ENABLE,true);
-  configuration.set(CommonConfigurationKeys.RPC_METRICS_PERCENTILES_INTERVALS_KEY,"" + interval);
-  final Server server=new RPC.Builder(configuration).setProtocol(TestProtocol.class).setInstance(new TestImpl()).setBindAddress(ADDRESS).setPort(0).setNumHandlers(5).setVerbose(true).build();
-  server.start();
-  final TestProtocol proxy=RPC.getProxy(TestProtocol.class,TestProtocol.versionID,server.getListenerAddress(),configuration);
+  conf.setBoolean(CommonConfigurationKeys.RPC_METRICS_QUANTILE_ENABLE,true);
+  conf.set(CommonConfigurationKeys.RPC_METRICS_PERCENTILES_INTERVALS_KEY,"" + interval);
+  server=setupTestServer(conf,5);
   try {
+    proxy=getClient(addr,conf);
     for (int i=0; i < 1000; i++) {
-      proxy.ping();
-      proxy.echo("" + i);
+      proxy.ping(null,newEmptyRequest());
+      proxy.echo(null,newEchoRequest("" + i));
     }
     MetricsRecordBuilder rpcMetrics=getMetrics(server.getRpcMetrics().name());
     assertTrue("Expected non-zero rpc queue time",getLongCounter("RpcQueueTimeNumOps",rpcMetrics) > 0);
@@ -18,9 +18,6 @@
     MetricsAsserts.assertQuantileGauges("RpcProcessingTime" + interval + "s",rpcMetrics);
   }
   finally {
-    if (proxy != null) {
-      RPC.stopProxy(proxy);
-    }
-    server.stop();
+    stop(server,proxy);
   }
 }

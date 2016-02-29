@@ -1,25 +1,25 @@
 {
-  final Configuration conf=new Configuration();
-  Server server=new RPC.Builder(conf).setProtocol(TestProtocol.class).setInstance(new TestImpl()).setBindAddress(ADDRESS).setPort(0).setNumHandlers(5).setVerbose(true).setSecretManager(null).build();
-  server.start();
+  Server server;
+  TestRpcService proxy=null;
+  RPC.Builder builder=newServerBuilder(conf).setNumHandlers(5).setVerbose(true).setSecretManager(null);
+  server=setupTestServer(builder);
   try {
-    InetSocketAddress addr=NetUtils.getConnectAddress(server);
-    final TestProtocol proxy=RPC.getProxy(TestProtocol.class,TestProtocol.versionID,addr,conf);
-    proxy.ping();
+    proxy=getClient(addr,conf);
+    proxy.ping(null,newEmptyRequest());
     Thread.currentThread().interrupt();
     try {
-      proxy.ping();
+      proxy.ping(null,newEmptyRequest());
       fail("Interruption did not cause IPC to fail");
     }
- catch (    IOException ioe) {
-      if (ioe.toString().contains("InterruptedException") || ioe instanceof InterruptedIOException) {
+ catch (    ServiceException se) {
+      if (se.toString().contains("InterruptedException") || se.getCause() instanceof InterruptedIOException) {
         Thread.interrupted();
         return;
       }
-      throw ioe;
+      throw se;
     }
   }
   finally {
-    server.stop();
+    stop(server,proxy);
   }
 }

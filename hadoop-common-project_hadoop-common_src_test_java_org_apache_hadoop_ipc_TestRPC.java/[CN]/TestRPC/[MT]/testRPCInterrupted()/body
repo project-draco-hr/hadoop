@@ -1,26 +1,25 @@
 {
-  final Configuration conf=new Configuration();
-  Server server=new RPC.Builder(conf).setProtocol(TestProtocol.class).setInstance(new TestImpl()).setBindAddress(ADDRESS).setPort(0).setNumHandlers(5).setVerbose(true).setSecretManager(null).build();
-  server.start();
+  Server server;
+  RPC.Builder builder=newServerBuilder(conf).setNumHandlers(5).setVerbose(true).setSecretManager(null);
+  server=setupTestServer(builder);
+  int numConcurrentRPC=200;
+  final CyclicBarrier barrier=new CyclicBarrier(numConcurrentRPC);
+  final CountDownLatch latch=new CountDownLatch(numConcurrentRPC);
+  final AtomicBoolean leaderRunning=new AtomicBoolean(true);
+  final AtomicReference<Throwable> error=new AtomicReference<>();
+  Thread leaderThread=null;
   try {
-    int numConcurrentRPC=200;
-    InetSocketAddress addr=NetUtils.getConnectAddress(server);
-    final CyclicBarrier barrier=new CyclicBarrier(numConcurrentRPC);
-    final CountDownLatch latch=new CountDownLatch(numConcurrentRPC);
-    final AtomicBoolean leaderRunning=new AtomicBoolean(true);
-    final AtomicReference<Throwable> error=new AtomicReference<Throwable>();
-    Thread leaderThread=null;
     for (int i=0; i < numConcurrentRPC; i++) {
       final int num=i;
-      final TestProtocol proxy=RPC.getProxy(TestProtocol.class,TestProtocol.versionID,addr,conf);
+      final TestRpcService proxy=getClient(addr,conf);
       Thread rpcThread=new Thread(new Runnable(){
         @Override public void run(){
           try {
             barrier.await();
             while (num == 0 || leaderRunning.get()) {
-              proxy.slowPing(false);
+              proxy.slowPing(null,newSlowPingRequest(false));
             }
-            proxy.slowPing(false);
+            proxy.slowPing(null,newSlowPingRequest(false));
           }
  catch (          Exception e) {
             if (num == 0) {

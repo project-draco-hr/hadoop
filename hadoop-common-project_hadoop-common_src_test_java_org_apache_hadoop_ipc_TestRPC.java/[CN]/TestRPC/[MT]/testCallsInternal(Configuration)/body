@@ -1,15 +1,14 @@
 {
-  Server server=new RPC.Builder(conf).setProtocol(TestProtocol.class).setInstance(new TestImpl()).setBindAddress(ADDRESS).setPort(0).build();
-  TestProtocol proxy=null;
+  Server server;
+  TestRpcService proxy=null;
+  server=setupTestServer(myConf,-1);
   try {
-    server.start();
-    InetSocketAddress addr=NetUtils.getConnectAddress(server);
-    proxy=RPC.getProxy(TestProtocol.class,TestProtocol.versionID,addr,conf);
-    proxy.ping();
-    String stringResult=proxy.echo("foo");
-    assertEquals(stringResult,"foo");
-    stringResult=proxy.echo((String)null);
-    assertEquals(stringResult,null);
+    proxy=getClient(addr,myConf);
+    proxy.ping(null,newEmptyRequest());
+    TestProtos.EchoResponseProto echoResp=proxy.echo(null,newEchoRequest("foo"));
+    assertEquals(echoResp.getMessage(),"foo");
+    echoResp=proxy.echo(null,newEchoRequest(""));
+    assertEquals(echoResp.getMessage(),"");
     MetricsRecordBuilder rb=getMetrics(server.rpcMetrics.name());
     assertCounter("RpcProcessingTimeNumOps",3L,rb);
     assertCounterGt("SentBytes",0L,rb);
@@ -17,27 +16,25 @@
     rb=getMetrics(server.rpcDetailedMetrics.name());
     assertCounter("EchoNumOps",2L,rb);
     assertCounter("PingNumOps",1L,rb);
-    String[] stringResults=proxy.echo(new String[]{"foo","bar"});
-    assertTrue(Arrays.equals(stringResults,new String[]{"foo","bar"}));
-    stringResults=proxy.echo((String[])null);
-    assertTrue(Arrays.equals(stringResults,null));
-    UTF8 utf8Result=(UTF8)proxy.echo(new UTF8("hello world"));
-    assertEquals(new UTF8("hello world"),utf8Result);
-    utf8Result=(UTF8)proxy.echo((UTF8)null);
-    assertEquals(null,utf8Result);
-    int intResult=proxy.add(1,2);
-    assertEquals(intResult,3);
-    intResult=proxy.add(new int[]{1,2});
-    assertEquals(intResult,3);
-    EnumDescriptorProto sendProto=EnumDescriptorProto.newBuilder().setName("test").build();
-    EnumDescriptorProto retProto=proxy.exchangeProto(sendProto);
-    assertEquals(sendProto,retProto);
-    assertNotSame(sendProto,retProto);
+    String[] strings=new String[]{"foo","bar"};
+    TestProtos.EchoRequestProto2 echoRequest2=TestProtos.EchoRequestProto2.newBuilder().addAllMessage(Arrays.asList(strings)).build();
+    TestProtos.EchoResponseProto2 echoResponse2=proxy.echo2(null,echoRequest2);
+    assertTrue(Arrays.equals(echoResponse2.getMessageList().toArray(),strings));
+    echoRequest2=TestProtos.EchoRequestProto2.newBuilder().addAllMessage(Collections.<String>emptyList()).build();
+    echoResponse2=proxy.echo2(null,echoRequest2);
+    assertTrue(Arrays.equals(echoResponse2.getMessageList().toArray(),new String[]{}));
+    TestProtos.AddRequestProto addRequest=TestProtos.AddRequestProto.newBuilder().setParam1(1).setParam2(2).build();
+    TestProtos.AddResponseProto addResponse=proxy.add(null,addRequest);
+    assertEquals(addResponse.getResult(),3);
+    Integer[] integers=new Integer[]{1,2};
+    TestProtos.AddRequestProto2 addRequest2=TestProtos.AddRequestProto2.newBuilder().addAllParams(Arrays.asList(integers)).build();
+    addResponse=proxy.add2(null,addRequest2);
+    assertEquals(addResponse.getResult(),3);
     boolean caught=false;
     try {
-      proxy.error();
+      proxy.error(null,newEmptyRequest());
     }
- catch (    IOException e) {
+ catch (    ServiceException e) {
       if (LOG.isDebugEnabled()) {
         LOG.debug("Caught " + e);
       }
@@ -45,8 +42,7 @@
     }
     assertTrue(caught);
     rb=getMetrics(server.rpcDetailedMetrics.name());
-    assertCounter("IOExceptionNumOps",1L,rb);
-    proxy.testServerGet();
+    assertCounter("RpcServerExceptionNumOps",1L,rb);
     System.out.println("Starting multi-threaded RPC test...");
     server.setSocketSendBufSize(1024);
     Thread threadId[]=new Thread[numThreads];
@@ -66,7 +62,6 @@
     }
   }
   finally {
-    server.stop();
-    if (proxy != null)     RPC.stopProxy(proxy);
+    stop(server,proxy);
   }
 }

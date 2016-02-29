@@ -1,18 +1,17 @@
 {
+  Server server;
+  TestRpcService proxy=null;
   System.out.println("Testing Slow RPC");
-  Server server=new RPC.Builder(conf).setProtocol(TestProtocol.class).setInstance(new TestImpl()).setBindAddress(ADDRESS).setPort(0).setNumHandlers(2).setVerbose(false).build();
-  TestProtocol proxy=null;
+  server=setupTestServer(conf,2);
   try {
-    server.start();
-    InetSocketAddress addr=NetUtils.getConnectAddress(server);
-    proxy=RPC.getProxy(TestProtocol.class,TestProtocol.versionID,addr,conf);
+    proxy=getClient(addr,conf);
     SlowRPC slowrpc=new SlowRPC(proxy);
     Thread thread=new Thread(slowrpc,"SlowRPC");
     thread.start();
     assertTrue("Slow RPC should not have finished1.",!slowrpc.isDone());
-    proxy.slowPing(false);
+    slowrpc.ping(false);
     assertTrue("Slow RPC should not have finished2.",!slowrpc.isDone());
-    proxy.slowPing(false);
+    slowrpc.ping(false);
     while (!slowrpc.isDone()) {
       System.out.println("Waiting for slow RPC to get done.");
       try {
@@ -23,10 +22,7 @@
     }
   }
   finally {
-    server.stop();
-    if (proxy != null) {
-      RPC.stopProxy(proxy);
-    }
     System.out.println("Down slow rpc testing");
+    stop(server,proxy);
   }
 }

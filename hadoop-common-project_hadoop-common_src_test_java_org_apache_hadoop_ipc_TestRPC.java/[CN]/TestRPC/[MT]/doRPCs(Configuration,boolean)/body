@@ -1,30 +1,27 @@
 {
-  Server server=new RPC.Builder(conf).setProtocol(TestProtocol.class).setInstance(new TestImpl()).setBindAddress(ADDRESS).setPort(0).setNumHandlers(5).setVerbose(true).build();
-  server.refreshServiceAcl(conf,new TestPolicyProvider());
-  TestProtocol proxy=null;
-  server.start();
-  InetSocketAddress addr=NetUtils.getConnectAddress(server);
+  Server server;
+  TestRpcService proxy=null;
+  server=setupTestServer(myConf,5);
+  server.refreshServiceAcl(myConf,new TestPolicyProvider());
+  TestProtos.EmptyRequestProto emptyRequestProto=TestProtos.EmptyRequestProto.newBuilder().build();
   try {
-    proxy=RPC.getProxy(TestProtocol.class,TestProtocol.versionID,addr,conf);
-    proxy.ping();
+    proxy=getClient(addr,conf);
+    proxy.ping(null,emptyRequestProto);
     if (expectFailure) {
       fail("Expect RPC.getProxy to fail with AuthorizationException!");
     }
   }
- catch (  RemoteException e) {
+ catch (  ServiceException e) {
     if (expectFailure) {
-      assertEquals("RPC error code should be UNAUTHORIZED",RpcErrorCodeProto.FATAL_UNAUTHORIZED,e.getErrorCode());
-      assertTrue(e.unwrapRemoteException() instanceof AuthorizationException);
+      RemoteException re=(RemoteException)e.getCause();
+      assertTrue(re.unwrapRemoteException() instanceof AuthorizationException);
+      assertEquals("RPC error code should be UNAUTHORIZED",RpcErrorCodeProto.FATAL_UNAUTHORIZED,re.getErrorCode());
     }
  else {
       throw e;
     }
   }
  finally {
-    server.stop();
-    if (proxy != null) {
-      RPC.stopProxy(proxy);
-    }
     MetricsRecordBuilder rb=getMetrics(server.rpcMetrics.name());
     if (expectFailure) {
       assertCounter("RpcAuthorizationFailures",1L,rb);
@@ -34,5 +31,6 @@
     }
     assertCounter("RpcAuthenticationFailures",0L,rb);
     assertCounter("RpcAuthenticationSuccesses",0L,rb);
+    stop(server,proxy);
   }
 }
