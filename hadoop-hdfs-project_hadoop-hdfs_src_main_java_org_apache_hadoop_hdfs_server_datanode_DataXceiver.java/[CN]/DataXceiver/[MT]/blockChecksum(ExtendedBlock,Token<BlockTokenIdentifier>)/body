@@ -2,23 +2,10 @@
   updateCurrentThreadName("Getting checksum for block " + block);
   final DataOutputStream out=new DataOutputStream(getOutputStream());
   checkAccess(out,true,block,blockToken,Op.BLOCK_CHECKSUM,BlockTokenIdentifier.AccessMode.READ);
-  long requestLength=block.getNumBytes();
-  Preconditions.checkArgument(requestLength >= 0);
-  long visibleLength=datanode.data.getReplicaVisibleLength(block);
-  boolean partialBlk=requestLength < visibleLength;
-  final LengthInputStream metadataIn=datanode.data.getMetaDataInputStream(block);
-  final DataInputStream checksumIn=new DataInputStream(new BufferedInputStream(metadataIn,ioFileBufferSize));
+  BlockChecksumComputer maker=new ReplicatedBlockChecksumComputer(datanode,block);
   try {
-    final BlockMetadataHeader header=BlockMetadataHeader.readHeader(checksumIn);
-    final DataChecksum checksum=header.getChecksum();
-    final int csize=checksum.getChecksumSize();
-    final int bytesPerCRC=checksum.getBytesPerChecksum();
-    final long crcPerBlock=csize <= 0 ? 0 : (metadataIn.getLength() - BlockMetadataHeader.getHeaderSize()) / csize;
-    final MD5Hash md5=partialBlk && crcPerBlock > 0 ? calcPartialBlockChecksum(block,requestLength,checksum,checksumIn) : MD5Hash.digest(checksumIn);
-    if (LOG.isDebugEnabled()) {
-      LOG.debug("block=" + block + ", bytesPerCRC="+ bytesPerCRC+ ", crcPerBlock="+ crcPerBlock+ ", md5="+ md5);
-    }
-    BlockOpResponseProto.newBuilder().setStatus(SUCCESS).setChecksumResponse(OpBlockChecksumResponseProto.newBuilder().setBytesPerCrc(bytesPerCRC).setCrcPerBlock(crcPerBlock).setMd5(ByteString.copyFrom(md5.getDigest())).setCrcType(PBHelperClient.convert(checksum.getChecksumType()))).build().writeDelimitedTo(out);
+    maker.compute();
+    BlockOpResponseProto.newBuilder().setStatus(SUCCESS).setChecksumResponse(OpBlockChecksumResponseProto.newBuilder().setBytesPerCrc(maker.getBytesPerCRC()).setCrcPerBlock(maker.getCrcPerBlock()).setMd5(ByteString.copyFrom(maker.getOutBytes())).setCrcType(PBHelperClient.convert(maker.getCrcType()))).build().writeDelimitedTo(out);
     out.flush();
   }
  catch (  IOException ioe) {
@@ -28,8 +15,6 @@
   }
  finally {
     IOUtils.closeStream(out);
-    IOUtils.closeStream(checksumIn);
-    IOUtils.closeStream(metadataIn);
   }
   datanode.metrics.addBlockChecksumOp(elapsed());
 }
