@@ -1,0 +1,22 @@
+{
+  if (!fsd.isStoragePolicyEnabled()) {
+    throw new IOException(String.format("Failed to %s storage policy since %s is set to false.",operation,DFS_STORAGE_POLICY_ENABLED_KEY));
+  }
+  FSPermissionChecker pc=fsd.getPermissionChecker();
+  byte[][] pathComponents=FSDirectory.getPathComponentsForReservedPath(src);
+  INodesInPath iip;
+  fsd.writeLock();
+  try {
+    src=FSDirectory.resolvePath(src,pathComponents,fsd);
+    iip=fsd.getINodesInPath4Write(src);
+    if (fsd.isPermissionEnabled()) {
+      fsd.checkPathAccess(pc,iip,FsAction.WRITE);
+    }
+    unprotectedSetStoragePolicy(fsd,bm,iip,policyId);
+    fsd.getEditLog().logSetStoragePolicy(src,policyId);
+  }
+  finally {
+    fsd.writeUnlock();
+  }
+  return fsd.getAuditFileInfo(iip);
+}
