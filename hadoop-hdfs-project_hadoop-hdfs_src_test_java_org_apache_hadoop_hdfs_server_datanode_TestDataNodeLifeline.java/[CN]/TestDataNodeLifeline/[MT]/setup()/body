@@ -1,0 +1,35 @@
+{
+  conf=new HdfsConfiguration();
+  conf.setInt(DFS_DATANODE_LIFELINE_INTERVAL_SECONDS_KEY,2);
+  conf.setInt(DFS_HEARTBEAT_INTERVAL_KEY,1);
+  conf.setInt(DFS_NAMENODE_HEARTBEAT_RECHECK_INTERVAL_KEY,1);
+  conf.set(DFS_NAMENODE_LIFELINE_RPC_ADDRESS_KEY,"0.0.0.0:0");
+  conf.setInt(DFS_NAMENODE_STALE_DATANODE_INTERVAL_KEY,6 * 1000);
+  cluster=new MiniDFSCluster.Builder(conf).numDataNodes(1).build();
+  namesystem=cluster.getNameNode().getNamesystem();
+  DataNode dn=cluster.getDataNodes().get(0);
+  metrics=dn.getMetrics();
+  assertNotNull(metrics);
+  List<BPOfferService> allBpos=dn.getAllBpOs();
+  assertNotNull(allBpos);
+  assertEquals(1,allBpos.size());
+  BPOfferService bpos=allBpos.get(0);
+  List<BPServiceActor> allBpsa=bpos.getBPServiceActors();
+  assertNotNull(allBpsa);
+  assertEquals(1,allBpsa.size());
+  final BPServiceActor bpsa=allBpsa.get(0);
+  assertNotNull(bpsa);
+  GenericTestUtils.waitFor(new Supplier<Boolean>(){
+    @Override public Boolean get(){
+      if (bpsa.getLifelineNameNodeProxy() != null) {
+        lifelineNamenode=spy(bpsa.getLifelineNameNodeProxy());
+        bpsa.setLifelineNameNode(lifelineNamenode);
+      }
+      return lifelineNamenode != null;
+    }
+  }
+,100,10000);
+  assertNotNull(bpsa.getNameNodeProxy());
+  namenode=spy(bpsa.getNameNodeProxy());
+  bpsa.setNameNode(namenode);
+}
