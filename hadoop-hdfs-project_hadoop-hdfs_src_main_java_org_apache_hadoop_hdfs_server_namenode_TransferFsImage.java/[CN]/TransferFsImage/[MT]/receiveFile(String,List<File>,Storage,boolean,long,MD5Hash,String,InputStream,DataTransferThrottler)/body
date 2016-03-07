@@ -1,5 +1,8 @@
 {
   long startTime=Time.monotonicNow();
+  Map<FileOutputStream,File> streamPathMap=new HashMap<>();
+  StringBuilder xferStats=new StringBuilder();
+  double xferCombined=0;
   if (localPaths != null) {
     List<File> newLocalPaths=new ArrayList<File>();
     for (    File localPath : localPaths) {
@@ -30,7 +33,9 @@
           if (f.exists()) {
             LOG.warn("Overwriting existing file " + f + " with file downloaded from "+ url);
           }
-          outputStreams.add(new FileOutputStream(f));
+          FileOutputStream fos=new FileOutputStream(f);
+          outputStreams.add(fos);
+          streamPathMap.put(fos,f);
         }
  catch (        IOException ioe) {
           LOG.warn("Unable to download file " + f,ioe);
@@ -58,12 +63,20 @@
       }
     }
     finishedReceiving=true;
+    double xferSec=Math.max(((float)(Time.monotonicNow() - startTime)) / 1000.0,0.001);
+    long xferKb=received / 1024;
+    xferCombined+=xferSec;
+    xferStats.append(String.format(" The fsimage download took %.2fs at %.2f KB/s.",xferSec,xferKb / xferSec));
   }
   finally {
     stream.close();
     for (    FileOutputStream fos : outputStreams) {
+      long flushStartTime=Time.monotonicNow();
       fos.getChannel().force(true);
       fos.close();
+      double writeSec=Math.max(((float)(flushStartTime - Time.monotonicNow())) / 1000.0,0.001);
+      xferCombined+=writeSec;
+      xferStats.append(String.format(" Synchronous (fsync) write to disk of " + streamPathMap.get(fos).getAbsolutePath() + " took %.2fs.",writeSec));
     }
     if (!finishedReceiving) {
       deleteTmpFiles(localPaths);
@@ -73,9 +86,8 @@
       throw new IOException("File " + url + " received length "+ received+ " is not of the advertised size "+ advertisedSize);
     }
   }
-  double xferSec=Math.max(((float)(Time.monotonicNow() - startTime)) / 1000.0,0.001);
-  long xferKb=received / 1024;
-  LOG.info(String.format("Transfer took %.2fs at %.2f KB/s",xferSec,xferKb / xferSec));
+  xferStats.insert(0,String.format("Combined time for fsimage download and fsync " + "to all disks took %.2fs.",xferCombined));
+  LOG.info(xferStats.toString());
   if (digester != null) {
     MD5Hash computedDigest=new MD5Hash(digester.digest());
     if (advertisedDigest != null && !computedDigest.equals(advertisedDigest)) {
