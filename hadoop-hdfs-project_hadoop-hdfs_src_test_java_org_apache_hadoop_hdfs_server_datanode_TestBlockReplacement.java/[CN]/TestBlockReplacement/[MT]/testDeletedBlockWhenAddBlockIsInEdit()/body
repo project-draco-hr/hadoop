@@ -27,8 +27,14 @@
     DatanodeDescriptor destDnDesc=NameNodeAdapter.getDatanode(cluster.getNamesystem(0),dn1.getDNRegistrationForBP(activeNNBPId));
     ExtendedBlock block=DFSTestUtil.getFirstBlock(fs,fileName);
     LOG.info("replaceBlock:  " + replaceBlock(block,(DatanodeInfo)sourceDnDesc,(DatanodeInfo)sourceDnDesc,(DatanodeInfo)destDnDesc));
-    Thread.sleep(3000);
-    cluster.getDataNodes().get(0).triggerBlockReport(new BlockReportOptions.Factory().setIncremental(true).build());
+    for (int tries=0; tries < 20; tries++) {
+      Thread.sleep(1000);
+      DataNodeTestUtils.triggerDeletionReport(cluster.getDataNodes().get(0));
+      locatedBlocks=client.getNamenode().getBlockLocations("/tmp.txt",0,10L).getLocatedBlocks();
+      if (locatedBlocks.get(0).getLocations().length == 1) {
+        break;
+      }
+    }
     cluster.transitionToStandby(0);
     cluster.transitionToActive(1);
     assertTrue("Namenode 1 should be in active state",cluster.getNameNode(1).isActiveState());
