@@ -1,0 +1,22 @@
+{
+  isQueueUser=true;
+  SubmitApplicationRequest submitRequest=recordFactory.newRecordInstance(SubmitApplicationRequest.class);
+  ApplicationSubmissionContext context=recordFactory.newRecordInstance(ApplicationSubmissionContext.class);
+  ApplicationId applicationId=rmClient.getNewApplication(recordFactory.newRecordInstance(GetNewApplicationRequest.class)).getApplicationId();
+  context.setApplicationId(applicationId);
+  Map<ApplicationAccessType,String> acls=new HashMap<ApplicationAccessType,String>();
+  ContainerLaunchContext amContainer=recordFactory.newRecordInstance(ContainerLaunchContext.class);
+  Resource resource=BuilderUtils.newResource(1024,1);
+  context.setResource(resource);
+  amContainer.setApplicationACLs(acls);
+  context.setQueue("InvalidQueue");
+  context.setAMContainerSpec(amContainer);
+  submitRequest.setApplicationSubmissionContext(context);
+  rmClient.submitApplication(submitRequest);
+  resourceManager.waitForState(applicationId,RMAppState.FAILED);
+  final GetApplicationReportRequest appReportRequest=recordFactory.newRecordInstance(GetApplicationReportRequest.class);
+  appReportRequest.setApplicationId(applicationId);
+  GetApplicationReportResponse applicationReport=rmClient.getApplicationReport(appReportRequest);
+  ApplicationReport appReport=applicationReport.getApplicationReport();
+  Assert.assertTrue(appReport.getDiagnostics().contains("submitted by user owner to unknown queue: InvalidQueue"));
+}
