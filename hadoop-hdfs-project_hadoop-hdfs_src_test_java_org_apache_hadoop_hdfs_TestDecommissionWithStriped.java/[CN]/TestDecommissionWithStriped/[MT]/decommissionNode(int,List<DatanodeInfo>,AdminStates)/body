@@ -1,0 +1,23 @@
+{
+  DFSClient client=getDfsClient(cluster.getNameNode(nnIndex),conf);
+  DatanodeInfo[] info=client.datanodeReport(DatanodeReportType.LIVE);
+  ArrayList<String> excludeNodes=new ArrayList<String>();
+  for (  DatanodeInfo dn : decommissionedNodes) {
+    boolean nodeExists=false;
+    for (    DatanodeInfo dninfo : info) {
+      if (dninfo.getDatanodeUuid().equals(dn.getDatanodeUuid())) {
+        nodeExists=true;
+        break;
+      }
+    }
+    assertTrue("Datanode: " + dn + " is not LIVE",nodeExists);
+    excludeNodes.add(dn.getName());
+    LOG.info("Decommissioning node: " + dn.getName());
+  }
+  writeConfigFile(excludeFile,excludeNodes);
+  refreshNodes(cluster.getNamesystem(nnIndex),conf);
+  for (  DatanodeInfo dn : decommissionedNodes) {
+    DatanodeInfo ret=NameNodeAdapter.getDatanode(cluster.getNamesystem(nnIndex),dn);
+    waitNodeState(ret,waitForState);
+  }
+}

@@ -1,0 +1,32 @@
+{
+  boolean isNodeDown=decommissionedNodes.size() > 0;
+  assertTrue("Not HDFS:" + fileSys.getUri(),fileSys instanceof DistributedFileSystem);
+  HdfsDataInputStream dis=(HdfsDataInputStream)fileSys.open(name);
+  Collection<LocatedBlock> dinfo=dis.getAllBlocks();
+  for (  LocatedBlock blk : dinfo) {
+    int hasdown=0;
+    DatanodeInfo[] nodes=blk.getLocations();
+    for (int j=0; j < nodes.length; j++) {
+      LOG.info("Block Locations size={}, locs={}, j=",nodes.length,nodes[j].toString(),j);
+      boolean found=false;
+      for (      DatanodeInfo datanodeInfo : decommissionedNodes) {
+        if (isNodeDown && nodes[j].getXferAddr().equals(datanodeInfo.getXferAddr())) {
+          found=true;
+          hasdown++;
+          if (!nodes[j].isDecommissioned()) {
+            return "For block " + blk.getBlock() + " replica on "+ nodes[j]+ " is given as downnode, "+ "but is not decommissioned";
+          }
+          LOG.info("Block " + blk.getBlock() + " replica on "+ nodes[j]+ " is decommissioned.");
+        }
+      }
+      if (!found && nodes[j].isDecommissioned()) {
+        return "For block " + blk.getBlock() + " replica on "+ nodes[j]+ " is unexpectedly decommissioned";
+      }
+    }
+    LOG.info("Block " + blk.getBlock() + " has "+ hasdown+ " decommissioned replica.");
+    if (Math.min(numDatanodes,repl + hasdown) != nodes.length) {
+      return "Wrong number of replicas for block " + blk.getBlock() + ": "+ nodes.length+ ", expected "+ Math.min(numDatanodes,repl + hasdown);
+    }
+  }
+  return null;
+}
