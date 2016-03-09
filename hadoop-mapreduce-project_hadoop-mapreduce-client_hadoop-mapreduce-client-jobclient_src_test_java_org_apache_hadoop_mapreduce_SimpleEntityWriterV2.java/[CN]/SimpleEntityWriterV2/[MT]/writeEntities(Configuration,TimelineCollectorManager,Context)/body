@@ -1,0 +1,61 @@
+{
+  Configuration conf=context.getConfiguration();
+  int taskId=context.getTaskAttemptID().getTaskID().getId();
+  long timestamp=conf.getLong(TIMELINE_SERVICE_PERFORMANCE_RUN_ID,0);
+  ApplicationId appId=ApplicationId.newInstance(timestamp,taskId);
+  AppLevelTimelineCollector collector=new AppLevelTimelineCollector(appId);
+  manager.putIfAbsent(appId,collector);
+  try {
+    TimelineCollectorContext tlContext=collector.getTimelineEntityContext();
+    tlContext.setFlowName(context.getJobName());
+    tlContext.setFlowRunId(timestamp);
+    tlContext.setUserId(context.getUser());
+    final int kbs=conf.getInt(KBS_SENT,KBS_SENT_DEFAULT);
+    long totalTime=0;
+    final int testtimes=conf.getInt(TEST_TIMES,TEST_TIMES_DEFAULT);
+    final Random rand=new Random();
+    final TaskAttemptID taskAttemptId=context.getTaskAttemptID();
+    final char[] payLoad=new char[kbs * 1024];
+    for (int i=0; i < testtimes; i++) {
+      for (int xx=0; xx < kbs * 1024; xx++) {
+        int alphaNumIdx=rand.nextInt(ALPHA_NUMS.length);
+        payLoad[xx]=ALPHA_NUMS[alphaNumIdx];
+      }
+      String entId=taskAttemptId + "_" + Integer.toString(i);
+      final TimelineEntity entity=new TimelineEntity();
+      entity.setId(entId);
+      entity.setType("FOO_ATTEMPT");
+      entity.addInfo("PERF_TEST",payLoad);
+      TimelineEvent event=new TimelineEvent();
+      event.setId("foo_event_id");
+      event.setTimestamp(System.currentTimeMillis());
+      event.addInfo("foo_event","test");
+      entity.addEvent(event);
+      TimelineMetric metric=new TimelineMetric();
+      metric.setId("foo_metric");
+      metric.addValue(System.currentTimeMillis(),123456789L);
+      entity.addMetric(metric);
+      entity.addConfig("foo","bar");
+      TimelineEntities entities=new TimelineEntities();
+      entities.addEntity(entity);
+      UserGroupInformation ugi=UserGroupInformation.getCurrentUser();
+      long startWrite=System.nanoTime();
+      try {
+        collector.putEntities(entities,ugi);
+      }
+ catch (      Exception e) {
+        context.getCounter(PerfCounters.TIMELINE_SERVICE_WRITE_FAILURES).increment(1);
+        LOG.error("writing to the timeline service failed",e);
+      }
+      long endWrite=System.nanoTime();
+      totalTime+=TimeUnit.NANOSECONDS.toMillis(endWrite - startWrite);
+    }
+    LOG.info("wrote " + testtimes + " entities ("+ kbs * testtimes + " kB) in " + totalTime + " ms");
+    context.getCounter(PerfCounters.TIMELINE_SERVICE_WRITE_TIME).increment(totalTime);
+    context.getCounter(PerfCounters.TIMELINE_SERVICE_WRITE_COUNTER).increment(testtimes);
+    context.getCounter(PerfCounters.TIMELINE_SERVICE_WRITE_KBS).increment(kbs * testtimes);
+  }
+  finally {
+    manager.remove(appId);
+  }
+}
