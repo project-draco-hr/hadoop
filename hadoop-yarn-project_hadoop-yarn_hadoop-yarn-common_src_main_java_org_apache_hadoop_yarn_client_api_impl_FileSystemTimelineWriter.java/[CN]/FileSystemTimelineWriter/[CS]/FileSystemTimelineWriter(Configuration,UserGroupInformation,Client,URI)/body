@@ -5,17 +5,9 @@
   String retryPolicy=fsConf.get(YarnConfiguration.TIMELINE_SERVICE_ENTITYGROUP_FS_STORE_RETRY_POLICY_SPEC,YarnConfiguration.DEFAULT_TIMELINE_SERVICE_ENTITYGROUP_FS_STORE_RETRY_POLICY_SPEC);
   fsConf.set("dfs.client.retry.policy.spec",retryPolicy);
   activePath=new Path(fsConf.get(YarnConfiguration.TIMELINE_SERVICE_ENTITYGROUP_FS_STORE_ACTIVE_DIR,YarnConfiguration.TIMELINE_SERVICE_ENTITYGROUP_FS_STORE_ACTIVE_DIR_DEFAULT));
-  String scheme=activePath.toUri().getScheme();
-  if (scheme == null) {
-    scheme=FileSystem.getDefaultUri(fsConf).getScheme();
-  }
-  if (scheme != null) {
-    String disableCacheName=String.format("fs.%s.impl.disable.cache",scheme);
-    fsConf.setBoolean(disableCacheName,true);
-  }
-  fs=activePath.getFileSystem(fsConf);
+  fs=FileSystem.newInstance(activePath.toUri(),fsConf);
   if (!fs.exists(activePath)) {
-    throw new IOException(activePath + " does not exist");
+    throw new FileNotFoundException(activePath + " does not exist");
   }
   summaryEntityTypes=new HashSet<String>(conf.getStringCollection(YarnConfiguration.TIMELINE_SERVICE_ENTITYGROUP_FS_STORE_SUMMARY_ENTITY_TYPES));
   flushIntervalSecs=conf.getLong(YarnConfiguration.TIMELINE_SERVICE_CLIENT_FD_FLUSH_INTERVAL_SECS,YarnConfiguration.TIMELINE_SERVICE_CLIENT_FD_FLUSH_INTERVAL_SECS_DEFAULT);
@@ -23,11 +15,11 @@
   ttl=conf.getLong(YarnConfiguration.TIMELINE_SERVICE_CLIENT_FD_RETAIN_SECS,YarnConfiguration.TIMELINE_SERVICE_CLIENT_FD_RETAIN_SECS_DEFAULT);
   long timerTaskTTL=conf.getLong(YarnConfiguration.TIMELINE_SERVICE_CLIENT_INTERNAL_TIMERS_TTL_SECS,YarnConfiguration.TIMELINE_SERVICE_CLIENT_INTERNAL_TIMERS_TTL_SECS_DEFAULT);
   logFDsCache=new LogFDsCache(flushIntervalSecs,cleanIntervalSecs,ttl,timerTaskTTL);
-  this.isAppendSupported=conf.getBoolean(TIMELINE_SERVICE_ENTITYFILE_FS_SUPPORT_APPEND,true);
+  this.isAppendSupported=conf.getBoolean(YarnConfiguration.TIMELINE_SERVICE_ENTITYFILE_FS_SUPPORT_APPEND,true);
   objMapper=createObjectMapper();
   if (LOG.isDebugEnabled()) {
     StringBuilder debugMSG=new StringBuilder();
-    debugMSG.append(YarnConfiguration.TIMELINE_SERVICE_CLIENT_FD_FLUSH_INTERVAL_SECS + "=" + flushIntervalSecs+ ", "+ YarnConfiguration.TIMELINE_SERVICE_CLIENT_FD_CLEAN_INTERVAL_SECS+ "="+ cleanIntervalSecs+ ", "+ YarnConfiguration.TIMELINE_SERVICE_CLIENT_FD_RETAIN_SECS+ "="+ ttl+ ", "+ TIMELINE_SERVICE_ENTITYFILE_FS_SUPPORT_APPEND+ "="+ isAppendSupported+ ", "+ YarnConfiguration.TIMELINE_SERVICE_ENTITYGROUP_FS_STORE_ACTIVE_DIR+ "="+ activePath);
+    debugMSG.append(YarnConfiguration.TIMELINE_SERVICE_CLIENT_FD_FLUSH_INTERVAL_SECS + "=" + flushIntervalSecs+ ", "+ YarnConfiguration.TIMELINE_SERVICE_CLIENT_FD_CLEAN_INTERVAL_SECS+ "="+ cleanIntervalSecs+ ", "+ YarnConfiguration.TIMELINE_SERVICE_CLIENT_FD_RETAIN_SECS+ "="+ ttl+ ", "+ YarnConfiguration.TIMELINE_SERVICE_ENTITYFILE_FS_SUPPORT_APPEND+ "="+ isAppendSupported+ ", "+ YarnConfiguration.TIMELINE_SERVICE_ENTITYGROUP_FS_STORE_ACTIVE_DIR+ "="+ activePath);
     if (summaryEntityTypes != null && !summaryEntityTypes.isEmpty()) {
       debugMSG.append(", " + YarnConfiguration.TIMELINE_SERVICE_ENTITYGROUP_FS_STORE_SUMMARY_ENTITY_TYPES + " = "+ summaryEntityTypes);
     }

@@ -1,16 +1,14 @@
 {
+  super.serviceStart();
   LOG.info("Starting {}",getName());
-  yarnClient.start();
   summaryStore.start();
   Configuration conf=getConfig();
   aclManager=new TimelineACLsManager(conf);
   aclManager.setTimelineStore(summaryStore);
   summaryTdm=new TimelineDataManager(summaryStore,aclManager);
   summaryTdm.init(conf);
-  summaryTdm.start();
-  activeRootPath=new Path(conf.get(YarnConfiguration.TIMELINE_SERVICE_ENTITYGROUP_FS_STORE_ACTIVE_DIR,YarnConfiguration.TIMELINE_SERVICE_ENTITYGROUP_FS_STORE_ACTIVE_DIR_DEFAULT));
-  doneRootPath=new Path(conf.get(YarnConfiguration.TIMELINE_SERVICE_ENTITYGROUP_FS_STORE_DONE_DIR,YarnConfiguration.TIMELINE_SERVICE_ENTITYGROUP_FS_STORE_DONE_DIR_DEFAULT));
-  fs=activeRootPath.getFileSystem(conf);
+  addService(summaryTdm);
+  super.serviceStart();
   if (!fs.exists(activeRootPath)) {
     fs.mkdirs(activeRootPath);
     fs.setPermission(activeRootPath,ACTIVE_DIR_PERMISSION);
@@ -25,10 +23,9 @@
   final long scanIntervalSecs=conf.getLong(YarnConfiguration.TIMELINE_SERVICE_ENTITYGROUP_FS_STORE_SCAN_INTERVAL_SECONDS,YarnConfiguration.TIMELINE_SERVICE_ENTITYGROUP_FS_STORE_SCAN_INTERVAL_SECONDS_DEFAULT);
   final long cleanerIntervalSecs=conf.getLong(YarnConfiguration.TIMELINE_SERVICE_ENTITYGROUP_FS_STORE_CLEANER_INTERVAL_SECONDS,YarnConfiguration.TIMELINE_SERVICE_ENTITYGROUP_FS_STORE_CLEANER_INTERVAL_SECONDS_DEFAULT);
   final int numThreads=conf.getInt(YarnConfiguration.TIMELINE_SERVICE_ENTITYGROUP_FS_STORE_THREADS,YarnConfiguration.TIMELINE_SERVICE_ENTITYGROUP_FS_STORE_THREADS_DEFAULT);
-  LOG.info("Scanning active directory every {} seconds",scanIntervalSecs);
+  LOG.info("Scanning active directory {} every {} seconds",activeRootPath,scanIntervalSecs);
   LOG.info("Cleaning logs every {} seconds",cleanerIntervalSecs);
   executor=new ScheduledThreadPoolExecutor(numThreads,new ThreadFactoryBuilder().setNameFormat("EntityLogPluginWorker #%d").build());
   executor.scheduleAtFixedRate(new EntityLogScanner(),0,scanIntervalSecs,TimeUnit.SECONDS);
   executor.scheduleAtFixedRate(new EntityLogCleaner(),cleanerIntervalSecs,cleanerIntervalSecs,TimeUnit.SECONDS);
-  super.serviceStart();
 }
