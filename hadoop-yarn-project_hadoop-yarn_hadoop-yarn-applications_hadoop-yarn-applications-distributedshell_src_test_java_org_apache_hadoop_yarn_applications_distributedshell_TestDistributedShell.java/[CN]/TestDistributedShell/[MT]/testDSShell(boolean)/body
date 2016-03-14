@@ -53,6 +53,17 @@
   t.join();
   LOG.info("Client run completed. Result=" + result);
   Assert.assertTrue(result.get());
+  if (timelineVersionWatcher.getTimelineVersion() == 1.5f) {
+    long scanInterval=conf.getLong(YarnConfiguration.TIMELINE_SERVICE_ENTITYGROUP_FS_STORE_SCAN_INTERVAL_SECONDS,YarnConfiguration.TIMELINE_SERVICE_ENTITYGROUP_FS_STORE_SCAN_INTERVAL_SECONDS_DEFAULT);
+    Path doneDir=new Path(YarnConfiguration.TIMELINE_SERVICE_ENTITYGROUP_FS_STORE_DONE_DIR_DEFAULT);
+    while (true) {
+      RemoteIterator<FileStatus> iterApps=fs.listStatusIterator(doneDir);
+      if (iterApps.hasNext()) {
+        break;
+      }
+      Thread.sleep(scanInterval * 2);
+    }
+  }
   TimelineDomain domain=null;
   if (haveDomain) {
     domain=yarnCluster.getApplicationHistoryServer().getTimelineStore().getDomain("TEST_DOMAIN");
@@ -71,7 +82,10 @@
  else {
     Assert.assertEquals("DEFAULT",entitiesAttempts.getEntities().get(0).getDomainId());
   }
-  TimelineEntities entities=yarnCluster.getApplicationHistoryServer().getTimelineStore().getEntities(ApplicationMaster.DSEntity.DS_CONTAINER.toString(),null,null,null,null,null,null,null,null,null);
+  String currAttemptEntityId=entitiesAttempts.getEntities().get(0).getEntityId();
+  ApplicationAttemptId attemptId=ConverterUtils.toApplicationAttemptId(currAttemptEntityId);
+  NameValuePair primaryFilter=new NameValuePair(ApplicationMaster.APPID_TIMELINE_FILTER_NAME,attemptId.getApplicationId().toString());
+  TimelineEntities entities=yarnCluster.getApplicationHistoryServer().getTimelineStore().getEntities(ApplicationMaster.DSEntity.DS_CONTAINER.toString(),null,null,null,null,null,primaryFilter,null,null,null);
   Assert.assertNotNull(entities);
   Assert.assertEquals(2,entities.getEntities().size());
   Assert.assertEquals(entities.getEntities().get(0).getEntityType().toString(),ApplicationMaster.DSEntity.DS_CONTAINER.toString());
