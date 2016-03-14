@@ -2,15 +2,11 @@
   if (labelManager != null) {
     labelManager.deactivateNode(nodeInfo.getNodeID());
   }
-  FiCaSchedulerNode node=nodes.get(nodeInfo.getNodeID());
+  NodeId nodeId=nodeInfo.getNodeID();
+  FiCaSchedulerNode node=nodeTracker.getNode(nodeId);
   if (node == null) {
+    LOG.error("Attempting to remove non-existent node " + nodeId);
     return;
-  }
-  Resources.subtractFrom(clusterResource,node.getTotalResource());
-  root.updateClusterResource(clusterResource,new ResourceLimits(clusterResource));
-  int numNodes=numNodeManagers.decrementAndGet();
-  if (scheduleAsynchronously && numNodes == 0) {
-    asyncSchedulerThread.suspendSchedule();
   }
   List<RMContainer> runningContainers=node.getRunningContainers();
   for (  RMContainer container : runningContainers) {
@@ -20,7 +16,12 @@
   if (reservedContainer != null) {
     super.completedContainer(reservedContainer,SchedulerUtils.createAbnormalContainerStatus(reservedContainer.getContainerId(),SchedulerUtils.LOST_CONTAINER),RMContainerEventType.KILL);
   }
-  this.nodes.remove(nodeInfo.getNodeID());
-  updateMaximumAllocation(node,false);
-  LOG.info("Removed node " + nodeInfo.getNodeAddress() + " clusterResource: "+ clusterResource);
+  nodeTracker.removeNode(nodeId);
+  Resource clusterResource=getClusterResource();
+  root.updateClusterResource(clusterResource,new ResourceLimits(clusterResource));
+  int numNodes=nodeTracker.nodeCount();
+  if (scheduleAsynchronously && numNodes == 0) {
+    asyncSchedulerThread.suspendSchedule();
+  }
+  LOG.info("Removed node " + nodeInfo.getNodeAddress() + " clusterResource: "+ getClusterResource());
 }

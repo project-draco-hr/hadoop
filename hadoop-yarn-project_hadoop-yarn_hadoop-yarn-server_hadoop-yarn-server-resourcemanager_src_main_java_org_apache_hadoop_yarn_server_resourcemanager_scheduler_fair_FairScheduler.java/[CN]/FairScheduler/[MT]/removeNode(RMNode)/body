@@ -1,11 +1,10 @@
 {
-  FSSchedulerNode node=getFSSchedulerNode(rmNode.getNodeID());
+  NodeId nodeId=rmNode.getNodeID();
+  FSSchedulerNode node=nodeTracker.getNode(nodeId);
   if (node == null) {
+    LOG.error("Attempting to remove non-existent node " + nodeId);
     return;
   }
-  Resources.subtractFrom(clusterResource,node.getTotalResource());
-  updateRootQueueMetrics();
-  triggerUpdate();
   List<RMContainer> runningContainers=node.getRunningContainers();
   for (  RMContainer container : runningContainers) {
     super.completedContainer(container,SchedulerUtils.createAbnormalContainerStatus(container.getContainerId(),SchedulerUtils.LOST_CONTAINER),RMContainerEventType.KILL);
@@ -14,16 +13,11 @@
   if (reservedContainer != null) {
     super.completedContainer(reservedContainer,SchedulerUtils.createAbnormalContainerStatus(reservedContainer.getContainerId(),SchedulerUtils.LOST_CONTAINER),RMContainerEventType.KILL);
   }
-  nodes.remove(rmNode.getNodeID());
-  String rackName=node.getRackName() == null ? "NULL" : node.getRackName();
-  if (nodesPerRack.containsKey(rackName) && (nodesPerRack.get(rackName) > 0)) {
-    nodesPerRack.put(rackName,nodesPerRack.get(rackName) - 1);
-  }
- else {
-    LOG.error("Node [" + rmNode.getNodeAddress() + "] being removed from"+ " unknown rack ["+ rackName+ "] !!");
-  }
+  nodeTracker.removeNode(nodeId);
+  Resource clusterResource=getClusterResource();
   queueMgr.getRootQueue().setSteadyFairShare(clusterResource);
   queueMgr.getRootQueue().recomputeSteadyShares();
-  updateMaximumAllocation(node,false);
+  updateRootQueueMetrics();
+  triggerUpdate();
   LOG.info("Removed node " + rmNode.getNodeAddress() + " cluster capacity: "+ clusterResource);
 }
