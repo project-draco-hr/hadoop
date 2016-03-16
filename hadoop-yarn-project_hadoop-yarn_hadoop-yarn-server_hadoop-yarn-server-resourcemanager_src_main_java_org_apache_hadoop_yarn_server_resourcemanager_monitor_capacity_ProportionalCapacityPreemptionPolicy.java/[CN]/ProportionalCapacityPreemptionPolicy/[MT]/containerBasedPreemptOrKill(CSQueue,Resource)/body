@@ -2,6 +2,7 @@
   Set<String> allPartitions=new HashSet<>();
   allPartitions.addAll(scheduler.getRMContext().getNodeLabelManager().getClusterNodeLabelNames());
   allPartitions.add(RMNodeLabelsManager.NO_LABEL);
+  syncKillableContainersFromScheduler();
 synchronized (scheduler) {
     queueToPartitions.clear();
     for (    String partitionToLookAt : allPartitions) {
@@ -15,9 +16,10 @@ synchronized (scheduler) {
     tRoot.idealAssigned=tRoot.guaranteed;
     leafQueueNames=recursivelyComputeIdealAssignment(tRoot,totalPreemptionAllowed);
   }
+  cleanupStaledKillableContainers(clusterResources,leafQueueNames);
   Map<ApplicationAttemptId,Set<RMContainer>> toPreempt=getContainersToPreempt(leafQueueNames,clusterResources);
   if (LOG.isDebugEnabled()) {
-    logToCSV(new ArrayList<String>(leafQueueNames));
+    logToCSV(new ArrayList<>(leafQueueNames));
   }
   if (observeOnly) {
     return;
@@ -29,7 +31,7 @@ synchronized (scheduler) {
     }
     for (    RMContainer container : e.getValue()) {
       if (preempted.get(container) != null && preempted.get(container) + maxWaitTime < clock.getTime()) {
-        rmContext.getDispatcher().getEventHandler().handle(new ContainerPreemptEvent(appAttemptId,container,SchedulerEventType.KILL_PREEMPTED_CONTAINER));
+        rmContext.getDispatcher().getEventHandler().handle(new ContainerPreemptEvent(appAttemptId,container,SchedulerEventType.MARK_CONTAINER_FOR_KILLABLE));
         preempted.remove(container);
       }
  else {

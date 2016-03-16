@@ -9,6 +9,10 @@ synchronized (curQueue) {
     Resource current=curQueue.getQueueResourceUsage().getUsed(partitionToLookAt);
     Resource guaranteed=Resources.multiply(partitionResource,absCap);
     Resource maxCapacity=Resources.multiply(partitionResource,absMaxCap);
+    Resource killable=Resources.none();
+    if (null != preemptableEntities.get(queueName)) {
+      killable=preemptableEntities.get(queueName).getKillableResource(partitionToLookAt);
+    }
     try {
       if (!scheduler.getRMContext().getNodeLabelManager().isExclusiveNodeLabel(partitionToLookAt)) {
         maxCapacity=Resources.max(rc,partitionResource,maxCapacity,current);
@@ -23,7 +27,7 @@ synchronized (curQueue) {
     if (curQueue instanceof LeafQueue) {
       LeafQueue l=(LeafQueue)curQueue;
       Resource pending=l.getTotalPendingResourcesConsideringUserLimit(partitionResource,partitionToLookAt);
-      ret=new TempQueuePerPartition(queueName,current,pending,guaranteed,maxCapacity,preemptionDisabled,partitionToLookAt);
+      ret=new TempQueuePerPartition(queueName,current,pending,guaranteed,maxCapacity,preemptionDisabled,partitionToLookAt,killable);
       if (preemptionDisabled) {
         ret.untouchableExtra=extra;
       }
@@ -34,7 +38,7 @@ synchronized (curQueue) {
     }
  else {
       Resource pending=Resource.newInstance(0,0);
-      ret=new TempQueuePerPartition(curQueue.getQueueName(),current,pending,guaranteed,maxCapacity,false,partitionToLookAt);
+      ret=new TempQueuePerPartition(curQueue.getQueueName(),current,pending,guaranteed,maxCapacity,false,partitionToLookAt,killable);
       Resource childrensPreemptable=Resource.newInstance(0,0);
       for (      CSQueue c : curQueue.getChildQueues()) {
         TempQueuePerPartition subq=cloneQueues(c,partitionResource,partitionToLookAt);

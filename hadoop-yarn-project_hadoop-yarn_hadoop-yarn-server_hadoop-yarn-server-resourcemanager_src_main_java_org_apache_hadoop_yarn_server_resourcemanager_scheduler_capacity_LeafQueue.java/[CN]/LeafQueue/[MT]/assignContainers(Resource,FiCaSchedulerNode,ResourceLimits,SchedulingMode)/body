@@ -3,12 +3,14 @@
   if (LOG.isDebugEnabled()) {
     LOG.debug("assignContainers: node=" + node.getNodeName() + " #applications="+ orderingPolicy.getNumSchedulableEntities());
   }
+  setPreemptionAllowed(currentResourceLimits,node.getPartition());
   RMContainer reservedContainer=node.getReservedContainer();
   if (reservedContainer != null) {
     FiCaSchedulerApp application=getApplication(reservedContainer.getApplicationAttemptId());
 synchronized (application) {
       CSAssignment assignment=application.assignContainers(clusterResource,node,currentResourceLimits,schedulingMode,reservedContainer);
       handleExcessReservedContainer(clusterResource,assignment,node,application);
+      killToPreemptContainers(clusterResource,node,assignment);
       return assignment;
     }
   }
@@ -38,6 +40,7 @@ synchronized (application) {
     }
     Resource assigned=assignment.getResource();
     handleExcessReservedContainer(clusterResource,assignment,node,application);
+    killToPreemptContainers(clusterResource,node,assignment);
     if (Resources.greaterThan(resourceCalculator,clusterResource,assigned,Resources.none())) {
       RMContainer reservedOrAllocatedRMContainer=application.getRMContainer(assignment.getAssignmentInformation().getFirstAllocatedOrReservedContainerId());
       allocateResource(clusterResource,application,assigned,node.getPartition(),reservedOrAllocatedRMContainer,assignment.isIncreasedAllocation());
