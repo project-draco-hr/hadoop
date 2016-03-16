@@ -1,10 +1,14 @@
 {
   Resource currentLimitResource=getCurrentLimitResource(nodePartition,clusterResource,currentResourceLimits,schedulingMode);
   Resource nowTotalUsed=queueUsage.getUsed(nodePartition);
-  currentResourceLimits.setHeadroom(Resources.subtract(currentLimitResource,nowTotalUsed));
-  if (Resources.greaterThanOrEqual(resourceCalculator,clusterResource,nowTotalUsed,currentLimitResource)) {
+  Resource usedExceptKillable=nowTotalUsed;
+  if (null != getChildQueues() && !getChildQueues().isEmpty()) {
+    usedExceptKillable=Resources.subtract(nowTotalUsed,getTotalKillableResource(nodePartition));
+  }
+  currentResourceLimits.setHeadroom(Resources.subtract(currentLimitResource,usedExceptKillable));
+  if (Resources.greaterThanOrEqual(resourceCalculator,clusterResource,usedExceptKillable,currentLimitResource)) {
     if (this.reservationsContinueLooking && nodePartition.equals(RMNodeLabelsManager.NO_LABEL) && Resources.greaterThan(resourceCalculator,clusterResource,resourceCouldBeUnreserved,Resources.none())) {
-      Resource newTotalWithoutReservedResource=Resources.subtract(nowTotalUsed,resourceCouldBeUnreserved);
+      Resource newTotalWithoutReservedResource=Resources.subtract(usedExceptKillable,resourceCouldBeUnreserved);
       if (Resources.lessThan(resourceCalculator,clusterResource,newTotalWithoutReservedResource,currentLimitResource)) {
         if (LOG.isDebugEnabled()) {
           LOG.debug("try to use reserved: " + getQueueName() + " usedResources: "+ queueUsage.getUsed()+ ", clusterResources: "+ clusterResource+ ", reservedResources: "+ resourceCouldBeUnreserved+ ", capacity-without-reserved: "+ newTotalWithoutReservedResource+ ", maxLimitCapacity: "+ currentLimitResource);
