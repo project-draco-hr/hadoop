@@ -1,0 +1,28 @@
+{
+  Context context=mock(Context.class);
+  @SuppressWarnings("unchecked") ConcurrentMap<ApplicationId,Application> map=mock(ConcurrentMap.class);
+  Application aApp=mock(Application.class);
+  when(map.get(any(ApplicationId.class))).thenReturn(aApp);
+  DummyTimelineClient timelineClient=new DummyTimelineClient();
+  when(aApp.getTimelineClient()).thenReturn(timelineClient);
+  when(context.getApplications()).thenReturn(map);
+  when(context.getNodeId()).thenReturn(NodeId.newInstance("localhost",0));
+  when(context.getHttpPort()).thenReturn(0);
+  NMTimelinePublisher publisher=new NMTimelinePublisher(context);
+  publisher.init(new Configuration());
+  publisher.start();
+  Container aContainer=mock(Container.class);
+  when(aContainer.getContainerId()).thenReturn(ContainerId.newContainerId(ApplicationAttemptId.newInstance(ApplicationId.newInstance(0,1),1),0L));
+  publisher.reportContainerResourceUsage(aContainer,1024L,8F);
+  verifyPublishedResourceUsageMetrics(timelineClient,1024L,8);
+  timelineClient.reset();
+  publisher.reportContainerResourceUsage(aContainer,1024L,0.8F);
+  verifyPublishedResourceUsageMetrics(timelineClient,1024L,1);
+  timelineClient.reset();
+  publisher.reportContainerResourceUsage(aContainer,1024L,0.49F);
+  verifyPublishedResourceUsageMetrics(timelineClient,1024L,0);
+  timelineClient.reset();
+  publisher.reportContainerResourceUsage(aContainer,1024L,(float)ResourceCalculatorProcessTree.UNAVAILABLE);
+  verifyPublishedResourceUsageMetrics(timelineClient,1024L,ResourceCalculatorProcessTree.UNAVAILABLE);
+  publisher.stop();
+}
