@@ -1,0 +1,41 @@
+{
+  MiniDFSCluster cluster=null;
+  try {
+    Configuration config=new HdfsConfiguration();
+    config.setLong(DFSConfigKeys.DFS_DATANODE_XCEIVER_STOP_TIMEOUT_MILLIS_KEY,1000);
+    config.setInt(DFSConfigKeys.DFS_DATANODE_FAILED_VOLUMES_TOLERATED_KEY,1);
+    cluster=new MiniDFSCluster.Builder(config).numDataNodes(1).build();
+    cluster.waitActive();
+    FileSystem fs=cluster.getFileSystem();
+    DataNode dataNode=cluster.getDataNodes().get(0);
+    Path filePath=new Path("test.dat");
+    FSDataOutputStream out=fs.create(filePath,(short)1);
+    out.write(1);
+    out.hflush();
+    ExtendedBlock block=DFSTestUtil.getFirstBlock(fs,filePath);
+    FsVolumeImpl volume=(FsVolumeImpl)dataNode.getFSDataset().getVolume(block);
+    File finalizedDir=volume.getFinalizedDir(cluster.getNamesystem().getBlockPoolId());
+    if (finalizedDir.exists()) {
+      finalizedDir.setExecutable(false);
+      finalizedDir.setWritable(false);
+    }
+    Assert.assertTrue("Reference count for the volume should be greater " + "than 0",volume.getReferenceCount() > 0);
+    dataNode.getFSDataset().checkDataDir();
+    Thread.sleep(1000);
+    assertEquals("There are active threads still referencing volume: " + volume.getBasePath(),0,volume.getReferenceCount());
+    LocatedBlock lb=DFSTestUtil.getAllBlocks(fs,filePath).get(0);
+    DatanodeInfo info=lb.getLocations()[0];
+    try {
+      out.close();
+      Assert.fail("This is not a valid code path. " + "out.close should have thrown an exception.");
+    }
+ catch (    IOException ioe) {
+      Assert.assertTrue(ioe.getMessage().contains(info.toString()));
+    }
+    finalizedDir.setWritable(true);
+    finalizedDir.setExecutable(true);
+  }
+  finally {
+    cluster.shutdown();
+  }
+}
