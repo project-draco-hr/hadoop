@@ -1,0 +1,38 @@
+{
+  FlowScanner fs=getFlowScannerForTestingCompaction();
+  long currentTimestamp=System.currentTimeMillis();
+  long cellValue1=1236L;
+  long cellValue2=28L;
+  List<Tag> tags=new ArrayList<>();
+  Tag t=new Tag(AggregationOperation.SUM_FINAL.getTagType(),"application_1234588888_999888");
+  tags.add(t);
+  byte[] tagByteArray=Tag.fromList(tags);
+  SortedSet<Cell> currentColumnCells=new TreeSet<Cell>(KeyValue.COMPARATOR);
+  Cell c1=TimelineStorageUtils.createNewCell(aRowKey,aFamily,aQualifier,120L,Bytes.toBytes(cellValue1),tagByteArray);
+  currentColumnCells.add(c1);
+  tags=new ArrayList<>();
+  t=new Tag(AggregationOperation.SUM.getTagType(),"application_100000000001_119101");
+  tags.add(t);
+  tagByteArray=Tag.fromList(tags);
+  Cell c2=TimelineStorageUtils.createNewCell(aRowKey,aFamily,aQualifier,130L,Bytes.toBytes(cellValue2),tagByteArray);
+  currentColumnCells.add(c2);
+  List<Cell> cells=fs.processSummationMajorCompaction(currentColumnCells,LongConverter.getInstance(),currentTimestamp);
+  assertNotNull(cells);
+  assertEquals(2,cells.size());
+  Cell returnedCell=cells.get(0);
+  assertNotNull(returnedCell);
+  long inputTs1=c1.getTimestamp();
+  long inputTs2=c2.getTimestamp();
+  long returnTs=returnedCell.getTimestamp();
+  long returnValue=Bytes.toLong(CellUtil.cloneValue(returnedCell));
+  if (returnValue == cellValue2) {
+    assertTrue(returnTs == inputTs2);
+  }
+ else   if (returnValue == cellValue1) {
+    assertTrue(returnTs >= currentTimestamp);
+    assertTrue(returnTs != inputTs1);
+  }
+ else {
+    Assert.fail();
+  }
+}

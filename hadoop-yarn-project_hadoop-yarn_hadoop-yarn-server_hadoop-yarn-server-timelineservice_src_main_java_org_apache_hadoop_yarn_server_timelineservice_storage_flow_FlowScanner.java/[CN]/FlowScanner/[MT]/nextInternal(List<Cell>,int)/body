@@ -7,12 +7,17 @@
   SortedSet<Cell> currentColumnCells=new TreeSet<>(KeyValue.COMPARATOR);
   Set<String> alreadySeenAggDim=new HashSet<>();
   int addedCnt=0;
+  long currentTimestamp=System.currentTimeMillis();
   ValueConverter converter=null;
-  while (((cell=peekAtNextCell(cellLimit)) != null) && (cellLimit <= 0 || addedCnt < cellLimit)) {
+  while (cellLimit <= 0 || addedCnt < cellLimit) {
+    cell=peekAtNextCell(cellLimit);
+    if (cell == null) {
+      break;
+    }
     byte[] newColumnQualifier=CellUtil.cloneQualifier(cell);
     if (comp.compare(currentColumnQualifier,newColumnQualifier) != 0) {
       if (converter != null && isNumericConverter(converter)) {
-        addedCnt+=emitCells(cells,currentColumnCells,currentAggOp,(NumericValueConverter)converter);
+        addedCnt+=emitCells(cells,currentColumnCells,currentAggOp,(NumericValueConverter)converter,currentTimestamp);
       }
       resetState(currentColumnCells,alreadySeenAggDim);
       currentColumnQualifier=newColumnQualifier;
@@ -27,7 +32,15 @@
     nextCell(cellLimit);
   }
   if (!currentColumnCells.isEmpty()) {
-    emitCells(cells,currentColumnCells,currentAggOp,(NumericValueConverter)converter);
+    addedCnt+=emitCells(cells,currentColumnCells,currentAggOp,(NumericValueConverter)converter,currentTimestamp);
+    if (LOG.isDebugEnabled()) {
+      if (addedCnt > 0) {
+        LOG.debug("emitted cells. " + addedCnt + " for "+ this.action+ " rowKey="+ FlowRunRowKey.parseRowKey(cells.get(0).getRow()).toString());
+      }
+ else {
+        LOG.debug("emitted no cells for " + this.action);
+      }
+    }
   }
   return hasMore();
 }

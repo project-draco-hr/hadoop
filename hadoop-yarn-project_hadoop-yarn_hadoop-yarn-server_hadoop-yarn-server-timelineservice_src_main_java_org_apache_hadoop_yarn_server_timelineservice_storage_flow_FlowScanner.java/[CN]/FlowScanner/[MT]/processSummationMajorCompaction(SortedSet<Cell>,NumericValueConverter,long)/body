@@ -1,0 +1,59 @@
+{
+  Number sum=0;
+  Number currentValue=0;
+  long ts=0L;
+  boolean summationDone=false;
+  List<Cell> finalCells=new ArrayList<Cell>();
+  if (currentColumnCells == null) {
+    return finalCells;
+  }
+  if (LOG.isDebugEnabled()) {
+    LOG.debug("In processSummationMajorCompaction," + " will drop cells older than " + currentTimestamp + " CurrentColumnCells size="+ currentColumnCells.size());
+  }
+  for (  Cell cell : currentColumnCells) {
+    AggregationOperation cellAggOp=getCurrentAggOp(cell);
+    List<Tag> tags=Tag.asList(cell.getTagsArray(),cell.getTagsOffset(),cell.getTagsLength());
+    String appId=TimelineStorageUtils.getAggregationCompactionDimension(tags);
+    if (appId == FLOW_APP_ID) {
+      sum=converter.add(sum,currentValue);
+      summationDone=true;
+      if (LOG.isTraceEnabled()) {
+        LOG.trace("reading flow app id sum=" + sum);
+      }
+    }
+ else {
+      currentValue=(Number)converter.decodeValue(CellUtil.cloneValue(cell));
+      ts=TimestampGenerator.getTruncatedTimestamp(cell.getTimestamp());
+      if ((cellAggOp == AggregationOperation.SUM_FINAL) && ((ts + this.appFinalValueRetentionThreshold) < currentTimestamp)) {
+        sum=converter.add(sum,currentValue);
+        summationDone=true;
+        if (LOG.isTraceEnabled()) {
+          LOG.trace("MAJOR COMPACTION loop sum= " + sum + " discarding now: "+ " qualifier="+ Bytes.toString(CellUtil.cloneQualifier(cell))+ " value="+ (Number)converter.decodeValue(CellUtil.cloneValue(cell))+ " timestamp="+ cell.getTimestamp()+ " "+ this.action);
+        }
+      }
+ else {
+        finalCells.add(cell);
+      }
+    }
+  }
+  if (summationDone) {
+    Cell anyCell=currentColumnCells.first();
+    List<Tag> tags=new ArrayList<Tag>();
+    Tag t=new Tag(AggregationOperation.SUM_FINAL.getTagType(),Bytes.toBytes(FLOW_APP_ID));
+    tags.add(t);
+    t=new Tag(AggregationCompactionDimension.APPLICATION_ID.getTagType(),Bytes.toBytes(FLOW_APP_ID));
+    tags.add(t);
+    byte[] tagByteArray=Tag.fromList(tags);
+    Cell sumCell=TimelineStorageUtils.createNewCell(CellUtil.cloneRow(anyCell),CellUtil.cloneFamily(anyCell),CellUtil.cloneQualifier(anyCell),TimestampGenerator.getSupplementedTimestamp(System.currentTimeMillis(),FLOW_APP_ID),converter.encodeValue(sum),tagByteArray);
+    finalCells.add(sumCell);
+    if (LOG.isTraceEnabled()) {
+      LOG.trace("MAJOR COMPACTION final sum= " + sum + " for "+ Bytes.toString(CellUtil.cloneQualifier(sumCell))+ " "+ this.action);
+    }
+    LOG.info("After major compaction for qualifier=" + Bytes.toString(CellUtil.cloneQualifier(sumCell)) + " with currentColumnCells.size="+ currentColumnCells.size()+ " returning finalCells.size="+ finalCells.size()+ " with sum="+ sum.longValue()+ " with cell timestamp "+ sumCell.getTimestamp());
+  }
+ else {
+    String qualifier="";
+    LOG.info("After major compaction for qualifier=" + qualifier + " with currentColumnCells.size="+ currentColumnCells.size()+ " returning finalCells.size="+ finalCells.size()+ " with zero sum="+ sum.longValue());
+  }
+  return finalCells;
+}
