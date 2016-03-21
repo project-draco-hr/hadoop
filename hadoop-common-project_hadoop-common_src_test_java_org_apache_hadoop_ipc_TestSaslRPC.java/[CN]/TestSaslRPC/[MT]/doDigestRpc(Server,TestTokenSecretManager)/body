@@ -1,23 +1,19 @@
 {
-  server.start();
   final UserGroupInformation current=UserGroupInformation.getCurrentUser();
-  final InetSocketAddress addr=NetUtils.getConnectAddress(server);
+  addr=NetUtils.getConnectAddress(server);
   TestTokenIdentifier tokenId=new TestTokenIdentifier(new Text(current.getUserName()));
   Token<TestTokenIdentifier> token=new Token<TestTokenIdentifier>(tokenId,sm);
   SecurityUtil.setTokenService(token,addr);
   current.addToken(token);
-  TestSaslProtocol proxy=null;
+  TestRpcService proxy=null;
   try {
-    proxy=RPC.getProxy(TestSaslProtocol.class,TestSaslProtocol.versionID,addr,conf);
-    AuthMethod authMethod=proxy.getAuthMethod();
+    proxy=getClient(addr,conf);
+    AuthMethod authMethod=convert(proxy.getAuthMethod(null,newEmptyRequest()));
     assertEquals(TOKEN,authMethod);
     assertEquals(expectedQop.saslQop,RPC.getConnectionIdForProxy(proxy).getSaslQop());
-    proxy.ping();
+    proxy.ping(null,newEmptyRequest());
   }
   finally {
-    server.stop();
-    if (proxy != null) {
-      RPC.stopProxy(proxy);
-    }
+    stop(server,proxy);
   }
 }
