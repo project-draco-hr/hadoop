@@ -1,0 +1,46 @@
+{
+  NameNode.LOG.info("Warming up {} EDEKs... (initialDelay={}, " + "retryInterval={})",keyNames.length,initialDelay,retryInterval);
+  try {
+    Thread.sleep(initialDelay);
+  }
+ catch (  InterruptedException ie) {
+    NameNode.LOG.info("EDEKCacheLoader interrupted before warming up.");
+    return;
+  }
+  final int logCoolDown=10000;
+  int sinceLastLog=logCoolDown;
+  boolean success=false;
+  IOException lastSeenIOE=null;
+  while (true) {
+    try {
+      kp.warmUpEncryptedKeys(keyNames);
+      NameNode.LOG.info("Successfully warmed up {} EDEKs.",keyNames.length);
+      success=true;
+      break;
+    }
+ catch (    IOException ioe) {
+      lastSeenIOE=ioe;
+      if (sinceLastLog >= logCoolDown) {
+        NameNode.LOG.info("Failed to warm up EDEKs.",ioe);
+        sinceLastLog=0;
+      }
+ else {
+        NameNode.LOG.debug("Failed to warm up EDEKs.",ioe);
+      }
+    }
+    try {
+      Thread.sleep(retryInterval);
+    }
+ catch (    InterruptedException ie) {
+      NameNode.LOG.info("EDEKCacheLoader interrupted during retry.");
+      break;
+    }
+    sinceLastLog+=retryInterval;
+  }
+  if (!success) {
+    NameNode.LOG.warn("Unable to warm up EDEKs.");
+    if (lastSeenIOE != null) {
+      NameNode.LOG.warn("Last seen exception:",lastSeenIOE);
+    }
+  }
+}
