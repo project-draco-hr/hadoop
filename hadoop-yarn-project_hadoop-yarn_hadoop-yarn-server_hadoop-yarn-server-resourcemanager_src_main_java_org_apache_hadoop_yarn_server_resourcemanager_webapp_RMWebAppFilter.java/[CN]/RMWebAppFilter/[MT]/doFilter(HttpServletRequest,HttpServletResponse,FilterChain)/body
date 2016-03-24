@@ -1,16 +1,30 @@
 {
   response.setCharacterEncoding("UTF-8");
-  String uri=HtmlQuoting.quoteHtmlChars(request.getRequestURI());
-  if (uri == null) {
-    uri="/";
+  String htmlEscapedUri=HtmlQuoting.quoteHtmlChars(request.getRequestURI());
+  if (htmlEscapedUri == null) {
+    htmlEscapedUri="/";
+  }
+  String uriWithQueryString=htmlEscapedUri;
+  String htmlEscapedUriWithQueryString=htmlEscapedUri;
+  String queryString=request.getQueryString();
+  if (queryString != null && !queryString.isEmpty()) {
+    String reqEncoding=request.getCharacterEncoding();
+    if (reqEncoding == null || reqEncoding.isEmpty()) {
+      reqEncoding="ISO-8859-1";
+    }
+    Charset encoding=Charset.forName(reqEncoding);
+    List<NameValuePair> params=URLEncodedUtils.parse(queryString,encoding);
+    String urlEncodedQueryString=URLEncodedUtils.format(params,encoding);
+    uriWithQueryString+="?" + urlEncodedQueryString;
+    htmlEscapedUriWithQueryString=HtmlQuoting.quoteHtmlChars(request.getRequestURI() + "?" + urlEncodedQueryString);
   }
   RMWebApp rmWebApp=injector.getInstance(RMWebApp.class);
   rmWebApp.checkIfStandbyRM();
-  if (rmWebApp.isStandby() && shouldRedirect(rmWebApp,uri)) {
+  if (rmWebApp.isStandby() && shouldRedirect(rmWebApp,htmlEscapedUri)) {
     String redirectPath=rmWebApp.getRedirectPath();
     if (redirectPath != null && !redirectPath.isEmpty()) {
-      redirectPath+=uri;
-      String redirectMsg="This is standby RM. The redirect url is: " + redirectPath;
+      redirectPath+=uriWithQueryString;
+      String redirectMsg="This is standby RM. The redirect url is: " + htmlEscapedUriWithQueryString;
       PrintWriter out=response.getWriter();
       out.println(redirectMsg);
       response.setHeader("Location",redirectPath);
@@ -30,7 +44,7 @@
         }
       }
       int next=calculateExponentialTime(retryInterval);
-      String redirectUrl=appendOrReplaceParamter(path + uri,YarnWebParams.NEXT_REFRESH_INTERVAL + "=" + (retryInterval + 1));
+      String redirectUrl=appendOrReplaceParamter(path + uriWithQueryString,YarnWebParams.NEXT_REFRESH_INTERVAL + "=" + (retryInterval + 1));
       if (redirectUrl == null || next > MAX_SLEEP_TIME) {
         doRetry=false;
       }
@@ -46,7 +60,7 @@
     return;
   }
  else   if (ahsEnabled) {
-    String ahsRedirectUrl=ahsRedirectPath(uri,rmWebApp);
+    String ahsRedirectUrl=ahsRedirectPath(uriWithQueryString,rmWebApp);
     if (ahsRedirectUrl != null) {
       response.setHeader("Location",ahsRedirectUrl);
       response.setStatus(HttpServletResponse.SC_TEMPORARY_REDIRECT);
