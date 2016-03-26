@@ -1,0 +1,20 @@
+{
+  updateCurrentThreadName("Getting checksum for block group" + stripedBlockInfo.getBlock());
+  final DataOutputStream out=new DataOutputStream(getOutputStream());
+  checkAccess(out,true,stripedBlockInfo.getBlock(),blockToken,Op.BLOCK_GROUP_CHECKSUM,BlockTokenIdentifier.AccessMode.READ);
+  AbstractBlockChecksumComputer maker=new BlockGroupNonStripedChecksumComputer(datanode,stripedBlockInfo);
+  try {
+    maker.compute();
+    BlockOpResponseProto.newBuilder().setStatus(SUCCESS).setChecksumResponse(OpBlockChecksumResponseProto.newBuilder().setBytesPerCrc(maker.getBytesPerCRC()).setCrcPerBlock(maker.getCrcPerBlock()).setMd5(ByteString.copyFrom(maker.getOutBytes())).setCrcType(PBHelperClient.convert(maker.getCrcType()))).build().writeDelimitedTo(out);
+    out.flush();
+  }
+ catch (  IOException ioe) {
+    LOG.info("blockChecksum " + stripedBlockInfo.getBlock() + " received exception "+ ioe);
+    incrDatanodeNetworkErrors();
+    throw ioe;
+  }
+ finally {
+    IOUtils.closeStream(out);
+  }
+  datanode.metrics.addBlockChecksumOp(elapsed());
+}
