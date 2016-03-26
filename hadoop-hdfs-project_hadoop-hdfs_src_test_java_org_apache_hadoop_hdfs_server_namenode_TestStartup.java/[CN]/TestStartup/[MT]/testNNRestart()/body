@@ -1,22 +1,11 @@
 {
   MiniDFSCluster cluster=null;
-  FileSystem localFileSys;
-  Path hostsFile;
-  Path excludeFile;
   int HEARTBEAT_INTERVAL=1;
-  localFileSys=FileSystem.getLocal(config);
-  Path workingDir=localFileSys.getWorkingDirectory();
-  Path dir=new Path(workingDir,"build/test/data/work-dir/restartnn");
-  hostsFile=new Path(dir,"hosts");
-  excludeFile=new Path(dir,"exclude");
-  config.set(DFSConfigKeys.DFS_HOSTS_EXCLUDE,excludeFile.toUri().getPath());
-  writeConfigFile(localFileSys,excludeFile,null);
-  config.set(DFSConfigKeys.DFS_HOSTS,hostsFile.toUri().getPath());
-  ArrayList<String> list=new ArrayList<String>();
+  HostsFileWriter hostsFileWriter=new HostsFileWriter();
+  hostsFileWriter.initialize(config,"work-dir/restartnn");
   byte b[]={127,0,0,1};
   InetAddress inetAddress=InetAddress.getByAddress(b);
-  list.add(inetAddress.getHostName());
-  writeConfigFile(localFileSys,hostsFile,list);
+  hostsFileWriter.initIncludeHosts(new String[]{inetAddress.getHostName()});
   int numDatanodes=1;
   try {
     cluster=new MiniDFSCluster.Builder(config).numDataNodes(numDatanodes).setupHostsFile(true).build();
@@ -37,9 +26,9 @@
     throw e;
   }
  finally {
-    cleanupFile(localFileSys,excludeFile.getParent());
     if (cluster != null) {
       cluster.shutdown();
     }
+    hostsFileWriter.cleanup();
   }
 }
