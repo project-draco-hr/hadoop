@@ -12,14 +12,15 @@
     DNAddrPair chosenNode=null;
     if (futures.isEmpty()) {
       chosenNode=chooseDataNode(block,ignored);
-      bb=ByteBuffer.wrap(buf,offset,len);
+      bb=ByteBuffer.allocate(len);
       Callable<ByteBuffer> getFromDataNodeCallable=getFromOneDataNode(chosenNode,block,start,end,bb,corruptedBlocks,hedgedReadId++);
       Future<ByteBuffer> firstRequest=hedgedService.submit(getFromDataNodeCallable);
       futures.add(firstRequest);
       try {
         Future<ByteBuffer> future=hedgedService.poll(conf.getHedgedReadThresholdMillis(),TimeUnit.MILLISECONDS);
         if (future != null) {
-          future.get();
+          ByteBuffer result=future.get();
+          System.arraycopy(result.array(),result.position(),buf,offset,len);
           return;
         }
         DFSClient.LOG.debug("Waited {}ms to read from {}; spawning hedged " + "read",conf.getHedgedReadThresholdMillis(),chosenNode.info);
@@ -46,13 +47,8 @@
       try {
         ByteBuffer result=getFirstToComplete(hedgedService,futures);
         cancelAll(futures);
-        if (result.array() != buf) {
-          dfsClient.getHedgedReadMetrics().incHedgedReadWins();
-          System.arraycopy(result.array(),result.position(),buf,offset,len);
-        }
- else {
-          dfsClient.getHedgedReadMetrics().incHedgedReadOps();
-        }
+        dfsClient.getHedgedReadMetrics().incHedgedReadWins();
+        System.arraycopy(result.array(),result.position(),buf,offset,len);
         return;
       }
  catch (      InterruptedException ie) {
