@@ -1,0 +1,16 @@
+{
+  UserGroupInformation user=null;
+  ApplicationReport report=rmClient.getApplicationReport(appId);
+  user=UserGroupInformation.createProxyUser(report.getCurrentApplicationAttemptId().toString(),UserGroupInformation.getCurrentUser());
+  ContainerManagerImpl containerManager=(ContainerManagerImpl)cluster.getNodeManager(0).getNMContext().getContainerManager();
+  AMRMProxyTokenSecretManager amrmTokenSecretManager=containerManager.getAMRMProxyService().getSecretManager();
+  org.apache.hadoop.security.token.Token<AMRMTokenIdentifier> token=amrmTokenSecretManager.createAndGetAMRMToken(report.getCurrentApplicationAttemptId());
+  SecurityUtil.setTokenService(token,containerManager.getAMRMProxyService().getBindAddress());
+  user.addToken(token);
+  return user.doAs(new PrivilegedExceptionAction<ApplicationMasterProtocol>(){
+    @Override public ApplicationMasterProtocol run() throws Exception {
+      return ClientRMProxy.createRMProxy(yarnConf,ApplicationMasterProtocol.class);
+    }
+  }
+);
+}
