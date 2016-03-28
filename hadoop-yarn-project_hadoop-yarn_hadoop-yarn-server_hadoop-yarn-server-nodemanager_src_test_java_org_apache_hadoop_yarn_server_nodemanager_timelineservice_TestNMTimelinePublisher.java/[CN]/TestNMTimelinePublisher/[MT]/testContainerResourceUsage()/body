@@ -1,18 +1,22 @@
 {
   Context context=mock(Context.class);
-  @SuppressWarnings("unchecked") ConcurrentMap<ApplicationId,Application> map=mock(ConcurrentMap.class);
-  Application aApp=mock(Application.class);
-  when(map.get(any(ApplicationId.class))).thenReturn(aApp);
-  DummyTimelineClient timelineClient=new DummyTimelineClient();
-  when(aApp.getTimelineClient()).thenReturn(timelineClient);
-  when(context.getApplications()).thenReturn(map);
+  @SuppressWarnings("unchecked") final DummyTimelineClient timelineClient=new DummyTimelineClient();
   when(context.getNodeId()).thenReturn(NodeId.newInstance("localhost",0));
   when(context.getHttpPort()).thenReturn(0);
-  NMTimelinePublisher publisher=new NMTimelinePublisher(context);
+  NMTimelinePublisher publisher=new NMTimelinePublisher(context){
+    public void createTimelineClient(    ApplicationId appId){
+      if (!appToClientMap.containsKey(appId)) {
+        appToClientMap.put(appId,timelineClient);
+      }
+    }
+  }
+;
   publisher.init(new Configuration());
   publisher.start();
+  ApplicationId appId=ApplicationId.newInstance(0,1);
+  publisher.createTimelineClient(appId);
   Container aContainer=mock(Container.class);
-  when(aContainer.getContainerId()).thenReturn(ContainerId.newContainerId(ApplicationAttemptId.newInstance(ApplicationId.newInstance(0,1),1),0L));
+  when(aContainer.getContainerId()).thenReturn(ContainerId.newContainerId(ApplicationAttemptId.newInstance(appId,1),0L));
   publisher.reportContainerResourceUsage(aContainer,1024L,8F);
   verifyPublishedResourceUsageMetrics(timelineClient,1024L,8);
   timelineClient.reset();
