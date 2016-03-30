@@ -1,0 +1,44 @@
+{
+  preemptableAmountCalculator.computeIdealAllocation(clusterResource,totalPreemptionAllowed);
+  Map<ApplicationAttemptId,Set<RMContainer>> preemptMap=new HashMap<>();
+  List<RMContainer> skippedAMContainerlist=new ArrayList<>();
+  for (  String queueName : preemptionContext.getLeafQueueNames()) {
+    if (preemptionContext.getQueueByPartition(queueName,RMNodeLabelsManager.NO_LABEL).preemptionDisabled) {
+      if (LOG.isDebugEnabled()) {
+        LOG.debug("skipping from queue=" + queueName + " because it's a non-preemptable queue");
+      }
+      continue;
+    }
+    LeafQueue leafQueue=preemptionContext.getQueueByPartition(queueName,RMNodeLabelsManager.NO_LABEL).leafQueue;
+    Map<String,Resource> resToObtainByPartition=CapacitySchedulerPreemptionUtils.getResToObtainByPartitionForLeafQueue(preemptionContext,queueName,clusterResource);
+synchronized (leafQueue) {
+      Map<String,TreeSet<RMContainer>> ignorePartitionExclusivityContainers=leafQueue.getIgnoreExclusivityRMContainers();
+      for (      String partition : resToObtainByPartition.keySet()) {
+        if (ignorePartitionExclusivityContainers.containsKey(partition)) {
+          TreeSet<RMContainer> rmContainers=ignorePartitionExclusivityContainers.get(partition);
+          for (          RMContainer c : rmContainers.descendingSet()) {
+            if (CapacitySchedulerPreemptionUtils.isContainerAlreadySelected(c,selectedCandidates)) {
+              continue;
+            }
+            boolean preempted=tryPreemptContainerAndDeductResToObtain(resToObtainByPartition,c,clusterResource,preemptMap,totalPreemptionAllowed);
+            if (!preempted) {
+              continue;
+            }
+          }
+        }
+      }
+      Resource skippedAMSize=Resource.newInstance(0,0);
+      Iterator<FiCaSchedulerApp> desc=leafQueue.getOrderingPolicy().getPreemptionIterator();
+      while (desc.hasNext()) {
+        FiCaSchedulerApp fc=desc.next();
+        if (resToObtainByPartition.isEmpty()) {
+          break;
+        }
+        preemptFrom(fc,clusterResource,resToObtainByPartition,skippedAMContainerlist,skippedAMSize,preemptMap,totalPreemptionAllowed);
+      }
+      Resource maxAMCapacityForThisQueue=Resources.multiply(Resources.multiply(clusterResource,leafQueue.getAbsoluteCapacity()),leafQueue.getMaxAMResourcePerQueuePercent());
+      preemptAMContainers(clusterResource,preemptMap,skippedAMContainerlist,resToObtainByPartition,skippedAMSize,maxAMCapacityForThisQueue,totalPreemptionAllowed);
+    }
+  }
+  return preemptMap;
+}

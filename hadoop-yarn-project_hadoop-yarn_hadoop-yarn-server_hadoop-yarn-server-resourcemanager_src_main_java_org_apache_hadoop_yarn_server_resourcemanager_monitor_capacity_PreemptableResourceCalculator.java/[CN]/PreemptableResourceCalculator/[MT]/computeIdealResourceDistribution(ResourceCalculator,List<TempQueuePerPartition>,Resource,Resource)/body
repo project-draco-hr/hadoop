@@ -1,0 +1,36 @@
+{
+  List<TempQueuePerPartition> qAlloc=new ArrayList<>(queues);
+  Resource unassigned=Resources.clone(tot_guarant);
+  Set<TempQueuePerPartition> nonZeroGuarQueues=new HashSet<>();
+  Set<TempQueuePerPartition> zeroGuarQueues=new HashSet<>();
+  for (  TempQueuePerPartition q : qAlloc) {
+    if (Resources.greaterThan(rc,tot_guarant,q.guaranteed,Resources.none())) {
+      nonZeroGuarQueues.add(q);
+    }
+ else {
+      zeroGuarQueues.add(q);
+    }
+  }
+  computeFixpointAllocation(rc,tot_guarant,nonZeroGuarQueues,unassigned,false);
+  if (!zeroGuarQueues.isEmpty() && Resources.greaterThan(rc,tot_guarant,unassigned,Resources.none())) {
+    computeFixpointAllocation(rc,tot_guarant,zeroGuarQueues,unassigned,true);
+  }
+  Resource totPreemptionNeeded=Resource.newInstance(0,0);
+  for (  TempQueuePerPartition t : queues) {
+    if (Resources.greaterThan(rc,tot_guarant,t.current,t.idealAssigned)) {
+      Resources.addTo(totPreemptionNeeded,Resources.subtract(t.current,t.idealAssigned));
+    }
+  }
+  float scalingFactor=1.0F;
+  if (Resources.greaterThan(rc,tot_guarant,totPreemptionNeeded,totalPreemptionAllowed)) {
+    scalingFactor=Resources.divide(rc,tot_guarant,totalPreemptionAllowed,totPreemptionNeeded);
+  }
+  for (  TempQueuePerPartition t : queues) {
+    t.assignPreemption(scalingFactor,rc,tot_guarant);
+  }
+  if (LOG.isDebugEnabled()) {
+    for (    TempQueuePerPartition t : queues) {
+      LOG.debug(t);
+    }
+  }
+}

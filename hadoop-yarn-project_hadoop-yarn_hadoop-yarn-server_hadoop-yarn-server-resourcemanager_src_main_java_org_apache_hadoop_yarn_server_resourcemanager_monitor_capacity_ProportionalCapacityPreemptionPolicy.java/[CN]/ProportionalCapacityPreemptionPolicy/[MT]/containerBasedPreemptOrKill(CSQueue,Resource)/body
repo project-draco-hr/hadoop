@@ -1,52 +1,29 @@
 {
-  Set<String> allPartitions=new HashSet<>();
-  allPartitions.addAll(scheduler.getRMContext().getNodeLabelManager().getClusterNodeLabelNames());
-  allPartitions.add(RMNodeLabelsManager.NO_LABEL);
-  syncKillableContainersFromScheduler();
+  if (lazyPreempionEnabled) {
+    syncKillableContainersFromScheduler();
+  }
+  Set<String> partitions=new HashSet<>();
+  partitions.addAll(scheduler.getRMContext().getNodeLabelManager().getClusterNodeLabelNames());
+  partitions.add(RMNodeLabelsManager.NO_LABEL);
+  this.allPartitions=ImmutableSet.copyOf(partitions);
 synchronized (scheduler) {
     queueToPartitions.clear();
     for (    String partitionToLookAt : allPartitions) {
       cloneQueues(root,nlm.getResourceByLabel(partitionToLookAt,clusterResources),partitionToLookAt);
     }
   }
+  this.leafQueueNames=ImmutableSet.copyOf(getLeafQueueNames(getQueueByPartition(CapacitySchedulerConfiguration.ROOT,RMNodeLabelsManager.NO_LABEL)));
   Resource totalPreemptionAllowed=Resources.multiply(clusterResources,percentageClusterPreemptionAllowed);
-  Set<String> leafQueueNames=null;
-  for (  String partition : allPartitions) {
-    TempQueuePerPartition tRoot=getQueueByPartition(CapacitySchedulerConfiguration.ROOT,partition);
-    tRoot.idealAssigned=tRoot.guaranteed;
-    leafQueueNames=recursivelyComputeIdealAssignment(tRoot,totalPreemptionAllowed);
+  Map<ApplicationAttemptId,Set<RMContainer>> toPreempt=null;
+  for (  PreemptionCandidatesSelector selector : candidatesSelectionPolicies) {
+    toPreempt=selector.selectCandidates(toPreempt,clusterResources,totalPreemptionAllowed);
   }
-  cleanupStaledKillableContainers(clusterResources,leafQueueNames);
-  Map<ApplicationAttemptId,Set<RMContainer>> toPreempt=getContainersToPreempt(leafQueueNames,clusterResources);
   if (LOG.isDebugEnabled()) {
     logToCSV(new ArrayList<>(leafQueueNames));
   }
   if (observeOnly) {
     return;
   }
-  for (  Map.Entry<ApplicationAttemptId,Set<RMContainer>> e : toPreempt.entrySet()) {
-    ApplicationAttemptId appAttemptId=e.getKey();
-    if (LOG.isDebugEnabled()) {
-      LOG.debug("Send to scheduler: in app=" + appAttemptId + " #containers-to-be-preempted="+ e.getValue().size());
-    }
-    for (    RMContainer container : e.getValue()) {
-      if (preempted.get(container) != null && preempted.get(container) + maxWaitTime < clock.getTime()) {
-        rmContext.getDispatcher().getEventHandler().handle(new ContainerPreemptEvent(appAttemptId,container,SchedulerEventType.MARK_CONTAINER_FOR_KILLABLE));
-        preempted.remove(container);
-      }
- else {
-        if (preempted.get(container) != null) {
-          continue;
-        }
-        rmContext.getDispatcher().getEventHandler().handle(new ContainerPreemptEvent(appAttemptId,container,SchedulerEventType.MARK_CONTAINER_FOR_PREEMPTION));
-        preempted.put(container,clock.getTime());
-      }
-    }
-  }
-  for (Iterator<RMContainer> i=preempted.keySet().iterator(); i.hasNext(); ) {
-    RMContainer id=i.next();
-    if (preempted.get(id) + 2 * maxWaitTime < clock.getTime()) {
-      i.remove();
-    }
-  }
+  preemptOrkillSelectedContainerAfterWait(toPreempt);
+  cleanupStaledPreemptionCandidates();
 }

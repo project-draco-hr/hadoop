@@ -1,0 +1,38 @@
+{
+  ApplicationAttemptId appId=app.getApplicationAttemptId();
+  if (LOG.isDebugEnabled()) {
+    LOG.debug("Looking at application=" + app.getApplicationAttemptId() + " resourceToObtain="+ resToObtainByPartition);
+  }
+  List<RMContainer> reservedContainers=new ArrayList<>(app.getReservedContainers());
+  for (  RMContainer c : reservedContainers) {
+    if (CapacitySchedulerPreemptionUtils.isContainerAlreadySelected(c,selectedContainers)) {
+      continue;
+    }
+    if (resToObtainByPartition.isEmpty()) {
+      return;
+    }
+    tryPreemptContainerAndDeductResToObtain(resToObtainByPartition,c,clusterResource,selectedContainers,totalPreemptionAllowed);
+    if (!preemptionContext.isObserveOnly()) {
+      preemptionContext.getRMContext().getDispatcher().getEventHandler().handle(new ContainerPreemptEvent(appId,c,SchedulerEventType.KILL_RESERVED_CONTAINER));
+    }
+  }
+  List<RMContainer> liveContainers=new ArrayList<>(app.getLiveContainers());
+  sortContainers(liveContainers);
+  for (  RMContainer c : liveContainers) {
+    if (resToObtainByPartition.isEmpty()) {
+      return;
+    }
+    if (CapacitySchedulerPreemptionUtils.isContainerAlreadySelected(c,selectedContainers)) {
+      continue;
+    }
+    if (null != preemptionContext.getKillableContainers() && preemptionContext.getKillableContainers().contains(c.getContainerId())) {
+      continue;
+    }
+    if (c.isAMContainer()) {
+      skippedAMContainerlist.add(c);
+      Resources.addTo(skippedAMSize,c.getAllocatedResource());
+      continue;
+    }
+    tryPreemptContainerAndDeductResToObtain(resToObtainByPartition,c,clusterResource,selectedContainers,totalPreemptionAllowed);
+  }
+}
