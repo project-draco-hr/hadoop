@@ -1,5 +1,5 @@
 {
-  final FileSystem fs=FileSystem.get(config);
+  final FileSystem fs=FileSystem.get(getConf());
   Path reduceDir=new Path(baseDir,OUTPUT_DIR_NAME);
   long totalTimeAL1=0l;
   long totalTimeAL2=0l;
@@ -12,40 +12,38 @@
   FileStatus[] fss=fs.listStatus(reduceDir);
   for (  FileStatus status : fss) {
     Path reduceFile=status.getPath();
-    DataInputStream in;
-    in=new DataInputStream(fs.open(reduceFile));
-    BufferedReader lines;
-    lines=new BufferedReader(new InputStreamReader(in));
-    String line;
-    while ((line=lines.readLine()) != null) {
-      StringTokenizer tokens=new StringTokenizer(line," \t\n\r\f%;");
-      String attr=tokens.nextToken();
-      if (attr.endsWith(":totalTimeAL1")) {
-        totalTimeAL1=Long.parseLong(tokens.nextToken());
-      }
- else       if (attr.endsWith(":totalTimeAL2")) {
-        totalTimeAL2=Long.parseLong(tokens.nextToken());
-      }
- else       if (attr.endsWith(":totalTimeTPmS")) {
-        totalTimeTPmS=Long.parseLong(tokens.nextToken());
-      }
- else       if (attr.endsWith(":latemaps")) {
-        lateMaps=Long.parseLong(tokens.nextToken());
-      }
- else       if (attr.endsWith(":numOfExceptions")) {
-        numOfExceptions=Long.parseLong(tokens.nextToken());
-      }
- else       if (attr.endsWith(":successfulFileOps")) {
-        successfulFileOps=Long.parseLong(tokens.nextToken());
-      }
- else       if (attr.endsWith(":mapStartTimeTPmS")) {
-        mapStartTimeTPmS=Long.parseLong(tokens.nextToken());
-      }
- else       if (attr.endsWith(":mapEndTimeTPmS")) {
-        mapEndTimeTPmS=Long.parseLong(tokens.nextToken());
+    try (DataInputStream in=new DataInputStream(fs.open(reduceFile));BufferedReader lines=new BufferedReader(new InputStreamReader(in))){
+      String line;
+      while ((line=lines.readLine()) != null) {
+        StringTokenizer tokens=new StringTokenizer(line," \t\n\r\f%;");
+        String attr=tokens.nextToken();
+        if (attr.endsWith(":totalTimeAL1")) {
+          totalTimeAL1=Long.parseLong(tokens.nextToken());
+        }
+ else         if (attr.endsWith(":totalTimeAL2")) {
+          totalTimeAL2=Long.parseLong(tokens.nextToken());
+        }
+ else         if (attr.endsWith(":totalTimeTPmS")) {
+          totalTimeTPmS=Long.parseLong(tokens.nextToken());
+        }
+ else         if (attr.endsWith(":latemaps")) {
+          lateMaps=Long.parseLong(tokens.nextToken());
+        }
+ else         if (attr.endsWith(":numOfExceptions")) {
+          numOfExceptions=Long.parseLong(tokens.nextToken());
+        }
+ else         if (attr.endsWith(":successfulFileOps")) {
+          successfulFileOps=Long.parseLong(tokens.nextToken());
+        }
+ else         if (attr.endsWith(":mapStartTimeTPmS")) {
+          mapStartTimeTPmS=Long.parseLong(tokens.nextToken());
+        }
+ else         if (attr.endsWith(":mapEndTimeTPmS")) {
+          mapEndTimeTPmS=Long.parseLong(tokens.nextToken());
+        }
       }
     }
-  }
+   }
   double avgLatency1=(double)totalTimeAL1 / successfulFileOps;
   double avgLatency2=(double)totalTimeAL2 / successfulFileOps;
   double longestMapTimeTPmS=(double)(mapEndTimeTPmS - mapStartTimeTPmS);
@@ -80,9 +78,14 @@
     resultALLine1="                  Avg Lat (ms): Delete: " + avgLatency1;
   }
   String resultLines[]={"-------------- NNBench -------------- : ","                               Version: " + NNBENCH_VERSION,"                           Date & time: " + sdf.format(new Date(System.currentTimeMillis())),"","                        Test Operation: " + operation,"                            Start time: " + sdf.format(new Date(startTime)),"                           Maps to run: " + numberOfMaps,"                        Reduces to run: " + numberOfReduces,"                    Block Size (bytes): " + blockSize,"                        Bytes to write: " + bytesToWrite,"                    Bytes per checksum: " + bytesPerChecksum,"                       Number of files: " + numberOfFiles,"                    Replication factor: " + replicationFactorPerFile,"            Successful file operations: " + successfulFileOps,"","        # maps that missed the barrier: " + lateMaps,"                          # exceptions: " + numOfExceptions,"",resultTPSLine1,resultTPSLine2,resultALLine1,resultALLine2,"","                 RAW DATA: AL Total #1: " + totalTimeAL1,"                 RAW DATA: AL Total #2: " + totalTimeAL2,"              RAW DATA: TPS Total (ms): " + totalTimeTPmS,"       RAW DATA: Longest Map Time (ms): " + longestMapTimeTPmS,"                   RAW DATA: Late maps: " + lateMaps,"             RAW DATA: # of exceptions: " + numOfExceptions,""};
-  PrintStream res=new PrintStream(new FileOutputStream(new File(DEFAULT_RES_FILE_NAME),true));
-  for (int i=0; i < resultLines.length; i++) {
-    LOG.info(resultLines[i]);
-    res.println(resultLines[i]);
+  try (PrintStream res=new PrintStream(new FileOutputStream(new File(DEFAULT_RES_FILE_NAME),true))){
+    for (    String resultLine : resultLines) {
+      LOG.info(resultLine);
+      res.println(resultLine);
+    }
   }
+   if (numOfExceptions >= MAX_OPERATION_EXCEPTIONS) {
+    return -1;
+  }
+  return 0;
 }
