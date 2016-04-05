@@ -2,10 +2,21 @@
   Configuration conf=setupCommonConfig();
   conf.set(DFSConfigKeys.DFS_NAMENODE_SHARED_EDITS_DIR_KEY,BKJMUtil.createJournalURI("/checkpointing" + journalCount++).toString());
   BKJMUtil.addJournalManagerDefinition(conf);
-  MiniDFSNNTopology topology=new MiniDFSNNTopology().addNameservice(new MiniDFSNNTopology.NSConf("ns1").addNN(new MiniDFSNNTopology.NNConf("nn1").setHttpPort(10001)).addNN(new MiniDFSNNTopology.NNConf("nn2").setHttpPort(10002)));
-  cluster=new MiniDFSCluster.Builder(conf).nnTopology(topology).numDataNodes(1).manageNameDfsSharedDirs(false).build();
-  cluster.waitActive();
-  setNNs();
-  fs=HATestUtil.configureFailoverFs(cluster,conf);
-  cluster.transitionToActive(0);
+  int retryCount=0;
+  while (true) {
+    try {
+      int basePort=10060 + random.nextInt(100) * 2;
+      MiniDFSNNTopology topology=new MiniDFSNNTopology().addNameservice(new MiniDFSNNTopology.NSConf("ns1").addNN(new MiniDFSNNTopology.NNConf("nn1").setHttpPort(basePort)).addNN(new MiniDFSNNTopology.NNConf("nn2").setHttpPort(basePort + 1)));
+      cluster=new MiniDFSCluster.Builder(conf).nnTopology(topology).numDataNodes(1).manageNameDfsSharedDirs(false).build();
+      cluster.waitActive();
+      setNNs();
+      fs=HATestUtil.configureFailoverFs(cluster,conf);
+      cluster.transitionToActive(0);
+      ++retryCount;
+      break;
+    }
+ catch (    BindException e) {
+      LOG.info("Set up MiniDFSCluster failed due to port conflicts, retry " + retryCount + " times");
+    }
+  }
 }
