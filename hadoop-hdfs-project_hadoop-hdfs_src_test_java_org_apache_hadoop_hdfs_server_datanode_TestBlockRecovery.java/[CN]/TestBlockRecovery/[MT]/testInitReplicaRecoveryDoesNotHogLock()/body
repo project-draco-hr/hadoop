@@ -1,0 +1,65 @@
+{
+  if (LOG.isDebugEnabled()) {
+    LOG.debug("Running " + GenericTestUtils.getMethodName());
+  }
+  Assert.assertEquals(TEST_LOCK_HOG_DFS_DATANODE_XCEIVER_STOP_TIMEOUT_MILLIS,dn.getDnConf().getXceiverStopTimeout());
+  final Semaphore progressParent=new Semaphore(0);
+  final Semaphore terminateSlowWorker=new Semaphore(0);
+  final AtomicBoolean failure=new AtomicBoolean(false);
+  Collection<RecoveringBlock> recoveringBlocks=initRecoveringBlocks();
+  final RecoveringBlock recoveringBlock=Iterators.get(recoveringBlocks.iterator(),0);
+  final ExtendedBlock block=recoveringBlock.getBlock();
+  Thread slowWorker=new Thread(new Runnable(){
+    @Override public void run(){
+      try {
+        LOG.debug("slowWorker creating rbw");
+        ReplicaHandler replicaHandler=spyDN.data.createRbw(StorageType.DISK,block,false);
+        replicaHandler.close();
+        LOG.debug("slowWorker created rbw");
+        progressParent.release();
+        while (true) {
+          try {
+            terminateSlowWorker.acquire();
+            break;
+          }
+ catch (          InterruptedException e) {
+          }
+        }
+        LOG.debug("slowWorker exiting");
+      }
+ catch (      Throwable t) {
+        LOG.error("slowWorker got exception",t);
+        failure.set(true);
+      }
+    }
+  }
+);
+  slowWorker.start();
+  while (true) {
+    try {
+      progressParent.acquire();
+      break;
+    }
+ catch (    InterruptedException e) {
+    }
+  }
+  Thread waitingWorker=new Thread(new Runnable(){
+    @Override public void run(){
+      try {
+        LOG.debug("waitingWorker initiating recovery");
+        spyDN.initReplicaRecovery(recoveringBlock);
+        LOG.debug("waitingWorker initiated recovery");
+      }
+ catch (      Throwable t) {
+        GenericTestUtils.assertExceptionContains("meta does not exist",t);
+      }
+    }
+  }
+);
+  waitingWorker.start();
+  spyDN.getFSDataset().getReplicaString(recoveringBlock.getBlock().getBlockPoolId(),recoveringBlock.getBlock().getBlockId());
+  terminateSlowWorker.release();
+  slowWorker.join();
+  waitingWorker.join();
+  Assert.assertFalse("The slowWriter thread failed.",failure.get());
+}

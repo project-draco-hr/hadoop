@@ -1,20 +1,29 @@
 {
   LOG.info("Recover failed append to " + b);
-  ReplicaInfo replicaInfo=recoverCheck(b,newGS,expectedBlockLen);
-  FsVolumeReference ref=replicaInfo.getVolume().obtainReference();
-  ReplicaBeingWritten replica;
-  try {
-    if (replicaInfo.getState() == ReplicaState.FINALIZED) {
-      replica=append(b.getBlockPoolId(),(FinalizedReplica)replicaInfo,newGS,b.getNumBytes());
-    }
+  while (true) {
+    try {
+synchronized (this) {
+        ReplicaInfo replicaInfo=recoverCheck(b,newGS,expectedBlockLen);
+        FsVolumeReference ref=replicaInfo.getVolume().obtainReference();
+        ReplicaBeingWritten replica;
+        try {
+          if (replicaInfo.getState() == ReplicaState.FINALIZED) {
+            replica=append(b.getBlockPoolId(),(FinalizedReplica)replicaInfo,newGS,b.getNumBytes());
+          }
  else {
-      bumpReplicaGS(replicaInfo,newGS);
-      replica=(ReplicaBeingWritten)replicaInfo;
+            bumpReplicaGS(replicaInfo,newGS);
+            replica=(ReplicaBeingWritten)replicaInfo;
+          }
+        }
+ catch (        IOException e) {
+          IOUtils.cleanup(null,ref);
+          throw e;
+        }
+        return new ReplicaHandler(replica,ref);
+      }
+    }
+ catch (    MustStopExistingWriter e) {
+      e.getReplica().stopWriter(datanode.getDnConf().getXceiverStopTimeout());
     }
   }
- catch (  IOException e) {
-    IOUtils.cleanup(null,ref);
-    throw e;
-  }
-  return new ReplicaHandler(replica,ref);
 }

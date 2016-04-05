@@ -1,9 +1,18 @@
 {
   LOG.info("Recover failed close " + b);
-  ReplicaInfo replicaInfo=recoverCheck(b,newGS,expectedBlockLen);
-  bumpReplicaGS(replicaInfo,newGS);
-  if (replicaInfo.getState() == ReplicaState.RBW) {
-    finalizeReplica(b.getBlockPoolId(),replicaInfo);
+  while (true) {
+    try {
+synchronized (this) {
+        ReplicaInfo replicaInfo=recoverCheck(b,newGS,expectedBlockLen);
+        bumpReplicaGS(replicaInfo,newGS);
+        if (replicaInfo.getState() == ReplicaState.RBW) {
+          finalizeReplica(b.getBlockPoolId(),replicaInfo);
+        }
+        return replicaInfo;
+      }
+    }
+ catch (    MustStopExistingWriter e) {
+      e.getReplica().stopWriter(datanode.getDnConf().getXceiverStopTimeout());
+    }
   }
-  return replicaInfo;
 }

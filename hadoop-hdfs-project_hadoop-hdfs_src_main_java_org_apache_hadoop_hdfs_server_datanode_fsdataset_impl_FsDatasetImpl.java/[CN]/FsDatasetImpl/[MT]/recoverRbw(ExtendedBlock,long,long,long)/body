@@ -1,35 +1,22 @@
 {
   LOG.info("Recover RBW replica " + b);
-  ReplicaInfo replicaInfo=getReplicaInfo(b.getBlockPoolId(),b.getBlockId());
-  if (replicaInfo.getState() != ReplicaState.RBW) {
-    throw new ReplicaNotFoundException(ReplicaNotFoundException.NON_RBW_REPLICA + replicaInfo);
-  }
-  ReplicaBeingWritten rbw=(ReplicaBeingWritten)replicaInfo;
-  LOG.info("Recovering " + rbw);
-  rbw.stopWriter(datanode.getDnConf().getXceiverStopTimeout());
-  rbw.setWriter(Thread.currentThread());
-  long replicaGenerationStamp=rbw.getGenerationStamp();
-  if (replicaGenerationStamp < b.getGenerationStamp() || replicaGenerationStamp > newGS) {
-    throw new ReplicaNotFoundException(ReplicaNotFoundException.UNEXPECTED_GS_REPLICA + b + ". Expected GS range is ["+ b.getGenerationStamp()+ ", "+ newGS+ "].");
-  }
-  long bytesAcked=rbw.getBytesAcked();
-  long numBytes=rbw.getNumBytes();
-  if (bytesAcked < minBytesRcvd || numBytes > maxBytesRcvd) {
-    throw new ReplicaNotFoundException("Unmatched length replica " + replicaInfo + ": BytesAcked = "+ bytesAcked+ " BytesRcvd = "+ numBytes+ " are not in the range of ["+ minBytesRcvd+ ", "+ maxBytesRcvd+ "].");
-  }
-  FsVolumeReference ref=rbw.getVolume().obtainReference();
-  try {
-    if (numBytes > bytesAcked) {
-      final File replicafile=rbw.getBlockFile();
-      truncateBlock(replicafile,rbw.getMetaFile(),numBytes,bytesAcked);
-      rbw.setNumBytes(bytesAcked);
-      rbw.setLastChecksumAndDataLen(bytesAcked,null);
+  while (true) {
+    try {
+synchronized (this) {
+        ReplicaInfo replicaInfo=getReplicaInfo(b.getBlockPoolId(),b.getBlockId());
+        if (replicaInfo.getState() != ReplicaState.RBW) {
+          throw new ReplicaNotFoundException(ReplicaNotFoundException.NON_RBW_REPLICA + replicaInfo);
+        }
+        ReplicaBeingWritten rbw=(ReplicaBeingWritten)replicaInfo;
+        if (!rbw.attemptToSetWriter(null,Thread.currentThread())) {
+          throw new MustStopExistingWriter(rbw);
+        }
+        LOG.info("Recovering " + rbw);
+        return recoverRbwImpl(rbw,b,newGS,minBytesRcvd,maxBytesRcvd);
+      }
     }
-    bumpReplicaGS(rbw,newGS);
+ catch (    MustStopExistingWriter e) {
+      e.getReplica().stopWriter(datanode.getDnConf().getXceiverStopTimeout());
+    }
   }
- catch (  IOException e) {
-    IOUtils.cleanup(null,ref);
-    throw e;
-  }
-  return new ReplicaHandler(rbw,ref);
 }
