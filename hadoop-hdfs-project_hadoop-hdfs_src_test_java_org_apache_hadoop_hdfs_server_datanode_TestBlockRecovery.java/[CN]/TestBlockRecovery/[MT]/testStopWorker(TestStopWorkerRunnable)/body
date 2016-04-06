@@ -1,0 +1,56 @@
+{
+  LOG.debug("Running " + currentTestName.getMethodName());
+  Assert.assertEquals(TEST_STOP_WORKER_XCEIVER_STOP_TIMEOUT_MILLIS,dn.getDnConf().getXceiverStopTimeout());
+  final TestStopWorkerSemaphore progressParent=new TestStopWorkerSemaphore();
+  final TestStopWorkerSemaphore terminateSlowWriter=new TestStopWorkerSemaphore();
+  final AtomicReference<String> failure=new AtomicReference<String>(null);
+  Collection<RecoveringBlock> recoveringBlocks=initRecoveringBlocks();
+  final RecoveringBlock recoveringBlock=Iterators.get(recoveringBlocks.iterator(),0);
+  final ExtendedBlock block=recoveringBlock.getBlock();
+  Thread slowWriterThread=new Thread(new Runnable(){
+    @Override public void run(){
+      try {
+        LOG.debug("slowWriter creating rbw");
+        ReplicaHandler replicaHandler=spyDN.data.createRbw(StorageType.DISK,block,false);
+        replicaHandler.close();
+        LOG.debug("slowWriter created rbw");
+        progressParent.sem.release();
+        terminateSlowWriter.uninterruptiblyAcquire(60000);
+        LOG.debug("slowWriter exiting");
+      }
+ catch (      Throwable t) {
+        LOG.error("slowWriter got exception",t);
+        failure.compareAndSet(null,"slowWriter got exception " + t.getMessage());
+      }
+    }
+  }
+);
+  slowWriterThread.start();
+  progressParent.uninterruptiblyAcquire(60000);
+  Thread stopWriterThread=new Thread(new Runnable(){
+    @Override public void run(){
+      try {
+        LOG.debug("initiating " + tswr.opName());
+        tswr.run(recoveringBlock);
+        LOG.debug("finished " + tswr.opName());
+      }
+ catch (      Throwable t) {
+        LOG.error("stopWriterThread got unexpected exception for " + tswr.opName(),t);
+        failure.compareAndSet(null,"stopWriterThread got unexpected " + "exception for " + tswr.opName() + ": "+ t.getMessage());
+      }
+    }
+  }
+);
+  stopWriterThread.start();
+  while (!terminateSlowWriter.gotInterruption.get()) {
+    Thread.sleep(1);
+  }
+  spyDN.getFSDataset().getReplicaString(recoveringBlock.getBlock().getBlockPoolId(),recoveringBlock.getBlock().getBlockId());
+  terminateSlowWriter.sem.release();
+  slowWriterThread.join();
+  stopWriterThread.join();
+  String failureReason=failure.get();
+  if (failureReason != null) {
+    Assert.fail("Thread failure: " + failureReason);
+  }
+}
