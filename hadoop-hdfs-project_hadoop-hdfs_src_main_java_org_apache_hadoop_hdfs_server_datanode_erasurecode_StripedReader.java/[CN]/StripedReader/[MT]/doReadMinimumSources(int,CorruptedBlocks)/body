@@ -1,0 +1,56 @@
+{
+  Preconditions.checkArgument(reconstructLength >= 0 && reconstructLength <= bufferSize);
+  int nSuccess=0;
+  int[] newSuccess=new int[minRequiredSources];
+  BitSet usedFlag=new BitSet(sources.length);
+  for (int i=0; i < minRequiredSources; i++) {
+    StripedBlockReader reader=readers.get(successList[i]);
+    int toRead=getReadLength(liveIndices[successList[i]],reconstructLength);
+    if (toRead > 0) {
+      Callable<Void> readCallable=reader.readFromBlock(toRead,corruptedBlocks);
+      Future<Void> f=readService.submit(readCallable);
+      futures.put(f,successList[i]);
+    }
+ else {
+      reader.getReadBuffer().position(0);
+      newSuccess[nSuccess++]=successList[i];
+    }
+    usedFlag.set(successList[i]);
+  }
+  while (!futures.isEmpty()) {
+    try {
+      StripingChunkReadResult result=StripedBlockUtil.getNextCompletedStripedRead(readService,futures,stripedReadTimeoutInMills);
+      int resultIndex=-1;
+      if (result.state == StripingChunkReadResult.SUCCESSFUL) {
+        resultIndex=result.index;
+      }
+ else       if (result.state == StripingChunkReadResult.FAILED) {
+        StripedBlockReader failedReader=readers.get(result.index);
+        failedReader.closeBlockReader();
+        resultIndex=scheduleNewRead(usedFlag,reconstructLength,corruptedBlocks);
+      }
+ else       if (result.state == StripingChunkReadResult.TIMEOUT) {
+        resultIndex=scheduleNewRead(usedFlag,reconstructLength,corruptedBlocks);
+      }
+      if (resultIndex >= 0) {
+        newSuccess[nSuccess++]=resultIndex;
+        if (nSuccess >= minRequiredSources) {
+          cancelReads(futures.keySet());
+          futures.clear();
+          break;
+        }
+      }
+    }
+ catch (    InterruptedException e) {
+      LOG.info("Read data interrupted.",e);
+      cancelReads(futures.keySet());
+      futures.clear();
+      break;
+    }
+  }
+  if (nSuccess < minRequiredSources) {
+    String error="Can't read data from minimum number of sources " + "required by reconstruction, block id: " + reconstructor.getBlockGroup().getBlockId();
+    throw new IOException(error);
+  }
+  return newSuccess;
+}

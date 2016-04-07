@@ -1,0 +1,24 @@
+{
+  stripedReadTimeoutInMills=conf.getInt(DFSConfigKeys.DFS_DN_EC_RECONSTRUCTION_STRIPED_READ_TIMEOUT_MILLIS_KEY,DFSConfigKeys.DFS_DN_EC_RECONSTRUCTION_STRIPED_READ_TIMEOUT_MILLIS_DEFAULT);
+  stripedReadBufferSize=conf.getInt(DFSConfigKeys.DFS_DN_EC_RECONSTRUCTION_STRIPED_READ_BUFFER_SIZE_KEY,DFSConfigKeys.DFS_DN_EC_RECONSTRUCTION_STRIPED_READ_BUFFER_SIZE_DEFAULT);
+  this.reconstructor=reconstructor;
+  this.datanode=datanode;
+  this.conf=conf;
+  ErasureCodingPolicy ecPolicy=reconstructionInfo.getErasureCodingPolicy();
+  dataBlkNum=ecPolicy.getNumDataUnits();
+  parityBlkNum=ecPolicy.getNumParityUnits();
+  ExtendedBlock blockGroup=reconstructionInfo.getExtendedBlock();
+  int cellsNum=(int)((blockGroup.getNumBytes() - 1) / ecPolicy.getCellSize() + 1);
+  minRequiredSources=Math.min(cellsNum,dataBlkNum);
+  if (minRequiredSources < dataBlkNum) {
+    int zeroStripNum=dataBlkNum - minRequiredSources;
+    zeroStripeBuffers=new ByteBuffer[zeroStripNum];
+    zeroStripeIndices=new short[zeroStripNum];
+  }
+  liveIndices=reconstructionInfo.getLiveBlockIndices();
+  sources=reconstructionInfo.getSourceDnInfos();
+  readers=new ArrayList<>(sources.length);
+  readService=reconstructor.createReadService();
+  Preconditions.checkArgument(liveIndices.length >= minRequiredSources,"No enough live striped blocks.");
+  Preconditions.checkArgument(liveIndices.length == sources.length,"liveBlockIndices and source datanodes should match");
+}

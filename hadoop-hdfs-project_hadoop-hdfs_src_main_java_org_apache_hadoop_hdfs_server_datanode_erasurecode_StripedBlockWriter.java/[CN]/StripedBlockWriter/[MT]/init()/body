@@ -1,0 +1,35 @@
+{
+  Socket socket=null;
+  DataOutputStream out=null;
+  DataInputStream in=null;
+  boolean success=false;
+  try {
+    InetSocketAddress targetAddr=stripedWriter.getSocketAddress4Transfer(target);
+    socket=datanode.newSocket();
+    NetUtils.connect(socket,targetAddr,datanode.getDnConf().getSocketTimeout());
+    socket.setSoTimeout(datanode.getDnConf().getSocketTimeout());
+    Token<BlockTokenIdentifier> blockToken=datanode.getBlockAccessToken(block,EnumSet.of(BlockTokenIdentifier.AccessMode.WRITE));
+    long writeTimeout=datanode.getDnConf().getSocketWriteTimeout();
+    OutputStream unbufOut=NetUtils.getOutputStream(socket,writeTimeout);
+    InputStream unbufIn=NetUtils.getInputStream(socket);
+    DataEncryptionKeyFactory keyFactory=datanode.getDataEncryptionKeyFactoryForBlock(block);
+    IOStreamPair saslStreams=datanode.getSaslClient().socketSend(socket,unbufOut,unbufIn,keyFactory,blockToken,target);
+    unbufOut=saslStreams.out;
+    unbufIn=saslStreams.in;
+    out=new DataOutputStream(new BufferedOutputStream(unbufOut,DFSUtilClient.getSmallBufferSize(conf)));
+    in=new DataInputStream(unbufIn);
+    DatanodeInfo source=new DatanodeInfo(datanode.getDatanodeId());
+    new Sender(out).writeBlock(block,storageType,blockToken,"",new DatanodeInfo[]{target},new StorageType[]{storageType},source,BlockConstructionStage.PIPELINE_SETUP_CREATE,0,0,0,0,stripedWriter.getChecksum(),stripedWriter.getCachingStrategy(),false,false,null);
+    targetSocket=socket;
+    targetOutputStream=out;
+    targetInputStream=in;
+    success=true;
+  }
+  finally {
+    if (!success) {
+      IOUtils.closeStream(out);
+      IOUtils.closeStream(in);
+      IOUtils.closeStream(socket);
+    }
+  }
+}
