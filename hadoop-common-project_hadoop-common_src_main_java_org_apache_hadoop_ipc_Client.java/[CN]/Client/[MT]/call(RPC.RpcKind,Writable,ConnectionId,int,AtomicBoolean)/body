@@ -1,6 +1,6 @@
 {
   final Call call=createCall(rpcKind,rpcRequest);
-  Connection connection=getConnection(remoteId,call,serviceClass,fallbackToSimpleAuth);
+  final Connection connection=getConnection(remoteId,call,serviceClass,fallbackToSimpleAuth);
   try {
     connection.sendRpcRequest(call);
   }
@@ -12,28 +12,23 @@ catch (  InterruptedException e) {
     LOG.warn("interrupted waiting to send rpc request to server",e);
     throw new IOException(e);
   }
-synchronized (call) {
-    while (!call.done) {
-      try {
-        call.wait();
-      }
- catch (      InterruptedException ie) {
-        Thread.currentThread().interrupt();
-        throw new InterruptedIOException("Call interrupted");
+  if (isAsynchronousMode()) {
+    Future<Writable> returnFuture=new AbstractFuture<Writable>(){
+      @Override public Writable get() throws InterruptedException, ExecutionException {
+        try {
+          set(getRpcResponse(call,connection));
+        }
+ catch (        IOException ie) {
+          setException(ie);
+        }
+        return super.get();
       }
     }
-    if (call.error != null) {
-      if (call.error instanceof RemoteException) {
-        call.error.fillInStackTrace();
-        throw call.error;
-      }
+;
+    returnValue.set(returnFuture);
+    return null;
+  }
  else {
-        InetSocketAddress address=connection.getRemoteAddress();
-        throw NetUtils.wrapException(address.getHostName(),address.getPort(),NetUtils.getHostname(),0,call.error);
-      }
-    }
- else {
-      return call.getRpcResponse();
-    }
+    return getRpcResponse(call,connection);
   }
 }

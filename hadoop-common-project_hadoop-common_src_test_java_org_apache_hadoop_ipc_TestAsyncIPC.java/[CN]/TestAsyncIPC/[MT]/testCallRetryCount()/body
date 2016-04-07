@@ -1,0 +1,25 @@
+{
+  final int retryCount=255;
+  final Client client=new Client(LongWritable.class,conf);
+  Client.setCallIdAndRetryCount(Client.nextCallId(),retryCount);
+  final TestServer server=new TestIPC.TestServer(1,false,conf);
+  server.callListener=new Runnable(){
+    @Override public void run(){
+      Assert.assertEquals(retryCount,Server.getCallRetryCount());
+    }
+  }
+;
+  try {
+    InetSocketAddress addr=NetUtils.getConnectAddress(server);
+    server.start();
+    final SerialCaller caller=new SerialCaller(client,addr,10);
+    caller.run();
+    caller.waitForReturnValues();
+    String msg=String.format("Expected not failed for caller: %s.",caller);
+    assertFalse(msg,caller.failed);
+  }
+  finally {
+    client.stop();
+    server.stop();
+  }
+}
