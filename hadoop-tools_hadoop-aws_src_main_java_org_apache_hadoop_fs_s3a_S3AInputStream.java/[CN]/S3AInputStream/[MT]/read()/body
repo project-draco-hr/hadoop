@@ -1,18 +1,16 @@
 {
   checkNotClosed();
-  openIfNeeded();
+  if (this.contentLength == 0 || (nextReadPos >= contentLength)) {
+    return -1;
+  }
+  lazySeek(nextReadPos,1);
   int byteRead;
   try {
     byteRead=wrappedStream.read();
   }
- catch (  SocketTimeoutException e) {
-    LOG.info("Got timeout while trying to read from stream, trying to recover " + e);
-    reopen(pos);
-    byteRead=wrappedStream.read();
-  }
-catch (  SocketException e) {
-    LOG.info("Got socket exception while trying to read from stream, trying to recover " + e);
-    reopen(pos);
+ catch (  SocketTimeoutException|SocketException e) {
+    LOG.info("Got exception while trying to read from stream," + " trying to recover " + e);
+    reopen(pos,1);
     byteRead=wrappedStream.read();
   }
 catch (  EOFException e) {
@@ -20,6 +18,7 @@ catch (  EOFException e) {
   }
   if (byteRead >= 0) {
     pos++;
+    nextReadPos++;
   }
   if (stats != null && byteRead >= 0) {
     stats.incrementBytesRead(1);
