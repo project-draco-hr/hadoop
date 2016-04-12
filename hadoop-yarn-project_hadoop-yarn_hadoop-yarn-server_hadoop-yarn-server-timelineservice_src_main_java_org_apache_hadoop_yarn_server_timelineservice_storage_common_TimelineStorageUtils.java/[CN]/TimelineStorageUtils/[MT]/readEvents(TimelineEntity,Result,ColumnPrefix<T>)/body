@@ -1,0 +1,29 @@
+{
+  Map<String,TimelineEvent> eventsMap=new HashMap<>();
+  Map<?,Object> eventsResult=prefix.readResultsHavingCompoundColumnQualifiers(result);
+  for (  Map.Entry<?,Object> eventResult : eventsResult.entrySet()) {
+    byte[][] karr=(byte[][])eventResult.getKey();
+    if (karr.length == 3) {
+      String id=Bytes.toString(karr[0]);
+      long ts=TimelineStorageUtils.invertLong(Bytes.toLong(karr[1]));
+      String key=Separator.VALUES.joinEncoded(id,Long.toString(ts));
+      TimelineEvent event=eventsMap.get(key);
+      if (event == null) {
+        event=new TimelineEvent();
+        event.setId(id);
+        event.setTimestamp(ts);
+        eventsMap.put(key,event);
+      }
+      String infoKey=karr[2].length == 0 ? null : Bytes.toString(karr[2]);
+      if (infoKey != null) {
+        event.addInfo(infoKey,eventResult.getValue());
+      }
+    }
+ else {
+      LOG.warn("incorrectly formatted column name: it will be discarded");
+      continue;
+    }
+  }
+  Set<TimelineEvent> eventsSet=new HashSet<>(eventsMap.values());
+  entity.addEvents(eventsSet);
+}

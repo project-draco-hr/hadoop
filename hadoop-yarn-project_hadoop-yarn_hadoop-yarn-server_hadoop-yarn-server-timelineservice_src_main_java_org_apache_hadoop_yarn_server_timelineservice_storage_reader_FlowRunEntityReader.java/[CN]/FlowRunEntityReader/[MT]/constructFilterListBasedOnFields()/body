@@ -2,17 +2,22 @@
   FilterList list=new FilterList(Operator.MUST_PASS_ONE);
   FamilyFilter infoColumnFamily=new FamilyFilter(CompareOp.EQUAL,new BinaryComparator(FlowRunColumnFamily.INFO.getBytes()));
   TimelineDataToRetrieve dataToRetrieve=getDataToRetrieve();
-  if (!isSingleEntityRead() && !dataToRetrieve.getFieldsToRetrieve().contains(Field.METRICS) && !dataToRetrieve.getFieldsToRetrieve().contains(Field.ALL)) {
+  if (!isSingleEntityRead() && !TimelineStorageUtils.hasField(dataToRetrieve.getFieldsToRetrieve(),Field.METRICS)) {
     FilterList infoColFamilyList=new FilterList(Operator.MUST_PASS_ONE);
     infoColFamilyList.addFilter(infoColumnFamily);
     infoColFamilyList.addFilter(new QualifierFilter(CompareOp.NOT_EQUAL,new BinaryPrefixComparator(FlowRunColumnPrefix.METRIC.getColumnPrefixBytes(""))));
     list.addFilter(infoColFamilyList);
   }
-  if (dataToRetrieve.getMetricsToRetrieve() != null && !dataToRetrieve.getMetricsToRetrieve().getFilterList().isEmpty()) {
-    FilterList infoColFamilyList=new FilterList();
-    infoColFamilyList.addFilter(infoColumnFamily);
-    infoColFamilyList.addFilter(TimelineFilterUtils.createHBaseFilterList(FlowRunColumnPrefix.METRIC,dataToRetrieve.getMetricsToRetrieve()));
-    list.addFilter(infoColFamilyList);
+ else {
+    TimelineFilterList metricsToRetrieve=dataToRetrieve.getMetricsToRetrieve();
+    if (metricsToRetrieve != null && !metricsToRetrieve.getFilterList().isEmpty()) {
+      FilterList infoColFamilyList=new FilterList();
+      infoColFamilyList.addFilter(infoColumnFamily);
+      FilterList columnsList=updateFixedColumns();
+      columnsList.addFilter(TimelineFilterUtils.createHBaseFilterList(FlowRunColumnPrefix.METRIC,metricsToRetrieve));
+      infoColFamilyList.addFilter(columnsList);
+      list.addFilter(infoColFamilyList);
+    }
   }
   return list;
 }

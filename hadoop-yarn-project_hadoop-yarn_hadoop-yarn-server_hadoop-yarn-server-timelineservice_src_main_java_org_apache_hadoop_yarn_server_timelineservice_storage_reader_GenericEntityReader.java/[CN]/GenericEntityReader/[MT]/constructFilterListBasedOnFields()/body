@@ -1,39 +1,18 @@
 {
-  FilterList list=new FilterList(Operator.MUST_PASS_ONE);
-  TimelineDataToRetrieve dataToRetrieve=getDataToRetrieve();
-  if (dataToRetrieve.getFieldsToRetrieve().contains(Field.ALL) && (dataToRetrieve.getConfsToRetrieve() == null || dataToRetrieve.getConfsToRetrieve().getFilterList().isEmpty()) && (dataToRetrieve.getMetricsToRetrieve() == null || dataToRetrieve.getMetricsToRetrieve().getFilterList().isEmpty())) {
-    return list;
+  if (!needCreateFilterListBasedOnFields()) {
+    return null;
   }
+  FilterList listBasedOnFields=new FilterList(Operator.MUST_PASS_ONE);
   FilterList infoColFamilyList=new FilterList();
   FamilyFilter infoColumnFamily=new FamilyFilter(CompareOp.EQUAL,new BinaryComparator(EntityColumnFamily.INFO.getBytes()));
   infoColFamilyList.addFilter(infoColumnFamily);
-  TimelineEntityFilters filters=getFilters();
-  if (!dataToRetrieve.getFieldsToRetrieve().contains(Field.EVENTS) && !dataToRetrieve.getFieldsToRetrieve().contains(Field.ALL) && (isSingleEntityRead() || filters.getEventFilters() == null)) {
-    infoColFamilyList.addFilter(new QualifierFilter(CompareOp.NOT_EQUAL,new BinaryPrefixComparator(EntityColumnPrefix.EVENT.getColumnPrefixBytes(""))));
+  if (!isSingleEntityRead() && fetchPartialColsFromInfoFamily()) {
+    infoColFamilyList.addFilter(createFilterListForColsOfInfoFamily());
   }
-  if (!dataToRetrieve.getFieldsToRetrieve().contains(Field.INFO) && !dataToRetrieve.getFieldsToRetrieve().contains(Field.ALL) && (isSingleEntityRead() || filters.getInfoFilters() == null)) {
-    infoColFamilyList.addFilter(new QualifierFilter(CompareOp.NOT_EQUAL,new BinaryPrefixComparator(EntityColumnPrefix.INFO.getColumnPrefixBytes(""))));
+ else {
+    excludeFieldsFromInfoColFamily(infoColFamilyList);
   }
-  if (!dataToRetrieve.getFieldsToRetrieve().contains(Field.IS_RELATED_TO) && !dataToRetrieve.getFieldsToRetrieve().contains(Field.ALL) && (isSingleEntityRead() || filters.getIsRelatedTo() == null)) {
-    infoColFamilyList.addFilter(new QualifierFilter(CompareOp.NOT_EQUAL,new BinaryPrefixComparator(EntityColumnPrefix.IS_RELATED_TO.getColumnPrefixBytes(""))));
-  }
-  if (!dataToRetrieve.getFieldsToRetrieve().contains(Field.RELATES_TO) && !dataToRetrieve.getFieldsToRetrieve().contains(Field.ALL) && (isSingleEntityRead() || filters.getRelatesTo() == null)) {
-    infoColFamilyList.addFilter(new QualifierFilter(CompareOp.NOT_EQUAL,new BinaryPrefixComparator(EntityColumnPrefix.RELATES_TO.getColumnPrefixBytes(""))));
-  }
-  list.addFilter(infoColFamilyList);
-  if ((dataToRetrieve.getFieldsToRetrieve().contains(Field.CONFIGS) || (!isSingleEntityRead() && filters.getConfigFilters() != null)) || (dataToRetrieve.getConfsToRetrieve() != null && !dataToRetrieve.getConfsToRetrieve().getFilterList().isEmpty())) {
-    FilterList filterCfg=new FilterList(new FamilyFilter(CompareOp.EQUAL,new BinaryComparator(EntityColumnFamily.CONFIGS.getBytes())));
-    if (dataToRetrieve.getConfsToRetrieve() != null && !dataToRetrieve.getConfsToRetrieve().getFilterList().isEmpty()) {
-      filterCfg.addFilter(TimelineFilterUtils.createHBaseFilterList(EntityColumnPrefix.CONFIG,dataToRetrieve.getConfsToRetrieve()));
-    }
-    list.addFilter(filterCfg);
-  }
-  if ((dataToRetrieve.getFieldsToRetrieve().contains(Field.METRICS) || (!isSingleEntityRead() && filters.getMetricFilters() != null)) || (dataToRetrieve.getMetricsToRetrieve() != null && !dataToRetrieve.getMetricsToRetrieve().getFilterList().isEmpty())) {
-    FilterList filterMetrics=new FilterList(new FamilyFilter(CompareOp.EQUAL,new BinaryComparator(EntityColumnFamily.METRICS.getBytes())));
-    if (dataToRetrieve.getMetricsToRetrieve() != null && !dataToRetrieve.getMetricsToRetrieve().getFilterList().isEmpty()) {
-      filterMetrics.addFilter(TimelineFilterUtils.createHBaseFilterList(EntityColumnPrefix.METRIC,dataToRetrieve.getMetricsToRetrieve()));
-    }
-    list.addFilter(filterMetrics);
-  }
-  return list;
+  listBasedOnFields.addFilter(infoColFamilyList);
+  updateFilterForConfsAndMetricsToRetrieve(listBasedOnFields);
+  return listBasedOnFields;
 }

@@ -1,9 +1,8 @@
 {
-  String cluster="testWriteFlowRunMetricsOneFlow_cluster1";
-  String user="testWriteFlowRunMetricsOneFlow_user1";
-  String flow="testing_flowRun_metrics_flow_name";
+  String cluster="testWriteFlowRunMetricsPrefix_cluster1";
+  String user="testWriteFlowRunMetricsPrefix_user1";
+  String flow="testWriteFlowRunMetricsPrefix_flow_name";
   String flowVersion="CF7022C10F1354";
-  long runid=1002345678919L;
   TimelineEntities te=new TimelineEntities();
   TimelineEntity entityApp1=TestFlowDataGenerator.getEntityMetricsApp1(System.currentTimeMillis());
   te.addEntity(entityApp1);
@@ -13,25 +12,24 @@
     hbi=new HBaseTimelineWriterImpl(c1);
     hbi.init(c1);
     String appName="application_11111111111111_1111";
-    hbi.write(cluster,user,flow,flowVersion,runid,appName,te);
+    hbi.write(cluster,user,flow,flowVersion,1002345678919L,appName,te);
     te=new TimelineEntities();
     TimelineEntity entityApp2=TestFlowDataGenerator.getEntityMetricsApp2(System.currentTimeMillis());
     te.addEntity(entityApp2);
     appName="application_11111111111111_2222";
-    hbi.write(cluster,user,flow,flowVersion,runid,appName,te);
+    hbi.write(cluster,user,flow,flowVersion,1002345678918L,appName,te);
     hbi.flush();
   }
   finally {
     hbi.close();
   }
-  checkFlowRunTable(cluster,user,flow,runid,c1);
   HBaseTimelineReaderImpl hbr=null;
   try {
     hbr=new HBaseTimelineReaderImpl();
     hbr.init(c1);
     hbr.start();
-    TimelineFilterList metricsToRetrieve=new TimelineFilterList(new TimelinePrefixFilter(TimelineCompareOp.EQUAL,metric1.substring(0,metric1.indexOf("_") + 1)));
-    TimelineEntity entity=hbr.getEntity(new TimelineReaderContext(cluster,user,flow,runid,null,TimelineEntityType.YARN_FLOW_RUN.toString(),null),new TimelineDataToRetrieve(null,metricsToRetrieve,null));
+    TimelineFilterList metricsToRetrieve=new TimelineFilterList(Operator.OR,new TimelinePrefixFilter(TimelineCompareOp.EQUAL,metric1.substring(0,metric1.indexOf("_") + 1)));
+    TimelineEntity entity=hbr.getEntity(new TimelineReaderContext(cluster,user,flow,1002345678919L,null,TimelineEntityType.YARN_FLOW_RUN.toString(),null),new TimelineDataToRetrieve(null,metricsToRetrieve,null));
     assertTrue(TimelineEntityType.YARN_FLOW_RUN.matches(entity.getType()));
     Set<TimelineMetric> metrics=entity.getMetrics();
     assertEquals(1,metrics.size());
@@ -45,34 +43,19 @@
       }
 switch (id) {
 case metric1:
-        assertEquals(141L,value);
+        assertEquals(40L,value);
       break;
 default :
     fail("unrecognized metric: " + id);
 }
 }
-Set<TimelineEntity> entities=hbr.getEntities(new TimelineReaderContext(cluster,user,flow,runid,null,TimelineEntityType.YARN_FLOW_RUN.toString(),null),new TimelineEntityFilters(),new TimelineDataToRetrieve(null,metricsToRetrieve,null));
-assertEquals(1,entities.size());
+Set<TimelineEntity> entities=hbr.getEntities(new TimelineReaderContext(cluster,user,flow,null,null,TimelineEntityType.YARN_FLOW_RUN.toString(),null),new TimelineEntityFilters(),new TimelineDataToRetrieve(null,metricsToRetrieve,null));
+assertEquals(2,entities.size());
+int metricCnt=0;
 for (TimelineEntity timelineEntity : entities) {
-Set<TimelineMetric> timelineMetrics=timelineEntity.getMetrics();
-assertEquals(1,timelineMetrics.size());
-for (TimelineMetric metric : timelineMetrics) {
-  String id=metric.getId();
-  Map<Long,Number> values=metric.getValues();
-  assertEquals(1,values.size());
-  Number value=null;
-  for (  Number n : values.values()) {
-    value=n;
-  }
-switch (id) {
-case metric1:
-    assertEquals(141L,value);
-  break;
-default :
-fail("unrecognized metric: " + id);
+metricCnt+=timelineEntity.getMetrics().size();
 }
-}
-}
+assertEquals(2,metricCnt);
 }
   finally {
 hbr.close();
