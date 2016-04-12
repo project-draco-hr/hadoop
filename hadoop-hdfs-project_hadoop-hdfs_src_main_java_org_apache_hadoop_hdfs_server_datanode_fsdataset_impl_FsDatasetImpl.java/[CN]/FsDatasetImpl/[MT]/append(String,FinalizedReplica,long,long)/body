@@ -3,12 +3,13 @@
   replicaInfo.breakHardLinksIfNeeded();
   File blkfile=replicaInfo.getBlockFile();
   FsVolumeImpl v=(FsVolumeImpl)replicaInfo.getVolume();
-  if (v.getAvailable() < estimateBlockLen - replicaInfo.getNumBytes()) {
+  long bytesReserved=estimateBlockLen - replicaInfo.getNumBytes();
+  if (v.getAvailable() < bytesReserved) {
     throw new DiskOutOfSpaceException("Insufficient space for appending to " + replicaInfo);
   }
   File newBlkFile=new File(v.getRbwDir(bpid),replicaInfo.getBlockName());
   File oldmeta=replicaInfo.getMetaFile();
-  ReplicaBeingWritten newReplicaInfo=new ReplicaBeingWritten(replicaInfo.getBlockId(),replicaInfo.getNumBytes(),newGS,v,newBlkFile.getParentFile(),Thread.currentThread(),estimateBlockLen);
+  ReplicaBeingWritten newReplicaInfo=new ReplicaBeingWritten(replicaInfo.getBlockId(),replicaInfo.getNumBytes(),newGS,v,newBlkFile.getParentFile(),Thread.currentThread(),bytesReserved);
   File newmeta=newReplicaInfo.getMetaFile();
   if (LOG.isDebugEnabled()) {
     LOG.debug("Renaming " + oldmeta + " to "+ newmeta);
@@ -35,6 +36,6 @@
     throw new IOException("Block " + replicaInfo + " reopen failed. "+ " Unable to move block file "+ blkfile+ " to rbw dir "+ newBlkFile,e);
   }
   volumeMap.add(bpid,newReplicaInfo);
-  v.reserveSpaceForReplica(estimateBlockLen - replicaInfo.getNumBytes());
+  v.reserveSpaceForReplica(bytesReserved);
   return newReplicaInfo;
 }
