@@ -1,0 +1,33 @@
+{
+  LOG.info("Starting test testWithMultipleInServiceAndDecommnDatanodes");
+  int lbsCount=2;
+  List<Integer> decommnNodeIndices=new ArrayList<>();
+  decommnNodeIndices.add(0);
+  decommnNodeIndices.add(1);
+  decommnNodeIndices.add(7);
+  decommnNodeIndices.add(8);
+  List<Integer> targetNodeIndices=new ArrayList<>();
+  targetNodeIndices.addAll(decommnNodeIndices);
+  targetNodeIndices.add(1);
+  HashMap<Integer,List<String>> decommissionedNodes=new HashMap<>(lbsCount * decommnNodeIndices.size());
+  List<LocatedBlock> lbs=createLocatedStripedBlocks(lbsCount,NUM_DATA_BLOCKS,NUM_PARITY_BLOCKS,decommnNodeIndices,targetNodeIndices,decommissionedNodes);
+  List<DatanodeInfo> staleDns=new ArrayList<>();
+  for (  LocatedBlock lb : lbs) {
+    DatanodeInfo[] locations=lb.getLocations();
+    DatanodeInfo staleDn=locations[locations.length - 1];
+    staleDn.setLastUpdateMonotonic(Time.monotonicNow() - (STALE_INTERVAL * 2));
+    staleDns.add(staleDn);
+  }
+  List<HashMap<DatanodeInfo,Byte>> locToIndexList=new ArrayList<>();
+  List<HashMap<DatanodeInfo,Token<BlockTokenIdentifier>>> locToTokenList=new ArrayList<>();
+  prepareBlockIndexAndTokenList(lbs,locToIndexList,locToTokenList);
+  dm.sortLocatedBlocks(null,lbs);
+  assertDecommnNodePosition(BLK_GROUP_WIDTH + 1,decommissionedNodes,lbs);
+  assertBlockIndexAndTokenPosition(lbs,locToIndexList,locToTokenList);
+  for (  LocatedBlock lb : lbs) {
+    byte[] blockIndices=((LocatedStripedBlock)lb).getBlockIndices();
+    Assert.assertEquals("Failed to move stale node to bottom!",1,blockIndices[9]);
+    DatanodeInfo[] locations=lb.getLocations();
+    Assert.assertEquals("Failed to move stale dn after normal one!",staleDns.remove(0),locations[9]);
+  }
+}
