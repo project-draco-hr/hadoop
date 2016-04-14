@@ -1,9 +1,12 @@
 {
   int runCount=0;
-  MRApp app=new MRAppWithHistory(2,2,false,this.getClass().getName(),true,++runCount);
+  Dispatcher disp=Mockito.spy(new AsyncDispatcher());
+  MRApp app=new MRAppWithHistory(2,2,false,this.getClass().getName(),true,++runCount,disp);
   Configuration conf=new Configuration();
   conf.setFloat(MRJobConfig.COMPLETED_MAPS_FOR_REDUCE_SLOWSTART,0.5f);
   conf.setBoolean(MRJobConfig.JOB_UBERTASK_ENABLE,false);
+  ContainerAllocEventHandler handler=new ContainerAllocEventHandler();
+  disp.register(ContainerAllocator.EventType.class,handler);
   final Job job1=app.submit(conf);
   app.waitForState(job1,JobState.RUNNING);
   Assert.assertEquals("Num tasks not correct",4,job1.getTasks().size());
@@ -49,6 +52,7 @@
 ,checkIntervalMillis,waitForMillis);
   events=job1.getTaskAttemptCompletionEvents(0,100);
   Assert.assertEquals("Expecting 2 more completion events for killed",4,events.length);
+  handler.waitForFailedMapContainerReqEvents(2);
   app.waitForState(mapTask1,TaskState.RUNNING);
   app.waitForState(mapTask2,TaskState.RUNNING);
   Iterator<TaskAttempt> itr=mapTask1.getAttempts().values().iterator();
@@ -67,7 +71,7 @@
   events=job1.getTaskAttemptCompletionEvents(0,100);
   Assert.assertEquals("Expecting 1 more completion events for success",5,events.length);
   app.stop();
-  app=new MRAppWithHistory(2,2,false,this.getClass().getName(),false,++runCount);
+  app=new MRAppWithHistory(2,2,false,this.getClass().getName(),false,++runCount,(Dispatcher)new AsyncDispatcher());
   conf=new Configuration();
   conf.setBoolean(MRJobConfig.MR_AM_JOB_RECOVERY_ENABLE,true);
   conf.setBoolean(MRJobConfig.JOB_UBERTASK_ENABLE,false);
