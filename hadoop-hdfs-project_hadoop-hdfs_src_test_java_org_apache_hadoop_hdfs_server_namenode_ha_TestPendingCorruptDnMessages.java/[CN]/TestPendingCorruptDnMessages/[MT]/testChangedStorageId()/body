@@ -1,7 +1,7 @@
 {
   HdfsConfiguration conf=new HdfsConfiguration();
   conf.setInt(DFSConfigKeys.DFS_HA_TAILEDITS_PERIOD_KEY,1);
-  MiniDFSCluster cluster=new MiniDFSCluster.Builder(conf).numDataNodes(1).nnTopology(MiniDFSNNTopology.simpleHATopology()).build();
+  final MiniDFSCluster cluster=new MiniDFSCluster.Builder(conf).numDataNodes(1).nnTopology(MiniDFSNNTopology.simpleHATopology()).build();
   try {
     cluster.transitionToActive(0);
     FileSystem fs=HATestUtil.configureFailoverFs(cluster,conf);
@@ -15,19 +15,22 @@
     DataNodeProperties dnProps=cluster.stopDataNode(0);
     cluster.restartNameNode(1,false);
     assertTrue(cluster.restartDataNode(dnProps,true));
-    while (cluster.getNamesystem(1).getBlockManager().getPendingDataNodeMessageCount() < 1) {
-      ThreadUtil.sleepAtLeastIgnoreInterrupts(1000);
+    GenericTestUtils.waitFor(new Supplier<Boolean>(){
+      @Override public Boolean get(){
+        return cluster.getNamesystem(1).getBlockManager().getPendingDataNodeMessageCount() == 1;
+      }
     }
-    assertEquals(1,cluster.getNamesystem(1).getBlockManager().getPendingDataNodeMessageCount());
-    String oldStorageId=getRegisteredDatanodeUid(cluster,1);
+,1000,30000);
+    final String oldStorageId=getRegisteredDatanodeUid(cluster,1);
+    assertNotNull(oldStorageId);
     assertTrue(wipeAndRestartDn(cluster,0));
-    String newStorageId="";
-    do {
-      ThreadUtil.sleepAtLeastIgnoreInterrupts(1000);
-      newStorageId=getRegisteredDatanodeUid(cluster,1);
-      System.out.println("====> oldStorageId: " + oldStorageId + " newStorageId: "+ newStorageId);
+    GenericTestUtils.waitFor(new Supplier<Boolean>(){
+      @Override public Boolean get(){
+        final String newStorageId=getRegisteredDatanodeUid(cluster,1);
+        return newStorageId != null && !newStorageId.equals(oldStorageId);
+      }
     }
- while (newStorageId.equals(oldStorageId));
+,1000,30000);
     assertEquals(0,cluster.getNamesystem(1).getBlockManager().getPendingDataNodeMessageCount());
     cluster.transitionToStandby(0);
     cluster.transitionToActive(1);
