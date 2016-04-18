@@ -8,6 +8,7 @@
   conf.set(CommonConfigurationKeysPublic.HADOOP_SECURITY_AUTHENTICATION,"kerberos");
   UserGroupInformation.setConfiguration(conf);
   TimelineClientImpl client=createTimelineClient(conf);
+  TimelineClientImpl clientFake=createTimelineClientFakeTimelineClientRetryOp(conf);
   TestTimlineDelegationTokenSecretManager dtManager=new TestTimlineDelegationTokenSecretManager();
   try {
     dtManager.startThreads();
@@ -35,9 +36,18 @@
  catch (    RuntimeException ce) {
       assertException(client,ce);
     }
+    try {
+      TimelineDelegationTokenIdentifier timelineDT=new TimelineDelegationTokenIdentifier(new Text("tester"),new Text("tester"),new Text("tester"));
+      clientFake.cancelDelegationToken(new Token<TimelineDelegationTokenIdentifier>(timelineDT.getBytes(),dtManager.createPassword(timelineDT),timelineDT.getKind(),new Text("0.0.0.0:8188")));
+      assertFail();
+    }
+ catch (    RuntimeException ce) {
+      assertException(clientFake,ce);
+    }
   }
   finally {
     client.stop();
+    clientFake.stop();
     dtManager.stopThreads();
   }
 }
