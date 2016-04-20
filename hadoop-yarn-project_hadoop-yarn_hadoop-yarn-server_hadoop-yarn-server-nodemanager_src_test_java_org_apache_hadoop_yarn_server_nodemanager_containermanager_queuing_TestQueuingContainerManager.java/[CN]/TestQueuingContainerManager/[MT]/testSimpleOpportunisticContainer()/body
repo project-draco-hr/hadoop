@@ -1,0 +1,52 @@
+{
+  shouldDeleteWait=true;
+  containerManager.start();
+  File dir=new File(tmpDir,"dir");
+  dir.mkdirs();
+  File file=new File(dir,"file");
+  PrintWriter fileWriter=new PrintWriter(file);
+  fileWriter.write("Hello World!");
+  fileWriter.close();
+  ContainerLaunchContext containerLaunchContext=recordFactory.newRecordInstance(ContainerLaunchContext.class);
+  URL resource_alpha=ConverterUtils.getYarnUrlFromPath(localFS.makeQualified(new Path(file.getAbsolutePath())));
+  LocalResource rsrc_alpha=recordFactory.newRecordInstance(LocalResource.class);
+  rsrc_alpha.setResource(resource_alpha);
+  rsrc_alpha.setSize(-1);
+  rsrc_alpha.setVisibility(LocalResourceVisibility.APPLICATION);
+  rsrc_alpha.setType(LocalResourceType.FILE);
+  rsrc_alpha.setTimestamp(file.lastModified());
+  String destinationFile="dest_file";
+  Map<String,LocalResource> localResources=new HashMap<String,LocalResource>();
+  localResources.put(destinationFile,rsrc_alpha);
+  containerLaunchContext.setLocalResources(localResources);
+  List<StartContainerRequest> list=new ArrayList<>();
+  list.add(StartContainerRequest.newInstance(containerLaunchContext,createContainerToken(createContainerId(0),DUMMY_RM_IDENTIFIER,context.getNodeId(),user,BuilderUtils.newResource(1024,1),context.getContainerTokenSecretManager(),null,ExecutionType.OPPORTUNISTIC)));
+  list.add(StartContainerRequest.newInstance(containerLaunchContext,createContainerToken(createContainerId(1),DUMMY_RM_IDENTIFIER,context.getNodeId(),user,BuilderUtils.newResource(1024,1),context.getContainerTokenSecretManager(),null,ExecutionType.OPPORTUNISTIC)));
+  list.add(StartContainerRequest.newInstance(containerLaunchContext,createContainerToken(createContainerId(2),DUMMY_RM_IDENTIFIER,context.getNodeId(),user,BuilderUtils.newResource(1024,1),context.getContainerTokenSecretManager(),null,ExecutionType.OPPORTUNISTIC)));
+  list.add(StartContainerRequest.newInstance(containerLaunchContext,createContainerToken(createContainerId(3),DUMMY_RM_IDENTIFIER,context.getNodeId(),user,context.getContainerTokenSecretManager())));
+  StartContainersRequest allRequests=StartContainersRequest.newInstance(list);
+  hasResources=new HasResources(){
+    @Override public boolean decide(    Context context,    ContainerId cId){
+      int nOpp=((QueuingContainerManagerImpl)containerManager).getNumAllocatedOpportunisticContainers();
+      int nGuar=((QueuingContainerManagerImpl)containerManager).getNumAllocatedGuaranteedContainers();
+      boolean val=(nOpp + nGuar < 1);
+      System.out.println("\nHasResources : [" + cId + "],"+ "Opp["+ nOpp+ "], Guar["+ nGuar+ "], ["+ val+ "]\n");
+      return val;
+    }
+  }
+;
+  containerManager.startContainers(allRequests);
+  BaseContainerManagerTest.waitForContainerState(containerManager,createContainerId(3),ContainerState.COMPLETE,40);
+  List<ContainerId> statList=new ArrayList<ContainerId>();
+  for (int i=0; i < 4; i++) {
+    statList.add(createContainerId(i));
+  }
+  GetContainerStatusesRequest statRequest=GetContainerStatusesRequest.newInstance(statList);
+  List<ContainerStatus> containerStatuses=containerManager.getContainerStatuses(statRequest).getContainerStatuses();
+  for (  ContainerStatus status : containerStatuses) {
+    if (status.getContainerId().equals(createContainerId(0))) {
+      Assert.assertTrue(status.getDiagnostics().contains("Container killed by the ApplicationMaster"));
+    }
+    System.out.println("\nStatus : [" + status + "]\n");
+  }
+}
