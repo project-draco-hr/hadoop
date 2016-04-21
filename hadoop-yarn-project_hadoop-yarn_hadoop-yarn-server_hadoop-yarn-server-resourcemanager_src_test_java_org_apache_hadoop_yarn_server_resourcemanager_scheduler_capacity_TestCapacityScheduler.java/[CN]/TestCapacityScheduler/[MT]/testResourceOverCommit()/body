@@ -1,4 +1,5 @@
 {
+  int waitCount;
   Configuration conf=new Configuration();
   conf.setClass(YarnConfiguration.RM_SCHEDULER,CapacityScheduler.class,ResourceScheduler.class);
   MockRM rm=new MockRM(conf);
@@ -34,12 +35,20 @@
   UpdateNodeResourceRequest request=UpdateNodeResourceRequest.newInstance(nodeResourceMap);
   AdminService as=((MockRM)rm).getAdminService();
   as.updateNodeResource(request);
-  report_nm1=rm.getResourceScheduler().getNodeReport(nm1.getNodeId());
+  waitCount=0;
+  while (waitCount++ != 20) {
+    report_nm1=rm.getResourceScheduler().getNodeReport(nm1.getNodeId());
+    if (report_nm1.getAvailableResource().getMemory() != 0) {
+      break;
+    }
+    LOG.info("Waiting for RMNodeResourceUpdateEvent to be handled... Tried " + waitCount + " times already..");
+    Thread.sleep(1000);
+  }
   Assert.assertEquals(4 * GB,report_nm1.getUsedResource().getMemory());
   Assert.assertEquals(-2 * GB,report_nm1.getAvailableResource().getMemory());
   ContainerStatus containerStatus=BuilderUtils.newContainerStatus(c1.getId(),ContainerState.COMPLETE,"",0,c1.getResource());
   nm1.containerStatus(containerStatus);
-  int waitCount=0;
+  waitCount=0;
   while (attempt1.getJustFinishedContainers().size() < 1 && waitCount++ != 20) {
     LOG.info("Waiting for containers to be finished for app 1... Tried " + waitCount + " times already..");
     Thread.sleep(100);
