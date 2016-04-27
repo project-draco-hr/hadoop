@@ -1,29 +1,29 @@
 {
   RMContainer container=getResourceScheduler().getRMContainer(containerId);
-  int timeoutSecs=0;
-  while (container == null && timeoutSecs++ < timeoutMillisecs / 100) {
+  int timeWaiting=0;
+  while (container == null) {
+    if (timeWaiting >= timeoutMsecs) {
+      return false;
+    }
     for (    MockNM nm : nms) {
       nm.nodeHeartbeat(true);
     }
     container=getResourceScheduler().getRMContainer(containerId);
     System.out.println("Waiting for container " + containerId + " to be "+ containerState+ ", container is null right now.");
-    Thread.sleep(100);
-    if (timeoutMillisecs <= timeoutSecs * 100) {
+    Thread.sleep(WAIT_MS_PER_LOOP);
+    timeWaiting+=WAIT_MS_PER_LOOP;
+  }
+  while (!containerState.equals(container.getState())) {
+    if (timeWaiting >= timeoutMsecs) {
       return false;
     }
-  }
-  Assert.assertNotNull("Container shouldn't be null",container);
-  while (!containerState.equals(container.getState()) && timeoutSecs++ < timeoutMillisecs / 100) {
     System.out.println("Container : " + containerId + " State is : "+ container.getState()+ " Waiting for state : "+ containerState);
     for (    MockNM nm : nms) {
       nm.nodeHeartbeat(true);
     }
-    Thread.sleep(100);
-    if (timeoutMillisecs <= timeoutSecs * 100) {
-      return false;
-    }
+    Thread.sleep(WAIT_MS_PER_LOOP);
+    timeWaiting+=WAIT_MS_PER_LOOP;
   }
   System.out.println("Container State is : " + container.getState());
-  Assert.assertEquals("Container state is not correct (timedout)",containerState,container.getState());
   return true;
 }
