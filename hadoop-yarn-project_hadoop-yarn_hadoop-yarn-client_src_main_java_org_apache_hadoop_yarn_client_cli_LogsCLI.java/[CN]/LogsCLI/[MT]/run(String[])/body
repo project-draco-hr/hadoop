@@ -106,6 +106,7 @@
   if (appOwner == null || appOwner.isEmpty()) {
     appOwner=UserGroupInformation.getCurrentUser().getShortUserName();
   }
+  boolean appStateKnown=true;
   YarnApplicationState appState=YarnApplicationState.NEW;
   try {
     appState=getApplicationState(appId);
@@ -115,6 +116,7 @@
     }
   }
  catch (  IOException|YarnException e) {
+    appStateKnown=false;
     System.err.println("Unable to get ApplicationState." + " Attempting to fetch logs directly from the filesystem.");
   }
   if (getAMContainerLogs) {
@@ -137,7 +139,7 @@
   }
   int resultCode=0;
   if (containerIdStr != null) {
-    if (nodeAddress != null && isApplicationFinished(appState)) {
+    if (nodeAddress != null && (!appStateKnown || isApplicationFinished(appState))) {
       List<String> logs;
       if (logFiles == null) {
         logs=null;
@@ -150,33 +152,41 @@
       }
       return logCliHelper.dumpAContainersLogsForALogType(appIdStr,containerIdStr,nodeAddress,appOwner,logs);
     }
+    String nodeHttpAddress=null;
+    String nodeId=null;
     try {
       ContainerReport report=getContainerReport(containerIdStr);
-      String nodeHttpAddress=report.getNodeHttpAddress().replaceFirst(WebAppUtils.getHttpSchemePrefix(getConf()),"");
-      String nodeId=report.getAssignedNode().toString();
-      if (!isApplicationFinished(appState)) {
-        if (logFiles == null || logFiles.length == 0) {
-          logFiles=new String[]{"syslog"};
-        }
-        printContainerLogsFromRunningApplication(getConf(),appIdStr,containerIdStr,nodeHttpAddress,nodeId,logFiles,logCliHelper,appOwner);
-      }
- else {
+      nodeHttpAddress=report.getNodeHttpAddress().replaceFirst(WebAppUtils.getHttpSchemePrefix(getConf()),"");
+      nodeId=report.getAssignedNode().toString();
+    }
+ catch (    IOException|YarnException ex) {
+      if (!appStateKnown || isApplicationFinished(appState)) {
         String[] requestedLogFiles=logFiles;
         if (fetchAllLogFiles(logFiles)) {
           requestedLogFiles=null;
         }
-        printContainerLogsForFinishedApplication(appIdStr,containerIdStr,nodeId,requestedLogFiles,logCliHelper,appOwner);
+        return printContainerLogsForFinishedApplicationWithoutNodeId(appIdStr,containerIdStr,requestedLogFiles,logCliHelper,appOwner);
       }
-      return resultCode;
-    }
- catch (    IOException|YarnException ex) {
-      System.err.println("Unable to get logs for this container:" + containerIdStr + "for the application:"+ appId);
-      if (!getConf().getBoolean(YarnConfiguration.APPLICATION_HISTORY_ENABLED,YarnConfiguration.DEFAULT_APPLICATION_HISTORY_ENABLED)) {
-        System.out.println("Please enable the application history service. Or ");
+ else       if (!isApplicationFinished(appState)) {
+        System.err.println("Unable to get logs for this container:" + containerIdStr + "for the application:"+ appId);
+        System.out.println("The application: " + appId + " is still running, "+ "and we can not get Container report for the container: "+ containerIdStr+ ". Please try later or after the application "+ "finishes.");
+        return -1;
       }
-      System.out.println("Using " + "yarn logs -applicationId <appId> -containerId <containerId> " + "--nodeAddress <nodeHttpAddress> to get the container logs");
-      return -1;
     }
+    if (!isApplicationFinished(appState)) {
+      if (logFiles == null || logFiles.length == 0) {
+        logFiles=new String[]{"syslog"};
+      }
+      printContainerLogsFromRunningApplication(getConf(),appIdStr,containerIdStr,nodeHttpAddress,nodeId,logFiles,logCliHelper,appOwner);
+    }
+ else {
+      String[] requestedLogFiles=logFiles;
+      if (fetchAllLogFiles(logFiles)) {
+        requestedLogFiles=null;
+      }
+      printContainerLogsForFinishedApplication(appIdStr,containerIdStr,nodeId,requestedLogFiles,logCliHelper,appOwner);
+    }
+    return resultCode;
   }
  else {
     if (nodeAddress == null) {
