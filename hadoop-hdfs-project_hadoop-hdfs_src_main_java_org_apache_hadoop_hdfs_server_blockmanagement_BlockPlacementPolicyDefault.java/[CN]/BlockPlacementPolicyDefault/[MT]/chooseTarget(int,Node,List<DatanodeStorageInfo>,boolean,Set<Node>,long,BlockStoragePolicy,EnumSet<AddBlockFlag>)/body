@@ -1,0 +1,35 @@
+{
+  if (numOfReplicas == 0 || clusterMap.getNumOfLeaves() == 0) {
+    return DatanodeStorageInfo.EMPTY_ARRAY;
+  }
+  if (excludedNodes == null) {
+    excludedNodes=new HashSet<>();
+  }
+  int[] result=getMaxNodesPerRack(chosenStorage.size(),numOfReplicas);
+  numOfReplicas=result[0];
+  int maxNodesPerRack=result[1];
+  for (  DatanodeStorageInfo storage : chosenStorage) {
+    addToExcludedNodes(storage.getDatanodeDescriptor(),excludedNodes);
+  }
+  List<DatanodeStorageInfo> results=null;
+  Node localNode=null;
+  boolean avoidStaleNodes=(stats != null && stats.isAvoidingStaleDataNodesForWrite());
+  boolean avoidLocalNode=(addBlockFlags != null && addBlockFlags.contains(AddBlockFlag.NO_LOCAL_WRITE) && writer != null && !excludedNodes.contains(writer));
+  if (avoidLocalNode) {
+    results=new ArrayList<>(chosenStorage);
+    Set<Node> excludedNodeCopy=new HashSet<>(excludedNodes);
+    excludedNodeCopy.add(writer);
+    localNode=chooseTarget(numOfReplicas,writer,excludedNodeCopy,blocksize,maxNodesPerRack,results,avoidStaleNodes,storagePolicy,EnumSet.noneOf(StorageType.class),results.isEmpty());
+    if (results.size() < numOfReplicas) {
+      results=null;
+    }
+  }
+  if (results == null) {
+    results=new ArrayList<>(chosenStorage);
+    localNode=chooseTarget(numOfReplicas,writer,excludedNodes,blocksize,maxNodesPerRack,results,avoidStaleNodes,storagePolicy,EnumSet.noneOf(StorageType.class),results.isEmpty());
+  }
+  if (!returnChosenNodes) {
+    results.removeAll(chosenStorage);
+  }
+  return getPipeline((writer != null && writer instanceof DatanodeDescriptor) ? writer : localNode,results.toArray(new DatanodeStorageInfo[results.size()]));
+}

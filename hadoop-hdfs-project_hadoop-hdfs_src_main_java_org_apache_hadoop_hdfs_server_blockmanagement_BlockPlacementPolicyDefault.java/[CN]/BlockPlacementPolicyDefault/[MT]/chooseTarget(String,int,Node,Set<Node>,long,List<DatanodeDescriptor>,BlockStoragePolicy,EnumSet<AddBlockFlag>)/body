@@ -1,0 +1,33 @@
+{
+  try {
+    if (favoredNodes == null || favoredNodes.size() == 0) {
+      return chooseTarget(src,numOfReplicas,writer,new ArrayList<DatanodeStorageInfo>(numOfReplicas),false,excludedNodes,blocksize,storagePolicy,flags);
+    }
+    Set<Node> favoriteAndExcludedNodes=excludedNodes == null ? new HashSet<Node>() : new HashSet<>(excludedNodes);
+    final List<StorageType> requiredStorageTypes=storagePolicy.chooseStorageTypes((short)numOfReplicas);
+    final EnumMap<StorageType,Integer> storageTypes=getRequiredStorageTypes(requiredStorageTypes);
+    List<DatanodeStorageInfo> results=new ArrayList<>();
+    boolean avoidStaleNodes=stats != null && stats.isAvoidingStaleDataNodesForWrite();
+    int maxNodesAndReplicas[]=getMaxNodesPerRack(0,numOfReplicas);
+    numOfReplicas=maxNodesAndReplicas[0];
+    int maxNodesPerRack=maxNodesAndReplicas[1];
+    chooseFavouredNodes(src,numOfReplicas,favoredNodes,favoriteAndExcludedNodes,blocksize,maxNodesPerRack,results,avoidStaleNodes,storageTypes);
+    if (results.size() < numOfReplicas) {
+      numOfReplicas-=results.size();
+      for (      DatanodeStorageInfo storage : results) {
+        addToExcludedNodes(storage.getDatanodeDescriptor(),favoriteAndExcludedNodes);
+      }
+      DatanodeStorageInfo[] remainingTargets=chooseTarget(src,numOfReplicas,writer,new ArrayList<DatanodeStorageInfo>(numOfReplicas),false,favoriteAndExcludedNodes,blocksize,storagePolicy,flags);
+      for (int i=0; i < remainingTargets.length; i++) {
+        results.add(remainingTargets[i]);
+      }
+    }
+    return getPipeline(writer,results.toArray(new DatanodeStorageInfo[results.size()]));
+  }
+ catch (  NotEnoughReplicasException nr) {
+    if (LOG.isDebugEnabled()) {
+      LOG.debug("Failed to choose with favored nodes (=" + favoredNodes + "), disregard favored nodes hint and retry.",nr);
+    }
+    return chooseTarget(src,numOfReplicas,writer,new ArrayList<DatanodeStorageInfo>(numOfReplicas),false,excludedNodes,blocksize,storagePolicy,flags);
+  }
+}
