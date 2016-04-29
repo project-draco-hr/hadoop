@@ -1,0 +1,39 @@
+{
+  if (!validateContainerState()) {
+    return 0;
+  }
+  ContainerId containerId=container.getContainerId();
+  String containerIdStr=ConverterUtils.toString(containerId);
+  int ret=-1;
+  Path containerLogDir;
+  try {
+    Path containerWorkDir=getContainerWorkDir();
+    cleanupPreviousContainerFiles(containerWorkDir);
+    containerLogDir=getContainerLogDir();
+    Map<Path,List<String>> localResources=getLocalizedResources();
+    String appIdStr=app.getAppId().toString();
+    Path nmPrivateContainerScriptPath=getNmPrivateContainerScriptPath(appIdStr,containerIdStr);
+    Path nmPrivateTokensPath=getNmPrivateTokensPath(appIdStr,containerIdStr);
+    pidFilePath=getPidFilePath(appIdStr,containerIdStr);
+    LOG.info("Relaunch container with " + "workDir = " + containerWorkDir.toString() + ", logDir = "+ containerLogDir.toString()+ ", nmPrivateContainerScriptPath = "+ nmPrivateContainerScriptPath.toString()+ ", nmPrivateTokensPath = "+ nmPrivateTokensPath.toString()+ ", pidFilePath = "+ pidFilePath.toString());
+    List<String> localDirs=dirsHandler.getLocalDirs();
+    List<String> logDirs=dirsHandler.getLogDirs();
+    List<String> containerLocalDirs=getContainerLocalDirs(localDirs);
+    List<String> containerLogDirs=getContainerLogDirs(logDirs);
+    if (!dirsHandler.areDisksHealthy()) {
+      ret=ContainerExitStatus.DISKS_FAILED;
+      throw new IOException("Most of the disks failed. " + dirsHandler.getDisksHealthReport(false));
+    }
+    ret=launchContainer(new ContainerStartContext.Builder().setContainer(container).setLocalizedResources(localResources).setNmPrivateContainerScriptPath(nmPrivateContainerScriptPath).setNmPrivateTokensPath(nmPrivateTokensPath).setUser(container.getUser()).setAppId(appIdStr).setContainerWorkDir(containerWorkDir).setLocalDirs(localDirs).setLogDirs(logDirs).setContainerLocalDirs(containerLocalDirs).setContainerLogDirs(containerLogDirs).build());
+  }
+ catch (  Throwable e) {
+    LOG.warn("Failed to relaunch container.",e);
+    dispatcher.getEventHandler().handle(new ContainerExitEvent(containerId,ContainerEventType.CONTAINER_EXITED_WITH_FAILURE,ret,e.getMessage()));
+    return ret;
+  }
+ finally {
+    setContainerCompletedStatus(ret);
+  }
+  handleContainerExitCode(ret,containerLogDir);
+  return ret;
+}

@@ -1,0 +1,47 @@
+{
+  ContainerExitEvent exitEvent=(ContainerExitEvent)event;
+  container.exitCode=exitEvent.getExitCode();
+  if (exitEvent.getDiagnosticInfo() != null) {
+    if (container.containerRetryContext.getRetryPolicy() != ContainerRetryPolicy.NEVER_RETRY) {
+      int n=container.containerRetryContext.getMaxRetries() - container.remainingRetryAttempts;
+      container.addDiagnostics("Diagnostic message from attempt " + n + " : ","\n");
+    }
+    container.addDiagnostics(exitEvent.getDiagnosticInfo(),"\n");
+  }
+  if (container.shouldRetry(container.exitCode)) {
+    if (container.remainingRetryAttempts > 0) {
+      container.remainingRetryAttempts--;
+      try {
+        container.stateStore.storeContainerRemainingRetryAttempts(container.getContainerId(),container.remainingRetryAttempts);
+      }
+ catch (      IOException e) {
+        LOG.warn("Unable to update remainingRetryAttempts in state store for " + container.getContainerId(),e);
+      }
+    }
+    LOG.info("Relaunching Container " + container.getContainerId() + ". Remaining retry attempts(after relaunch) : "+ container.remainingRetryAttempts+ ". Interval between retries is "+ container.containerRetryContext.getRetryInterval()+ "ms");
+    container.wasLaunched=false;
+    container.metrics.endRunningContainer();
+    if (container.containerRetryContext.getRetryInterval() == 0) {
+      container.sendRelaunchEvent();
+    }
+ else {
+      new Thread(){
+        @Override public void run(){
+          try {
+            Thread.sleep(container.containerRetryContext.getRetryInterval());
+            container.sendRelaunchEvent();
+          }
+ catch (          InterruptedException e) {
+            return;
+          }
+        }
+      }
+.start();
+    }
+    return ContainerState.RELAUNCHING;
+  }
+ else {
+    new ExitedWithFailureTransition(true).transition(container,event);
+    return ContainerState.EXITED_WITH_FAILURE;
+  }
+}
