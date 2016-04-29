@@ -13,7 +13,7 @@
     out.write(1);
     out.hflush();
     ExtendedBlock block=DFSTestUtil.getFirstBlock(fs,filePath);
-    FsVolumeImpl volume=(FsVolumeImpl)dataNode.getFSDataset().getVolume(block);
+    final FsVolumeImpl volume=(FsVolumeImpl)dataNode.getFSDataset().getVolume(block);
     File finalizedDir=volume.getFinalizedDir(cluster.getNamesystem().getBlockPoolId());
     if (finalizedDir.exists()) {
       finalizedDir.setExecutable(false);
@@ -21,8 +21,12 @@
     }
     Assert.assertTrue("Reference count for the volume should be greater " + "than 0",volume.getReferenceCount() > 0);
     dataNode.getFSDataset().checkDataDir();
-    Thread.sleep(1000);
-    assertEquals("There are active threads still referencing volume: " + volume.getBasePath(),0,volume.getReferenceCount());
+    GenericTestUtils.waitFor(new Supplier<Boolean>(){
+      @Override public Boolean get(){
+        return volume.getReferenceCount() == 0;
+      }
+    }
+,100,10);
     LocatedBlock lb=DFSTestUtil.getAllBlocks(fs,filePath).get(0);
     DatanodeInfo info=lb.getLocations()[0];
     try {
@@ -30,7 +34,7 @@
       Assert.fail("This is not a valid code path. " + "out.close should have thrown an exception.");
     }
  catch (    IOException ioe) {
-      Assert.assertTrue(ioe.getMessage().contains(info.toString()));
+      GenericTestUtils.assertExceptionContains(info.toString(),ioe);
     }
     finalizedDir.setWritable(true);
     finalizedDir.setExecutable(true);
