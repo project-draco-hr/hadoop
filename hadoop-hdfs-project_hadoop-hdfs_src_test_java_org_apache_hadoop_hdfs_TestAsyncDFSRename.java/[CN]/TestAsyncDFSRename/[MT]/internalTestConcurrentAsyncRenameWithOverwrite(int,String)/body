@@ -1,0 +1,57 @@
+{
+  final short replFactor=2;
+  final long blockSize=512;
+  final Path renameDir=new Path(String.format("/test/%s/",basePath));
+  Configuration conf=new HdfsConfiguration();
+  conf.setInt(CommonConfigurationKeys.IPC_CLIENT_ASYNC_CALLS_MAX_KEY,asyncCallLimit);
+  MiniDFSCluster cluster=new MiniDFSCluster.Builder(conf).numDataNodes(2).build();
+  cluster.waitActive();
+  DistributedFileSystem dfs=cluster.getFileSystem();
+  AsyncDistributedFileSystem adfs=dfs.getAsyncDistributedFileSystem();
+  int count=1000;
+  long fileLen=blockSize * 3;
+  int start=0, end=0;
+  Map<Integer,Future<Void>> returnFutures=new HashMap<Integer,Future<Void>>();
+  assertTrue(dfs.mkdirs(renameDir));
+  try {
+    for (int i=0; i < count; i++) {
+      Path src=new Path(renameDir,"src" + i);
+      Path dst=new Path(renameDir,"dst" + i);
+      DFSTestUtil.createFile(dfs,src,fileLen,replFactor,1);
+      DFSTestUtil.createFile(dfs,dst,fileLen,replFactor,1);
+      for (; ; ) {
+        try {
+          LOG.info("rename #" + i);
+          Future<Void> returnFuture=adfs.rename(src,dst,Rename.OVERWRITE);
+          returnFutures.put(i,returnFuture);
+          break;
+        }
+ catch (        AsyncCallLimitExceededException e) {
+          LOG.error(e);
+          start=end;
+          end=i;
+          LOG.info(String.format("start=%d, end=%d, i=%d",start,end,i));
+          waitForReturnValues(returnFutures,start,end);
+        }
+      }
+    }
+    for (int i=start; i < count; i++) {
+      returnFutures.get(i).get();
+    }
+    cluster.restartNameNodes();
+    for (int i=0; i < count; i++) {
+      Path src=new Path(renameDir,"src" + i);
+      Path dst=new Path(renameDir,"dst" + i);
+      assertFalse(dfs.exists(src));
+      assertTrue(dfs.exists(dst));
+    }
+  }
+  finally {
+    if (dfs != null) {
+      dfs.close();
+    }
+    if (cluster != null) {
+      cluster.shutdown();
+    }
+  }
+}

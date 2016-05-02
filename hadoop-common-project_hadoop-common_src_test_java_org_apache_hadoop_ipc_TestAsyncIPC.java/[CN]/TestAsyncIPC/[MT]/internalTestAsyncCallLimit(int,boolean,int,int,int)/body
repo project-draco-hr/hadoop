@@ -1,0 +1,27 @@
+{
+  Configuration conf=new Configuration();
+  conf.setInt(CommonConfigurationKeys.IPC_CLIENT_ASYNC_CALLS_MAX_KEY,100);
+  Client.setPingInterval(conf,TestIPC.PING_INTERVAL);
+  Server server=new TestIPC.TestServer(handlerCount,handlerSleep,conf);
+  InetSocketAddress addr=NetUtils.getConnectAddress(server);
+  server.start();
+  Client[] clients=new Client[clientCount];
+  for (int i=0; i < clientCount; i++) {
+    clients[i]=new Client(LongWritable.class,conf);
+  }
+  AsyncLimitlCaller[] callers=new AsyncLimitlCaller[callerCount];
+  for (int i=0; i < callerCount; i++) {
+    callers[i]=new AsyncLimitlCaller(i,clients[i % clientCount],addr,callCount);
+    callers[i].start();
+  }
+  for (int i=0; i < callerCount; i++) {
+    callers[i].join();
+    callers[i].waitForReturnValues(callers[i].getStart(),callers[i].getCount());
+    String msg=String.format("Expected not failed for caller-%d: %s.",i,callers[i]);
+    assertFalse(msg,callers[i].failed);
+  }
+  for (int i=0; i < clientCount; i++) {
+    clients[i].stop();
+  }
+  server.stop();
+}
