@@ -1,5 +1,6 @@
 {
   if (needRefresh()) {
+    long startTime=Time.monotonicNow();
     if (!appLogs.isDone()) {
       appLogs.parseSummaryLogs();
     }
@@ -11,6 +12,9 @@
         store=new LevelDBCacheTimelineStore(groupId.toString(),"LeveldbCache." + groupId);
         store.init(config);
         store.start();
+      }
+ else {
+        metrics.incrCacheStaleRefreshes();
       }
       List<LogInfo> removeList=new ArrayList<>();
       try (TimelineDataManager tdm=new TimelineDataManager(store,aclManager)){
@@ -34,9 +38,11 @@
        appLogs.getDetailLogs().removeAll(removeList);
     }
     updateRefreshTimeToNow();
+    metrics.addCacheRefreshTime(Time.monotonicNow() - startTime);
   }
  else {
     LOG.debug("Cache new enough, skip refreshing");
+    metrics.incrNoRefreshCacheRead();
   }
   return store;
 }
