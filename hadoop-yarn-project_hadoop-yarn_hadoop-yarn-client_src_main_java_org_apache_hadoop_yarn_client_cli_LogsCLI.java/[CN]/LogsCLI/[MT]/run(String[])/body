@@ -1,34 +1,6 @@
 {
-  Options opts=new Options();
-  opts.addOption(HELP_CMD,false,"Displays help for all commands.");
-  Option appIdOpt=new Option(APPLICATION_ID_OPTION,true,"ApplicationId (required)");
-  appIdOpt.setRequired(true);
-  opts.addOption(appIdOpt);
-  opts.addOption(CONTAINER_ID_OPTION,true,"ContainerId. " + "By default, it will only print syslog if the application is runing." + " Work with -logFiles to get other logs.");
-  opts.addOption(NODE_ADDRESS_OPTION,true,"NodeAddress in the format " + "nodename:port");
-  opts.addOption(APP_OWNER_OPTION,true,"AppOwner (assumed to be current user if not specified)");
-  Option amOption=new Option(AM_CONTAINER_OPTION,true,"Prints the AM Container logs for this application. " + "Specify comma-separated value to get logs for related AM Container. " + "For example, If we specify -am 1,2, we will get the logs for "+ "the first AM Container as well as the second AM Container. "+ "To get logs for all AM Containers, use -am ALL. "+ "To get logs for the latest AM Container, use -am -1. "+ "By default, it will only print out syslog. Work with -logFiles "+ "to get other logs");
-  amOption.setValueSeparator(',');
-  amOption.setArgs(Option.UNLIMITED_VALUES);
-  amOption.setArgName("AM Containers");
-  opts.addOption(amOption);
-  Option logFileOpt=new Option(CONTAINER_LOG_FILES,true,"Work with -am/-containerId and specify comma-separated value " + "to get specified container log files. Use \"ALL\" to fetch all the " + "log files for the container.");
-  logFileOpt.setValueSeparator(',');
-  logFileOpt.setArgs(Option.UNLIMITED_VALUES);
-  logFileOpt.setArgName("Log File Name");
-  opts.addOption(logFileOpt);
-  opts.getOption(APPLICATION_ID_OPTION).setArgName("Application ID");
-  opts.getOption(CONTAINER_ID_OPTION).setArgName("Container ID");
-  opts.getOption(NODE_ADDRESS_OPTION).setArgName("Node Address");
-  opts.getOption(APP_OWNER_OPTION).setArgName("Application Owner");
-  opts.getOption(AM_CONTAINER_OPTION).setArgName("AM Containers");
-  Options printOpts=new Options();
-  printOpts.addOption(opts.getOption(HELP_CMD));
-  printOpts.addOption(opts.getOption(CONTAINER_ID_OPTION));
-  printOpts.addOption(opts.getOption(NODE_ADDRESS_OPTION));
-  printOpts.addOption(opts.getOption(APP_OWNER_OPTION));
-  printOpts.addOption(opts.getOption(AM_CONTAINER_OPTION));
-  printOpts.addOption(opts.getOption(CONTAINER_LOG_FILES));
+  Options opts=createCommandOpts();
+  Options printOpts=createPrintOpts(opts);
   if (args.length < 1) {
     printHelpMessage(printOpts);
     return -1;
@@ -43,6 +15,8 @@
   String nodeAddress=null;
   String appOwner=null;
   boolean getAMContainerLogs=false;
+  boolean showMetaInfo=false;
+  boolean nodesList=false;
   String[] logFiles=null;
   List<String> amContainersList=new ArrayList<String>();
   try {
@@ -52,31 +26,15 @@
     nodeAddress=commandLine.getOptionValue(NODE_ADDRESS_OPTION);
     appOwner=commandLine.getOptionValue(APP_OWNER_OPTION);
     getAMContainerLogs=commandLine.hasOption(AM_CONTAINER_OPTION);
+    showMetaInfo=commandLine.hasOption(SHOW_META_INFO);
+    nodesList=commandLine.hasOption(LIST_NODES_OPTION);
     if (getAMContainerLogs) {
-      String[] amContainers=commandLine.getOptionValues(AM_CONTAINER_OPTION);
-      for (      String am : amContainers) {
-        boolean errorInput=false;
-        if (!am.trim().equalsIgnoreCase("ALL")) {
-          try {
-            int id=Integer.parseInt(am.trim());
-            if (id != -1 && id <= 0) {
-              errorInput=true;
-            }
-          }
- catch (          NumberFormatException ex) {
-            errorInput=true;
-          }
-          if (errorInput) {
-            System.err.println("Invalid input for option -am. Valid inputs are 'ALL', -1 " + "and any other integer which is larger than 0.");
-            printHelpMessage(printOpts);
-            return -1;
-          }
-          amContainersList.add(am.trim());
-        }
- else {
-          amContainersList.add("ALL");
-          break;
-        }
+      try {
+        amContainersList=parseAMContainer(commandLine,printOpts);
+      }
+ catch (      NumberFormatException ex) {
+        System.err.println(ex.getMessage());
+        return -1;
       }
     }
     if (commandLine.hasOption(CONTAINER_LOG_FILES)) {
@@ -106,94 +64,43 @@
   if (appOwner == null || appOwner.isEmpty()) {
     appOwner=UserGroupInformation.getCurrentUser().getShortUserName();
   }
-  boolean appStateKnown=true;
+  boolean appStateObtainedSuccessfully=true;
   YarnApplicationState appState=YarnApplicationState.NEW;
   try {
     appState=getApplicationState(appId);
     if (appState == YarnApplicationState.NEW || appState == YarnApplicationState.NEW_SAVING || appState == YarnApplicationState.SUBMITTED) {
-      System.out.println("Logs are not avaiable right now.");
+      System.err.println("Logs are not avaiable right now.");
       return -1;
     }
   }
  catch (  IOException|YarnException e) {
-    appStateKnown=false;
+    appStateObtainedSuccessfully=false;
     System.err.println("Unable to get ApplicationState." + " Attempting to fetch logs directly from the filesystem.");
   }
+  if (showMetaInfo) {
+    return showMetaInfo(appState,appStateObtainedSuccessfully,logCliHelper,appId,containerIdStr,nodeAddress,appOwner);
+  }
+  if (nodesList) {
+    return showNodeLists(appState,appStateObtainedSuccessfully,logCliHelper,appId,appOwner);
+  }
   if (getAMContainerLogs) {
-    if (logFiles == null || logFiles.length == 0) {
-      logFiles=new String[]{"syslog"};
-    }
-    if (appState == YarnApplicationState.ACCEPTED || appState == YarnApplicationState.RUNNING) {
-      return printAMContainerLogs(getConf(),appIdStr,amContainersList,logFiles,logCliHelper,appOwner,false);
-    }
- else {
-      if (getConf().getBoolean(YarnConfiguration.APPLICATION_HISTORY_ENABLED,YarnConfiguration.DEFAULT_APPLICATION_HISTORY_ENABLED)) {
-        return printAMContainerLogs(getConf(),appIdStr,amContainersList,logFiles,logCliHelper,appOwner,true);
-      }
- else {
-        System.out.println("Can not get AMContainers logs for the application:" + appId);
-        System.out.println("This application:" + appId + " is finished."+ " Please enable the application history service. Or Using "+ "yarn logs -applicationId <appId> -containerId <containerId> "+ "--nodeAddress <nodeHttpAddress> to get the container logs");
-        return -1;
-      }
-    }
+    return fetchAMContainerLogs(logFiles,appState,appId,appOwner,amContainersList,logCliHelper);
   }
   int resultCode=0;
   if (containerIdStr != null) {
-    if (nodeAddress != null && (!appStateKnown || isApplicationFinished(appState))) {
-      List<String> logs;
-      if (logFiles == null) {
-        logs=null;
-      }
- else       if (fetchAllLogFiles(logFiles)) {
-        logs=null;
-      }
- else {
-        logs=Arrays.asList(logFiles);
-      }
-      return logCliHelper.dumpAContainersLogsForALogType(appIdStr,containerIdStr,nodeAddress,appOwner,logs);
+    ContainerId containerId=ContainerId.fromString(containerIdStr);
+    if (!containerId.getApplicationAttemptId().getApplicationId().equals(appId)) {
+      System.err.println("The Application:" + appId + " does not have the container:"+ containerId);
+      return -1;
     }
-    String nodeHttpAddress=null;
-    String nodeId=null;
-    try {
-      ContainerReport report=getContainerReport(containerIdStr);
-      nodeHttpAddress=report.getNodeHttpAddress().replaceFirst(WebAppUtils.getHttpSchemePrefix(getConf()),"");
-      nodeId=report.getAssignedNode().toString();
-    }
- catch (    IOException|YarnException ex) {
-      if (!appStateKnown || isApplicationFinished(appState)) {
-        String[] requestedLogFiles=logFiles;
-        if (fetchAllLogFiles(logFiles)) {
-          requestedLogFiles=null;
-        }
-        return printContainerLogsForFinishedApplicationWithoutNodeId(appIdStr,containerIdStr,requestedLogFiles,logCliHelper,appOwner);
-      }
- else       if (!isApplicationFinished(appState)) {
-        System.err.println("Unable to get logs for this container:" + containerIdStr + "for the application:"+ appId);
-        System.out.println("The application: " + appId + " is still running, "+ "and we can not get Container report for the container: "+ containerIdStr+ ". Please try later or after the application "+ "finishes.");
-        return -1;
-      }
-    }
-    if (!isApplicationFinished(appState)) {
-      if (logFiles == null || logFiles.length == 0) {
-        logFiles=new String[]{"syslog"};
-      }
-      printContainerLogsFromRunningApplication(getConf(),appIdStr,containerIdStr,nodeHttpAddress,nodeId,logFiles,logCliHelper,appOwner);
-    }
- else {
-      String[] requestedLogFiles=logFiles;
-      if (fetchAllLogFiles(logFiles)) {
-        requestedLogFiles=null;
-      }
-      printContainerLogsForFinishedApplication(appIdStr,containerIdStr,nodeId,requestedLogFiles,logCliHelper,appOwner);
-    }
-    return resultCode;
+    return fetchContainerLogs(appState,appStateObtainedSuccessfully,logFiles,appOwner,nodeAddress,containerId,logCliHelper);
   }
  else {
     if (nodeAddress == null) {
       resultCode=logCliHelper.dumpAllContainersLogs(appId,appOwner,System.out);
     }
  else {
-      System.out.println("Should at least provide ContainerId!");
+      System.err.println("Should at least provide ContainerId!");
       printHelpMessage(printOpts);
       resultCode=-1;
     }
