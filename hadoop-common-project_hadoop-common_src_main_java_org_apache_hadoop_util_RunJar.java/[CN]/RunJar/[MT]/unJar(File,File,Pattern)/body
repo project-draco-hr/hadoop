@@ -1,36 +1,24 @@
 {
-  JarFile jar=new JarFile(jarFile);
-  try {
+  try (JarFile jar=new JarFile(jarFile)){
     int numOfFailedLastModifiedSet=0;
     Enumeration<JarEntry> entries=jar.entries();
     while (entries.hasMoreElements()) {
       final JarEntry entry=entries.nextElement();
       if (!entry.isDirectory() && unpackRegex.matcher(entry.getName()).matches()) {
-        InputStream in=jar.getInputStream(entry);
-        try {
+        try (InputStream in=jar.getInputStream(entry)){
           File file=new File(toDir,entry.getName());
           ensureDirectory(file.getParentFile());
-          OutputStream out=new FileOutputStream(file);
-          try {
-            IOUtils.copyBytes(in,out,8192);
+          try (OutputStream out=new FileOutputStream(file)){
+            IOUtils.copyBytes(in,out,BUFFER_SIZE);
           }
-  finally {
-            out.close();
-          }
-          if (!file.setLastModified(entry.getTime())) {
+           if (!file.setLastModified(entry.getTime())) {
             numOfFailedLastModifiedSet++;
           }
         }
-  finally {
-          in.close();
-        }
-      }
+       }
     }
     if (numOfFailedLastModifiedSet > 0) {
       LOG.warn("Could not set last modfied time for {} file(s)",numOfFailedLastModifiedSet);
     }
   }
-  finally {
-    jar.close();
-  }
-}
+ }
