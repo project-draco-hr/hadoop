@@ -1,0 +1,49 @@
+{
+  init(res);
+  ContainerId containerId;
+  try {
+    containerId=ContainerId.fromString(containerIdStr);
+  }
+ catch (  IllegalArgumentException ex) {
+    return createBadResponse(Status.NOT_FOUND,"Invalid ContainerId: " + containerIdStr);
+  }
+  boolean downloadFile=parseBooleanParam(download);
+  ApplicationId appId=containerId.getApplicationAttemptId().getApplicationId();
+  AppInfo appInfo;
+  try {
+    appInfo=super.getApp(req,res,appId.toString());
+  }
+ catch (  Exception ex) {
+    return sendStreamOutputResponse(appId,null,null,containerIdStr,filename,downloadFile);
+  }
+  String appOwner=appInfo.getUser();
+  ContainerInfo containerInfo;
+  try {
+    containerInfo=super.getContainer(req,res,appId.toString(),containerId.getApplicationAttemptId().toString(),containerId.toString());
+  }
+ catch (  Exception ex) {
+    if (isFinishedState(appInfo.getAppState())) {
+      return sendStreamOutputResponse(appId,appOwner,null,containerIdStr,filename,downloadFile);
+    }
+    return createBadResponse(Status.INTERNAL_SERVER_ERROR,"Can not get ContainerInfo for the container: " + containerId);
+  }
+  String nodeId=containerInfo.getNodeId();
+  if (isRunningState(appInfo.getAppState())) {
+    String nodeHttpAddress=containerInfo.getNodeHttpAddress();
+    String uri="/" + containerId.toString() + "/"+ filename;
+    String resURI=JOINER.join(nodeHttpAddress,NM_DOWNLOAD_URI_STR,uri);
+    String query=req.getQueryString();
+    if (query != null && !query.isEmpty()) {
+      resURI+="?" + query;
+    }
+    ResponseBuilder response=Response.status(HttpServletResponse.SC_TEMPORARY_REDIRECT);
+    response.header("Location",resURI);
+    return response.build();
+  }
+ else   if (isFinishedState(appInfo.getAppState())) {
+    return sendStreamOutputResponse(appId,appOwner,nodeId,containerIdStr,filename,downloadFile);
+  }
+ else {
+    return createBadResponse(Status.NOT_FOUND,"The application is not at Running or Finished State.");
+  }
+}

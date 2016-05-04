@@ -1,0 +1,59 @@
+{
+  String fileName="syslog";
+  String user="user1";
+  UserGroupInformation ugi=UserGroupInformation.createRemoteUser("user1");
+  NodeId nodeId=NodeId.newInstance("test host",100);
+  NodeId nodeId2=NodeId.newInstance("host2",1234);
+  ApplicationId appId=ApplicationId.newInstance(0,1);
+  List<String> rootLogDirList=new ArrayList<String>();
+  rootLogDirList.add(rootLogDir);
+  Path rootLogDirPath=new Path(rootLogDir);
+  if (fs.exists(rootLogDirPath)) {
+    fs.delete(rootLogDirPath,true);
+  }
+  assertTrue(fs.mkdirs(rootLogDirPath));
+  Path appLogsDir=new Path(rootLogDirPath,appId.toString());
+  if (fs.exists(appLogsDir)) {
+    fs.delete(appLogsDir,true);
+  }
+  assertTrue(fs.mkdirs(appLogsDir));
+  ApplicationAttemptId appAttemptId=ApplicationAttemptId.newInstance(appId,1);
+  ContainerId containerId1=ContainerId.newContainerId(appAttemptId,1);
+  ContainerId containerId100=ContainerId.newContainerId(appAttemptId,100);
+  createContainerLogInLocalDir(appLogsDir,containerId1,fs,fileName,("Hello." + containerId1));
+  createContainerLogInLocalDir(appLogsDir,containerId100,fs,fileName,("Hello." + containerId100));
+  Path path=new Path(conf.get(YarnConfiguration.NM_REMOTE_APP_LOG_DIR) + user + "/logs/"+ appId.toString());
+  if (fs.exists(path)) {
+    fs.delete(path,true);
+  }
+  assertTrue(fs.mkdirs(path));
+  uploadContainerLogIntoRemoteDir(ugi,conf,rootLogDirList,nodeId,containerId1,path,fs);
+  uploadContainerLogIntoRemoteDir(ugi,conf,rootLogDirList,nodeId2,containerId100,path,fs);
+  WebResource r=resource();
+  ClientResponse response=r.path("ws").path("v1").path("applicationhistory").path("containerlogs").path(containerId1.toString()).path(fileName).queryParam("user.name",user).accept(MediaType.TEXT_PLAIN).get(ClientResponse.class);
+  String responseText=response.getEntity(String.class);
+  assertTrue(responseText.contains("Hello." + containerId1));
+  r=resource();
+  response=r.path("ws").path("v1").path("applicationhistory").path("containerlogs").path(containerId100.toString()).path(fileName).queryParam("user.name",user).accept(MediaType.TEXT_PLAIN).get(ClientResponse.class);
+  responseText=response.getEntity(String.class);
+  assertTrue(responseText.contains("Hello." + containerId100));
+  ApplicationId appId100=ApplicationId.newInstance(0,100);
+  appLogsDir=new Path(rootLogDirPath,appId100.toString());
+  if (fs.exists(appLogsDir)) {
+    fs.delete(appLogsDir,true);
+  }
+  assertTrue(fs.mkdirs(appLogsDir));
+  ApplicationAttemptId appAttemptId100=ApplicationAttemptId.newInstance(appId100,1);
+  ContainerId containerId1ForApp100=ContainerId.newContainerId(appAttemptId100,1);
+  createContainerLogInLocalDir(appLogsDir,containerId1ForApp100,fs,fileName,("Hello." + containerId1ForApp100));
+  path=new Path(conf.get(YarnConfiguration.NM_REMOTE_APP_LOG_DIR) + user + "/logs/"+ appId100.toString());
+  if (fs.exists(path)) {
+    fs.delete(path,true);
+  }
+  assertTrue(fs.mkdirs(path));
+  uploadContainerLogIntoRemoteDir(ugi,conf,rootLogDirList,nodeId2,containerId1ForApp100,path,fs);
+  r=resource();
+  response=r.path("ws").path("v1").path("applicationhistory").path("containerlogs").path(containerId1ForApp100.toString()).path(fileName).queryParam("user.name",user).accept(MediaType.TEXT_PLAIN).get(ClientResponse.class);
+  responseText=response.getEntity(String.class);
+  assertTrue(responseText.contains("Hello." + containerId1ForApp100));
+}
