@@ -1,0 +1,30 @@
+{
+  preemptableAmountCalculator.computeIdealAllocation(clusterResource,totalPreemptedResourceAllowed);
+  Map<String,Map<String,Resource>> queueToPreemptableResourceByPartition=new HashMap<>();
+  for (  String leafQueue : preemptionContext.getLeafQueueNames()) {
+    queueToPreemptableResourceByPartition.put(leafQueue,CapacitySchedulerPreemptionUtils.getResToObtainByPartitionForLeafQueue(preemptionContext,leafQueue,clusterResource));
+  }
+  List<NodeForPreemption> nodesForPreemption=getNodesForPreemption(clusterResource,queueToPreemptableResourceByPartition,selectedCandidates,totalPreemptedResourceAllowed);
+  for (  NodeForPreemption nfp : nodesForPreemption) {
+    RMContainer reservedContainer=nfp.schedulerNode.getReservedContainer();
+    if (null == reservedContainer) {
+      continue;
+    }
+    NodeForPreemption preemptionResult=getPreemptionCandidatesOnNode(nfp.schedulerNode,clusterResource,queueToPreemptableResourceByPartition,selectedCandidates,totalPreemptedResourceAllowed,false);
+    if (null != preemptionResult) {
+      for (      RMContainer c : preemptionResult.selectedContainers) {
+        ApplicationAttemptId appId=c.getApplicationAttemptId();
+        Set<RMContainer> containers=selectedCandidates.get(appId);
+        if (null == containers) {
+          containers=new HashSet<>();
+          selectedCandidates.put(appId,containers);
+        }
+        containers.add(c);
+        if (LOG.isDebugEnabled()) {
+          LOG.debug(this.getClass().getName() + " Marked container=" + c.getContainerId()+ " from queue="+ c.getQueueName()+ " to be preemption candidates");
+        }
+      }
+    }
+  }
+  return selectedCandidates;
+}

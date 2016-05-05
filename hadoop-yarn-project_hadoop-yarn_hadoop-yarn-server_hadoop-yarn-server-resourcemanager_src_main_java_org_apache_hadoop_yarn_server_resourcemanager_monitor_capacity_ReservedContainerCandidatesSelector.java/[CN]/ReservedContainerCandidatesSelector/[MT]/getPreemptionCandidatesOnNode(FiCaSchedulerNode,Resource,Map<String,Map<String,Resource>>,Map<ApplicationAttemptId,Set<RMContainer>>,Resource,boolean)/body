@@ -1,0 +1,62 @@
+{
+  RMContainer reservedContainer=node.getReservedContainer();
+  Resource available=Resources.clone(node.getUnallocatedResource());
+  Resource totalSelected=Resources.createResource(0);
+  List<RMContainer> sortedRunningContainers=node.getCopiedListOfRunningContainers();
+  List<RMContainer> selectedContainers=new ArrayList<>();
+  Map<ContainerId,RMContainer> killableContainers=node.getKillableContainers();
+  Collections.sort(sortedRunningContainers,new Comparator<RMContainer>(){
+    @Override public int compare(    RMContainer o1,    RMContainer o2){
+      return -1 * o1.getContainerId().compareTo(o2.getContainerId());
+    }
+  }
+);
+  boolean canAllocateReservedContainer=false;
+  Resource cur=Resources.add(available,node.getTotalKillableResources());
+  String partition=node.getPartition();
+  if (Resources.fitsIn(rc,cluster,reservedContainer.getReservedResource(),cur)) {
+    return null;
+  }
+  float amPreemptionCost=0f;
+  for (  RMContainer c : sortedRunningContainers) {
+    String containerQueueName=c.getQueueName();
+    if (killableContainers.containsKey(c.getContainerId())) {
+      continue;
+    }
+    if (c.isAMContainer()) {
+      if (LOG.isDebugEnabled()) {
+        LOG.debug("Skip selecting AM container on host=" + node.getNodeID() + " AM container="+ c.getContainerId());
+      }
+      continue;
+    }
+    boolean canPreempt=tryToPreemptFromQueue(cluster,containerQueueName,partition,queueToPreemptableResourceByPartition,c.getAllocatedResource(),totalPreemptionAllowed,readOnly);
+    if (canPreempt) {
+      if (!CapacitySchedulerPreemptionUtils.isContainerAlreadySelected(c,selectedCandidates)) {
+        if (!readOnly) {
+          selectedContainers.add(c);
+        }
+        Resources.addTo(totalSelected,c.getAllocatedResource());
+      }
+      Resources.addTo(cur,c.getAllocatedResource());
+      if (Resources.fitsIn(rc,cluster,reservedContainer.getReservedResource(),cur)) {
+        canAllocateReservedContainer=true;
+        break;
+      }
+    }
+  }
+  if (!canAllocateReservedContainer) {
+    if (!readOnly) {
+      for (      RMContainer c : selectedContainers) {
+        Resource res=getPreemptableResource(c.getQueueName(),partition,queueToPreemptableResourceByPartition);
+        if (null == res) {
+          continue;
+        }
+        Resources.addTo(res,c.getAllocatedResource());
+      }
+    }
+    return null;
+  }
+  float ratio=Resources.ratio(rc,totalSelected,reservedContainer.getReservedResource());
+  NodeForPreemption nfp=new NodeForPreemption(ratio + amPreemptionCost,node,selectedContainers);
+  return nfp;
+}

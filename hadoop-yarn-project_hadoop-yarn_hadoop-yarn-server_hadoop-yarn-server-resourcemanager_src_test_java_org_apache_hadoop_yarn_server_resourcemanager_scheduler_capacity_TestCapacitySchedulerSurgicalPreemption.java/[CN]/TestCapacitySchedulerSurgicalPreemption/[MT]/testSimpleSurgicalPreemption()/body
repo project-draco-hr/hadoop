@@ -1,0 +1,35 @@
+{
+  MockRM rm1=new MockRM(conf);
+  rm1.getRMContext().setNodeLabelManager(mgr);
+  rm1.start();
+  MockNM nm1=rm1.registerNode("h1:1234",20 * GB);
+  MockNM nm2=rm1.registerNode("h2:1234",20 * GB);
+  CapacityScheduler cs=(CapacityScheduler)rm1.getResourceScheduler();
+  RMNode rmNode1=rm1.getRMContext().getRMNodes().get(nm1.getNodeId());
+  RMNode rmNode2=rm1.getRMContext().getRMNodes().get(nm2.getNodeId());
+  RMApp app1=rm1.submitApp(1 * GB,"app","user",null,"a");
+  MockAM am1=MockRM.launchAndRegisterAM(app1,rm1,nm1);
+  am1.allocate("*",1 * GB,32,new ArrayList<ContainerId>());
+  for (int i=0; i < 32; i++) {
+    cs.handle(new NodeUpdateSchedulerEvent(rmNode1));
+    cs.handle(new NodeUpdateSchedulerEvent(rmNode2));
+  }
+  FiCaSchedulerApp schedulerApp1=cs.getApplicationAttempt(am1.getApplicationAttemptId());
+  Assert.assertEquals(33,schedulerApp1.getLiveContainers().size());
+  waitNumberOfLiveContainersOnNodeFromApp(cs.getNode(rmNode1.getNodeID()),am1.getApplicationAttemptId(),17);
+  waitNumberOfLiveContainersOnNodeFromApp(cs.getNode(rmNode2.getNodeID()),am1.getApplicationAttemptId(),16);
+  RMApp app2=rm1.submitApp(1 * GB,"app","user",null,"c");
+  MockAM am2=MockRM.launchAndRegisterAM(app2,rm1,nm1);
+  Assert.assertEquals(2 * GB,cs.getNode(nm1.getNodeId()).getUnallocatedResource().getMemory());
+  Assert.assertEquals(4 * GB,cs.getNode(nm2.getNodeId()).getUnallocatedResource().getMemory());
+  am2.allocate(Arrays.asList(ResourceRequest.newInstance(Priority.newInstance(1),ResourceRequest.ANY,Resources.createResource(6 * GB),1)),null);
+  cs.handle(new NodeUpdateSchedulerEvent(rmNode1));
+  Assert.assertNotNull(cs.getNode(nm1.getNodeId()).getReservedContainer());
+  SchedulingEditPolicy editPolicy=getSchedulingEditPolicy(rm1);
+  editPolicy.editSchedule();
+  editPolicy.editSchedule();
+  waitNumberOfLiveContainersFromApp(schedulerApp1,29);
+  waitNumberOfLiveContainersOnNodeFromApp(cs.getNode(rmNode1.getNodeID()),am1.getApplicationAttemptId(),13);
+  waitNumberOfLiveContainersOnNodeFromApp(cs.getNode(rmNode2.getNodeID()),am1.getApplicationAttemptId(),16);
+  rm1.close();
+}
