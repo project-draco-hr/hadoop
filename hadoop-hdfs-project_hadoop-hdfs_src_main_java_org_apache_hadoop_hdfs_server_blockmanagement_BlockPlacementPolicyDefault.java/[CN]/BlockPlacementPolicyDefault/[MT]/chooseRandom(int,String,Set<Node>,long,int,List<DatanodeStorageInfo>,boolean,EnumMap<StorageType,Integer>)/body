@@ -1,6 +1,4 @@
 {
-  int numOfAvailableNodes=clusterMap.countNumOfAvailableNodes(scope,excludedNodes);
-  int refreshCounter=numOfAvailableNodes;
   StringBuilder builder=null;
   if (LOG.isDebugEnabled()) {
     builder=debugLoggingBuilder.get();
@@ -9,43 +7,40 @@
   }
   boolean badTarget=false;
   DatanodeStorageInfo firstChosen=null;
-  while (numOfReplicas > 0 && numOfAvailableNodes > 0) {
-    DatanodeDescriptor chosenNode=chooseDataNode(scope);
-    if (excludedNodes.add(chosenNode)) {
-      if (LOG.isDebugEnabled()) {
-        builder.append("\nNode ").append(NodeBase.getPath(chosenNode)).append(" [");
-      }
-      numOfAvailableNodes--;
-      DatanodeStorageInfo storage=null;
-      if (isGoodDatanode(chosenNode,maxNodesPerRack,considerLoad,results,avoidStaleNodes)) {
-        for (Iterator<Map.Entry<StorageType,Integer>> iter=storageTypes.entrySet().iterator(); iter.hasNext(); ) {
-          Map.Entry<StorageType,Integer> entry=iter.next();
-          storage=chooseStorage4Block(chosenNode,blocksize,results,entry.getKey());
-          if (storage != null) {
-            numOfReplicas--;
-            if (firstChosen == null) {
-              firstChosen=storage;
-            }
-            numOfAvailableNodes-=addToExcludedNodes(chosenNode,excludedNodes);
-            int num=entry.getValue();
-            if (num == 1) {
-              iter.remove();
-            }
- else {
-              entry.setValue(num - 1);
-            }
-            break;
+  while (numOfReplicas > 0) {
+    DatanodeDescriptor chosenNode=chooseDataNode(scope,excludedNodes);
+    if (chosenNode == null) {
+      break;
+    }
+    Preconditions.checkState(excludedNodes.add(chosenNode),"chosenNode " + chosenNode + " is already in excludedNodes "+ excludedNodes);
+    if (LOG.isDebugEnabled()) {
+      builder.append("\nNode ").append(NodeBase.getPath(chosenNode)).append(" [");
+    }
+    DatanodeStorageInfo storage=null;
+    if (isGoodDatanode(chosenNode,maxNodesPerRack,considerLoad,results,avoidStaleNodes)) {
+      for (Iterator<Map.Entry<StorageType,Integer>> iter=storageTypes.entrySet().iterator(); iter.hasNext(); ) {
+        Map.Entry<StorageType,Integer> entry=iter.next();
+        storage=chooseStorage4Block(chosenNode,blocksize,results,entry.getKey());
+        if (storage != null) {
+          numOfReplicas--;
+          if (firstChosen == null) {
+            firstChosen=storage;
           }
+          addToExcludedNodes(chosenNode,excludedNodes);
+          int num=entry.getValue();
+          if (num == 1) {
+            iter.remove();
+          }
+ else {
+            entry.setValue(num - 1);
+          }
+          break;
         }
       }
       if (LOG.isDebugEnabled()) {
         builder.append("\n]");
       }
       badTarget=(storage == null);
-    }
-    if (--refreshCounter == 0) {
-      numOfAvailableNodes=clusterMap.countNumOfAvailableNodes(scope,excludedNodes);
-      refreshCounter=numOfAvailableNodes;
     }
   }
   if (numOfReplicas > 0) {

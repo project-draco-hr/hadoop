@@ -1,0 +1,56 @@
+{
+  if (excludedScope != null) {
+    if (scope.startsWith(excludedScope)) {
+      return null;
+    }
+    if (!excludedScope.startsWith(scope)) {
+      excludedScope=null;
+    }
+  }
+  Node node=getNode(scope);
+  if (!(node instanceof InnerNode)) {
+    return excludedNodes != null && excludedNodes.contains(node) ? null : node;
+  }
+  InnerNode innerNode=(InnerNode)node;
+  int numOfDatanodes=innerNode.getNumOfLeaves();
+  if (excludedScope == null) {
+    node=null;
+  }
+ else {
+    node=getNode(excludedScope);
+    if (!(node instanceof InnerNode)) {
+      numOfDatanodes-=1;
+    }
+ else {
+      numOfDatanodes-=((InnerNode)node).getNumOfLeaves();
+    }
+  }
+  if (numOfDatanodes == 0) {
+    LOG.warn("Failed to find datanode (scope=\"{}\" excludedScope=\"{}\").",String.valueOf(scope),String.valueOf(excludedScope));
+    return null;
+  }
+  Node ret=null;
+  final int availableNodes;
+  if (excludedScope == null) {
+    availableNodes=countNumOfAvailableNodes(scope,excludedNodes);
+  }
+ else {
+    availableNodes=countNumOfAvailableNodes("~" + excludedScope,excludedNodes);
+  }
+  LOG.debug("Choosing random from {} available nodes on node {}," + " scope={}, excludedScope={}, excludeNodes={}",availableNodes,innerNode.toString(),scope,excludedScope,excludedNodes);
+  if (availableNodes > 0) {
+    do {
+      int leaveIndex=r.nextInt(numOfDatanodes);
+      ret=innerNode.getLeaf(leaveIndex,node);
+      if (excludedNodes == null || !excludedNodes.contains(ret)) {
+        break;
+      }
+ else {
+        LOG.debug("Node {} is excluded, continuing.",ret);
+      }
+    }
+ while (true);
+  }
+  LOG.debug("chooseRandom returning {}",ret);
+  return ret;
+}
