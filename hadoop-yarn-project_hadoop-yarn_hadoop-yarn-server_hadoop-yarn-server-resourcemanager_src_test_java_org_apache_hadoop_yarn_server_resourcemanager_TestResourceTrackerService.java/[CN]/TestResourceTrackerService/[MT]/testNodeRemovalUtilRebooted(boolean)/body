@@ -1,0 +1,48 @@
+{
+  Configuration conf=new Configuration();
+  int timeoutValue=500;
+  File excludeHostFile=new File(TEMP_DIR + File.separator + "excludeHostFile.txt");
+  conf.set(YarnConfiguration.RM_NODES_INCLUDE_FILE_PATH,hostFile.getAbsolutePath());
+  conf.set(YarnConfiguration.RM_NODES_EXCLUDE_FILE_PATH,excludeHostFile.getAbsolutePath());
+  writeToHostsFile(hostFile,"host1","localhost","host2");
+  writeToHostsFile(excludeHostFile,"");
+  conf.setInt(YarnConfiguration.RM_NODEMANAGER_UNTRACKED_REMOVAL_TIMEOUT_MSEC,timeoutValue);
+  rm=new MockRM(conf);
+  rm.init(conf);
+  rm.start();
+  RMContext rmContext=rm.getRMContext();
+  refreshNodesOption(doGraceful,conf);
+  MockNM nm1=rm.registerNode("host1:1234",5120);
+  MockNM nm2=rm.registerNode("host2:5678",10240);
+  MockNM nm3=rm.registerNode("localhost:4433",1024);
+  ClusterMetrics clusterMetrics=ClusterMetrics.getMetrics();
+  ClusterMetrics metrics=clusterMetrics;
+  assert(metrics != null);
+  NodeHeartbeatResponse nodeHeartbeat=nm2.nodeHeartbeat(new HashMap<ApplicationId,List<ContainerStatus>>(),true,-100);
+  rm.drainEvents();
+  rm.drainEvents();
+  Assert.assertNotEquals("host2 should be a rebooted NM!",rmContext.getInactiveRMNodes().get(nm2.getNodeId()),null);
+  Assert.assertEquals("host2 should be a rebooted NM!",rmContext.getInactiveRMNodes().get(nm2.getNodeId()).getState(),NodeState.REBOOTED);
+  Assert.assertEquals("There should be 1 Rebooted NM!",clusterMetrics.getNumRebootedNMs(),1);
+  Assert.assertEquals("There should be 2 Active NM!",clusterMetrics.getNumActiveNMs(),2);
+  int nodeRemovalTimeout=conf.getInt(YarnConfiguration.RM_NODEMANAGER_UNTRACKED_REMOVAL_TIMEOUT_MSEC,YarnConfiguration.DEFAULT_RM_NODEMANAGER_UNTRACKED_REMOVAL_TIMEOUT_MSEC);
+  int nodeRemovalInterval=rmContext.getNodesListManager().getNodeRemovalCheckInterval();
+  long maxThreadSleeptime=nodeRemovalInterval + nodeRemovalTimeout;
+  writeToHostsFile(hostFile,"host1","localhost");
+  writeToHostsFile(excludeHostFile,"");
+  refreshNodesOption(doGraceful,conf);
+  nm1.nodeHeartbeat(true);
+  nm2.nodeHeartbeat(true);
+  nm3.nodeHeartbeat(true);
+  rm.drainEvents();
+  int waitCount=0;
+  while (rmContext.getInactiveRMNodes().get(nm2.getNodeId()) != null && waitCount++ < 2) {
+synchronized (this) {
+      wait(maxThreadSleeptime);
+    }
+  }
+  Assert.assertEquals("host2 should have been forgotten!",rmContext.getInactiveRMNodes().get(nm2.getNodeId()),null);
+  Assert.assertEquals("There should be no Rebooted NMs!",clusterMetrics.getNumRebootedNMs(),0);
+  Assert.assertEquals("There should be 2 Active NM!",clusterMetrics.getNumActiveNMs(),2);
+  rm.stop();
+}

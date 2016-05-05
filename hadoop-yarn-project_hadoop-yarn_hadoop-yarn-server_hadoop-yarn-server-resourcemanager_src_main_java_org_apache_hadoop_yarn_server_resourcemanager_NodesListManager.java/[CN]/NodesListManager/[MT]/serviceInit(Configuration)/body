@@ -21,5 +21,33 @@
 catch (  IOException ioe) {
     disableHostsFileReader(ioe);
   }
+  final int nodeRemovalTimeout=conf.getInt(YarnConfiguration.RM_NODEMANAGER_UNTRACKED_REMOVAL_TIMEOUT_MSEC,YarnConfiguration.DEFAULT_RM_NODEMANAGER_UNTRACKED_REMOVAL_TIMEOUT_MSEC);
+  nodeRemovalCheckInterval=(Math.min(nodeRemovalTimeout / 2,600000));
+  removalTimer=new Timer("Node Removal Timer");
+  removalTimer.schedule(new TimerTask(){
+    @Override public void run(){
+      long now=Time.monotonicNow();
+      for (      Map.Entry<NodeId,RMNode> entry : rmContext.getInactiveRMNodes().entrySet()) {
+        NodeId nodeId=entry.getKey();
+        RMNode rmNode=entry.getValue();
+        if (isUntrackedNode(rmNode.getHostName())) {
+          if (rmNode.getUntrackedTimeStamp() == 0) {
+            rmNode.setUntrackedTimeStamp(now);
+          }
+ else           if (now - rmNode.getUntrackedTimeStamp() > nodeRemovalTimeout) {
+            RMNode result=rmContext.getInactiveRMNodes().remove(nodeId);
+            if (result != null) {
+              decrInactiveNMMetrics(rmNode);
+              LOG.info("Removed " + result.getState().toString() + " node "+ result.getHostName()+ " from inactive nodes list");
+            }
+          }
+        }
+ else {
+          rmNode.setUntrackedTimeStamp(0);
+        }
+      }
+    }
+  }
+,nodeRemovalCheckInterval,nodeRemovalCheckInterval);
   super.serviceInit(conf);
 }
