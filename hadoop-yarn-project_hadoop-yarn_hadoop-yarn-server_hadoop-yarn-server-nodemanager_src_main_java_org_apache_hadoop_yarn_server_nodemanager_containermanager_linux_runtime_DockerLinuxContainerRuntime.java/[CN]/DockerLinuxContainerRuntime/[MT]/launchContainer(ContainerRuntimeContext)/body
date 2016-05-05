@@ -12,6 +12,7 @@
   @SuppressWarnings("unchecked") List<String> logDirs=ctx.getExecutionAttribute(LOG_DIRS);
   @SuppressWarnings("unchecked") List<String> containerLocalDirs=ctx.getExecutionAttribute(CONTAINER_LOCAL_DIRS);
   @SuppressWarnings("unchecked") List<String> containerLogDirs=ctx.getExecutionAttribute(CONTAINER_LOG_DIRS);
+  @SuppressWarnings("unchecked") Map<Path,List<String>> localizedResources=ctx.getExecutionAttribute(LOCALIZED_RESOURCES);
   Set<String> capabilities=new HashSet<>(Arrays.asList(conf.getStrings(YarnConfiguration.NM_DOCKER_CONTAINER_CAPABILITIES,YarnConfiguration.DEFAULT_NM_DOCKER_CONTAINER_CAPABILITIES)));
   @SuppressWarnings("unchecked") DockerRunCommand runCommand=new DockerRunCommand(containerIdStr,runAsUser,imageName).detachOnRun().setContainerWorkDir(containerWorkDir.toString()).setNetworkType("host").setCapabilities(capabilities).addMountLocation("/etc/passwd","/etc/password:ro");
   List<String> allDirs=new ArrayList<>(containerLocalDirs);
@@ -19,6 +20,20 @@
   allDirs.addAll(containerLogDirs);
   for (  String dir : allDirs) {
     runCommand.addMountLocation(dir,dir);
+  }
+  if (environment.containsKey(ENV_DOCKER_CONTAINER_LOCAL_RESOURCE_MOUNTS)) {
+    String mounts=environment.get(ENV_DOCKER_CONTAINER_LOCAL_RESOURCE_MOUNTS);
+    if (!mounts.isEmpty()) {
+      for (      String mount : StringUtils.split(mounts)) {
+        String[] dir=StringUtils.split(mount,':');
+        if (dir.length != 2) {
+          throw new ContainerExecutionException("Invalid mount : " + mount);
+        }
+        String src=validateMount(dir[0],localizedResources);
+        String dst=dir[1];
+        runCommand.addMountLocation(src,dst + ":ro");
+      }
+    }
   }
   if (allowPrivilegedContainerExecution(container)) {
     runCommand.setPrivileged();
