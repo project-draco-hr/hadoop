@@ -1,0 +1,39 @@
+{
+  LOG.debug("Processing Plan Command.");
+  Preconditions.checkState(cmd.hasOption(DiskBalancer.PLAN));
+  verifyCommandOptions(DiskBalancer.PLAN,cmd);
+  if (!cmd.hasOption(DiskBalancer.NODE)) {
+    throw new IllegalArgumentException("A node name is required to create a" + " plan.");
+  }
+  if (cmd.hasOption(DiskBalancer.BANDWIDTH)) {
+    this.bandwidth=Integer.parseInt(cmd.getOptionValue(DiskBalancer.BANDWIDTH));
+  }
+  if (cmd.hasOption(DiskBalancer.MAXERROR)) {
+    this.maxError=Integer.parseInt(cmd.getOptionValue(DiskBalancer.MAXERROR));
+  }
+  readClusterInfo(cmd);
+  String output=null;
+  if (cmd.hasOption(DiskBalancer.OUTFILE)) {
+    output=cmd.getOptionValue(DiskBalancer.OUTFILE);
+  }
+  setOutputPath(output);
+  DiskBalancerDataNode node=getNode(cmd.getOptionValue(DiskBalancer.NODE));
+  if (node == null) {
+    throw new IllegalArgumentException("Unable to find the specified node. " + cmd.getOptionValue(DiskBalancer.NODE));
+  }
+  this.thresholdPercentage=getThresholdPercentage(cmd);
+  setNodesToProcess(node);
+  List<NodePlan> plans=getCluster().computePlan(this.thresholdPercentage);
+  setPlanParams(plans);
+  LOG.info("Writing plan to : {}",getOutputPath());
+  System.out.printf("Writing plan to : %s%n",getOutputPath());
+  try (FSDataOutputStream beforeStream=create(String.format(DiskBalancer.BEFORE_TEMPLATE,cmd.getOptionValue(DiskBalancer.NODE)))){
+    beforeStream.write(getCluster().toJson().getBytes(StandardCharsets.UTF_8));
+  }
+   try (FSDataOutputStream planStream=create(String.format(DiskBalancer.PLAN_TEMPLATE,cmd.getOptionValue(DiskBalancer.NODE)))){
+    planStream.write(getPlan(plans).getBytes(StandardCharsets.UTF_8));
+  }
+   if (cmd.hasOption(DiskBalancer.VERBOSE)) {
+    printToScreen(plans);
+  }
+}
