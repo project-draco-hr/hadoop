@@ -1,0 +1,27 @@
+{
+  Path remoteRootLogDir=new Path(conf.get(YarnConfiguration.NM_REMOTE_APP_LOG_DIR,YarnConfiguration.DEFAULT_NM_REMOTE_APP_LOG_DIR));
+  String suffix=LogAggregationUtils.getRemoteNodeLogDirSuffix(conf);
+  Path fullPath=LogAggregationUtils.getRemoteAppLogDir(remoteRootLogDir,appId,bestGuess,suffix);
+  FileContext fc=FileContext.getFileContext(remoteRootLogDir.toUri(),conf);
+  String pathAccess=fullPath.toString();
+  try {
+    if (fc.util().exists(fullPath)) {
+      return bestGuess;
+    }
+    Path toMatch=LogAggregationUtils.getRemoteAppLogDir(remoteRootLogDir,appId,"*",suffix);
+    pathAccess=toMatch.toString();
+    FileStatus[] matching=fc.util().globStatus(toMatch);
+    if (matching == null || matching.length != 1) {
+      return null;
+    }
+    Path parent=matching[0].getPath().getParent();
+    if (suffix != null && !StringUtils.isEmpty(suffix)) {
+      parent=parent.getParent();
+    }
+    return parent.getName();
+  }
+ catch (  AccessControlException|AccessDeniedException ex) {
+    logDirNoAccessPermission(pathAccess,bestGuess,ex.getMessage());
+    return null;
+  }
+}

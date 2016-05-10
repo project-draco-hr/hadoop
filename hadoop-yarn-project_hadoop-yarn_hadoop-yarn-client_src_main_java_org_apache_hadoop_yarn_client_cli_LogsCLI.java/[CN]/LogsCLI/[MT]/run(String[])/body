@@ -61,13 +61,12 @@
   }
   LogCLIHelpers logCliHelper=new LogCLIHelpers();
   logCliHelper.setConf(getConf());
-  if (appOwner == null || appOwner.isEmpty()) {
-    appOwner=UserGroupInformation.getCurrentUser().getShortUserName();
-  }
   boolean appStateObtainedSuccessfully=true;
   YarnApplicationState appState=YarnApplicationState.NEW;
+  ApplicationReport appReport=null;
   try {
-    appState=getApplicationState(appId);
+    appReport=getApplicationReport(appId);
+    appState=appReport.getYarnApplicationState();
     if (appState == YarnApplicationState.NEW || appState == YarnApplicationState.NEW_SAVING || appState == YarnApplicationState.SUBMITTED) {
       System.err.println("Logs are not avaiable right now.");
       return -1;
@@ -76,6 +75,14 @@
  catch (  IOException|YarnException e) {
     appStateObtainedSuccessfully=false;
     System.err.println("Unable to get ApplicationState." + " Attempting to fetch logs directly from the filesystem.");
+  }
+  if (appOwner == null || appOwner.isEmpty()) {
+    appOwner=guessAppOwner(appReport,appId);
+    if (appOwner == null) {
+      System.err.println("Can not find the appOwner. " + "Please specify the correct appOwner");
+      System.err.println("Could not locate application logs for " + appId);
+      return -1;
+    }
   }
   if (showMetaInfo) {
     return showMetaInfo(appState,appStateObtainedSuccessfully,logCliHelper,appId,containerIdStr,nodeAddress,appOwner);
@@ -98,6 +105,9 @@
  else {
     if (nodeAddress == null) {
       resultCode=logCliHelper.dumpAllContainersLogs(appId,appOwner,System.out);
+      if (resultCode == -1) {
+        System.err.println("Can not find the logs for the application: " + appId + " with the appOwner: "+ appOwner);
+      }
     }
  else {
       System.err.println("Should at least provide ContainerId!");
