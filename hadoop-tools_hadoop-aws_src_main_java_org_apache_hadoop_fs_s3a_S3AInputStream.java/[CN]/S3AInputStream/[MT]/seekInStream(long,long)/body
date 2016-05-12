@@ -4,15 +4,32 @@
     return;
   }
   long diff=targetPos - pos;
-  if (targetPos > pos) {
-    if ((diff + length) <= wrappedStream.available()) {
-      pos+=wrappedStream.skip(diff);
-      if (pos != targetPos) {
-        throw new IOException("Failed to seek to " + targetPos + ". Current position "+ pos);
+  if (diff > 0) {
+    int available=wrappedStream.available();
+    long forwardSeekRange=Math.max(readahead,available);
+    long forwardSeekLimit=Math.min(remaining(),forwardSeekRange);
+    if (diff <= forwardSeekLimit) {
+      LOG.debug("Forward seek on {}, of {} bytes",uri,diff);
+      streamStatistics.seekForwards(diff);
+      long skipped=wrappedStream.skip(diff);
+      if (skipped > 0) {
+        pos+=skipped;
+        incrementBytesRead(diff);
       }
-      return;
+      if (pos == targetPos) {
+        return;
+      }
+ else {
+        LOG.warn("Failed to seek on {} to {}. Current position {}",uri,targetPos,pos);
+      }
     }
   }
-  closeStream(this.requestedStreamLen);
+ else   if (diff < 0) {
+    streamStatistics.seekBackwards(diff);
+  }
+ else {
+    LOG.debug("Ignoring seek {} to {} as target position == current",uri,targetPos);
+  }
+  closeStream("seekInStream()",this.requestedStreamLen);
   pos=targetPos;
 }

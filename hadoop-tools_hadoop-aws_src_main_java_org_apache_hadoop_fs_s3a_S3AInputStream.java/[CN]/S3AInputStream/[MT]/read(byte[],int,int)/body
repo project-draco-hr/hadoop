@@ -8,21 +8,23 @@
     return -1;
   }
   lazySeek(nextReadPos,len);
-  int byteRead;
+  streamStatistics.readOperationStarted(nextReadPos,len);
+  int bytesRead;
   try {
-    byteRead=wrappedStream.read(buf,off,len);
+    bytesRead=wrappedStream.read(buf,off,len);
   }
- catch (  SocketTimeoutException|SocketException e) {
-    LOG.info("Got exception while trying to read from stream," + " trying to recover " + e);
-    reopen(pos,len);
-    byteRead=wrappedStream.read(buf,off,len);
+ catch (  EOFException e) {
+    throw e;
   }
-  if (byteRead > 0) {
-    pos+=byteRead;
-    nextReadPos+=byteRead;
+catch (  IOException e) {
+    onReadFailure(e,len);
+    bytesRead=wrappedStream.read(buf,off,len);
   }
-  if (stats != null && byteRead > 0) {
-    stats.incrementBytesRead(byteRead);
+  if (bytesRead > 0) {
+    pos+=bytesRead;
+    nextReadPos+=bytesRead;
   }
-  return byteRead;
+  incrementBytesRead(bytesRead);
+  streamStatistics.readOperationCompleted(len,bytesRead);
+  return bytesRead;
 }

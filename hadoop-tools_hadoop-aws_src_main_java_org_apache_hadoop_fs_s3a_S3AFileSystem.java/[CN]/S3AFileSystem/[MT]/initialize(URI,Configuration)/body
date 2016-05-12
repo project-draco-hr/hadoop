@@ -1,36 +1,41 @@
 {
   super.initialize(name,conf);
+  setConf(conf);
+  instrumentation=new S3AInstrumentation(name);
   uri=URI.create(name.getScheme() + "://" + name.getAuthority());
   workingDir=new Path("/user",System.getProperty("user.name")).makeQualified(this.uri,this.getWorkingDirectory());
   AWSAccessKeys creds=getAWSAccessKeys(name,conf);
   AWSCredentialsProviderChain credentials=new AWSCredentialsProviderChain(new BasicAWSCredentialsProvider(creds.getAccessKey(),creds.getAccessSecret()),new InstanceProfileCredentialsProvider(),new AnonymousAWSCredentialsProvider());
   bucket=name.getHost();
   ClientConfiguration awsConf=new ClientConfiguration();
-  awsConf.setMaxConnections(conf.getInt(MAXIMUM_CONNECTIONS,DEFAULT_MAXIMUM_CONNECTIONS));
+  awsConf.setMaxConnections(intOption(conf,MAXIMUM_CONNECTIONS,DEFAULT_MAXIMUM_CONNECTIONS,1));
   boolean secureConnections=conf.getBoolean(SECURE_CONNECTIONS,DEFAULT_SECURE_CONNECTIONS);
   awsConf.setProtocol(secureConnections ? Protocol.HTTPS : Protocol.HTTP);
-  awsConf.setMaxErrorRetry(conf.getInt(MAX_ERROR_RETRIES,DEFAULT_MAX_ERROR_RETRIES));
-  awsConf.setConnectionTimeout(conf.getInt(ESTABLISH_TIMEOUT,DEFAULT_ESTABLISH_TIMEOUT));
-  awsConf.setSocketTimeout(conf.getInt(SOCKET_TIMEOUT,DEFAULT_SOCKET_TIMEOUT));
+  awsConf.setMaxErrorRetry(intOption(conf,MAX_ERROR_RETRIES,DEFAULT_MAX_ERROR_RETRIES,0));
+  awsConf.setConnectionTimeout(intOption(conf,ESTABLISH_TIMEOUT,DEFAULT_ESTABLISH_TIMEOUT,0));
+  awsConf.setSocketTimeout(intOption(conf,SOCKET_TIMEOUT,DEFAULT_SOCKET_TIMEOUT,0));
   String signerOverride=conf.getTrimmed(SIGNING_ALGORITHM,"");
   if (!signerOverride.isEmpty()) {
+    LOG.debug("Signer override = {}",signerOverride);
     awsConf.setSignerOverride(signerOverride);
   }
   initProxySupport(conf,awsConf,secureConnections);
   initUserAgent(conf,awsConf);
   initAmazonS3Client(conf,credentials,awsConf);
-  maxKeys=conf.getInt(MAX_PAGING_KEYS,DEFAULT_MAX_PAGING_KEYS);
+  maxKeys=intOption(conf,MAX_PAGING_KEYS,DEFAULT_MAX_PAGING_KEYS,1);
   partSize=conf.getLong(MULTIPART_SIZE,DEFAULT_MULTIPART_SIZE);
-  multiPartThreshold=conf.getLong(MIN_MULTIPART_THRESHOLD,DEFAULT_MIN_MULTIPART_THRESHOLD);
-  enableMultiObjectsDelete=conf.getBoolean(ENABLE_MULTI_DELETE,true);
   if (partSize < 5 * 1024 * 1024) {
     LOG.error(MULTIPART_SIZE + " must be at least 5 MB");
     partSize=5 * 1024 * 1024;
   }
+  multiPartThreshold=conf.getLong(MIN_MULTIPART_THRESHOLD,DEFAULT_MIN_MULTIPART_THRESHOLD);
   if (multiPartThreshold < 5 * 1024 * 1024) {
     LOG.error(MIN_MULTIPART_THRESHOLD + " must be at least 5 MB");
     multiPartThreshold=5 * 1024 * 1024;
   }
+  longOption(conf,FS_S3A_BLOCK_SIZE,DEFAULT_BLOCKSIZE,1);
+  enableMultiObjectsDelete=conf.getBoolean(ENABLE_MULTI_DELETE,true);
+  readAhead=longOption(conf,READAHEAD_RANGE,DEFAULT_READAHEAD_RANGE,0);
   int maxThreads=conf.getInt(MAX_THREADS,DEFAULT_MAX_THREADS);
   if (maxThreads < 2) {
     LOG.warn(MAX_THREADS + " must be at least 2: forcing to 2.");
@@ -46,9 +51,8 @@
   initTransferManager();
   initCannedAcls(conf);
   if (!s3.doesBucketExist(bucket)) {
-    throw new IOException("Bucket " + bucket + " does not exist");
+    throw new FileNotFoundException("Bucket " + bucket + " does not exist");
   }
   initMultipartUploads(conf);
   serverSideEncryptionAlgorithm=conf.get(SERVER_SIDE_ENCRYPTION_ALGORITHM);
-  setConf(conf);
 }
