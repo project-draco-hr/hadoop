@@ -17,45 +17,36 @@
           response=resourceTracker.nodeHeartbeat(request);
           nextHeartBeatInterval=response.getNextHeartBeatInterval();
           updateMasterKeys(response);
-          if (response.getNodeAction() == NodeAction.SHUTDOWN) {
-            LOG.warn("Recieved SHUTDOWN signal from Resourcemanager as part of" + " heartbeat, hence shutting down.");
-            LOG.warn("Message from ResourceManager: " + response.getDiagnosticsMessage());
-            context.setDecommissioned(true);
-            dispatcher.getEventHandler().handle(new NodeManagerEvent(NodeManagerEventType.SHUTDOWN));
-            break;
-          }
-          if (response.getNodeAction() == NodeAction.RESYNC) {
-            LOG.warn("Node is out of sync with ResourceManager," + " hence resyncing.");
-            LOG.warn("Message from ResourceManager: " + response.getDiagnosticsMessage());
-            NodeStatusUpdaterImpl.this.rmIdentifier=ResourceManagerConstants.RM_INVALID_IDENTIFIER;
-            dispatcher.getEventHandler().handle(new NodeManagerEvent(NodeManagerEventType.RESYNC));
-            pendingCompletedContainers.clear();
-            break;
-          }
-          nodeLabelsHandler.verifyRMHeartbeatResponseForNodeLabels(response);
-          removeOrTrackCompletedContainersFromContext(response.getContainersToBeRemovedFromNM());
-          logAggregationReportForAppsTempList.clear();
-          lastHeartbeatID=response.getResponseId();
-          List<ContainerId> containersToCleanup=response.getContainersToCleanup();
-          if (!containersToCleanup.isEmpty()) {
-            dispatcher.getEventHandler().handle(new CMgrCompletedContainersEvent(containersToCleanup,CMgrCompletedContainersEvent.Reason.BY_RESOURCEMANAGER));
-          }
-          List<ApplicationId> appsToCleanup=response.getApplicationsToCleanup();
-          trackAppsForKeepAlive(appsToCleanup);
-          if (!appsToCleanup.isEmpty()) {
-            dispatcher.getEventHandler().handle(new CMgrCompletedAppsEvent(appsToCleanup,CMgrCompletedAppsEvent.Reason.BY_RESOURCEMANAGER));
-          }
-          Map<ApplicationId,ByteBuffer> systemCredentials=response.getSystemCredentialsForApps();
-          if (systemCredentials != null && !systemCredentials.isEmpty()) {
-            ((NMContext)context).setSystemCrendentialsForApps(parseCredentials(systemCredentials));
-          }
-          List<org.apache.hadoop.yarn.api.records.Container> containersToDecrease=response.getContainersToDecrease();
-          if (!containersToDecrease.isEmpty()) {
-            dispatcher.getEventHandler().handle(new CMgrDecreaseContainersResourceEvent(containersToDecrease));
-          }
-          List<SignalContainerRequest> containersToSignal=response.getContainersToSignalList();
-          if (containersToSignal.size() != 0) {
-            dispatcher.getEventHandler().handle(new CMgrSignalContainersEvent(containersToSignal));
+          if (!handleShutdownOrResyncCommand(response)) {
+            nodeLabelsHandler.verifyRMHeartbeatResponseForNodeLabels(response);
+            removeOrTrackCompletedContainersFromContext(response.getContainersToBeRemovedFromNM());
+            logAggregationReportForAppsTempList.clear();
+            lastHeartbeatID=response.getResponseId();
+            List<ContainerId> containersToCleanup=response.getContainersToCleanup();
+            if (!containersToCleanup.isEmpty()) {
+              dispatcher.getEventHandler().handle(new CMgrCompletedContainersEvent(containersToCleanup,CMgrCompletedContainersEvent.Reason.BY_RESOURCEMANAGER));
+            }
+            List<ApplicationId> appsToCleanup=response.getApplicationsToCleanup();
+            trackAppsForKeepAlive(appsToCleanup);
+            if (!appsToCleanup.isEmpty()) {
+              dispatcher.getEventHandler().handle(new CMgrCompletedAppsEvent(appsToCleanup,CMgrCompletedAppsEvent.Reason.BY_RESOURCEMANAGER));
+            }
+            Map<ApplicationId,ByteBuffer> systemCredentials=response.getSystemCredentialsForApps();
+            if (systemCredentials != null && !systemCredentials.isEmpty()) {
+              ((NMContext)context).setSystemCrendentialsForApps(parseCredentials(systemCredentials));
+            }
+            List<org.apache.hadoop.yarn.api.records.Container> containersToDecrease=response.getContainersToDecrease();
+            if (!containersToDecrease.isEmpty()) {
+              dispatcher.getEventHandler().handle(new CMgrDecreaseContainersResourceEvent(containersToDecrease));
+            }
+            List<SignalContainerRequest> containersToSignal=response.getContainersToSignalList();
+            if (containersToSignal.size() != 0) {
+              dispatcher.getEventHandler().handle(new CMgrSignalContainersEvent(containersToSignal));
+            }
+            ContainerQueuingLimit queuingLimit=response.getContainerQueuingLimit();
+            if (queuingLimit != null) {
+              context.getContainerManager().updateQueuingLimit(queuingLimit);
+            }
           }
         }
  catch (        ConnectException e) {

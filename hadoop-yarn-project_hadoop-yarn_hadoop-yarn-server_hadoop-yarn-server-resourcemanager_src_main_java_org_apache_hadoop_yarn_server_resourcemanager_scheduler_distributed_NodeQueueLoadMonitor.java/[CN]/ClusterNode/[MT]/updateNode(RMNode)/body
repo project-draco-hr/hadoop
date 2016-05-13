@@ -1,0 +1,28 @@
+{
+  LOG.debug("Node update event from: " + rmNode.getNodeID());
+  QueuedContainersStatus queuedContainersStatus=rmNode.getQueuedContainersStatus();
+  int estimatedQueueWaitTime=queuedContainersStatus.getEstimatedQueueWaitTime();
+  int waitQueueLength=queuedContainersStatus.getWaitQueueLength();
+synchronized (this.clusterNodes) {
+    ClusterNode currentNode=this.clusterNodes.get(rmNode.getNodeID());
+    if (currentNode == null) {
+      if (estimatedQueueWaitTime != -1 || comparator == LoadComparator.QUEUE_LENGTH) {
+        this.clusterNodes.put(rmNode.getNodeID(),new ClusterNode(rmNode.getNodeID()).setQueueWaitTime(estimatedQueueWaitTime).setQueueLength(waitQueueLength));
+        LOG.info("Inserting ClusterNode [" + rmNode.getNodeID() + "]"+ "with queue wait time ["+ estimatedQueueWaitTime+ "] and "+ "wait queue length ["+ waitQueueLength+ "]");
+      }
+ else {
+        LOG.warn("IGNORING ClusterNode [" + rmNode.getNodeID() + "]"+ "with queue wait time ["+ estimatedQueueWaitTime+ "] and "+ "wait queue length ["+ waitQueueLength+ "]");
+      }
+    }
+ else {
+      if (estimatedQueueWaitTime != -1 || comparator == LoadComparator.QUEUE_LENGTH) {
+        currentNode.setQueueWaitTime(estimatedQueueWaitTime).setQueueLength(waitQueueLength).updateTimestamp();
+        LOG.info("Updating ClusterNode [" + rmNode.getNodeID() + "]"+ "with queue wait time ["+ estimatedQueueWaitTime+ "] and "+ "wait queue length ["+ waitQueueLength+ "]");
+      }
+ else {
+        this.clusterNodes.remove(rmNode.getNodeID());
+        LOG.info("Deleting ClusterNode [" + rmNode.getNodeID() + "]"+ "with queue wait time ["+ currentNode.queueWaitTime+ "] and "+ "wait queue length ["+ currentNode.queueLength+ "]");
+      }
+    }
+  }
+}
