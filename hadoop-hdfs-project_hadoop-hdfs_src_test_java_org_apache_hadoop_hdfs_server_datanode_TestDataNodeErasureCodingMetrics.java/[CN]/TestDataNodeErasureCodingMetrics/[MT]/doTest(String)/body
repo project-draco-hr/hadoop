@@ -1,0 +1,35 @@
+{
+  Path file=new Path(fileName);
+  long fileLen=DATA_BLK_NUM * BLOCKSIZE;
+  final byte[] data=StripedFileTestUtil.generateBytes((int)fileLen);
+  DFSTestUtil.writeFile(fs,file,data);
+  StripedFileTestUtil.waitBlockGroupsReported(fs,fileName);
+  LocatedBlocks locatedBlocks=StripedFileTestUtil.getLocatedBlocks(file,fs);
+  LocatedStripedBlock lastBlock=(LocatedStripedBlock)locatedBlocks.getLastLocatedBlock();
+  DataNode workerDn=null;
+  DatanodeInfo[] locations=lastBlock.getLocations();
+  assertEquals(locations.length,GROUPSIZE);
+  for (  DataNode dn : cluster.getDataNodes()) {
+    boolean appear=false;
+    for (    DatanodeInfo info : locations) {
+      if (dn.getDatanodeUuid().equals(info.getDatanodeUuid())) {
+        appear=true;
+        break;
+      }
+    }
+    if (!appear) {
+      workerDn=dn;
+      break;
+    }
+  }
+  byte[] indices=lastBlock.getBlockIndices();
+  DataNode toCorruptDn=cluster.getDataNodes().get(indices[0]);
+  toCorruptDn.shutdown();
+  setDataNodeDead(toCorruptDn.getDatanodeId());
+  DFSTestUtil.waitForDatanodeState(cluster,toCorruptDn.getDatanodeUuid(),false,10000);
+  final BlockManager bm=cluster.getNamesystem().getBlockManager();
+  BlockManagerTestUtil.getComputedDatanodeWork(bm);
+  cluster.triggerHeartbeats();
+  StripedFileTestUtil.waitForReconstructionFinished(file,fs,GROUPSIZE);
+  return workerDn;
+}
