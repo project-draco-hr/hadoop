@@ -1,0 +1,19 @@
+{
+  final RetryInfo retryInfo=RetryInfo.newRetryInfo(policy,ex,counters,proxyDescriptor.idempotentOrAtMostOnce(method));
+  counters.retries++;
+  if (retryInfo.fail != null) {
+    if (retryInfo.fail.reason != null) {
+      LOG.warn("Exception while invoking " + proxyDescriptor.getProxyInfo().getString(method.getName()) + ". Not retrying because "+ retryInfo.fail.reason,ex);
+    }
+    throw ex;
+  }
+  final boolean isFailover=retryInfo.failover != null;
+  log(method,isFailover,counters.failovers,retryInfo.delay,ex);
+  if (retryInfo.delay > 0) {
+    Thread.sleep(retryInfo.delay);
+  }
+  if (isFailover) {
+    proxyDescriptor.failover(expectedFailoverCount,method);
+    counters.failovers++;
+  }
+}
