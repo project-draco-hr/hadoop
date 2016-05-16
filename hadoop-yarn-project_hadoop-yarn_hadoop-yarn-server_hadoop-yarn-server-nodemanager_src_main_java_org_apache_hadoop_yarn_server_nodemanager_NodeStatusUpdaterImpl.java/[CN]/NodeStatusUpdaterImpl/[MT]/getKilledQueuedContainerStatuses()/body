@@ -1,0 +1,23 @@
+{
+  Map<ContainerId,ContainerStatus> killedQueuedContainerStatuses=new HashMap<>();
+  for (  Map.Entry<ContainerTokenIdentifier,String> killedQueuedContainer : this.context.getQueuingContext().getKilledQueuedContainers().entrySet()) {
+    ContainerTokenIdentifier containerTokenId=killedQueuedContainer.getKey();
+    ContainerId containerId=containerTokenId.getContainerID();
+    ContainerStatus containerStatus=BuilderUtils.newContainerStatus(containerId,ContainerState.COMPLETE,killedQueuedContainer.getValue(),ContainerExitStatus.ABORTED,containerTokenId.getResource(),containerTokenId.getExecutionType());
+    ApplicationId applicationId=containerId.getApplicationAttemptId().getApplicationId();
+    if (isApplicationStopped(applicationId)) {
+      if (LOG.isDebugEnabled()) {
+        LOG.debug(applicationId + " is completing, " + " remove "+ containerId+ " from NM context.");
+      }
+      this.context.getQueuingContext().getKilledQueuedContainers().remove(containerTokenId);
+      killedQueuedContainerStatuses.put(containerId,containerStatus);
+    }
+ else {
+      if (!isContainerRecentlyStopped(containerId)) {
+        killedQueuedContainerStatuses.put(containerId,containerStatus);
+      }
+    }
+    addCompletedContainer(containerId);
+  }
+  return killedQueuedContainerStatuses;
+}
