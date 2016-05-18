@@ -19,6 +19,7 @@
   boolean nodesList=false;
   String[] logFiles=null;
   List<String> amContainersList=new ArrayList<String>();
+  String localDir=null;
   try {
     CommandLine commandLine=parser.parse(opts,args,true);
     appIdStr=commandLine.getOptionValue(APPLICATION_ID_OPTION);
@@ -28,6 +29,7 @@
     getAMContainerLogs=commandLine.hasOption(AM_CONTAINER_OPTION);
     showMetaInfo=commandLine.hasOption(SHOW_META_INFO);
     nodesList=commandLine.hasOption(LIST_NODES_OPTION);
+    localDir=commandLine.getOptionValue(OUT_OPTION);
     if (getAMContainerLogs) {
       try {
         amContainersList=parseAMContainer(commandLine,printOpts);
@@ -61,7 +63,6 @@
   }
   LogCLIHelpers logCliHelper=new LogCLIHelpers();
   logCliHelper.setConf(getConf());
-  boolean appStateObtainedSuccessfully=true;
   YarnApplicationState appState=YarnApplicationState.NEW;
   ApplicationReport appReport=null;
   try {
@@ -73,7 +74,7 @@
     }
   }
  catch (  IOException|YarnException e) {
-    appStateObtainedSuccessfully=false;
+    appState=YarnApplicationState.FINISHED;
     System.err.println("Unable to get ApplicationState." + " Attempting to fetch logs directly from the filesystem.");
   }
   if (appOwner == null || appOwner.isEmpty()) {
@@ -84,14 +85,15 @@
       return -1;
     }
   }
+  ContainerLogsRequest request=new ContainerLogsRequest(appId,isApplicationFinished(appState),appOwner,nodeAddress,null,containerIdStr);
   if (showMetaInfo) {
-    return showMetaInfo(appState,appStateObtainedSuccessfully,logCliHelper,appId,containerIdStr,nodeAddress,appOwner);
+    return showMetaInfo(request,logCliHelper);
   }
   if (nodesList) {
-    return showNodeLists(appState,appStateObtainedSuccessfully,logCliHelper,appId,appOwner);
+    return showNodeLists(request,logCliHelper);
   }
   if (getAMContainerLogs) {
-    return fetchAMContainerLogs(logFiles,appState,appId,appOwner,amContainersList,logCliHelper);
+    return fetchAMContainerLogs(request,amContainersList,logFiles,logCliHelper,localDir);
   }
   int resultCode=0;
   if (containerIdStr != null) {
@@ -100,14 +102,11 @@
       System.err.println("The Application:" + appId + " does not have the container:"+ containerId);
       return -1;
     }
-    return fetchContainerLogs(appState,appStateObtainedSuccessfully,logFiles,appOwner,nodeAddress,containerId,logCliHelper);
+    return fetchContainerLogs(request,logFiles,logCliHelper,localDir);
   }
  else {
     if (nodeAddress == null) {
-      resultCode=logCliHelper.dumpAllContainersLogs(appId,appOwner,System.out);
-      if (resultCode == -1) {
-        System.err.println("Can not find the logs for the application: " + appId + " with the appOwner: "+ appOwner);
-      }
+      resultCode=fetchApplicationLogs(appId,appOwner,logCliHelper,localDir);
     }
  else {
       System.err.println("Should at least provide ContainerId!");

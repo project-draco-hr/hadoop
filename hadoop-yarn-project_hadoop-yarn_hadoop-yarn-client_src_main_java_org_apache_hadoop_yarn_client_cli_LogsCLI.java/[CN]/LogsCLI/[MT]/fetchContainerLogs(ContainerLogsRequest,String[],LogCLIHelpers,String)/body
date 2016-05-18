@@ -1,0 +1,58 @@
+{
+  int resultCode=0;
+  String appIdStr=request.getAppId().toString();
+  String containerIdStr=request.getContainerId();
+  String nodeAddress=request.getNodeId();
+  String appOwner=request.getAppOwner();
+  boolean isAppFinished=request.isAppFinished();
+  if (nodeAddress != null && isAppFinished) {
+    List<String> logs;
+    if (logFiles == null) {
+      logs=null;
+    }
+ else     if (fetchAllLogFiles(logFiles)) {
+      logs=null;
+    }
+ else {
+      logs=Arrays.asList(logFiles);
+    }
+    return logCliHelper.dumpAContainersLogsForALogType(appIdStr,containerIdStr,nodeAddress,appOwner,logs,localDir);
+  }
+  String nodeHttpAddress=null;
+  String nodeId=null;
+  try {
+    ContainerReport report=getContainerReport(containerIdStr);
+    nodeHttpAddress=report.getNodeHttpAddress().replaceFirst(WebAppUtils.getHttpSchemePrefix(getConf()),"");
+    nodeId=report.getAssignedNode().toString();
+    request.setNodeId(nodeId);
+    request.setNodeHttpAddress(nodeHttpAddress);
+  }
+ catch (  IOException|YarnException ex) {
+    if (isAppFinished) {
+      String[] requestedLogFiles=logFiles;
+      if (fetchAllLogFiles(logFiles)) {
+        requestedLogFiles=null;
+      }
+      return printContainerLogsForFinishedApplicationWithoutNodeId(appIdStr,containerIdStr,requestedLogFiles,logCliHelper,appOwner,localDir);
+    }
+ else {
+      System.err.println("Unable to get logs for this container:" + containerIdStr + "for the application:"+ appIdStr+ " with the appOwner: "+ appOwner);
+      System.err.println("The application: " + appIdStr + " is still running, and we can not get Container report "+ "for the container: "+ containerIdStr+ ". Please try later "+ "or after the application finishes.");
+      return -1;
+    }
+  }
+  if (!isAppFinished) {
+    if (logFiles == null || logFiles.length == 0) {
+      logFiles=new String[]{"syslog"};
+    }
+    printContainerLogsFromRunningApplication(getConf(),request,logFiles,logCliHelper,localDir);
+  }
+ else {
+    String[] requestedLogFiles=logFiles;
+    if (fetchAllLogFiles(logFiles)) {
+      requestedLogFiles=null;
+    }
+    printContainerLogsForFinishedApplication(request,requestedLogFiles,logCliHelper,localDir);
+  }
+  return resultCode;
+}

@@ -1,0 +1,46 @@
+{
+  ApplicationId applicationId=ConverterUtils.toApplicationId(appId);
+  RemoteIterator<FileStatus> nodeFiles=getRemoteNodeFileDir(applicationId,jobOwner);
+  if (nodeFiles == null) {
+    return -1;
+  }
+  boolean foundContainerLogs=false;
+  while (nodeFiles.hasNext()) {
+    FileStatus thisNodeFile=nodeFiles.next();
+    if (!thisNodeFile.getPath().getName().endsWith(LogAggregationUtils.TMP_FILE_SUFFIX)) {
+      AggregatedLogFormat.LogReader reader=null;
+      PrintStream out=System.out;
+      try {
+        reader=new AggregatedLogFormat.LogReader(getConf(),thisNodeFile.getPath());
+        if (getContainerLogsStream(containerId,reader) == null) {
+          continue;
+        }
+        reader=new AggregatedLogFormat.LogReader(getConf(),thisNodeFile.getPath());
+        out=createPrintStream(localDir,thisNodeFile.getPath().getName(),containerId);
+        out.println(containerId);
+        out.println(StringUtils.repeat("=",containerId.length()));
+        if (logType == null) {
+          if (dumpAContainerLogs(containerId,reader,out,thisNodeFile.getModificationTime()) > -1) {
+            foundContainerLogs=true;
+          }
+        }
+ else {
+          if (dumpAContainerLogsForALogType(containerId,reader,out,thisNodeFile.getModificationTime(),logType) > -1) {
+            foundContainerLogs=true;
+          }
+        }
+      }
+  finally {
+        if (reader != null) {
+          reader.close();
+        }
+        closePrintStream(out);
+      }
+    }
+  }
+  if (!foundContainerLogs) {
+    containerLogNotFound(containerId);
+    return -1;
+  }
+  return 0;
+}
