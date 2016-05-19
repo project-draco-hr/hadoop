@@ -1,36 +1,33 @@
 {
-  List<String> groups=new ArrayList<String>();
-  DirContext ctx=getDirContext();
-  NamingEnumeration<SearchResult> results=ctx.search(baseDN,userSearchFilter,new Object[]{user},SEARCH_CONTROLS);
-  if (results.hasMoreElements()) {
-    SearchResult result=results.nextElement();
-    String userDn=result.getNameInNamespace();
-    NamingEnumeration<SearchResult> groupResults=null;
-    if (isPosix) {
-      String gidNumber=null;
-      String uidNumber=null;
-      Attribute gidAttribute=result.getAttributes().get(posixGidAttr);
-      Attribute uidAttribute=result.getAttributes().get(posixUidAttr);
-      if (gidAttribute != null) {
-        gidNumber=gidAttribute.get().toString();
+  DirContext c=getDirContext();
+  NamingEnumeration<SearchResult> results=c.search(baseDN,userSearchFilter,new Object[]{user},SEARCH_CONTROLS);
+  if (!results.hasMoreElements()) {
+    if (LOG.isDebugEnabled()) {
+      LOG.debug("doGetGroups(" + user + ") return no groups because the "+ "user is not found.");
+    }
+    return new ArrayList<String>();
+  }
+  SearchResult result=results.nextElement();
+  List<String> groups=null;
+  if (useOneQuery) {
+    try {
+      Attribute groupDNAttr=result.getAttributes().get(memberOfAttr);
+      if (groupDNAttr == null) {
+        throw new NamingException("The user object does not have '" + memberOfAttr + "' attribute."+ "Returned user object: "+ result.toString());
       }
-      if (uidAttribute != null) {
-        uidNumber=uidAttribute.get().toString();
-      }
-      if (uidNumber != null && gidNumber != null) {
-        groupResults=ctx.search(baseDN,"(&" + groupSearchFilter + "(|("+ posixGidAttr+ "={0})"+ "("+ groupMemberAttr+ "={1})))",new Object[]{gidNumber,uidNumber},SEARCH_CONTROLS);
+      groups=new ArrayList<String>();
+      NamingEnumeration groupEnumeration=groupDNAttr.getAll();
+      while (groupEnumeration.hasMore()) {
+        String groupDN=groupEnumeration.next().toString();
+        groups.add(getRelativeDistinguishedName(groupDN));
       }
     }
- else {
-      groupResults=ctx.search(baseDN,"(&" + groupSearchFilter + "("+ groupMemberAttr+ "={0}))",new Object[]{userDn},SEARCH_CONTROLS);
+ catch (    NamingException e) {
+      LOG.info("Failed to get groups from the first lookup. Initiating " + "the second LDAP query using the user's DN.",e);
     }
-    if (groupResults != null) {
-      while (groupResults.hasMoreElements()) {
-        SearchResult groupResult=groupResults.nextElement();
-        Attribute groupName=groupResult.getAttributes().get(groupNameAttr);
-        groups.add(groupName.get().toString());
-      }
-    }
+  }
+  if (groups == null || groups.isEmpty()) {
+    groups=lookupGroup(result,c);
   }
   if (LOG.isDebugEnabled()) {
     LOG.debug("doGetGroups(" + user + ") return "+ groups);
