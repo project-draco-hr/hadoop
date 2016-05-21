@@ -1,0 +1,50 @@
+{
+  describe("overwrite a file with a shorter one during a read, seek");
+  final int fullLength=8192;
+  final byte[] fullDataset=dataset(fullLength,'a',32);
+  final int shortLen=4096;
+  final byte[] shortDataset=dataset(shortLen,'A',32);
+  final FileSystem fs=getFileSystem();
+  final Path testpath=path("readFileToChange.txt");
+  writeDataset(fs,testpath,fullDataset,fullDataset.length,1024,false);
+  try (FSDataInputStream instream=fs.open(testpath)){
+    instream.seek(fullLength - 16);
+    assertTrue("no data to read",instream.read() >= 0);
+    writeDataset(fs,testpath,shortDataset,shortDataset.length,1024,true);
+    eventually(30 * 1000,new Callable<Void>(){
+      @Override public Void call() throws Exception {
+        assertEquals(shortLen,fs.getFileStatus(testpath).getLen());
+        return null;
+      }
+    }
+);
+    instream.seek(shortLen + 1024);
+    int c=instream.read();
+    assertIsEOF("read()",c);
+    byte[] buf=new byte[256];
+    assertIsEOF("read(buffer)",instream.read(buf));
+    assertIsEOF("read(offset)",instream.read(instream.getPos(),buf,0,buf.length));
+    try {
+      instream.readFully(shortLen + 512,buf);
+      fail("Expected readFully to fail");
+    }
+ catch (    EOFException expected) {
+      LOG.debug("Expected EOF: ",expected);
+    }
+    assertIsEOF("read(offset)",instream.read(shortLen + 510,buf,0,buf.length));
+    instream.seek(shortLen - 256);
+    fs.delete(testpath,false);
+    try {
+      int r=instream.read();
+      fail("Expected an exception, got " + r);
+    }
+ catch (    FileNotFoundException e) {
+    }
+    try {
+      instream.readFully(2048,buf);
+      fail("Expected readFully to fail");
+    }
+ catch (    FileNotFoundException e) {
+    }
+  }
+ }

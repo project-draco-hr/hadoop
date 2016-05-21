@@ -1,0 +1,31 @@
+{
+  String message=String.format("%s%s: %s",operation,path != null ? (" on " + path) : "",exception);
+  if (!(exception instanceof AmazonServiceException)) {
+    return new AWSClientIOException(message,exception);
+  }
+ else {
+    IOException ioe;
+    AmazonServiceException ase=(AmazonServiceException)exception;
+    AmazonS3Exception s3Exception=ase instanceof AmazonS3Exception ? (AmazonS3Exception)ase : null;
+    int status=ase.getStatusCode();
+switch (status) {
+case 401:
+case 403:
+      ioe=new AccessDeniedException(path,null,message);
+    ioe.initCause(ase);
+  break;
+case 404:
+case 410:
+ioe=new FileNotFoundException(message);
+ioe.initCause(ase);
+break;
+case 416:
+ioe=new EOFException(message);
+break;
+default :
+ioe=s3Exception != null ? new AWSS3IOException(message,s3Exception) : new AWSServiceIOException(message,ase);
+break;
+}
+return ioe;
+}
+}

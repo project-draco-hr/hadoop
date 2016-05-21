@@ -1,22 +1,23 @@
 {
   LOG.debug("copyFile {} -> {} ",srcKey,dstKey);
-  ObjectMetadata srcom=s3.getObjectMetadata(bucket,srcKey);
-  ObjectMetadata dstom=cloneObjectMetadata(srcom);
-  if (StringUtils.isNotBlank(serverSideEncryptionAlgorithm)) {
-    dstom.setSSEAlgorithm(serverSideEncryptionAlgorithm);
-  }
-  CopyObjectRequest copyObjectRequest=new CopyObjectRequest(bucket,srcKey,bucket,dstKey);
-  copyObjectRequest.setCannedAccessControlList(cannedACL);
-  copyObjectRequest.setNewObjectMetadata(dstom);
-  ProgressListener progressListener=new ProgressListener(){
-    public void progressChanged(    ProgressEvent progressEvent){
+  try {
+    ObjectMetadata srcom=s3.getObjectMetadata(bucket,srcKey);
+    ObjectMetadata dstom=cloneObjectMetadata(srcom);
+    if (StringUtils.isNotBlank(serverSideEncryptionAlgorithm)) {
+      dstom.setSSEAlgorithm(serverSideEncryptionAlgorithm);
+    }
+    CopyObjectRequest copyObjectRequest=new CopyObjectRequest(bucket,srcKey,bucket,dstKey);
+    copyObjectRequest.setCannedAccessControlList(cannedACL);
+    copyObjectRequest.setNewObjectMetadata(dstom);
+    ProgressListener progressListener=new ProgressListener(){
+      public void progressChanged(      ProgressEvent progressEvent){
 switch (progressEvent.getEventType()) {
 case TRANSFER_PART_COMPLETED_EVENT:
-        statistics.incrementWriteOps(1);
-      break;
+          statistics.incrementWriteOps(1);
+        break;
 default :
-    break;
-}
+      break;
+  }
 }
 }
 ;
@@ -29,5 +30,9 @@ instrumentation.filesCopied(1,size);
 }
  catch (InterruptedException e) {
 throw new InterruptedIOException("Interrupted copying " + srcKey + " to "+ dstKey+ ", cancelling");
+}
+}
+ catch (AmazonClientException e) {
+throw translateException("copyFile(" + srcKey + ", "+ dstKey+ ")",srcKey,e);
 }
 }
