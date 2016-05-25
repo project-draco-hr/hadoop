@@ -4,32 +4,43 @@
     earlierFailedMaps.add(event.getAttemptID());
     request=new ContainerRequest(event,PRIORITY_FAST_FAIL_MAP,mapNodeLabelExpression);
     LOG.info("Added " + event.getAttemptID() + " to list of failed maps");
+    maps.put(event.getAttemptID(),request);
+    addContainerReq(request);
   }
  else {
-    for (    String host : event.getHosts()) {
-      LinkedList<TaskAttemptId> list=mapsHostMapping.get(host);
-      if (list == null) {
-        list=new LinkedList<TaskAttemptId>();
-        mapsHostMapping.put(host,list);
-      }
-      list.add(event.getAttemptID());
-      if (LOG.isDebugEnabled()) {
-        LOG.debug("Added attempt req to host " + host);
-      }
+    if (mapsMod100 < numOpportunisticMapsPer100) {
+      request=new ContainerRequest(event,PRIORITY_OPPORTUNISTIC_MAP,mapNodeLabelExpression);
+      maps.put(event.getAttemptID(),request);
+      addOpportunisticResourceRequest(request.priority,request.capability);
     }
-    for (    String rack : event.getRacks()) {
-      LinkedList<TaskAttemptId> list=mapsRackMapping.get(rack);
-      if (list == null) {
-        list=new LinkedList<TaskAttemptId>();
-        mapsRackMapping.put(rack,list);
+ else {
+      request=new ContainerRequest(event,PRIORITY_MAP,mapNodeLabelExpression);
+      for (      String host : event.getHosts()) {
+        LinkedList<TaskAttemptId> list=mapsHostMapping.get(host);
+        if (list == null) {
+          list=new LinkedList<TaskAttemptId>();
+          mapsHostMapping.put(host,list);
+        }
+        list.add(event.getAttemptID());
+        if (LOG.isDebugEnabled()) {
+          LOG.debug("Added attempt req to host " + host);
+        }
       }
-      list.add(event.getAttemptID());
-      if (LOG.isDebugEnabled()) {
-        LOG.debug("Added attempt req to rack " + rack);
+      for (      String rack : event.getRacks()) {
+        LinkedList<TaskAttemptId> list=mapsRackMapping.get(rack);
+        if (list == null) {
+          list=new LinkedList<TaskAttemptId>();
+          mapsRackMapping.put(rack,list);
+        }
+        list.add(event.getAttemptID());
+        if (LOG.isDebugEnabled()) {
+          LOG.debug("Added attempt req to rack " + rack);
+        }
       }
+      maps.put(event.getAttemptID(),request);
+      addContainerReq(request);
     }
-    request=new ContainerRequest(event,PRIORITY_MAP,mapNodeLabelExpression);
+    mapsMod100++;
+    mapsMod100%=100;
   }
-  maps.put(event.getAttemptID(),request);
-  addContainerReq(request);
 }

@@ -1,2 +1,74 @@
 {
+  Iterator<Container> it=allocatedContainers.iterator();
+  while (it.hasNext() && maps.size() > 0 && canAssignMaps()) {
+    Container allocated=it.next();
+    Priority priority=allocated.getPriority();
+    assert(PRIORITY_MAP.equals(priority) || PRIORITY_OPPORTUNISTIC_MAP.equals(priority));
+    if (!PRIORITY_OPPORTUNISTIC_MAP.equals(priority)) {
+      String host=allocated.getNodeId().getHost();
+      LinkedList<TaskAttemptId> list=mapsHostMapping.get(host);
+      while (list != null && list.size() > 0) {
+        if (LOG.isDebugEnabled()) {
+          LOG.debug("Host matched to the request list " + host);
+        }
+        TaskAttemptId tId=list.removeFirst();
+        if (maps.containsKey(tId)) {
+          ContainerRequest assigned=maps.remove(tId);
+          containerAssigned(allocated,assigned);
+          it.remove();
+          JobCounterUpdateEvent jce=new JobCounterUpdateEvent(assigned.attemptID.getTaskId().getJobId());
+          jce.addCounterUpdate(JobCounter.DATA_LOCAL_MAPS,1);
+          eventHandler.handle(jce);
+          hostLocalAssigned++;
+          if (LOG.isDebugEnabled()) {
+            LOG.debug("Assigned based on host match " + host);
+          }
+          break;
+        }
+      }
+    }
+  }
+  it=allocatedContainers.iterator();
+  while (it.hasNext() && maps.size() > 0 && canAssignMaps()) {
+    Container allocated=it.next();
+    Priority priority=allocated.getPriority();
+    assert(PRIORITY_MAP.equals(priority) || PRIORITY_OPPORTUNISTIC_MAP.equals(priority));
+    if (!PRIORITY_OPPORTUNISTIC_MAP.equals(priority)) {
+      String host=allocated.getNodeId().getHost();
+      String rack=RackResolver.resolve(host).getNetworkLocation();
+      LinkedList<TaskAttemptId> list=mapsRackMapping.get(rack);
+      while (list != null && list.size() > 0) {
+        TaskAttemptId tId=list.removeFirst();
+        if (maps.containsKey(tId)) {
+          ContainerRequest assigned=maps.remove(tId);
+          containerAssigned(allocated,assigned);
+          it.remove();
+          JobCounterUpdateEvent jce=new JobCounterUpdateEvent(assigned.attemptID.getTaskId().getJobId());
+          jce.addCounterUpdate(JobCounter.RACK_LOCAL_MAPS,1);
+          eventHandler.handle(jce);
+          rackLocalAssigned++;
+          if (LOG.isDebugEnabled()) {
+            LOG.debug("Assigned based on rack match " + rack);
+          }
+          break;
+        }
+      }
+    }
+  }
+  it=allocatedContainers.iterator();
+  while (it.hasNext() && maps.size() > 0 && canAssignMaps()) {
+    Container allocated=it.next();
+    Priority priority=allocated.getPriority();
+    assert(PRIORITY_MAP.equals(priority) || PRIORITY_OPPORTUNISTIC_MAP.equals(priority));
+    TaskAttemptId tId=maps.keySet().iterator().next();
+    ContainerRequest assigned=maps.remove(tId);
+    containerAssigned(allocated,assigned);
+    it.remove();
+    JobCounterUpdateEvent jce=new JobCounterUpdateEvent(assigned.attemptID.getTaskId().getJobId());
+    jce.addCounterUpdate(JobCounter.OTHER_LOCAL_MAPS,1);
+    eventHandler.handle(jce);
+    if (LOG.isDebugEnabled()) {
+      LOG.debug("Assigned based on * match");
+    }
+  }
 }
