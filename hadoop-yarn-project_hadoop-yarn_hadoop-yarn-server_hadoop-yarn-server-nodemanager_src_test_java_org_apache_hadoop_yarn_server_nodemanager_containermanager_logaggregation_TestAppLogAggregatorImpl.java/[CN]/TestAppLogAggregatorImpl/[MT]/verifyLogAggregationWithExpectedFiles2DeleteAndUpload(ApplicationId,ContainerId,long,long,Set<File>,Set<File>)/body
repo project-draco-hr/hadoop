@@ -1,0 +1,25 @@
+{
+  final Set<String> filesExpected2Delete=new HashSet<>();
+  for (  File file : expectedFilesToDelete) {
+    filesExpected2Delete.add(file.getAbsolutePath());
+  }
+  final Set<String> filesExpected2Upload=new HashSet<>();
+  for (  File file : expectedFilesToUpload) {
+    filesExpected2Upload.add(file.getAbsolutePath());
+  }
+  DeletionService deletionServiceWithExpectedFiles=createDeletionServiceWithExpectedFile2Delete(filesExpected2Delete);
+  final YarnConfiguration config=new YarnConfiguration();
+  config.setLong(YarnConfiguration.LOG_AGGREGATION_RETAIN_SECONDS,logRetentionSecs);
+  final AppLogAggregatorInTest appLogAggregator=createAppLogAggregator(appId,LOCAL_LOG_DIR.getAbsolutePath(),config,recoveredLogInitedTimeMillis,deletionServiceWithExpectedFiles);
+  appLogAggregator.startContainerLogAggregation(new ContainerLogContext(containerId,ContainerType.TASK,0));
+  appLogAggregator.finishLogAggregation();
+  appLogAggregator.run();
+  ArgumentCaptor<LogValue> logValCaptor=ArgumentCaptor.forClass(LogValue.class);
+  verify(appLogAggregator.logWriter).append(any(LogKey.class),logValCaptor.capture());
+  Set<String> filesUploaded=new HashSet<>();
+  LogValue logValue=logValCaptor.getValue();
+  for (  File file : logValue.getPendingLogFilesToUploadForThisContainer()) {
+    filesUploaded.add(file.getAbsolutePath());
+  }
+  verifyFilesUploaded(filesUploaded,filesExpected2Upload);
+}
