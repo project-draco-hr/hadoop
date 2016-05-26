@@ -1,17 +1,16 @@
 {
   final Configuration conf=new Configuration();
   configureSuperUserIPAddresses(conf,REAL_USER_SHORT_NAME);
-  Server server=new RPC.Builder(conf).setProtocol(TestProtocol.class).setInstance(new TestImpl()).setBindAddress(ADDRESS).setPort(0).setNumHandlers(2).setVerbose(false).build();
+  RPC.setProtocolEngine(conf,TestRpcService.class,ProtobufRpcEngine.class);
+  UserGroupInformation.setConfiguration(conf);
+  final Server server=setupTestServer(conf,2);
   try {
-    server.start();
-    final InetSocketAddress addr=NetUtils.getConnectAddress(server);
     UserGroupInformation realUserUgi=UserGroupInformation.createRemoteUser(REAL_USER_NAME);
     UserGroupInformation proxyUserUgi=UserGroupInformation.createProxyUserForTesting(PROXY_USER_NAME,realUserUgi,GROUP_NAMES);
     String retVal=proxyUserUgi.doAs(new PrivilegedExceptionAction<String>(){
-      @Override public String run() throws IOException {
-        proxy=(TestProtocol)RPC.getProxy(TestProtocol.class,TestProtocol.versionID,addr,conf);
-        String ret=proxy.aMethod();
-        return ret;
+      @Override public String run() throws ServiceException {
+        client=getClient(addr,conf);
+        return client.getCurrentUser(null,newEmptyRequest()).getUser();
       }
     }
 );
@@ -21,9 +20,6 @@
     e.printStackTrace();
   }
  finally {
-    server.stop();
-    if (proxy != null) {
-      RPC.stopProxy(proxy);
-    }
+    stop(server,client);
   }
 }

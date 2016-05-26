@@ -2,32 +2,27 @@
   TestTokenSecretManager sm=new TestTokenSecretManager();
   final Configuration newConf=new Configuration(masterConf);
   SecurityUtil.setAuthenticationMethod(AuthenticationMethod.KERBEROS,newConf);
+  RPC.setProtocolEngine(newConf,TestRpcService.class,ProtobufRpcEngine.class);
   UserGroupInformation.setConfiguration(newConf);
-  final Server server=new RPC.Builder(newConf).setProtocol(TestProtocol.class).setInstance(new TestImpl()).setBindAddress(ADDRESS).setPort(0).setNumHandlers(5).setVerbose(true).setSecretManager(sm).build();
-  server.start();
+  final Server server=setupTestServer(newConf,5,sm);
   final UserGroupInformation current=UserGroupInformation.createUserForTesting(REAL_USER_NAME,GROUP_NAMES);
   refreshConf(newConf);
-  final InetSocketAddress addr=NetUtils.getConnectAddress(server);
   TestTokenIdentifier tokenId=new TestTokenIdentifier(new Text(current.getUserName()),new Text("SomeSuperUser"));
-  Token<TestTokenIdentifier> token=new Token<TestTokenIdentifier>(tokenId,sm);
+  Token<TestTokenIdentifier> token=new Token<>(tokenId,sm);
   SecurityUtil.setTokenService(token,addr);
   current.addToken(token);
   String retVal=current.doAs(new PrivilegedExceptionAction<String>(){
     @Override public String run() throws Exception {
       try {
-        proxy=RPC.getProxy(TestProtocol.class,TestProtocol.versionID,addr,newConf);
-        String ret=proxy.aMethod();
-        return ret;
+        client=getClient(addr,newConf);
+        return client.getCurrentUser(null,newEmptyRequest()).getUser();
       }
  catch (      Exception e) {
         e.printStackTrace();
         throw e;
       }
  finally {
-        server.stop();
-        if (proxy != null) {
-          RPC.stopProxy(proxy);
-        }
+        stop(server,client);
       }
     }
   }
