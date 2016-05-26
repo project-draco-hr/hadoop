@@ -6,17 +6,27 @@
   ms.publishMetricsNow();
   ms.publishMetricsNow();
   int count=0;
-  while (!RollingFileSystemSink.hasFlushed) {
-    Thread.sleep(10L);
-    if (++count > 1000) {
-      fail("Flush thread did not run within 10 seconds");
+  try {
+    while (!RollingFileSystemSink.hasFlushed) {
+      Thread.sleep(10L);
+      if (++count > 1000) {
+        fail("Flush thread did not run within 10 seconds");
+      }
+    }
+    Calendar now=Calendar.getInstance();
+    Path currentDir=new Path(path,DATE_FORMAT.format(now.getTime()) + "00");
+    FileSystem fs=FileSystem.newInstance(new URI(path),new Configuration());
+    Path currentFile=findMostRecentLogFile(fs,new Path(currentDir,getLogFilename()));
+    FileStatus status=fs.getFileStatus(currentFile);
+    assertTrue("The flusher thread didn't flush the log contents. Expected " + "at least 236 bytes in the log file, but got " + status.getLen(),status.getLen() >= 236);
+  }
+  finally {
+    RollingFileSystemSink.forceFlush=false;
+    try {
+      ms.stop();
+    }
+  finally {
+      ms.shutdown();
     }
   }
-  Calendar now=Calendar.getInstance();
-  Path currentDir=new Path(path,DATE_FORMAT.format(now.getTime()) + "00");
-  FileSystem fs=FileSystem.newInstance(new URI(path),new Configuration());
-  Path currentFile=findMostRecentLogFile(fs,new Path(currentDir,getLogFilename()));
-  FileStatus status=fs.getFileStatus(currentFile);
-  assertTrue("The flusher thread didn't flush the log contents. Expected " + "at least 236 bytes in the log file, but got " + status.getLen(),status.getLen() >= 236);
-  ms.stop();
 }
