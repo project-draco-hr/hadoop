@@ -1,0 +1,49 @@
+{
+  NavigableMap<K,NavigableMap<Long,V>> results=new TreeMap<>();
+  if (result != null) {
+    NavigableMap<byte[],NavigableMap<byte[],NavigableMap<Long,byte[]>>> resultMap=result.getMap();
+    NavigableMap<byte[],NavigableMap<Long,byte[]>> columnCellMap=resultMap.get(columnFamilyBytes);
+    if (columnCellMap != null) {
+      for (      Entry<byte[],NavigableMap<Long,byte[]>> entry : columnCellMap.entrySet()) {
+        K converterColumnKey=null;
+        if (columnPrefixBytes == null) {
+          if (LOG.isDebugEnabled()) {
+            LOG.debug("null prefix was specified; returning all columns");
+          }
+          try {
+            converterColumnKey=keyConverter.decode(entry.getKey());
+          }
+ catch (          IllegalArgumentException iae) {
+            LOG.error("Illegal column found, skipping this column.",iae);
+            continue;
+          }
+        }
+ else {
+          byte[][] columnNameParts=Separator.QUALIFIERS.split(entry.getKey(),2);
+          byte[] actualColumnPrefixBytes=columnNameParts[0];
+          if (Bytes.equals(columnPrefixBytes,actualColumnPrefixBytes) && columnNameParts.length == 2) {
+            try {
+              converterColumnKey=keyConverter.decode(columnNameParts[1]);
+            }
+ catch (            IllegalArgumentException iae) {
+              LOG.error("Illegal column found, skipping this column.",iae);
+              continue;
+            }
+          }
+        }
+        if (converterColumnKey != null) {
+          NavigableMap<Long,V> cellResults=new TreeMap<Long,V>();
+          NavigableMap<Long,byte[]> cells=entry.getValue();
+          if (cells != null) {
+            for (            Entry<Long,byte[]> cell : cells.entrySet()) {
+              V value=(V)converter.decodeValue(cell.getValue());
+              cellResults.put(TimestampGenerator.getTruncatedTimestamp(cell.getKey()),value);
+            }
+          }
+          results.put(converterColumnKey,cellResults);
+        }
+      }
+    }
+  }
+  return results;
+}
