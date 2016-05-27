@@ -1,19 +1,22 @@
 {
   assertEquals(EntityGroupPlugInForTest.class.getName(),store.getConfig().get(YarnConfiguration.TIMELINE_SERVICE_ENTITY_GROUP_PLUGIN_CLASSES));
-  EntityGroupFSTimelineStore.AppLogs appLogs=store.new AppLogs(TEST_APPLICATION_ID,testAppDirPath,AppState.COMPLETED);
-  EntityCacheItem cacheItem=new EntityCacheItem(config,fs);
+  EntityGroupFSTimelineStore.AppLogs appLogs=store.new AppLogs(mainTestAppId,mainTestAppDirPath,AppState.COMPLETED);
+  EntityCacheItem cacheItem=new EntityCacheItem(EntityGroupPlugInForTest.getStandardTimelineGroupId(mainTestAppId),config,fs);
   cacheItem.setAppLogs(appLogs);
-  store.setCachedLogs(EntityGroupPlugInForTest.getStandardTimelineGroupId(),cacheItem);
+  store.setCachedLogs(EntityGroupPlugInForTest.getStandardTimelineGroupId(mainTestAppId),cacheItem);
   MutableCounterLong detailLogEntityRead=store.metrics.getGetEntityToDetailOps();
   MutableStat cacheRefresh=store.metrics.getCacheRefresh();
   long numEntityReadBefore=detailLogEntityRead.value();
   long cacheRefreshBefore=cacheRefresh.lastStat().numSamples();
   TimelineDataManager tdm=PluginStoreTestUtils.getTdmWithStore(config,store);
-  TimelineEntity entity3=tdm.getEntity("type_3","id_3",EnumSet.allOf(TimelineReader.Field.class),UserGroupInformation.getLoginUser());
+  TimelineEntity entity3=tdm.getEntity("type_3",mainTestAppId.toString(),EnumSet.allOf(TimelineReader.Field.class),UserGroupInformation.getLoginUser());
   assertNotNull(entity3);
   assertEquals(entityNew.getStartTime(),entity3.getStartTime());
-  TimelineEntities entities=tdm.getEntities("type_3",null,null,null,null,null,null,null,EnumSet.allOf(TimelineReader.Field.class),UserGroupInformation.getLoginUser());
-  assertEquals(entities.getEntities().size(),1);
+  assertEquals(1,cacheItem.getRefCount());
+  assertEquals(1,EntityCacheItem.getActiveStores());
+  NameValuePair primaryFilter=new NameValuePair(EntityGroupPlugInForTest.APP_ID_FILTER_NAME,mainTestAppId.toString());
+  TimelineEntities entities=tdm.getEntities("type_3",primaryFilter,null,null,null,null,null,null,EnumSet.allOf(TimelineReader.Field.class),UserGroupInformation.getLoginUser());
+  assertEquals(1,entities.getEntities().size());
   for (  TimelineEntity entity : entities.getEntities()) {
     assertEquals(entityNew.getStartTime(),entity.getStartTime());
   }

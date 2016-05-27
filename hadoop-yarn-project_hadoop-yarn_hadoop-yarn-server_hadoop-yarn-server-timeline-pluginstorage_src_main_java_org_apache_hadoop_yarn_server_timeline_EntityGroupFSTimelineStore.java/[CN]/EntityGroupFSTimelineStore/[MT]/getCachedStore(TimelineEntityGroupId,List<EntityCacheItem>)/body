@@ -1,0 +1,32 @@
+{
+  EntityCacheItem cacheItem;
+synchronized (this.cachedLogs) {
+    cacheItem=this.cachedLogs.get(groupId);
+    if (cacheItem == null) {
+      LOG.debug("Set up new cache item for id {}",groupId);
+      cacheItem=new EntityCacheItem(groupId,getConfig(),fs);
+      AppLogs appLogs=getAndSetAppLogs(groupId.getApplicationId());
+      if (appLogs != null) {
+        LOG.debug("Set applogs {} for group id {}",appLogs,groupId);
+        cacheItem.setAppLogs(appLogs);
+        this.cachedLogs.put(groupId,cacheItem);
+        cacheItem.incrRefs();
+      }
+ else {
+        LOG.warn("AppLogs for groupId {} is set to null!",groupId);
+      }
+    }
+  }
+  TimelineStore store=null;
+  if (cacheItem.getAppLogs() != null) {
+    AppLogs appLogs=cacheItem.getAppLogs();
+    LOG.debug("try refresh cache {} {}",groupId,appLogs.getAppId());
+    cacheItem.incrRefs();
+    cacheItems.add(cacheItem);
+    store=cacheItem.refreshCache(aclManager,jsonFactory,objMapper,metrics);
+  }
+ else {
+    LOG.warn("AppLogs for group id {} is null",groupId);
+  }
+  return store;
+}
