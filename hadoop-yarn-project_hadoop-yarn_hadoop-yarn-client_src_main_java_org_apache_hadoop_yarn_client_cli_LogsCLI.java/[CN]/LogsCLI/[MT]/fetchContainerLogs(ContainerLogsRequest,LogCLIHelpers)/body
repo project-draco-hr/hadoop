@@ -1,0 +1,42 @@
+{
+  int resultCode=0;
+  String appIdStr=request.getAppId().toString();
+  String containerIdStr=request.getContainerId();
+  String nodeAddress=request.getNodeId();
+  String appOwner=request.getAppOwner();
+  boolean isAppFinished=request.isAppFinished();
+  List<String> logFiles=request.getLogTypes();
+  if (nodeAddress != null && isAppFinished) {
+    return printContainerLogsForFinishedApplication(request,logCliHelper);
+  }
+  String nodeHttpAddress=null;
+  String nodeId=null;
+  try {
+    ContainerReport report=getContainerReport(containerIdStr);
+    nodeHttpAddress=report.getNodeHttpAddress().replaceFirst(WebAppUtils.getHttpSchemePrefix(getConf()),"");
+    nodeId=report.getAssignedNode().toString();
+    request.setNodeId(nodeId);
+    request.setNodeHttpAddress(nodeHttpAddress);
+  }
+ catch (  IOException|YarnException ex) {
+    if (isAppFinished) {
+      return printContainerLogsForFinishedApplicationWithoutNodeId(request,logCliHelper);
+    }
+ else {
+      System.err.println("Unable to get logs for this container:" + containerIdStr + "for the application:"+ appIdStr+ " with the appOwner: "+ appOwner);
+      System.err.println("The application: " + appIdStr + " is still running, and we can not get Container report "+ "for the container: "+ containerIdStr+ ". Please try later "+ "or after the application finishes.");
+      return -1;
+    }
+  }
+  if (!isAppFinished) {
+    if (logFiles == null || logFiles.isEmpty()) {
+      logFiles=Arrays.asList("syslog");
+    }
+    request.setLogTypes(logFiles);
+    printContainerLogsFromRunningApplication(getConf(),request,logCliHelper);
+  }
+ else {
+    resultCode=printContainerLogsForFinishedApplication(request,logCliHelper);
+  }
+  return resultCode;
+}

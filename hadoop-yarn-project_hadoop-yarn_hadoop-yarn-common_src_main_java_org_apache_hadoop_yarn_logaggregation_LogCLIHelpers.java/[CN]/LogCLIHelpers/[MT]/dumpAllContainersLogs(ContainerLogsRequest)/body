@@ -1,0 +1,65 @@
+{
+  ApplicationId appId=options.getAppId();
+  String appOwner=options.getAppOwner();
+  String localDir=options.getOutputLocalDir();
+  List<String> logTypes=options.getLogTypes();
+  RemoteIterator<FileStatus> nodeFiles=getRemoteNodeFileDir(appId,appOwner);
+  if (nodeFiles == null) {
+    return -1;
+  }
+  boolean foundAnyLogs=false;
+  while (nodeFiles.hasNext()) {
+    FileStatus thisNodeFile=nodeFiles.next();
+    if (thisNodeFile.getPath().getName().equals(appId + ".har")) {
+      Path p=new Path("har:///" + thisNodeFile.getPath().toUri().getRawPath());
+      nodeFiles=HarFs.get(p.toUri(),conf).listStatusIterator(p);
+      continue;
+    }
+    if (!thisNodeFile.getPath().getName().endsWith(LogAggregationUtils.TMP_FILE_SUFFIX)) {
+      AggregatedLogFormat.LogReader reader=new AggregatedLogFormat.LogReader(getConf(),thisNodeFile.getPath());
+      try {
+        DataInputStream valueStream;
+        LogKey key=new LogKey();
+        valueStream=reader.next(key);
+        while (valueStream != null) {
+          PrintStream out=createPrintStream(localDir,thisNodeFile.getPath().getName(),key.toString());
+          try {
+            String containerString="\n\nContainer: " + key + " on "+ thisNodeFile.getPath().getName();
+            out.println(containerString);
+            out.println(StringUtils.repeat("=",containerString.length()));
+            while (true) {
+              try {
+                if (logTypes == null || logTypes.isEmpty()) {
+                  LogReader.readAContainerLogsForALogType(valueStream,out,thisNodeFile.getModificationTime());
+                  foundAnyLogs=true;
+                }
+ else {
+                  int result=LogReader.readContainerLogsForALogType(valueStream,out,thisNodeFile.getModificationTime(),logTypes);
+                  if (result == 0) {
+                    foundAnyLogs=true;
+                  }
+                }
+              }
+ catch (              EOFException eof) {
+                break;
+              }
+            }
+          }
+  finally {
+            closePrintStream(out);
+          }
+          key=new LogKey();
+          valueStream=reader.next(key);
+        }
+      }
+  finally {
+        reader.close();
+      }
+    }
+  }
+  if (!foundAnyLogs) {
+    emptyLogDir(getRemoteAppLogDir(appId,appOwner).toString());
+    return -1;
+  }
+  return 0;
+}

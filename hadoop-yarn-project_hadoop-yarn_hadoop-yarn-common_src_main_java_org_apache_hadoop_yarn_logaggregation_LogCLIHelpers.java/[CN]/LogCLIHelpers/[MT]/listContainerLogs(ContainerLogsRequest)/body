@@ -1,0 +1,51 @@
+{
+  Set<String> logTypes=new HashSet<String>();
+  ApplicationId appId=options.getAppId();
+  String appOwner=options.getAppOwner();
+  String nodeId=options.getNodeId();
+  String containerIdStr=options.getContainerId();
+  boolean getAllContainers=(containerIdStr == null);
+  String nodeIdStr=(nodeId == null) ? null : LogAggregationUtils.getNodeString(nodeId);
+  RemoteIterator<FileStatus> nodeFiles=getRemoteNodeFileDir(appId,appOwner);
+  if (nodeFiles == null) {
+    return logTypes;
+  }
+  while (nodeFiles.hasNext()) {
+    FileStatus thisNodeFile=nodeFiles.next();
+    if (nodeIdStr != null) {
+      if (!thisNodeFile.getPath().getName().contains(nodeIdStr)) {
+        continue;
+      }
+    }
+    if (!thisNodeFile.getPath().getName().endsWith(LogAggregationUtils.TMP_FILE_SUFFIX)) {
+      AggregatedLogFormat.LogReader reader=new AggregatedLogFormat.LogReader(getConf(),thisNodeFile.getPath());
+      try {
+        DataInputStream valueStream;
+        LogKey key=new LogKey();
+        valueStream=reader.next(key);
+        while (valueStream != null) {
+          if (getAllContainers || (key.toString().equals(containerIdStr))) {
+            while (true) {
+              try {
+                String logFile=LogReader.readContainerMetaDataAndSkipData(valueStream,null);
+                logTypes.add(logFile);
+              }
+ catch (              EOFException eof) {
+                break;
+              }
+            }
+            if (!getAllContainers) {
+              break;
+            }
+          }
+          key=new LogKey();
+          valueStream=reader.next(key);
+        }
+      }
+  finally {
+        reader.close();
+      }
+    }
+  }
+  return logTypes;
+}

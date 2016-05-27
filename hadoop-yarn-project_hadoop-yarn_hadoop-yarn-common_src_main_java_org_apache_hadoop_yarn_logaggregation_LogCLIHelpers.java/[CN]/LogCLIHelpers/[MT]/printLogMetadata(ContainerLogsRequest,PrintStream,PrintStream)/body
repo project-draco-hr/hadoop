@@ -1,0 +1,65 @@
+{
+  ApplicationId appId=options.getAppId();
+  String appOwner=options.getAppOwner();
+  String nodeId=options.getNodeId();
+  String containerIdStr=options.getContainerId();
+  boolean getAllContainers=(containerIdStr == null);
+  String nodeIdStr=(nodeId == null) ? null : LogAggregationUtils.getNodeString(nodeId);
+  RemoteIterator<FileStatus> nodeFiles=getRemoteNodeFileDir(appId,appOwner);
+  if (nodeFiles == null) {
+    return;
+  }
+  boolean foundAnyLogs=false;
+  while (nodeFiles.hasNext()) {
+    FileStatus thisNodeFile=nodeFiles.next();
+    if (nodeIdStr != null) {
+      if (!thisNodeFile.getPath().getName().contains(nodeIdStr)) {
+        continue;
+      }
+    }
+    if (!thisNodeFile.getPath().getName().endsWith(LogAggregationUtils.TMP_FILE_SUFFIX)) {
+      AggregatedLogFormat.LogReader reader=new AggregatedLogFormat.LogReader(getConf(),thisNodeFile.getPath());
+      try {
+        DataInputStream valueStream;
+        LogKey key=new LogKey();
+        valueStream=reader.next(key);
+        while (valueStream != null) {
+          if (getAllContainers || (key.toString().equals(containerIdStr))) {
+            String containerString="\n\nContainer: " + key + " on "+ thisNodeFile.getPath().getName();
+            out.println(containerString);
+            out.println("Log Upload Time:" + thisNodeFile.getModificationTime());
+            out.println(StringUtils.repeat("=",containerString.length()));
+            while (true) {
+              try {
+                LogReader.readContainerMetaDataAndSkipData(valueStream,out);
+              }
+ catch (              EOFException eof) {
+                break;
+              }
+            }
+            foundAnyLogs=true;
+            if (!getAllContainers) {
+              break;
+            }
+          }
+          key=new LogKey();
+          valueStream=reader.next(key);
+        }
+      }
+  finally {
+        reader.close();
+      }
+    }
+  }
+  if (!foundAnyLogs) {
+    if (containerIdStr != null && nodeId != null) {
+      err.println("The container " + containerIdStr + " couldn't be found "+ "on the node specified: "+ nodeId);
+    }
+ else     if (nodeId != null) {
+      err.println("Can not find log metadata for any containers on " + nodeId);
+    }
+ else     if (containerIdStr != null) {
+      err.println("Can not find log metadata for container: " + containerIdStr);
+    }
+  }
+}
