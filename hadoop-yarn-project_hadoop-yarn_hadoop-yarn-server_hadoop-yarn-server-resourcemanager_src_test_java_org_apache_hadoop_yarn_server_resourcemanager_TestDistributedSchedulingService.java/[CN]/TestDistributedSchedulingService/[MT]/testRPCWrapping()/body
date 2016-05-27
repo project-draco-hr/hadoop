@@ -15,37 +15,10 @@
     }
   }
 ;
-  DistributedSchedulingService service=new DistributedSchedulingService(rmContext,null){
-    @Override public RegisterApplicationMasterResponse registerApplicationMaster(    RegisterApplicationMasterRequest request) throws YarnException, IOException {
-      RegisterApplicationMasterResponse resp=factory.newRecordInstance(RegisterApplicationMasterResponse.class);
-      resp.setQueue("dummyQueue");
-      return resp;
-    }
-    @Override public FinishApplicationMasterResponse finishApplicationMaster(    FinishApplicationMasterRequest request) throws YarnException, IOException {
-      FinishApplicationMasterResponse resp=factory.newRecordInstance(FinishApplicationMasterResponse.class);
-      resp.setIsUnregistered(false);
-      return resp;
-    }
-    @Override public AllocateResponse allocate(    AllocateRequest request) throws YarnException, IOException {
-      AllocateResponse response=factory.newRecordInstance(AllocateResponse.class);
-      response.setNumClusterNodes(12345);
-      return response;
-    }
-    @Override public DistSchedRegisterResponse registerApplicationMasterForDistributedScheduling(    RegisterApplicationMasterRequest request) throws YarnException, IOException {
-      DistSchedRegisterResponse resp=factory.newRecordInstance(DistSchedRegisterResponse.class);
-      resp.setContainerIdStart(54321l);
-      resp.setMaxAllocatableCapabilty(Resource.newInstance(4096,4));
-      resp.setMinAllocatableCapabilty(Resource.newInstance(1024,1));
-      resp.setIncrAllocatableCapabilty(Resource.newInstance(2048,2));
-      return resp;
-    }
-    @Override public DistSchedAllocateResponse allocateForDistributedScheduling(    AllocateRequest request) throws YarnException, IOException {
-      DistSchedAllocateResponse resp=factory.newRecordInstance(DistSchedAllocateResponse.class);
-      resp.setNodesForScheduling(Arrays.asList(NodeId.newInstance("h1",1234)));
-      return resp;
-    }
-  }
-;
+  Container c=factory.newRecordInstance(Container.class);
+  c.setExecutionType(ExecutionType.OPPORTUNISTIC);
+  c.setId(ContainerId.newContainerId(ApplicationAttemptId.newInstance(ApplicationId.newInstance(12345,1),2),3));
+  DistributedSchedulingService service=createService(factory,rmContext,c);
   Server server=service.getServer(rpc,conf,addr,null);
   server.start();
   RPC.setProtocolEngine(conf,ApplicationMasterProtocolPB.class,ProtobufRpcEngine.class);
@@ -55,6 +28,9 @@
   FinishApplicationMasterResponse finishResp=new FinishApplicationMasterResponsePBImpl(ampProxy.finishApplicationMaster(null,((FinishApplicationMasterRequestPBImpl)factory.newRecordInstance(FinishApplicationMasterRequest.class)).getProto()));
   Assert.assertEquals(false,finishResp.getIsUnregistered());
   AllocateResponse allocResp=new AllocateResponsePBImpl(ampProxy.allocate(null,((AllocateRequestPBImpl)factory.newRecordInstance(AllocateRequest.class)).getProto()));
+  List<Container> allocatedContainers=allocResp.getAllocatedContainers();
+  Assert.assertEquals(1,allocatedContainers.size());
+  Assert.assertEquals(ExecutionType.OPPORTUNISTIC,allocatedContainers.get(0).getExecutionType());
   Assert.assertEquals(12345,allocResp.getNumClusterNodes());
   RPC.setProtocolEngine(conf,DistributedSchedulerProtocolPB.class,ProtobufRpcEngine.class);
   DistributedSchedulerProtocolPB dsProxy=RPC.getProxy(DistributedSchedulerProtocolPB.class,1,NetUtils.getConnectAddress(server),conf);
