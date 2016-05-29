@@ -1,0 +1,26 @@
+{
+  List<ContainerLogsRequest> newOptionsList=new ArrayList<ContainerLogsRequest>();
+  YarnClient yarnClient=createYarnClient();
+  try {
+    List<ApplicationAttemptReport> attempts=yarnClient.getApplicationAttempts(options.getAppId());
+    for (    ApplicationAttemptReport attempt : attempts) {
+      List<ContainerReport> containers=yarnClient.getContainers(attempt.getApplicationAttemptId());
+      for (      ContainerReport container : containers) {
+        ContainerLogsRequest newOptions=new ContainerLogsRequest(options);
+        newOptions.setContainerId(container.getContainerId().toString());
+        newOptions.setNodeId(container.getAssignedNode().toString());
+        newOptions.setNodeHttpAddress(container.getNodeHttpAddress().replaceFirst(WebAppUtils.getHttpSchemePrefix(getConf()),""));
+        List<String> logFiles=newOptions.getLogTypes();
+        if (logFiles == null || logFiles.isEmpty()) {
+          logFiles=Arrays.asList("syslog");
+          newOptions.setLogTypes(logFiles);
+        }
+        newOptionsList.add(newOptions);
+      }
+    }
+    return newOptionsList;
+  }
+  finally {
+    yarnClient.close();
+  }
+}
