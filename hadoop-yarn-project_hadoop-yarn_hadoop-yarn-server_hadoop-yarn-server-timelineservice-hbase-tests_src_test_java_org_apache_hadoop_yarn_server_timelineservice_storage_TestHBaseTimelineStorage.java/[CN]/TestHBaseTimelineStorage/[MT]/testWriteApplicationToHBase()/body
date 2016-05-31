@@ -54,7 +54,7 @@
   aggMetric.setId("MEM_USAGE");
   Map<Long,Number> aggMetricValues=new HashMap<Long,Number>();
   ts=System.currentTimeMillis();
-  aggMetricValues.put(ts - 120000,102400000);
+  aggMetricValues.put(ts - 120000,102400000L);
   aggMetric.setType(Type.SINGLE_VALUE);
   aggMetric.setRealtimeAggregationOp(TimelineMetricOperation.SUM);
   aggMetric.setValues(aggMetricValues);
@@ -122,7 +122,7 @@
     NavigableMap<String,NavigableMap<Long,Number>> metricsResult=ApplicationColumnPrefix.METRIC.readResultsWithTimestamps(result,StringKeyConverter.getInstance());
     NavigableMap<Long,Number> metricMap=metricsResult.get(m1.getId());
     matchMetrics(metricValues,metricMap);
-    TimelineEntity e1=reader.getEntity(new TimelineReaderContext(cluster,user,flow,runid,appId,entity.getType(),entity.getId()),new TimelineDataToRetrieve(null,null,EnumSet.of(TimelineReader.Field.ALL)));
+    TimelineEntity e1=reader.getEntity(new TimelineReaderContext(cluster,user,flow,runid,appId,entity.getType(),entity.getId()),new TimelineDataToRetrieve(null,null,EnumSet.of(TimelineReader.Field.ALL),Integer.MAX_VALUE));
     assertNotNull(e1);
     assertEquals(appId,e1.getId());
     assertEquals(TimelineEntityType.YARN_APPLICATION.toString(),e1.getType());
@@ -141,10 +141,48 @@
       Map<Long,Number> metricValues2=metric2.getValues();
       assertTrue(metric2.getId().equals("MAP_SLOT_MILLIS") || metric2.getId().equals("MEM_USAGE"));
       if (metric2.getId().equals("MAP_SLOT_MILLIS")) {
+        assertEquals(6,metricValues2.size());
         matchMetrics(metricValues,metricValues2);
       }
       if (metric2.getId().equals("MEM_USAGE")) {
+        assertEquals(1,metricValues2.size());
         matchMetrics(aggMetricValues,metricValues2);
+      }
+    }
+    e1=reader.getEntity(new TimelineReaderContext(cluster,user,flow,runid,appId,entity.getType(),entity.getId()),new TimelineDataToRetrieve(null,null,EnumSet.of(TimelineReader.Field.ALL),3));
+    assertNotNull(e1);
+    assertEquals(appId,e1.getId());
+    assertEquals(TimelineEntityType.YARN_APPLICATION.toString(),e1.getType());
+    assertEquals(conf,e1.getConfigs());
+    metrics2=e1.getMetrics();
+    assertEquals(2,metrics2.size());
+    for (    TimelineMetric metric2 : metrics2) {
+      Map<Long,Number> metricValues2=metric2.getValues();
+      assertTrue(metricValues2.size() <= 3);
+      assertTrue(metric2.getId().equals("MAP_SLOT_MILLIS") || metric2.getId().equals("MEM_USAGE"));
+    }
+    e1=reader.getEntity(new TimelineReaderContext(cluster,user,flow,runid,appId,entity.getType(),entity.getId()),new TimelineDataToRetrieve(null,null,EnumSet.of(TimelineReader.Field.ALL),null));
+    assertNotNull(e1);
+    assertEquals(appId,e1.getId());
+    assertEquals(TimelineEntityType.YARN_APPLICATION.toString(),e1.getType());
+    assertEquals(cTime,e1.getCreatedTime());
+    assertEquals(infoMap,e1.getInfo());
+    assertEquals(isRelatedTo,e1.getIsRelatedToEntities());
+    assertEquals(relatesTo,e1.getRelatesToEntities());
+    assertEquals(conf,e1.getConfigs());
+    assertEquals(2,e1.getMetrics().size());
+    for (    TimelineMetric metric : e1.getMetrics()) {
+      assertEquals(1,metric.getValues().size());
+      assertEquals(TimelineMetric.Type.SINGLE_VALUE,metric.getType());
+      assertTrue(metric.getId().equals("MAP_SLOT_MILLIS") || metric.getId().equals("MEM_USAGE"));
+      assertEquals(1,metric.getValues().size());
+      if (metric.getId().equals("MAP_SLOT_MILLIS")) {
+        assertTrue(metric.getValues().containsKey(ts - 20000));
+        assertEquals(metricValues.get(ts - 20000),metric.getValues().get(ts - 20000));
+      }
+      if (metric.getId().equals("MEM_USAGE")) {
+        assertTrue(metric.getValues().containsKey(ts - 120000));
+        assertEquals(aggMetricValues.get(ts - 120000),metric.getValues().get(ts - 120000));
       }
     }
   }
