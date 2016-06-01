@@ -1,0 +1,58 @@
+{
+  byte[] buf=new byte[65535];
+  String fileType=valueStream.readUTF();
+  String fileLengthStr=valueStream.readUTF();
+  long fileLength=Long.parseLong(fileLengthStr);
+  if (logType.contains(fileType)) {
+    out.print("LogType:");
+    out.println(fileType);
+    if (logUploadedTime != -1) {
+      out.print("Log Upload Time:");
+      out.println(Times.format(logUploadedTime));
+    }
+    out.print("LogLength:");
+    out.println(fileLengthStr);
+    out.println("Log Contents:");
+    long toSkip=0;
+    long totalBytesToRead=fileLength;
+    if (bytes < 0) {
+      long absBytes=Math.abs(bytes);
+      if (absBytes < fileLength) {
+        toSkip=fileLength - absBytes;
+        totalBytesToRead=absBytes;
+      }
+      long skippedBytes=valueStream.skip(toSkip);
+      if (skippedBytes != toSkip) {
+        throw new IOException("The bytes were skipped are " + "different from the caller requested");
+      }
+    }
+ else {
+      if (bytes < fileLength) {
+        totalBytesToRead=bytes;
+      }
+    }
+    long curRead=0;
+    long pendingRead=totalBytesToRead - curRead;
+    int toRead=pendingRead > buf.length ? buf.length : (int)pendingRead;
+    int len=valueStream.read(buf,0,toRead);
+    while (len != -1 && curRead < totalBytesToRead) {
+      out.write(buf,0,len);
+      curRead+=len;
+      pendingRead=totalBytesToRead - curRead;
+      toRead=pendingRead > buf.length ? buf.length : (int)pendingRead;
+      len=valueStream.read(buf,0,toRead);
+    }
+    out.println("End of LogType:" + fileType);
+    out.println("");
+    return 0;
+  }
+ else {
+    long totalSkipped=0;
+    long currSkipped=0;
+    while (currSkipped != -1 && totalSkipped < fileLength) {
+      currSkipped=valueStream.skip(fileLength - totalSkipped);
+      totalSkipped+=currSkipped;
+    }
+    return -1;
+  }
+}
