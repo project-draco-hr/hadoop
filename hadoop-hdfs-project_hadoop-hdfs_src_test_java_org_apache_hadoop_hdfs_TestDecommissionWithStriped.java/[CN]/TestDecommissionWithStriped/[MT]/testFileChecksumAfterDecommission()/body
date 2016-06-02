@@ -1,0 +1,22 @@
+{
+  LOG.info("Starting test testFileChecksumAfterDecommission");
+  final Path ecFile=new Path(ecDir,"testFileChecksumAfterDecommission");
+  int writeBytes=BLOCK_STRIPED_CELL_SIZE * NUM_DATA_BLOCKS;
+  writeStripedFile(dfs,ecFile,writeBytes);
+  Assert.assertEquals(0,bm.numOfUnderReplicatedBlocks());
+  FileChecksum fileChecksum1=dfs.getFileChecksum(ecFile,writeBytes);
+  final List<DatanodeInfo> decommisionNodes=new ArrayList<DatanodeInfo>();
+  LocatedBlock lb=dfs.getClient().getLocatedBlocks(ecFile.toString(),0).get(0);
+  DatanodeInfo[] dnLocs=lb.getLocations();
+  assertEquals(NUM_DATA_BLOCKS + NUM_PARITY_BLOCKS,dnLocs.length);
+  int decommNodeIndex=1;
+  decommisionNodes.add(dnLocs[decommNodeIndex]);
+  decommissionNode(0,decommisionNodes,AdminStates.DECOMMISSIONED);
+  assertEquals(decommisionNodes.size(),fsn.getNumDecomLiveDataNodes());
+  assertNull(checkFile(dfs,ecFile,9,decommisionNodes,numDNs));
+  StripedFileTestUtil.checkData(dfs,ecFile,writeBytes,decommisionNodes,null);
+  FileChecksum fileChecksum2=dfs.getFileChecksum(ecFile,writeBytes);
+  LOG.info("fileChecksum1:" + fileChecksum1);
+  LOG.info("fileChecksum2:" + fileChecksum2);
+  Assert.assertTrue("Checksum mismatches!",fileChecksum1.equals(fileChecksum2));
+}

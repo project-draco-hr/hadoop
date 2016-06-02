@@ -7,19 +7,6 @@
     String logInfo="for block " + block + " from datanode "+ targetDatanode;
     DataTransferProtoUtil.checkBlockOpStatus(reply,logInfo);
     DataTransferProtos.OpBlockChecksumResponseProto checksumData=reply.getChecksumResponse();
-    final int bpc=checksumData.getBytesPerCrc();
-    if (blockIdx == 0) {
-      setBytesPerCRC(bpc);
-    }
- else     if (bpc != getBytesPerCRC()) {
-      throw new IOException("Byte-per-checksum not matched: bpc=" + bpc + " but bytesPerCRC="+ getBytesPerCRC());
-    }
-    final long cpb=checksumData.getCrcPerBlock();
-    if (blockIdx == 0) {
-      setCrcPerBlock(cpb);
-    }
-    final MD5Hash md5=new MD5Hash(checksumData.getMd5().toByteArray());
-    md5.write(md5writer);
     final DataChecksum.Type ct;
     if (checksumData.hasCrcType()) {
       ct=PBHelperClient.convert(checksumData.getCrcType());
@@ -28,16 +15,10 @@
       LOG.debug("Retrieving checksum from an earlier-version DataNode: " + "inferring checksum by reading first byte");
       ct=DataChecksum.Type.DEFAULT;
     }
-    if (blockIdx == 0) {
-      setCrcType(ct);
-    }
- else     if (getCrcType() != DataChecksum.Type.MIXED && getCrcType() != ct) {
-      setCrcType(DataChecksum.Type.MIXED);
-    }
+    setOrVerifyChecksumProperties(blockIdx,checksumData.getBytesPerCrc(),checksumData.getCrcPerBlock(),ct);
+    final MD5Hash md5=new MD5Hash(checksumData.getMd5().toByteArray());
+    md5.write(md5writer);
     if (LOG.isDebugEnabled()) {
-      if (blockIdx == 0) {
-        LOG.debug("set bytesPerCRC=" + getBytesPerCRC() + ", crcPerBlock="+ getCrcPerBlock());
-      }
       LOG.debug("got reply from " + targetDatanode + ": md5="+ md5);
     }
   }
