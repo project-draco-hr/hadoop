@@ -24,9 +24,8 @@
     }
     if (status.isEmptyDirectory()) {
       LOG.debug("Deleting fake empty directory {}",key);
-      s3.deleteObject(bucket,key);
+      deleteObject(key);
       instrumentation.directoryDeleted();
-      statistics.incrementWriteOps(1);
     }
  else {
       LOG.debug("Getting objects for directory prefix {} to delete",key);
@@ -34,9 +33,8 @@
       request.setBucketName(bucket);
       request.setPrefix(key);
       request.setMaxKeys(maxKeys);
-      List<DeleteObjectsRequest.KeyVersion> keys=new ArrayList<>();
-      ObjectListing objects=s3.listObjects(request);
-      statistics.incrementReadOps(1);
+      ObjectListing objects=listObjects(request);
+      List<DeleteObjectsRequest.KeyVersion> keys=new ArrayList<>(objects.getObjectSummaries().size());
       while (true) {
         for (        S3ObjectSummary summary : objects.getObjectSummaries()) {
           keys.add(new DeleteObjectsRequest.KeyVersion(summary.getKey()));
@@ -46,8 +44,7 @@
           }
         }
         if (objects.isTruncated()) {
-          objects=s3.listNextBatchOfObjects(objects);
-          statistics.incrementReadOps(1);
+          objects=continueListObjects(objects);
         }
  else {
           if (!keys.isEmpty()) {
@@ -60,9 +57,8 @@
   }
  else {
     LOG.debug("delete: Path is a file");
-    s3.deleteObject(bucket,key);
     instrumentation.fileDeleted(1);
-    statistics.incrementWriteOps(1);
+    deleteObject(key);
   }
   createFakeDirectoryIfNecessary(f.getParent());
   return true;

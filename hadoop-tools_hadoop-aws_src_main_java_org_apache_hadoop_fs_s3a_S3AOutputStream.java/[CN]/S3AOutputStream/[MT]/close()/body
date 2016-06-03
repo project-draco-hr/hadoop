@@ -6,22 +6,12 @@
   LOG.debug("OutputStream for key '{}' closed. Now beginning upload",key);
   LOG.debug("Minimum upload part size: {} threshold {}",partSize,partSizeThreshold);
   try {
-    final ObjectMetadata om=new ObjectMetadata();
-    if (StringUtils.isNotBlank(serverSideEncryptionAlgorithm)) {
-      om.setSSEAlgorithm(serverSideEncryptionAlgorithm);
-    }
-    PutObjectRequest putObjectRequest=new PutObjectRequest(bucket,key,backupFile);
-    putObjectRequest.setCannedAcl(cannedACL);
-    putObjectRequest.setMetadata(om);
-    Upload upload=transfers.upload(putObjectRequest);
-    ProgressableProgressListener listener=new ProgressableProgressListener(upload,progress,statistics);
+    final ObjectMetadata om=fs.newObjectMetadata();
+    Upload upload=fs.putObject(fs.newPutObjectRequest(key,om,backupFile));
+    ProgressableProgressListener listener=new ProgressableProgressListener(fs,key,upload,progress);
     upload.addProgressListener(listener);
     upload.waitForUploadResult();
-    long delta=upload.getProgress().getBytesTransferred() - listener.getLastBytesTransferred();
-    if (statistics != null && delta != 0) {
-      LOG.debug("S3A write delta changed after finished: {} bytes",delta);
-      statistics.incrementBytesWritten(delta);
-    }
+    listener.uploadCompleted();
     fs.finishedWrite(key);
   }
  catch (  InterruptedException e) {

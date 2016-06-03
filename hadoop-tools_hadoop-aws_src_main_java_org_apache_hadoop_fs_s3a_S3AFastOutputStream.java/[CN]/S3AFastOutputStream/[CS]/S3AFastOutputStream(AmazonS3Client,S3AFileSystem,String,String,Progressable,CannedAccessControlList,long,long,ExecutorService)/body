@@ -1,0 +1,37 @@
+{
+  this.bucket=bucket;
+  this.key=key;
+  this.client=client;
+  this.fs=fs;
+  this.cannedACL=cannedACL;
+  if (partSize > Integer.MAX_VALUE) {
+    this.partSize=Integer.MAX_VALUE;
+    LOG.warn("s3a: MULTIPART_SIZE capped to ~2.14GB (maximum allowed size " + "when using 'FAST_UPLOAD = true')");
+  }
+ else {
+    this.partSize=(int)partSize;
+  }
+  if (multiPartThreshold > Integer.MAX_VALUE) {
+    this.multiPartThreshold=Integer.MAX_VALUE;
+    LOG.warn("s3a: MIN_MULTIPART_THRESHOLD capped to ~2.14GB (maximum " + "allowed size when using 'FAST_UPLOAD = true')");
+  }
+ else {
+    this.multiPartThreshold=(int)multiPartThreshold;
+  }
+  this.bufferLimit=this.multiPartThreshold;
+  this.closed=false;
+  int initialBufferSize=this.fs.getConf().getInt(Constants.FAST_BUFFER_SIZE,Constants.DEFAULT_FAST_BUFFER_SIZE);
+  if (initialBufferSize < 0) {
+    LOG.warn("s3a: FAST_BUFFER_SIZE should be a positive number. Using " + "default value");
+    initialBufferSize=Constants.DEFAULT_FAST_BUFFER_SIZE;
+  }
+ else   if (initialBufferSize > this.bufferLimit) {
+    LOG.warn("s3a: automatically adjusting FAST_BUFFER_SIZE to not " + "exceed MIN_MULTIPART_THRESHOLD");
+    initialBufferSize=this.bufferLimit;
+  }
+  this.buffer=new ByteArrayOutputStream(initialBufferSize);
+  this.executorService=MoreExecutors.listeningDecorator(threadPoolExecutor);
+  this.multiPartUpload=null;
+  this.progressListener=new ProgressableListener(progress);
+  LOG.debug("Initialized S3AFastOutputStream for bucket '{}' key '{}'",bucket,key);
+}

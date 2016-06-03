@@ -1,6 +1,7 @@
 {
   String key=pathToKey(f);
   LOG.debug("List status for path: {}",f);
+  incrementStatistic(INVOCATION_LIST_STATUS);
   final List<FileStatus> result=new ArrayList<FileStatus>();
   final FileStatus fileStatus=getFileStatus(f);
   if (fileStatus.isDirectory()) {
@@ -13,37 +14,30 @@
     request.setDelimiter("/");
     request.setMaxKeys(maxKeys);
     LOG.debug("listStatus: doing listObjects for directory {}",key);
-    ObjectListing objects=s3.listObjects(request);
-    statistics.incrementReadOps(1);
+    ObjectListing objects=listObjects(request);
     Path fQualified=f.makeQualified(uri,workingDir);
     while (true) {
       for (      S3ObjectSummary summary : objects.getObjectSummaries()) {
         Path keyPath=keyToPath(summary.getKey()).makeQualified(uri,workingDir);
         if (keyPath.equals(fQualified) || summary.getKey().endsWith(S3N_FOLDER_SUFFIX)) {
           LOG.debug("Ignoring: {}",keyPath);
-          continue;
-        }
-        if (objectRepresentsDirectory(summary.getKey(),summary.getSize())) {
-          result.add(new S3AFileStatus(true,true,keyPath));
-          LOG.debug("Adding: fd: {}",keyPath);
         }
  else {
-          result.add(new S3AFileStatus(summary.getSize(),dateToLong(summary.getLastModified()),keyPath,getDefaultBlockSize(fQualified)));
-          LOG.debug("Adding: fi: {}",keyPath);
+          S3AFileStatus status=createFileStatus(keyPath,summary,getDefaultBlockSize(keyPath));
+          result.add(status);
+          LOG.debug("Adding: {}",status);
         }
       }
       for (      String prefix : objects.getCommonPrefixes()) {
         Path keyPath=keyToPath(prefix).makeQualified(uri,workingDir);
-        if (keyPath.equals(f)) {
-          continue;
+        if (!keyPath.equals(f)) {
+          result.add(new S3AFileStatus(true,false,keyPath));
+          LOG.debug("Adding: rd: {}",keyPath);
         }
-        result.add(new S3AFileStatus(true,false,keyPath));
-        LOG.debug("Adding: rd: {}",keyPath);
       }
       if (objects.isTruncated()) {
         LOG.debug("listStatus: list truncated - getting next batch");
-        objects=s3.listNextBatchOfObjects(objects);
-        statistics.incrementReadOps(1);
+        objects=continueListObjects(objects);
       }
  else {
         break;
