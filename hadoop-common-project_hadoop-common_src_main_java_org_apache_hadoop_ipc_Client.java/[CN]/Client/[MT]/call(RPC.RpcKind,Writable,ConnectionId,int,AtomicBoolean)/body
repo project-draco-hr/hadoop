@@ -2,39 +2,24 @@
   final Call call=createCall(rpcKind,rpcRequest);
   final Connection connection=getConnection(remoteId,call,serviceClass,fallbackToSimpleAuth);
   try {
-    checkAsyncCall();
-    try {
-      connection.sendRpcRequest(call);
-    }
- catch (    RejectedExecutionException e) {
-      throw new IOException("connection has been closed",e);
-    }
-catch (    InterruptedException e) {
-      Thread.currentThread().interrupt();
-      LOG.warn("interrupted waiting to send rpc request to server",e);
-      throw new IOException(e);
-    }
+    connection.sendRpcRequest(call);
   }
- catch (  Exception e) {
-    if (isAsynchronousMode()) {
-      releaseAsyncCall();
-    }
-    throw e;
+ catch (  RejectedExecutionException e) {
+    throw new IOException("connection has been closed",e);
+  }
+catch (  InterruptedException e) {
+    Thread.currentThread().interrupt();
+    LOG.warn("interrupted waiting to send rpc request to server",e);
+    throw new IOException(e);
   }
   if (isAsynchronousMode()) {
     Future<Writable> returnFuture=new AbstractFuture<Writable>(){
-      private final AtomicBoolean callled=new AtomicBoolean(false);
       @Override public Writable get() throws InterruptedException, ExecutionException {
-        if (callled.compareAndSet(false,true)) {
-          try {
-            set(getRpcResponse(call,connection));
-          }
- catch (          IOException ie) {
-            setException(ie);
-          }
- finally {
-            releaseAsyncCall();
-          }
+        try {
+          set(getRpcResponse(call,connection));
+        }
+ catch (        IOException ie) {
+          setException(ie);
         }
         return super.get();
       }
