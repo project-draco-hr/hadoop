@@ -1,0 +1,40 @@
+{
+  Configuration conf=new HdfsConfiguration();
+  String group1="group1";
+  String group2="group2";
+  String user1="user1";
+  UserGroupInformation ugi1;
+  conf.setBoolean(DFSConfigKeys.DFS_PERMISSIONS_ENABLED_KEY,true);
+  Map<String,String[]> u2g_map=new HashMap<String,String[]>(1);
+  u2g_map.put(user1,new String[]{group1,group2});
+  DFSTestUtil.updateConfWithFakeGroupMapping(conf,u2g_map);
+  ugi1=UserGroupInformation.createUserForTesting(user1,new String[]{group1,group2});
+  final MiniDFSCluster cluster=new MiniDFSCluster.Builder(conf).numDataNodes(3).build();
+  cluster.waitActive();
+  FileSystem rootFs=FileSystem.get(conf);
+  final Path renameDir=new Path("/test/async_rename_exception/");
+  final Path src=new Path(renameDir,"src");
+  final Path dst=new Path(renameDir,"dst");
+  rootFs.mkdirs(src);
+  AsyncDistributedFileSystem adfs=ugi1.doAs(new PrivilegedExceptionAction<AsyncDistributedFileSystem>(){
+    @Override public AsyncDistributedFileSystem run() throws Exception {
+      return cluster.getFileSystem().getAsyncDistributedFileSystem();
+    }
+  }
+);
+  try {
+    Future<Void> returnFuture=adfs.rename(src,dst,Rename.OVERWRITE);
+    returnFuture.get();
+  }
+ catch (  ExecutionException e) {
+    checkPermissionDenied(e,src,user1);
+  }
+ finally {
+    if (rootFs != null) {
+      rootFs.close();
+    }
+    if (cluster != null) {
+      cluster.shutdown();
+    }
+  }
+}
