@@ -7,9 +7,22 @@
 switch (op.value()) {
 case OPEN:
 {
-      FSOperations.FSOpen command=new FSOperations.FSOpen(path);
-      FileSystem fs=createFileSystem(user);
-      InputStream is=command.execute(fs);
+      final FSOperations.FSOpen command=new FSOperations.FSOpen(path);
+      final FileSystem fs=createFileSystem(user);
+      InputStream is=null;
+      UserGroupInformation ugi=UserGroupInformation.createProxyUser(user.getShortUserName(),UserGroupInformation.getLoginUser());
+      try {
+        is=ugi.doAs(new PrivilegedExceptionAction<InputStream>(){
+          @Override public InputStream run() throws Exception {
+            return command.execute(fs);
+          }
+        }
+);
+      }
+ catch (      InterruptedException ie) {
+        LOG.info("Open interrupted.",ie);
+        Thread.currentThread().interrupt();
+      }
       Long offset=params.get(OffsetParam.NAME,OffsetParam.class);
       Long len=params.get(LenParam.NAME,LenParam.class);
       AUDIT_LOG.info("[{}] offset [{}] len [{}]",new Object[]{path,offset,len});
