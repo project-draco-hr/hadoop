@@ -1,0 +1,88 @@
+{
+  String group1="group1";
+  String group2="group2";
+  String user1="user1";
+  Map<String,String[]> u2gMap=new HashMap<String,String[]>(1);
+  u2gMap.put(user1,new String[]{group1,group2});
+  DFSTestUtil.updateConfWithFakeGroupMapping(conf,u2gMap);
+  final Path parent=new Path(String.format("/test/%s/","testConcurrentAsyncAPI"));
+  final Path[] srcs=new Path[NUM_TESTS];
+  final Path[] dsts=new Path[NUM_TESTS];
+  short[] permissions=new short[NUM_TESTS];
+  for (int i=0; i < NUM_TESTS; i++) {
+    srcs[i]=new Path(parent,"src" + i);
+    dsts[i]=new Path(parent,"dst" + i);
+    DFSTestUtil.createFile(fs,srcs[i],fileLen,replFactor,1);
+    DFSTestUtil.createFile(fs,dsts[i],fileLen,replFactor,1);
+    assertTrue(fs.exists(srcs[i]));
+    assertTrue(fs.getFileStatus(srcs[i]).isFile());
+    assertTrue(fs.exists(dsts[i]));
+    assertTrue(fs.getFileStatus(dsts[i]).isFile());
+    permissions[i]=permGenerator.next();
+  }
+  Map<Integer,Future<Void>> renameRetFutures=new HashMap<Integer,Future<Void>>();
+  Map<Integer,Future<Void>> permRetFutures=new HashMap<Integer,Future<Void>>();
+  Map<Integer,Future<Void>> ownerRetFutures=new HashMap<Integer,Future<Void>>();
+  int start=0, end=0;
+  for (int i=0; i < NUM_TESTS; i++) {
+    for (; ; ) {
+      try {
+        Future<Void> returnFuture=adfs.rename(srcs[i],dsts[i],Rename.OVERWRITE);
+        renameRetFutures.put(i,returnFuture);
+        break;
+      }
+ catch (      AsyncCallLimitExceededException e) {
+        start=end;
+        end=i;
+        waitForReturnValues(renameRetFutures,start,end);
+      }
+    }
+  }
+  waitForAclReturnValues(renameRetFutures,end,NUM_TESTS);
+  for (int i=0; i < NUM_TESTS; i++) {
+    assertFalse(fs.exists(srcs[i]));
+    assertTrue(fs.exists(dsts[i]));
+  }
+  for (int i=0; i < NUM_TESTS; i++) {
+    for (; ; ) {
+      try {
+        Future<Void> retFuture=adfs.setPermission(dsts[i],new FsPermission(permissions[i]));
+        permRetFutures.put(i,retFuture);
+        break;
+      }
+ catch (      AsyncCallLimitExceededException e) {
+        start=end;
+        end=i;
+        waitForReturnValues(permRetFutures,start,end);
+      }
+    }
+  }
+  waitForAclReturnValues(permRetFutures,end,NUM_TESTS);
+  for (int i=0; i < NUM_TESTS; i++) {
+    assertTrue(fs.exists(dsts[i]));
+    FsPermission fsPerm=new FsPermission(permissions[i]);
+    checkAccessPermissions(fs.getFileStatus(dsts[i]),fsPerm.getUserAction());
+  }
+  start=0;
+  end=0;
+  for (int i=0; i < NUM_TESTS; i++) {
+    for (; ; ) {
+      try {
+        Future<Void> retFuture=adfs.setOwner(dsts[i],"user1","group2");
+        ownerRetFutures.put(i,retFuture);
+        break;
+      }
+ catch (      AsyncCallLimitExceededException e) {
+        start=end;
+        end=i;
+        waitForReturnValues(ownerRetFutures,start,end);
+      }
+    }
+  }
+  waitForAclReturnValues(ownerRetFutures,end,NUM_TESTS);
+  for (int i=0; i < NUM_TESTS; i++) {
+    assertTrue(fs.exists(dsts[i]));
+    assertTrue("user1".equals(fs.getFileStatus(dsts[i]).getOwner()));
+    assertTrue("group2".equals(fs.getFileStatus(dsts[i]).getGroup()));
+  }
+}

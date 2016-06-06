@@ -9,8 +9,11 @@
   ugi1=UserGroupInformation.createUserForTesting(user1,new String[]{group1,group2});
   final Path parent=new Path("/test/async_api_exception/");
   final Path aclDir=new Path(parent,"aclDir");
-  fs.mkdirs(aclDir,FsPermission.createImmutable((short)0770));
-  AsyncDistributedFileSystem adfs=ugi1.doAs(new PrivilegedExceptionAction<AsyncDistributedFileSystem>(){
+  final Path src=new Path(parent,"src");
+  final Path dst=new Path(parent,"dst");
+  fs.mkdirs(aclDir,FsPermission.createImmutable((short)0700));
+  fs.mkdirs(src);
+  AsyncDistributedFileSystem adfs1=ugi1.doAs(new PrivilegedExceptionAction<AsyncDistributedFileSystem>(){
     @Override public AsyncDistributedFileSystem run() throws Exception {
       return cluster.getFileSystem().getAsyncDistributedFileSystem();
     }
@@ -18,7 +21,30 @@
 );
   Future<Void> retFuture;
   try {
-    retFuture=adfs.setAcl(aclDir,Lists.newArrayList(aclEntry(ACCESS,USER,ALL)));
+    retFuture=adfs1.rename(src,dst,Rename.OVERWRITE);
+    retFuture.get();
+  }
+ catch (  ExecutionException e) {
+    checkPermissionDenied(e,src,user1);
+    assertTrue("Permission denied messages must carry the path parent",e.getMessage().contains(src.getParent().toUri().getPath()));
+  }
+  FsPermission fsPerm=new FsPermission(permGenerator.next());
+  try {
+    retFuture=adfs1.setPermission(src,fsPerm);
+    retFuture.get();
+  }
+ catch (  ExecutionException e) {
+    checkPermissionDenied(e,src,user1);
+  }
+  try {
+    retFuture=adfs1.setOwner(src,"user1","group2");
+    retFuture.get();
+  }
+ catch (  ExecutionException e) {
+    checkPermissionDenied(e,src,user1);
+  }
+  try {
+    retFuture=adfs1.setAcl(aclDir,Lists.newArrayList(aclEntry(ACCESS,USER,ALL)));
     retFuture.get();
     fail("setAcl should fail with permission denied");
   }
@@ -26,7 +52,7 @@
     checkPermissionDenied(e,aclDir,user1);
   }
   try {
-    Future<AclStatus> aclRetFuture=adfs.getAclStatus(aclDir);
+    Future<AclStatus> aclRetFuture=adfs1.getAclStatus(aclDir);
     aclRetFuture.get();
     fail("getAclStatus should fail with permission denied");
   }

@@ -1,33 +1,21 @@
 {
-  final Path renameDir=new Path("/test/testCallGetReturnValueMultipleTimes/");
-  final Configuration conf=new HdfsConfiguration();
-  conf.setInt(CommonConfigurationKeys.IPC_CLIENT_ASYNC_CALLS_MAX_KEY,200);
-  final MiniDFSCluster cluster=new MiniDFSCluster.Builder(conf).numDataNodes(2).build();
-  cluster.waitActive();
-  final DistributedFileSystem dfs=cluster.getFileSystem();
-  final AsyncDistributedFileSystem adfs=dfs.getAsyncDistributedFileSystem();
-  final int count=100;
-  final Map<Integer,Future<Void>> returnFutures=new HashMap<Integer,Future<Void>>();
-  assertTrue(dfs.mkdirs(renameDir));
-  try {
-    for (int i=0; i < count; i++) {
-      Path src=new Path(renameDir,"src" + i);
-      Path dst=new Path(renameDir,"dst" + i);
-      DFSTestUtil.createFile(dfs,src,fileLen,replFactor,1);
-      DFSTestUtil.createFile(dfs,dst,fileLen,replFactor,1);
-      Future<Void> returnFuture=adfs.rename(src,dst,Rename.OVERWRITE);
-      returnFutures.put(i,returnFuture);
-    }
-    for (int i=0; i < 5; i++) {
-      verifyCallGetReturnValueMultipleTimes(returnFutures,count,cluster,renameDir,dfs);
-    }
+  final Path parent=new Path("/test/testCallGetReturnValueMultipleTimes/");
+  assertTrue(fs.mkdirs(parent));
+  final Path[] srcs=new Path[NUM_TESTS];
+  final Path[] dsts=new Path[NUM_TESTS];
+  for (int i=0; i < NUM_TESTS; i++) {
+    srcs[i]=new Path(parent,"src" + i);
+    dsts[i]=new Path(parent,"dst" + i);
+    DFSTestUtil.createFile(fs,srcs[i],fileLen,replFactor,1);
+    DFSTestUtil.createFile(fs,dsts[i],fileLen,replFactor,1);
   }
-  finally {
-    if (dfs != null) {
-      dfs.close();
-    }
-    if (cluster != null) {
-      cluster.shutdown();
-    }
+  final Map<Integer,Future<Void>> reFutures=new HashMap<Integer,Future<Void>>();
+  for (int i=0; i < NUM_TESTS; i++) {
+    Future<Void> retFuture=adfs.rename(srcs[i],dsts[i],Rename.OVERWRITE);
+    reFutures.put(i,retFuture);
+  }
+  assertEquals(NUM_TESTS,reFutures.size());
+  for (int i=0; i < 5; i++) {
+    verifyCallGetReturnValueMultipleTimes(reFutures,srcs,dsts);
   }
 }
