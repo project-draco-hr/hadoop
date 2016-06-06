@@ -39,22 +39,18 @@
     long callTime=Time.now() - startTime;
     LOG.debug("Call: " + method.getName() + " took "+ callTime+ "ms");
   }
-  Message prototype=null;
-  try {
-    prototype=getReturnProtoType(method);
-  }
- catch (  Exception e) {
-    throw new ServiceException(e);
-  }
-  Message returnMessage;
-  try {
-    returnMessage=prototype.newBuilderForType().mergeFrom(val.theResponseRead).build();
-    if (LOG.isTraceEnabled()) {
-      LOG.trace(Thread.currentThread().getId() + ": Response <- " + remoteId+ ": "+ method.getName()+ " {"+ TextFormat.shortDebugString(returnMessage)+ "}");
+  if (Client.isAsynchronousMode()) {
+    final Future<RpcResponseWrapper> frrw=Client.getReturnRpcResponse();
+    Callable<Message> callback=new Callable<Message>(){
+      @Override public Message call() throws Exception {
+        return getReturnMessage(method,frrw.get());
+      }
     }
+;
+    RETURN_MESSAGE_CALLBACK.set(callback);
+    return null;
   }
- catch (  Throwable e) {
-    throw new ServiceException(e);
+ else {
+    return getReturnMessage(method,val);
   }
-  return returnMessage;
 }
