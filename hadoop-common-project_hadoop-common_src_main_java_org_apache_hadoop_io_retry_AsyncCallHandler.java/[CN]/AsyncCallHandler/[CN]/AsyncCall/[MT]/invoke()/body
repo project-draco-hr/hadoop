@@ -1,0 +1,32 @@
+{
+  LOG.debug("{}.invoke {}",getClass().getSimpleName(),this);
+  if (lowerLayerAsyncGet != null) {
+    final boolean isDone=lowerLayerAsyncGet.isDone();
+    LOG.trace("invoke: lowerLayerAsyncGet.isDone()? {}",isDone);
+    if (!isDone) {
+      return CallReturn.ASYNC_CALL_IN_PROGRESS;
+    }
+    try {
+      return new CallReturn(lowerLayerAsyncGet.get(0,TimeUnit.SECONDS));
+    }
+  finally {
+      lowerLayerAsyncGet=null;
+    }
+  }
+  LOG.trace("invoke: ASYNC_INVOKED");
+  final boolean mode=Client.isAsynchronousMode();
+  try {
+    Client.setAsynchronousMode(true);
+    final Object r=invokeMethod();
+    Preconditions.checkState(r == null);
+    lowerLayerAsyncGet=getLowerLayerAsyncReturn();
+    if (counters.isZeros()) {
+      LOG.trace("invoke: initAsyncCall");
+      asyncCallHandler.initAsyncCall(this,asyncCallReturn);
+    }
+    return CallReturn.ASYNC_INVOKED;
+  }
+  finally {
+    Client.setAsynchronousMode(mode);
+  }
+}

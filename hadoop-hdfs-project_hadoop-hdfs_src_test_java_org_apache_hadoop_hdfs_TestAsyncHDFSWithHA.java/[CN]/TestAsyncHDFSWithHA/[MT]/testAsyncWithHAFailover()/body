@@ -1,0 +1,60 @@
+{
+  final int num=10;
+  final Configuration conf=new HdfsConfiguration();
+  final MiniDFSCluster cluster=new MiniDFSCluster.Builder(conf).nnTopology(MiniDFSNNTopology.simpleHATopology()).numDataNodes(0).build();
+  try {
+    cluster.waitActive();
+    cluster.transitionToActive(0);
+    final DistributedFileSystem dfs=HATestUtil.configureFailoverFs(cluster,conf);
+    runTestAsyncWithoutRetry(conf,cluster,dfs);
+    final String renameDir="/testAsyncWithHAFailover/";
+    final Path[] srcs=new Path[num + 1];
+    final Path[] dsts=new Path[num + 1];
+    mkdirs(dfs,renameDir,srcs,dsts);
+    final AsyncDistributedFileSystem adfs=dfs.getAsyncDistributedFileSystem();
+    final ExecutorService executor=Executors.newFixedThreadPool(num + 1);
+    final List<Future<Void>> results=new ArrayList<>();
+    final List<IOException> exceptions=new ArrayList<>();
+    final List<Future<?>> futures=new ArrayList<>();
+    final int half=num / 2;
+    for (int i=0; i <= num; i++) {
+      final int id=i;
+      futures.add(executor.submit(new Runnable(){
+        @Override public void run(){
+          try {
+            if (id == half) {
+              cluster.shutdownNameNode(0);
+              cluster.transitionToActive(1);
+            }
+ else {
+              results.add(adfs.rename(srcs[id],dsts[id]));
+            }
+          }
+ catch (          IOException e) {
+            exceptions.add(e);
+          }
+        }
+      }
+));
+    }
+    Assert.assertEquals(num + 1,futures.size());
+    for (int i=0; i <= num; i++) {
+      futures.get(i).get();
+    }
+    Assert.assertEquals(num,results.size());
+    Assert.assertTrue(exceptions.isEmpty());
+    for (    Future<Void> r : results) {
+      r.get();
+    }
+    for (int i=0; i <= num; i++) {
+      final boolean renamed=i != half;
+      Assert.assertEquals(!renamed,dfs.exists(srcs[i]));
+      Assert.assertEquals(renamed,dfs.exists(dsts[i]));
+    }
+  }
+  finally {
+    if (cluster != null) {
+      cluster.shutdown();
+    }
+  }
+}

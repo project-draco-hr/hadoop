@@ -1,0 +1,26 @@
+{
+  final int num=5;
+  final String renameDir="/testAsyncWithoutRetry/";
+  final Path[] srcs=new Path[num + 1];
+  final Path[] dsts=new Path[num + 1];
+  mkdirs(dfs,renameDir,srcs,dsts);
+  final NameNodeProxiesClient.ProxyAndInfo<ClientProtocol> proxyInfo=NameNodeProxies.createNonHAProxy(conf,cluster.getNameNode(0).getNameNodeAddress(),ClientProtocol.class,UserGroupInformation.getCurrentUser(),false);
+  final ClientProtocol cp=proxyInfo.getProxy();
+  Client.setAsynchronousMode(true);
+  final List<Future<Void>> results=new ArrayList<>();
+  for (int i=0; i < num; i++) {
+    final String src=srcs[i].toString();
+    final String dst=dsts[i].toString();
+    LOG.info(i + ") rename " + src+ " -> "+ dst);
+    cp.rename2(src,dst);
+    results.add(getReturnValue());
+  }
+  Client.setAsynchronousMode(false);
+  for (  Future<Void> f : results) {
+    f.get();
+  }
+  for (int i=0; i < num; i++) {
+    Assert.assertEquals(false,dfs.exists(srcs[i]));
+    Assert.assertEquals(true,dfs.exists(dsts[i]));
+  }
+}
