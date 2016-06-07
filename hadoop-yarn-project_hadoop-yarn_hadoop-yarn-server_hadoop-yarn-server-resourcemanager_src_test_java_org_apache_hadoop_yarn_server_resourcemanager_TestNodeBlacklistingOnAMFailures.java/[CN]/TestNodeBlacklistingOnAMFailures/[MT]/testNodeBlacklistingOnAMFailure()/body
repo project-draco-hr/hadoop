@@ -1,0 +1,47 @@
+{
+  YarnConfiguration conf=new YarnConfiguration();
+  conf.setClass(YarnConfiguration.RM_SCHEDULER,CapacityScheduler.class,ResourceScheduler.class);
+  conf.setBoolean(YarnConfiguration.AM_SCHEDULING_NODE_BLACKLISTING_ENABLED,true);
+  DrainDispatcher dispatcher=new DrainDispatcher();
+  MockRM rm=startRM(conf,dispatcher);
+  CapacityScheduler scheduler=(CapacityScheduler)rm.getResourceScheduler();
+  MockNM nm1=new MockNM("127.0.0.1:1234",8000,rm.getResourceTrackerService());
+  nm1.registerNode();
+  MockNM nm2=new MockNM("127.0.0.2:2345",8000,rm.getResourceTrackerService());
+  nm2.registerNode();
+  RMApp app=rm.submitApp(200);
+  MockAM am1=MockRM.launchAndRegisterAM(app,rm,nm1);
+  ContainerId amContainerId=ContainerId.newContainerId(am1.getApplicationAttemptId(),1);
+  RMContainer rmContainer=scheduler.getRMContainer(amContainerId);
+  NodeId nodeWhereAMRan=rmContainer.getAllocatedNode();
+  MockNM currentNode, otherNode;
+  if (nodeWhereAMRan.equals(nm1.getNodeId())) {
+    currentNode=nm1;
+    otherNode=nm2;
+  }
+ else {
+    currentNode=nm2;
+    otherNode=nm1;
+  }
+  makeAMContainerExit(rm,amContainerId,currentNode,ContainerExitStatus.INVALID);
+  RMAppAttempt attempt=MockRM.waitForAttemptScheduled(app,rm);
+  System.out.println("New AppAttempt launched " + attempt.getAppAttemptId());
+  for (int i=0; i <= 2; i++) {
+    currentNode.nodeHeartbeat(true);
+    dispatcher.await();
+    Assert.assertEquals("AppAttemptState should still be SCHEDULED if currentNode is " + "blacklisted correctly",RMAppAttemptState.SCHEDULED,attempt.getAppAttemptState());
+  }
+  otherNode.nodeHeartbeat(true);
+  dispatcher.await();
+  MockRM.waitForState(attempt,RMAppAttemptState.ALLOCATED,20000);
+  MockAM am2=rm.sendAMLaunched(attempt.getAppAttemptId());
+  rm.waitForState(attempt.getAppAttemptId(),RMAppAttemptState.LAUNCHED);
+  amContainerId=ContainerId.newContainerId(am2.getApplicationAttemptId(),1);
+  rmContainer=scheduler.getRMContainer(amContainerId);
+  nodeWhereAMRan=rmContainer.getAllocatedNode();
+  Assert.assertEquals("After blacklisting, AM should have run on the other node",otherNode.getNodeId(),nodeWhereAMRan);
+  am2.registerAppAttempt();
+  rm.waitForState(app.getApplicationId(),RMAppState.RUNNING);
+  List<Container> allocatedContainers=TestAMRestart.allocateContainers(currentNode,am2,1);
+  Assert.assertEquals("Even though AM is blacklisted from the node, application can " + "still allocate non-AM containers there",currentNode.getNodeId(),allocatedContainers.get(0).getNodeId());
+}
