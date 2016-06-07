@@ -1,41 +1,45 @@
 {
+  Context ctx=currentContext.get();
   String newLocalDirs=conf.get(contextCfgItemName);
   if (null == newLocalDirs) {
     throw new IOException(contextCfgItemName + " not configured");
   }
-  if (!newLocalDirs.equals(savedLocalDirs)) {
-    localDirs=StringUtils.getTrimmedStrings(newLocalDirs);
-    localFS=FileSystem.getLocal(conf);
-    int numDirs=localDirs.length;
-    ArrayList<String> dirs=new ArrayList<String>(numDirs);
+  if (!newLocalDirs.equals(ctx.savedLocalDirs)) {
+    ctx=new Context();
+    String[] dirStrings=StringUtils.getTrimmedStrings(newLocalDirs);
+    ctx.localFS=FileSystem.getLocal(conf);
+    int numDirs=dirStrings.length;
+    ArrayList<Path> dirs=new ArrayList<Path>(numDirs);
     ArrayList<DF> dfList=new ArrayList<DF>(numDirs);
     for (int i=0; i < numDirs; i++) {
       try {
-        Path tmpDir=new Path(localDirs[i]);
-        if (localFS.mkdirs(tmpDir) || localFS.exists(tmpDir)) {
+        Path tmpDir=new Path(dirStrings[i]);
+        if (ctx.localFS.mkdirs(tmpDir) || ctx.localFS.exists(tmpDir)) {
           try {
-            File tmpFile=tmpDir.isAbsolute() ? new File(localFS.makeQualified(tmpDir).toUri()) : new File(localDirs[i]);
+            File tmpFile=tmpDir.isAbsolute() ? new File(ctx.localFS.makeQualified(tmpDir).toUri()) : new File(dirStrings[i]);
             DiskChecker.checkDir(tmpFile);
-            dirs.add(tmpFile.getPath());
+            dirs.add(new Path(tmpFile.getPath()));
             dfList.add(new DF(tmpFile,30000));
           }
  catch (          DiskErrorException de) {
-            LOG.warn(localDirs[i] + " is not writable\n",de);
+            LOG.warn(dirStrings[i] + " is not writable\n",de);
           }
         }
  else {
-          LOG.warn("Failed to create " + localDirs[i]);
+          LOG.warn("Failed to create " + dirStrings[i]);
         }
       }
  catch (      IOException ie) {
-        LOG.warn("Failed to create " + localDirs[i] + ": "+ ie.getMessage()+ "\n",ie);
+        LOG.warn("Failed to create " + dirStrings[i] + ": "+ ie.getMessage()+ "\n",ie);
       }
     }
-    localDirs=dirs.toArray(new String[dirs.size()]);
-    dirDF=dfList.toArray(new DF[dirs.size()]);
-    savedLocalDirs=newLocalDirs;
+    ctx.localDirs=dirs.toArray(new Path[dirs.size()]);
+    ctx.dirDF=dfList.toArray(new DF[dirs.size()]);
+    ctx.savedLocalDirs=newLocalDirs;
     if (dirs.size() > 0) {
-      dirNumLastAccessed=dirIndexRandomizer.nextInt(dirs.size());
+      ctx.dirNumLastAccessed.set(dirIndexRandomizer.nextInt(dirs.size()));
     }
+    currentContext.set(ctx);
   }
+  return ctx;
 }

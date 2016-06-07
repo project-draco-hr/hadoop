@@ -1,16 +1,16 @@
 {
-  confChanged(conf);
-  int numDirs=localDirs.length;
+  Context ctx=confChanged(conf);
+  int numDirs=ctx.localDirs.length;
   int numDirsSearched=0;
   if (pathStr.startsWith("/")) {
     pathStr=pathStr.substring(1);
   }
   Path returnPath=null;
   if (size == SIZE_UNKNOWN) {
-    long[] availableOnDisk=new long[dirDF.length];
+    long[] availableOnDisk=new long[ctx.dirDF.length];
     long totalAvailable=0;
-    for (int i=0; i < dirDF.length; ++i) {
-      availableOnDisk[i]=dirDF[i].getAvailable();
+    for (int i=0; i < ctx.dirDF.length; ++i) {
+      availableOnDisk[i]=ctx.dirDF[i].getAvailable();
       totalAvailable+=availableOnDisk[i];
     }
     if (totalAvailable == 0) {
@@ -24,8 +24,8 @@
         randomPosition-=availableOnDisk[dir];
         dir++;
       }
-      dirNumLastAccessed=dir;
-      returnPath=createPath(pathStr,checkWrite);
+      ctx.dirNumLastAccessed.set(dir);
+      returnPath=createPath(ctx.localDirs[dir],pathStr,checkWrite);
       if (returnPath == null) {
         totalAvailable-=availableOnDisk[dir];
         availableOnDisk[dir]=0;
@@ -34,13 +34,18 @@
     }
   }
  else {
-    while (numDirsSearched < numDirs && returnPath == null) {
-      long capacity=dirDF[dirNumLastAccessed].getAvailable();
+    int dirNum=ctx.getAndIncrDirNumLastAccessed();
+    while (numDirsSearched < numDirs) {
+      long capacity=ctx.dirDF[dirNum].getAvailable();
       if (capacity > size) {
-        returnPath=createPath(pathStr,checkWrite);
+        returnPath=createPath(ctx.localDirs[dirNum],pathStr,checkWrite);
+        if (returnPath != null) {
+          ctx.getAndIncrDirNumLastAccessed(numDirsSearched);
+          break;
+        }
       }
-      dirNumLastAccessed++;
-      dirNumLastAccessed=dirNumLastAccessed % numDirs;
+      dirNum++;
+      dirNum=dirNum % numDirs;
       numDirsSearched++;
     }
   }
