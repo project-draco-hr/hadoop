@@ -1,0 +1,33 @@
+{
+  shouldDeleteWait=true;
+  containerManager.start();
+  ContainerLaunchContext containerLaunchContext=recordFactory.newRecordInstance(ContainerLaunchContext.class);
+  List<StartContainerRequest> list=new ArrayList<>();
+  list.add(StartContainerRequest.newInstance(containerLaunchContext,createContainerToken(createContainerId(0),DUMMY_RM_IDENTIFIER,context.getNodeId(),user,BuilderUtils.newResource(512,1),context.getContainerTokenSecretManager(),null,ExecutionType.OPPORTUNISTIC)));
+  list.add(StartContainerRequest.newInstance(containerLaunchContext,createContainerToken(createContainerId(1),DUMMY_RM_IDENTIFIER,context.getNodeId(),user,BuilderUtils.newResource(512,1),context.getContainerTokenSecretManager(),null,ExecutionType.OPPORTUNISTIC)));
+  list.add(StartContainerRequest.newInstance(containerLaunchContext,createContainerToken(createContainerId(2),DUMMY_RM_IDENTIFIER,context.getNodeId(),user,BuilderUtils.newResource(512,1),context.getContainerTokenSecretManager(),null,ExecutionType.OPPORTUNISTIC)));
+  list.add(StartContainerRequest.newInstance(containerLaunchContext,createContainerToken(createContainerId(3),DUMMY_RM_IDENTIFIER,context.getNodeId(),user,BuilderUtils.newResource(1500,1),context.getContainerTokenSecretManager(),null,ExecutionType.GUARANTEED)));
+  StartContainersRequest allRequests=StartContainersRequest.newInstance(list);
+  containerManager.startContainers(allRequests);
+  BaseContainerManagerTest.waitForNMContainerState(containerManager,createContainerId(0),ContainerState.DONE,30);
+  Thread.sleep(5000);
+  int killedContainers=0;
+  int runningContainers=0;
+  List<ContainerId> statList=new ArrayList<ContainerId>();
+  for (int i=0; i < 4; i++) {
+    statList.add(createContainerId(i));
+  }
+  GetContainerStatusesRequest statRequest=GetContainerStatusesRequest.newInstance(statList);
+  List<ContainerStatus> containerStatuses=containerManager.getContainerStatuses(statRequest).getContainerStatuses();
+  for (  ContainerStatus status : containerStatuses) {
+    if (status.getDiagnostics().contains("Container killed by the ApplicationMaster")) {
+      killedContainers++;
+    }
+    if (status.getState() == org.apache.hadoop.yarn.api.records.ContainerState.RUNNING) {
+      runningContainers++;
+    }
+    System.out.println("\nStatus : [" + status + "]\n");
+  }
+  Assert.assertEquals(2,killedContainers);
+  Assert.assertEquals(2,runningContainers);
+}
