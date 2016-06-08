@@ -1,0 +1,52 @@
+{
+  shouldDeleteWait=true;
+  containerManager.start();
+  ContainerLaunchContext containerLaunchContext=recordFactory.newRecordInstance(ContainerLaunchContext.class);
+  List<StartContainerRequest> list=new ArrayList<>();
+  list.add(StartContainerRequest.newInstance(containerLaunchContext,createContainerToken(createContainerId(0),DUMMY_RM_IDENTIFIER,context.getNodeId(),user,BuilderUtils.newResource(2048,1),context.getContainerTokenSecretManager(),null,ExecutionType.GUARANTEED)));
+  list.add(StartContainerRequest.newInstance(containerLaunchContext,createContainerToken(createContainerId(1),DUMMY_RM_IDENTIFIER,context.getNodeId(),user,BuilderUtils.newResource(512,1),context.getContainerTokenSecretManager(),null,ExecutionType.OPPORTUNISTIC)));
+  list.add(StartContainerRequest.newInstance(containerLaunchContext,createContainerToken(createContainerId(2),DUMMY_RM_IDENTIFIER,context.getNodeId(),user,BuilderUtils.newResource(512,1),context.getContainerTokenSecretManager(),null,ExecutionType.OPPORTUNISTIC)));
+  StartContainersRequest allRequests=StartContainersRequest.newInstance(list);
+  containerManager.startContainers(allRequests);
+  Thread.sleep(2000);
+  int runningContainersNo=0;
+  int queuedContainersNo=0;
+  List<ContainerId> statList=new ArrayList<ContainerId>();
+  for (int i=0; i < 3; i++) {
+    statList.add(createContainerId(i));
+  }
+  GetContainerStatusesRequest statRequest=GetContainerStatusesRequest.newInstance(statList);
+  List<ContainerStatus> containerStatuses=containerManager.getContainerStatuses(statRequest).getContainerStatuses();
+  for (  ContainerStatus status : containerStatuses) {
+    if (status.getState() == org.apache.hadoop.yarn.api.records.ContainerState.RUNNING) {
+      runningContainersNo++;
+    }
+ else     if (status.getState() == org.apache.hadoop.yarn.api.records.ContainerState.QUEUED) {
+      queuedContainersNo++;
+    }
+    System.out.println("\nStatus : [" + status + "]\n");
+  }
+  Assert.assertEquals(1,runningContainersNo);
+  Assert.assertEquals(2,queuedContainersNo);
+  StopContainersRequest stopRequest=StopContainersRequest.newInstance(Arrays.asList(createContainerId(1)));
+  containerManager.stopContainers(stopRequest);
+  Thread.sleep(2000);
+  statList.clear();
+  for (int i=0; i < 3; i++) {
+    statList.add(createContainerId(i));
+  }
+  statRequest=GetContainerStatusesRequest.newInstance(statList);
+  containerStatuses=containerManager.getContainerStatuses(statRequest).getContainerStatuses();
+  for (  ContainerStatus status : containerStatuses) {
+    if (status.getContainerId().equals(createContainerId(0))) {
+      Assert.assertEquals(org.apache.hadoop.yarn.api.records.ContainerState.RUNNING,status.getState());
+    }
+ else     if (status.getContainerId().equals(createContainerId(1))) {
+      Assert.assertTrue(status.getDiagnostics().contains("Queued container request removed"));
+    }
+ else     if (status.getContainerId().equals(createContainerId(2))) {
+      Assert.assertEquals(org.apache.hadoop.yarn.api.records.ContainerState.QUEUED,status.getState());
+    }
+    System.out.println("\nStatus : [" + status + "]\n");
+  }
+}
