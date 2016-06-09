@@ -1,0 +1,41 @@
+{
+  Configuration conf=getContract().getConf();
+  if (!conf.getBoolean(TEST_STS_ENABLED,true)) {
+    skip("STS functional tests disabled");
+  }
+  String parentAccessKey=conf.getTrimmed(ACCESS_KEY,null);
+  String parentSecretKey=conf.getTrimmed(SECRET_KEY,null);
+  String stsEndpoint=conf.getTrimmed(TEST_STS_ENDPOINT,"");
+  AWSCredentialsProviderChain parentCredentials;
+  parentCredentials=new AWSCredentialsProviderChain(new BasicAWSCredentialsProvider(parentAccessKey,parentSecretKey),new InstanceProfileCredentialsProvider());
+  AWSSecurityTokenServiceClient stsClient;
+  stsClient=new AWSSecurityTokenServiceClient(parentCredentials);
+  if (!stsEndpoint.isEmpty()) {
+    LOG.debug("STS Endpoint ={}",stsEndpoint);
+    stsClient.setEndpoint(stsEndpoint);
+  }
+  GetSessionTokenRequest sessionTokenRequest=new GetSessionTokenRequest();
+  sessionTokenRequest.setDurationSeconds(900);
+  GetSessionTokenResult sessionTokenResult;
+  sessionTokenResult=stsClient.getSessionToken(sessionTokenRequest);
+  Credentials sessionCreds=sessionTokenResult.getCredentials();
+  String childAccessKey=sessionCreds.getAccessKeyId();
+  conf.set(ACCESS_KEY,childAccessKey);
+  String childSecretKey=sessionCreds.getSecretAccessKey();
+  conf.set(SECRET_KEY,childSecretKey);
+  String sessionToken=sessionCreds.getSessionToken();
+  conf.set(SESSION_TOKEN,sessionToken);
+  conf.set(AWS_CREDENTIALS_PROVIDER,PROVIDER_CLASS);
+  try (S3AFileSystem fs=S3ATestUtils.createTestFileSystem(conf)){
+    createAndVerifyFile(fs,path("testSTS"),TEST_FILE_SIZE);
+  }
+   conf.set(SESSION_TOKEN,"invalid-" + sessionToken);
+  try (S3AFileSystem fs=S3ATestUtils.createTestFileSystem(conf)){
+    createAndVerifyFile(fs,path("testSTSInvalidToken"),TEST_FILE_SIZE);
+    fail("Expected an access exception, but file access to " + fs.getUri() + " was allowed: "+ fs);
+  }
+ catch (  AWSS3IOException ex) {
+    LOG.info("Expected Exception: {}",ex.toString());
+    LOG.debug("Expected Exception: {}",ex,ex);
+  }
+}
