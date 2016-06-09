@@ -1,0 +1,69 @@
+{
+  if (state == StreamState.StreamEnd) {
+    return -1;
+  }
+  if (fileSize <= off) {
+    state=StreamState.StreamEnd;
+    return -1;
+  }
+  int len=maxBufferSize;
+  long fileOffset=0;
+  boolean isEntireFileCached=true;
+  if ((fileSize <= maxBufferSize)) {
+    len=(int)fileSize;
+    currentFileOffset=0;
+    nextFileOffset=0;
+  }
+ else {
+    if (len > (fileSize - off)) {
+      len=(int)(fileSize - off);
+    }
+synchronized (BufferManager.getLock()) {
+      if (BufferManager.getInstance().hasValidDataForOffset(fsPath.toString(),off)) {
+        len=(int)(BufferManager.getInstance().getBufferOffset() + BufferManager.getInstance().getBufferSize() - (int)off);
+      }
+    }
+    if (len <= 0) {
+      len=maxBufferSize;
+    }
+    fileOffset=off;
+    isEntireFileCached=false;
+  }
+  data=null;
+  BufferManager bm=BufferManager.getInstance();
+  data=bm.getEmpty(len);
+  boolean fetchDataOverNetwork=false;
+synchronized (BufferManager.getLock()) {
+    if (bm.hasData(fsPath.toString(),fileOffset,len)) {
+      try {
+        bm.get(data,fileOffset);
+        validDataHoldingSize=data.length;
+        currentFileOffset=fileOffset;
+      }
+ catch (      ArrayIndexOutOfBoundsException e) {
+        fetchDataOverNetwork=true;
+      }
+    }
+ else {
+      fetchDataOverNetwork=true;
+    }
+  }
+  if (fetchDataOverNetwork) {
+    int splitSize=getSplitSize(len);
+    try {
+      validDataHoldingSize=fillDataConcurrently(data,len,fileOffset,splitSize);
+    }
+ catch (    InterruptedException e) {
+      Thread.currentThread().interrupt();
+      throw new IOException("Interrupted filling buffer",e);
+    }
+synchronized (BufferManager.getLock()) {
+      bm.add(data,fsPath.toString(),fileOffset);
+    }
+    currentFileOffset=nextFileOffset;
+  }
+  nextFileOffset+=validDataHoldingSize;
+  state=StreamState.DataCachedInLocalBuffer;
+  bufferOffset=isEntireFileCached ? (int)off : 0;
+  return validDataHoldingSize;
+}

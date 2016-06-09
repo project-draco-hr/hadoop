@@ -1,0 +1,29 @@
+{
+  ExecutorService executor=Executors.newFixedThreadPool(splitSize);
+  subtasks=new Future[splitSize];
+  for (int i=0; i < splitSize; i++) {
+    int offset=i * (length / splitSize);
+    int splitLength=(splitSize == (i + 1)) ? (length / splitSize) + (length % splitSize) : (length / splitSize);
+    subtasks[i]=executor.submit(new BackgroundReadThread(byteArray,offset,splitLength,globalOffset + offset));
+  }
+  executor.shutdown();
+  executor.awaitTermination(ADLConfKeys.DEFAULT_TIMEOUT_IN_SECONDS,TimeUnit.SECONDS);
+  int totalBytePainted=0;
+  for (int i=0; i < splitSize; ++i) {
+    try {
+      totalBytePainted+=(Integer)subtasks[i].get();
+    }
+ catch (    InterruptedException e) {
+      Thread.currentThread().interrupt();
+      throw new IOException(e.getCause());
+    }
+catch (    ExecutionException e) {
+      Thread.currentThread().interrupt();
+      throw new IOException(e.getCause());
+    }
+  }
+  if (totalBytePainted != length) {
+    throw new IOException("Expected " + length + " bytes, Got "+ totalBytePainted+ " bytes");
+  }
+  return totalBytePainted;
+}
