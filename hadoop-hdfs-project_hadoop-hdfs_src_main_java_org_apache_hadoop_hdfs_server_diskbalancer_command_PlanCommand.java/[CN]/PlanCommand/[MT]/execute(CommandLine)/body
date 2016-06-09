@@ -25,17 +25,25 @@
   LOG.debug("threshold Percentage is {}",this.thresholdPercentage);
   setNodesToProcess(node);
   populatePathNames(node);
+  NodePlan plan=null;
   List<NodePlan> plans=getCluster().computePlan(this.thresholdPercentage);
   setPlanParams(plans);
-  LOG.info("Writing plan to : {}",getOutputPath());
-  System.out.printf("Writing plan to : %s%n",getOutputPath());
+  if (plans.size() > 0) {
+    plan=plans.get(0);
+  }
   try (FSDataOutputStream beforeStream=create(String.format(DiskBalancer.BEFORE_TEMPLATE,cmd.getOptionValue(DiskBalancer.PLAN)))){
     beforeStream.write(getCluster().toJson().getBytes(StandardCharsets.UTF_8));
   }
-   try (FSDataOutputStream planStream=create(String.format(DiskBalancer.PLAN_TEMPLATE,cmd.getOptionValue(DiskBalancer.PLAN)))){
-    planStream.write(getPlan(plans).getBytes(StandardCharsets.UTF_8));
+   if (plan != null) {
+    LOG.info("Writing plan to : {}",getOutputPath());
+    try (FSDataOutputStream planStream=create(String.format(DiskBalancer.PLAN_TEMPLATE,cmd.getOptionValue(DiskBalancer.PLAN)))){
+      planStream.write(plan.toJson().getBytes(StandardCharsets.UTF_8));
+    }
+   }
+ else {
+    LOG.info("No plan generated. DiskBalancing not needed for node: {} " + "threshold used: {}",cmd.getOptionValue(DiskBalancer.PLAN),this.thresholdPercentage);
   }
-   if (cmd.hasOption(DiskBalancer.VERBOSE)) {
+  if (cmd.hasOption(DiskBalancer.VERBOSE) && plans.size() > 0) {
     printToScreen(plans);
   }
 }
