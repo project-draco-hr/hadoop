@@ -8,22 +8,32 @@
     if (te == null) {
       continue;
     }
-    boolean isApplication=TimelineStorageUtils.isApplicationEntity(te);
-    byte[] rowKey=isApplication ? ApplicationRowKey.getRowKey(clusterId,userId,flowName,flowRunId,appId) : EntityRowKey.getRowKey(clusterId,userId,flowName,flowRunId,appId,te.getType(),te.getId());
+    boolean isApplication=isApplicationEntity(te);
+    byte[] rowKey;
+    if (isApplication) {
+      ApplicationRowKey applicationRowKey=new ApplicationRowKey(clusterId,userId,flowName,flowRunId,appId);
+      rowKey=applicationRowKey.getRowKey();
+    }
+ else {
+      EntityRowKey entityRowKey=new EntityRowKey(clusterId,userId,flowName,flowRunId,appId,te.getType(),te.getId());
+      rowKey=entityRowKey.getRowKey();
+    }
     storeInfo(rowKey,te,flowVersion,isApplication);
     storeEvents(rowKey,te.getEvents(),isApplication);
     storeConfig(rowKey,te.getConfigs(),isApplication);
     storeMetrics(rowKey,te.getMetrics(),isApplication);
     storeRelations(rowKey,te,isApplication);
     if (isApplication) {
-      TimelineEvent event=TimelineStorageUtils.getApplicationEvent(te,ApplicationMetricsConstants.CREATED_EVENT_TYPE);
+      TimelineEvent event=getApplicationEvent(te,ApplicationMetricsConstants.CREATED_EVENT_TYPE);
+      FlowRunRowKey flowRunRowKey=new FlowRunRowKey(clusterId,userId,flowName,flowRunId);
       if (event != null) {
-        onApplicationCreated(clusterId,userId,flowName,flowVersion,flowRunId,appId,te,event.getTimestamp());
+        AppToFlowRowKey appToFlowRowKey=new AppToFlowRowKey(clusterId,appId);
+        onApplicationCreated(flowRunRowKey,appToFlowRowKey,appId,userId,flowVersion,te,event.getTimestamp());
       }
-      storeFlowMetricsAppRunning(clusterId,userId,flowName,flowRunId,appId,te);
-      event=TimelineStorageUtils.getApplicationEvent(te,ApplicationMetricsConstants.FINISHED_EVENT_TYPE);
+      storeFlowMetricsAppRunning(flowRunRowKey,appId,te);
+      event=getApplicationEvent(te,ApplicationMetricsConstants.FINISHED_EVENT_TYPE);
       if (event != null) {
-        onApplicationFinished(clusterId,userId,flowName,flowVersion,flowRunId,appId,te,event.getTimestamp());
+        onApplicationFinished(flowRunRowKey,flowVersion,appId,te,event.getTimestamp());
       }
     }
   }

@@ -62,13 +62,14 @@
     hbi.write(cluster,user,flow,flowVersion,runid,appName,te);
     hbi.stop();
     Scan s=new Scan();
-    byte[] startRow=EntityRowKey.getRowKeyPrefix(cluster,user,flow,runid,appName);
+    byte[] startRow=new EntityRowKeyPrefix(cluster,user,flow,runid,appName).getRowKeyPrefix();
     s.setStartRow(startRow);
     s.setMaxVersions(Integer.MAX_VALUE);
     Connection conn=ConnectionFactory.createConnection(c1);
     ResultScanner scanner=new EntityTable().getResultScanner(c1,conn,s);
     int rowCount=0;
     int colCount=0;
+    KeyConverter<String> stringKeyConverter=new StringKeyConverter();
     for (    Result result : scanner) {
       if (result != null && !result.isEmpty()) {
         rowCount++;
@@ -81,7 +82,7 @@
         assertEquals(type,type1);
         Long cTime1=(Long)EntityColumn.CREATED_TIME.readResult(result);
         assertEquals(cTime1,cTime);
-        Map<String,Object> infoColumns=EntityColumnPrefix.INFO.readResults(result,StringKeyConverter.getInstance());
+        Map<String,Object> infoColumns=EntityColumnPrefix.INFO.readResults(result,new StringKeyConverter());
         assertEquals(infoMap,infoColumns);
         for (        Map.Entry<String,Set<String>> isRelatedToEntry : isRelatedTo.entrySet()) {
           Object isRelatedToValue=EntityColumnPrefix.IS_RELATED_TO.readResult(result,isRelatedToEntry.getKey());
@@ -100,9 +101,9 @@
             assertTrue(relatesToValues.contains(v));
           }
         }
-        Map<String,Object> configColumns=EntityColumnPrefix.CONFIG.readResults(result,StringKeyConverter.getInstance());
+        Map<String,Object> configColumns=EntityColumnPrefix.CONFIG.readResults(result,stringKeyConverter);
         assertEquals(conf,configColumns);
-        NavigableMap<String,NavigableMap<Long,Number>> metricsResult=EntityColumnPrefix.METRIC.readResultsWithTimestamps(result,StringKeyConverter.getInstance());
+        NavigableMap<String,NavigableMap<Long,Number>> metricsResult=EntityColumnPrefix.METRIC.readResultsWithTimestamps(result,stringKeyConverter);
         NavigableMap<Long,Number> metricMap=metricsResult.get(m1.getId());
         matchMetrics(metricValues,metricMap);
       }
