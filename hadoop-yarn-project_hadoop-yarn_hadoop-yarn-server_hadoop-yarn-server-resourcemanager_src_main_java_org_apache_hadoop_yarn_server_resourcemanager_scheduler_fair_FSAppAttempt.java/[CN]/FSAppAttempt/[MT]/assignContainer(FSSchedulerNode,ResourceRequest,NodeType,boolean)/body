@@ -1,15 +1,12 @@
 {
   Resource capability=request.getCapability();
   Resource available=node.getUnallocatedResource();
-  Container container=null;
+  Container reservedContainer=null;
   if (reserved) {
-    container=node.getReservedContainer().getContainer();
-  }
- else {
-    container=createContainer(node,capability,request.getPriority());
+    reservedContainer=node.getReservedContainer().getContainer();
   }
   if (Resources.fitsIn(capability,available)) {
-    RMContainer allocatedContainer=allocate(type,node,request.getPriority(),request,container);
+    RMContainer allocatedContainer=allocate(type,node,request.getPriority(),request,reservedContainer);
     if (allocatedContainer == null) {
       if (reserved) {
         unreserve(request.getPriority(),node);
@@ -21,18 +18,18 @@
     }
     node.allocateContainer(allocatedContainer);
     if (!isAmRunning() && !getUnmanagedAM()) {
-      setAMResource(container.getResource());
-      getQueue().addAMResourceUsage(container.getResource());
+      setAMResource(capability);
+      getQueue().addAMResourceUsage(capability);
       setAmRunning(true);
     }
-    return container.getResource();
+    return capability;
   }
-  if (isReservable(container) && reserve(request.getPriority(),node,container,type,reserved)) {
+  if (isReservable(capability) && reserve(request,node,reservedContainer,type)) {
     return FairScheduler.CONTAINER_RESERVED;
   }
  else {
     if (LOG.isDebugEnabled()) {
-      LOG.debug("Not creating reservation as container " + container.getId() + " is not reservable");
+      LOG.debug("Couldn't creating reservation for " + getName() + ",at priority "+ request.getPriority());
     }
     return Resources.none();
   }
