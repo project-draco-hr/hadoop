@@ -1,57 +1,31 @@
 {
-  MiniYARNCluster cluster=new MiniYARNCluster("testDistributedSchedulingE2E",1,1,1);
-  YarnClient rmClient=null;
-  ApplicationMasterProtocol client;
-  try {
-    Configuration conf=new YarnConfiguration();
-    conf.setBoolean(YarnConfiguration.AMRM_PROXY_ENABLED,true);
-    conf.setBoolean(YarnConfiguration.DIST_SCHEDULING_ENABLED,true);
-    conf.setBoolean(YarnConfiguration.NM_CONTAINER_QUEUING_ENABLED,true);
-    cluster.init(conf);
-    cluster.start();
-    final Configuration yarnConf=cluster.getConfig();
-    yarnConf.set(YarnConfiguration.RM_SCHEDULER_ADDRESS,YarnConfiguration.DEFAULT_AMRM_PROXY_ADDRESS);
-    rmClient=YarnClient.createYarnClient();
-    rmClient.init(yarnConf);
-    rmClient.start();
-    ApplicationId appId=createApp(rmClient,cluster);
-    client=createAMRMProtocol(rmClient,appId,cluster,yarnConf);
-    LOG.info("testDistributedSchedulingE2E - Register");
-    RegisterApplicationMasterResponse responseRegister=client.registerApplicationMaster(RegisterApplicationMasterRequest.newInstance(NetUtils.getHostname(),1024,""));
-    Assert.assertNotNull(responseRegister);
-    Assert.assertNotNull(responseRegister.getQueue());
-    Assert.assertNotNull(responseRegister.getApplicationACLs());
-    Assert.assertNotNull(responseRegister.getClientToAMTokenMasterKey());
-    Assert.assertNotNull(responseRegister.getContainersFromPreviousAttempts());
-    Assert.assertNotNull(responseRegister.getSchedulerResourceTypes());
-    Assert.assertNotNull(responseRegister.getMaximumResourceCapability());
-    RMApp rmApp=cluster.getResourceManager().getRMContext().getRMApps().get(appId);
-    Assert.assertEquals(RMAppState.RUNNING,rmApp.getState());
-    LOG.info("testDistributedSchedulingE2E - Allocate");
-    AllocateRequest request=createAllocateRequest(rmClient.getNodeReports(NodeState.RUNNING));
-    List<ResourceRequest> newAskList=new ArrayList<>();
-    for (    ResourceRequest rr : request.getAskList()) {
-      if (ResourceRequest.ANY.equals(rr.getResourceName())) {
-        ResourceRequest newRR=ResourceRequest.newInstance(rr.getPriority(),rr.getResourceName(),rr.getCapability(),rr.getNumContainers(),rr.getRelaxLocality(),rr.getNodeLabelExpression(),ExecutionTypeRequest.newInstance(ExecutionType.OPPORTUNISTIC,true));
-        newAskList.add(newRR);
-      }
+  LOG.info("testDistributedSchedulingE2E - Register");
+  RegisterApplicationMasterResponse responseRegister=client.registerApplicationMaster(RegisterApplicationMasterRequest.newInstance(NetUtils.getHostname(),1024,""));
+  Assert.assertNotNull(responseRegister);
+  Assert.assertNotNull(responseRegister.getQueue());
+  Assert.assertNotNull(responseRegister.getApplicationACLs());
+  Assert.assertNotNull(responseRegister.getClientToAMTokenMasterKey());
+  Assert.assertNotNull(responseRegister.getContainersFromPreviousAttempts());
+  Assert.assertNotNull(responseRegister.getSchedulerResourceTypes());
+  Assert.assertNotNull(responseRegister.getMaximumResourceCapability());
+  RMApp rmApp=cluster.getResourceManager().getRMContext().getRMApps().get(appId);
+  Assert.assertEquals(RMAppState.RUNNING,rmApp.getState());
+  LOG.info("testDistributedSchedulingE2E - Allocate");
+  AllocateRequest request=createAllocateRequest(rmClient.getNodeReports(NodeState.RUNNING));
+  List<ResourceRequest> newAskList=new ArrayList<>();
+  for (  ResourceRequest rr : request.getAskList()) {
+    if (ResourceRequest.ANY.equals(rr.getResourceName())) {
+      ResourceRequest newRR=ResourceRequest.newInstance(rr.getPriority(),rr.getResourceName(),rr.getCapability(),rr.getNumContainers(),rr.getRelaxLocality(),rr.getNodeLabelExpression(),ExecutionTypeRequest.newInstance(ExecutionType.OPPORTUNISTIC,true));
+      newAskList.add(newRR);
     }
-    request.setAskList(newAskList);
-    AllocateResponse allocResponse=client.allocate(request);
-    Assert.assertNotNull(allocResponse);
-    Assert.assertEquals(2,allocResponse.getAllocatedContainers().size());
-    for (    Container allocatedContainer : allocResponse.getAllocatedContainers()) {
-      ContainerTokenIdentifier containerTokenIdentifier=BuilderUtils.newContainerTokenIdentifier(allocatedContainer.getContainerToken());
-      Assert.assertEquals(ExecutionType.OPPORTUNISTIC,containerTokenIdentifier.getExecutionType());
-    }
-    LOG.info("testDistributedSchedulingE2E - Finish");
-    FinishApplicationMasterResponse responseFinish=client.finishApplicationMaster(FinishApplicationMasterRequest.newInstance(FinalApplicationStatus.SUCCEEDED,"success",null));
-    Assert.assertNotNull(responseFinish);
   }
-  finally {
-    if (rmClient != null) {
-      rmClient.stop();
-    }
-    cluster.stop();
+  request.setAskList(newAskList);
+  AllocateResponse allocResponse=client.allocate(request);
+  Assert.assertNotNull(allocResponse);
+  Assert.assertEquals(2,allocResponse.getAllocatedContainers().size());
+  for (  Container allocatedContainer : allocResponse.getAllocatedContainers()) {
+    ContainerTokenIdentifier containerTokenIdentifier=BuilderUtils.newContainerTokenIdentifier(allocatedContainer.getContainerToken());
+    Assert.assertEquals(ExecutionType.OPPORTUNISTIC,containerTokenIdentifier.getExecutionType());
   }
+  LOG.info("testDistributedSchedulingE2E - Finish");
 }
