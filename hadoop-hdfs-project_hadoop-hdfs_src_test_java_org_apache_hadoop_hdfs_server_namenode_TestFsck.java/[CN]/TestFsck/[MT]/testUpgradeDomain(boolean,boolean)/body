@@ -1,0 +1,49 @@
+{
+  final short replFactor=1;
+  final short numDN=1;
+  final long blockSize=512;
+  final long fileSize=1024;
+  final String upgradeDomain="ud1";
+  final String[] racks={"/rack1"};
+  final String[] hosts={"127.0.0.1"};
+  HostsFileWriter hostsFileWriter=new HostsFileWriter();
+  Configuration conf=new Configuration();
+  conf.setLong(DFSConfigKeys.DFS_BLOCK_SIZE_KEY,blockSize);
+  conf.setInt(DFSConfigKeys.DFS_REPLICATION_KEY,replFactor);
+  if (defineUpgradeDomain) {
+    conf.setClass(DFSConfigKeys.DFS_NAMENODE_HOSTS_PROVIDER_CLASSNAME_KEY,CombinedHostFileManager.class,HostConfigManager.class);
+    hostsFileWriter.initialize(conf,"temp/fsckupgradedomain");
+  }
+  MiniDFSCluster cluster;
+  DistributedFileSystem dfs;
+  cluster=new MiniDFSCluster.Builder(conf).numDataNodes(numDN).hosts(hosts).racks(racks).build();
+  cluster.waitClusterUp();
+  dfs=cluster.getFileSystem();
+  if (defineUpgradeDomain) {
+    DatanodeAdminProperties dnProp=new DatanodeAdminProperties();
+    DatanodeID datanodeID=cluster.getDataNodes().get(0).getDatanodeId();
+    dnProp.setHostName(datanodeID.getHostName());
+    dnProp.setPort(datanodeID.getXferPort());
+    dnProp.setUpgradeDomain(upgradeDomain);
+    hostsFileWriter.initIncludeHosts(new DatanodeAdminProperties[]{dnProp});
+    cluster.getFileSystem().refreshNodes();
+  }
+  final String testFile=new String("/testfile");
+  final Path path=new Path(testFile);
+  DFSTestUtil.createFile(dfs,path,fileSize,replFactor,1000L);
+  DFSTestUtil.waitReplication(dfs,path,replFactor);
+  try {
+    String fsckOut=runFsck(conf,0,true,testFile,"-files","-blocks",displayUpgradeDomain ? "-upgradedomains" : "-locations");
+    assertTrue(fsckOut.contains(NamenodeFsck.HEALTHY_STATUS));
+    String udValue=defineUpgradeDomain ? upgradeDomain : NamenodeFsck.UNDEFINED;
+    assertEquals(displayUpgradeDomain,fsckOut.contains("(ud=" + udValue + ")"));
+  }
+  finally {
+    if (defineUpgradeDomain) {
+      hostsFileWriter.cleanup();
+    }
+    if (cluster != null) {
+      cluster.shutdown();
+    }
+  }
+}
