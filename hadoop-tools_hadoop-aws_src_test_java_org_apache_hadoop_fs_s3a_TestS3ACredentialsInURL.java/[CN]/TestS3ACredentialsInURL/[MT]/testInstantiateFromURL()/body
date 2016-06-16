@@ -1,0 +1,26 @@
+{
+  Configuration conf=new Configuration();
+  String accessKey=conf.get(Constants.ACCESS_KEY);
+  String secretKey=conf.get(Constants.SECRET_KEY);
+  String fsname=conf.getTrimmed(TEST_FS_S3A_NAME,"");
+  Assume.assumeNotNull(fsname,accessKey,secretKey);
+  URI original=new URI(fsname);
+  URI secretsURI=createUriWithEmbeddedSecrets(original,accessKey,secretKey);
+  if (secretKey.contains("/")) {
+    assertTrue("test URI encodes the / symbol",secretsURI.toString().contains("%2F"));
+  }
+  assertFalse("Does not contain secrets",original.equals(secretsURI));
+  conf.set(TEST_FS_S3A_NAME,secretsURI.toString());
+  conf.unset(Constants.ACCESS_KEY);
+  conf.unset(Constants.SECRET_KEY);
+  fs=S3ATestUtils.createTestFileSystem(conf);
+  String fsURI=fs.getUri().toString();
+  assertFalse("FS URI contains a @ symbol",fsURI.contains("@"));
+  assertFalse("FS URI contains a % symbol",fsURI.contains("%"));
+  if (!original.toString().startsWith(fsURI)) {
+    fail("Filesystem URI does not match original");
+  }
+  validate("original path",new Path(original));
+  validate("bare path",new Path("/"));
+  validate("secrets path",new Path(secretsURI));
+}
