@@ -1,14 +1,18 @@
 {
-  String clientMachine="127.0.0.1";
-  for (int i=0; i < 5; i++) {
-    String src="/test-" + i;
-    HdfsFileStatus fileStatus=namesystem.startFile(src,perm,clientMachine,clientMachine,EnumSet.of(CreateFlag.CREATE),true,REPLICATION_FACTOR,DEFAULT_BLOCK_SIZE,null,false);
-    LocatedBlock locatedBlock=nameNodeRpc.addBlock(src,clientMachine,null,null,fileStatus.getFileId(),null,null);
-    assertEquals("Block should be allocated sufficient locations",REPLICATION_FACTOR,locatedBlock.getLocations().length);
-    Set<DatanodeInfo> locs=new HashSet<>(Arrays.asList(locatedBlock.getLocations()));
-    for (    DatanodeID datanodeID : expectedDatanodeIDs) {
-      locs.contains(datanodeID);
+  final long fileSize=DEFAULT_BLOCK_SIZE * 5;
+  final String testFile=new String("/testfile");
+  final Path path=new Path(testFile);
+  DFSTestUtil.createFile(cluster.getFileSystem(),path,fileSize,REPLICATION_FACTOR,1000L);
+  LocatedBlocks locatedBlocks=cluster.getFileSystem().getClient().getLocatedBlocks(path.toString(),0,fileSize);
+  for (  LocatedBlock block : locatedBlocks.getLocatedBlocks()) {
+    Set<DatanodeInfo> locs=new HashSet<>();
+    for (    DatanodeInfo datanodeInfo : block.getLocations()) {
+      if (datanodeInfo.getAdminState() == DatanodeInfo.AdminStates.NORMAL) {
+        locs.add(datanodeInfo);
+      }
     }
-    nameNodeRpc.abandonBlock(locatedBlock.getBlock(),fileStatus.getFileId(),src,clientMachine);
+    for (    DatanodeID datanodeID : expectedDatanodeIDs) {
+      assertTrue(locs.contains(datanodeID));
+    }
   }
 }
