@@ -1,0 +1,31 @@
+{
+  ArrayList<CreateTestData> createTestData=new ArrayList<CreateTestData>();
+  Random random=new Random();
+  for (int i=0; i < 1; i++) {
+    CreateTestData testData=new CreateTestData();
+    testData.set(new Path("/test/concurrentRead/" + UUID.randomUUID().toString()),getRandomByteArrayData(1024 * 1024));
+    createTestData.add(testData);
+  }
+  setDispatcher(createTestData);
+  ArrayList<ReadTestData> readTestData=new ArrayList<ReadTestData>();
+  ByteArrayInputStream buffered=new ByteArrayInputStream(createTestData.get(0).data);
+  ReadTestData readInitially=new ReadTestData();
+  byte[] initialData=new byte[1024 * 1024];
+  buffered.read(initialData);
+  readInitially.set(createTestData.get(0).path,initialData,0);
+  readTestData.add(readInitially);
+  runReadTest(readTestData,false);
+  readTestData.clear();
+  for (int i=0; i < concurrencyLevel * 5; i++) {
+    ReadTestData localReadData=new ReadTestData();
+    int offset=random.nextInt((1024 * 1024) - 1);
+    int length=1024 * 1024 - offset;
+    byte[] expectedData=new byte[length];
+    buffered.reset();
+    buffered.skip(offset);
+    buffered.read(expectedData);
+    localReadData.set(createTestData.get(0).path,expectedData,offset);
+    readTestData.add(localReadData);
+  }
+  runReadTest(readTestData,true);
+}

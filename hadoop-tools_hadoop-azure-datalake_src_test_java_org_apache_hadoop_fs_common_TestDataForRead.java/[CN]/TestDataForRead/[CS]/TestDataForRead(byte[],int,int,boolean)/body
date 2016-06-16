@@ -1,0 +1,39 @@
+{
+  this.checkOfNoOfCalls=checkOfNoOfCalls;
+  this.actualData=actualData;
+  responses=new ArrayList<ExpectedResponse>();
+  this.expectedNoNetworkCall=expectedNoNetworkCall;
+  this.intensityOfTest=intensityOfTest;
+  dispatcher=new Dispatcher(){
+    @Override public MockResponse dispatch(    RecordedRequest recordedRequest) throws InterruptedException {
+      if (recordedRequest.getPath().equals("/refresh")) {
+        return AdlMockWebServer.getTokenResponse();
+      }
+      if (recordedRequest.getRequestLine().contains("op=GETFILESTATUS")) {
+        return new MockResponse().setResponseCode(200).setBody(TestADLResponseData.getGetFileStatusJSONResponse(actualData.length));
+      }
+      if (recordedRequest.getRequestLine().contains("op=OPEN")) {
+        String request=recordedRequest.getRequestLine();
+        int offset=0;
+        int byteCount=0;
+        Pattern pattern=Pattern.compile("offset=([0-9]+)");
+        Matcher matcher=pattern.matcher(request);
+        if (matcher.find()) {
+          System.out.println(matcher.group(1));
+          offset=Integer.parseInt(matcher.group(1));
+        }
+        pattern=Pattern.compile("length=([0-9]+)");
+        matcher=pattern.matcher(request);
+        if (matcher.find()) {
+          System.out.println(matcher.group(1));
+          byteCount=Integer.parseInt(matcher.group(1));
+        }
+        Buffer buf=new Buffer();
+        buf.write(actualData,offset,byteCount);
+        return new MockResponse().setResponseCode(200).setChunkedBody(buf,4 * 1024 * 1024);
+      }
+      return new MockResponse().setBody("NOT SUPPORTED").setResponseCode(501);
+    }
+  }
+;
+}

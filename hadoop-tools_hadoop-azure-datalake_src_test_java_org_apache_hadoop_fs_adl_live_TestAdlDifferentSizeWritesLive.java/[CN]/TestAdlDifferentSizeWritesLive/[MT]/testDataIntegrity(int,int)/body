@@ -1,0 +1,27 @@
+{
+  Path path=new Path("/test/dataIntegrityCheck");
+  FileSystem fs=null;
+  try {
+    fs=AdlStorageConfiguration.createAdlStorageConnector();
+  }
+ catch (  URISyntaxException e) {
+    throw new IllegalStateException("Can not initialize ADL FileSystem. " + "Please check fs.defaultFS property.",e);
+  }
+  byte[] expectedData=getRandomByteArrayData(totalSize);
+  FSDataOutputStream out=fs.create(path,true);
+  int iteration=totalSize / chunkSize;
+  int reminderIteration=totalSize % chunkSize;
+  int offset=0;
+  for (int i=0; i < iteration; ++i) {
+    out.write(expectedData,offset,chunkSize);
+    offset+=chunkSize;
+  }
+  out.write(expectedData,offset,reminderIteration);
+  out.close();
+  byte[] actualData=new byte[totalSize];
+  FSDataInputStream in=fs.open(path);
+  in.readFully(0,actualData);
+  in.close();
+  Assert.assertArrayEquals(expectedData,actualData);
+  Assert.assertTrue(fs.delete(path,true));
+}
