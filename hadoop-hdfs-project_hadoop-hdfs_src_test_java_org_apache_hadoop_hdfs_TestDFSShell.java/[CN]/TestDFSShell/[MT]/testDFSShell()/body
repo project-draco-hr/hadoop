@@ -1,5 +1,5 @@
 {
-  Configuration conf=new HdfsConfiguration();
+  final Configuration conf=new HdfsConfiguration();
   MiniDFSCluster cluster=new MiniDFSCluster.Builder(conf).numDataNodes(2).build();
   FileSystem fs=cluster.getFileSystem();
   assertTrue("Not a HDFS: " + fs.getUri(),fs instanceof DistributedFileSystem);
@@ -299,6 +299,58 @@
         System.err.println("Exception raised from DFSShell.run " + e.getLocalizedMessage());
       }
       assertEquals(0,val);
+    }
+{
+      Path permDir=new Path("/test/permDir");
+      Path permFile=new Path("/test/permDir/permFile");
+      mkdir(fs,permDir);
+      writeFile(fs,permFile);
+      final String[] wargs=new String[3];
+      wargs[0]="-test";
+      wargs[1]="-w";
+      wargs[2]=permDir.toString();
+      int val=-1;
+      try {
+        val=shell.run(wargs);
+      }
+ catch (      Exception e) {
+        System.err.println("Exception raised from DFSShell.run " + e.getLocalizedMessage());
+      }
+      assertEquals(0,val);
+      final String[] rargs=new String[3];
+      rargs[0]="-test";
+      rargs[1]="-r";
+      rargs[2]=permFile.toString();
+      try {
+        val=shell.run(rargs);
+      }
+ catch (      Exception e) {
+        System.err.println("Exception raised from DFSShell.run " + e.getLocalizedMessage());
+      }
+      assertEquals(0,val);
+      runCmd(shell,"-chmod","600",permFile.toString());
+      UserGroupInformation smokeUser=UserGroupInformation.createUserForTesting("smokeUser",new String[]{"hadoop"});
+      smokeUser.doAs(new PrivilegedExceptionAction<String>(){
+        @Override public String run() throws Exception {
+          FsShell shell=new FsShell(conf);
+          int exitCode=shell.run(rargs);
+          assertEquals(1,exitCode);
+          return null;
+        }
+      }
+);
+      runCmd(shell,"-chown","-R","not_allowed",permDir.toString());
+      runCmd(shell,"-chmod","-R","700",permDir.toString());
+      smokeUser.doAs(new PrivilegedExceptionAction<String>(){
+        @Override public String run() throws Exception {
+          FsShell shell=new FsShell(conf);
+          int exitCode=shell.run(wargs);
+          assertEquals(1,exitCode);
+          return null;
+        }
+      }
+);
+      fs.delete(permDir,true);
     }
   }
   finally {
