@@ -3,11 +3,14 @@
   if (Math.abs(maxAMShare - -1.0f) < 0.0001) {
     return true;
   }
-  Resource maxAMResource=Resources.multiply(getFairShare(),maxAMShare);
-  Resource ifRunAMResource=Resources.add(amResourceUsage,amResource);
-  boolean overMaxAMShareLimit=policy.checkIfAMResourceUsageOverLimit(ifRunAMResource,maxAMResource);
-  if (!overMaxAMShareLimit && !policy.equals(SchedulingPolicy.getInstance(DominantResourceFairnessPolicy.class))) {
-    overMaxAMShareLimit=isVCoresOverMaxResource(ifRunAMResource.getVirtualCores()) || ifRunAMResource.getVirtualCores() >= scheduler.getRootQueueMetrics().getAvailableVirtualCores();
+  Resource maxResource=Resources.clone(getFairShare());
+  if (maxResource.getMemorySize() == 0) {
+    maxResource.setMemory(Math.min(scheduler.getRootQueueMetrics().getAvailableMB(),getMaxShare().getMemorySize()));
   }
-  return !overMaxAMShareLimit;
+  if (maxResource.getVirtualCoresSize() == 0) {
+    maxResource.setVirtualCores(Math.min(scheduler.getRootQueueMetrics().getAvailableVirtualCores(),getMaxShare().getVirtualCoresSize()));
+  }
+  Resource maxAMResource=Resources.multiply(maxResource,maxAMShare);
+  Resource ifRunAMResource=Resources.add(amResourceUsage,amResource);
+  return Resources.fitsIn(ifRunAMResource,maxAMResource);
 }
