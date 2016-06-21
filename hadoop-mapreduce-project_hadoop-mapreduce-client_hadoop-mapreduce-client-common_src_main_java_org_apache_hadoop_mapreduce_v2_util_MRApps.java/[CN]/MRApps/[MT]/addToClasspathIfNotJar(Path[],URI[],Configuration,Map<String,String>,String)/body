@@ -5,10 +5,27 @@
       for (      URI u : withLinks) {
         Path p=new Path(u);
         FileSystem remoteFS=p.getFileSystem(conf);
+        String name=p.getName();
+        String wildcard=null;
+        if (name.equals(DistributedCache.WILDCARD)) {
+          wildcard=name;
+          p=p.getParent();
+        }
         p=remoteFS.resolvePath(p.makeQualified(remoteFS.getUri(),remoteFS.getWorkingDirectory()));
-        String name=(null == u.getFragment()) ? p.getName() : u.getFragment();
+        if ((wildcard != null) && (u.getFragment() != null)) {
+          throw new IOException("Invalid path URI: " + p + " - cannot "+ "contain both a URI fragment and a wildcard");
+        }
+ else         if (wildcard != null) {
+          name=p.getName() + Path.SEPARATOR + wildcard;
+        }
+ else         if (u.getFragment() != null) {
+          name=u.getFragment();
+        }
         if (!StringUtils.toLowerCase(name).endsWith(".jar")) {
-          linkLookup.put(p,name);
+          String old=linkLookup.put(p,name);
+          if ((old != null) && !name.equals(old)) {
+            LOG.warn("The same path is included more than once " + "with different links or wildcards: " + p + " ["+ name+ ", "+ old+ "]");
+          }
         }
       }
     }

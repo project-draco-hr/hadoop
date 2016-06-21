@@ -3,13 +3,23 @@
   job.addCacheFile(firstCacheFile.toUri());
   job.addCacheFile(secondCacheFile.toUri());
   Configuration jobConf=job.getConfiguration();
-  Map<URI,FileStatus> statCache=new HashMap<URI,FileStatus>();
+  Map<URI,FileStatus> statCache=new HashMap<>();
   ClientDistributedCacheManager.determineTimestamps(jobConf,statCache);
   FileStatus firstStatus=statCache.get(firstCacheFile.toUri());
   FileStatus secondStatus=statCache.get(secondCacheFile.toUri());
-  Assert.assertNotNull(firstStatus);
-  Assert.assertNotNull(secondStatus);
-  Assert.assertEquals(2,statCache.size());
+  Assert.assertNotNull(firstCacheFile + " was not found in the stats cache",firstStatus);
+  Assert.assertNotNull(secondCacheFile + " was not found in the stats cache",secondStatus);
+  Assert.assertEquals("Missing/extra entries found in the stas cache",2,statCache.size());
   String expected=firstStatus.getModificationTime() + "," + secondStatus.getModificationTime();
   Assert.assertEquals(expected,jobConf.get(MRJobConfig.CACHE_FILE_TIMESTAMPS));
+  job=Job.getInstance(conf);
+  job.addCacheFile(new Path(TEST_VISIBILITY_CHILD_DIR,"*").toUri());
+  jobConf=job.getConfiguration();
+  statCache.clear();
+  ClientDistributedCacheManager.determineTimestamps(jobConf,statCache);
+  FileStatus thirdStatus=statCache.get(TEST_VISIBILITY_CHILD_DIR.toUri());
+  Assert.assertEquals("Missing/extra entries found in the stas cache",1,statCache.size());
+  Assert.assertNotNull(TEST_VISIBILITY_CHILD_DIR + " was not found in the stats cache",thirdStatus);
+  expected=Long.toString(thirdStatus.getModificationTime());
+  Assert.assertEquals("Incorrect timestamp for " + TEST_VISIBILITY_CHILD_DIR,expected,jobConf.get(MRJobConfig.CACHE_FILE_TIMESTAMPS));
 }
