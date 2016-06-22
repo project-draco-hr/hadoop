@@ -7,8 +7,10 @@
   if (diff > 0) {
     int available=wrappedStream.available();
     long forwardSeekRange=Math.max(readahead,available);
-    long forwardSeekLimit=Math.min(remaining(),forwardSeekRange);
-    if (diff <= forwardSeekLimit) {
+    long remainingInCurrentRequest=remainingInCurrentRequest();
+    long forwardSeekLimit=Math.min(remainingInCurrentRequest,forwardSeekRange);
+    boolean skipForward=remainingInCurrentRequest > 0 && diff <= forwardSeekLimit;
+    if (skipForward) {
       LOG.debug("Forward seek on {}, of {} bytes",uri,diff);
       streamStatistics.seekForwards(diff);
       long skipped=wrappedStream.skip(diff);
@@ -28,8 +30,10 @@
     streamStatistics.seekBackwards(diff);
   }
  else {
-    LOG.debug("Ignoring seek {} to {} as target position == current",uri,targetPos);
+    if (remainingInCurrentRequest() > 0) {
+      return;
+    }
   }
-  closeStream("seekInStream()",this.requestedStreamLen);
+  closeStream("seekInStream()",this.contentRangeFinish);
   pos=targetPos;
 }

@@ -1,10 +1,11 @@
 {
   if (wrappedStream != null) {
-    boolean shouldAbort=length - pos > CLOSE_THRESHOLD;
+    long remaining=remainingInCurrentRequest();
+    boolean shouldAbort=remaining > readahead;
     if (!shouldAbort) {
       try {
         wrappedStream.close();
-        streamStatistics.streamClose(false);
+        streamStatistics.streamClose(false,remaining);
       }
  catch (      IOException e) {
         LOG.debug("When closing {} stream for {}",uri,reason,e);
@@ -13,9 +14,9 @@
     }
     if (shouldAbort) {
       wrappedStream.abort();
-      streamStatistics.streamClose(true);
+      streamStatistics.streamClose(true,remaining);
     }
-    LOG.debug("Stream {} {}: {}; streamPos={}, nextReadPos={}," + " length={}",uri,(shouldAbort ? "aborted" : "closed"),reason,pos,nextReadPos,length);
+    LOG.debug("Stream {} {}: {}; streamPos={}, nextReadPos={}," + " request range {}-{} length={}",uri,(shouldAbort ? "aborted" : "closed"),reason,pos,nextReadPos,contentRangeStart,contentRangeFinish,length);
     wrappedStream=null;
   }
 }
