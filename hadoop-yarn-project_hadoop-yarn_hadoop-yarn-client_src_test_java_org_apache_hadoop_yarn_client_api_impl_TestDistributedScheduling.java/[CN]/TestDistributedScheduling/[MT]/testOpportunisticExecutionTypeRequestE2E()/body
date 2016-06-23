@@ -8,7 +8,16 @@
   Assert.assertNotNull(responseRegister.getContainersFromPreviousAttempts());
   Assert.assertNotNull(responseRegister.getSchedulerResourceTypes());
   Assert.assertNotNull(responseRegister.getMaximumResourceCapability());
-  RMApp rmApp=cluster.getResourceManager().getRMContext().getRMApps().get(appId);
+  Map<ApplicationId,RMApp> rmApps=cluster.getResourceManager().getRMContext().getRMApps();
+  boolean rmUpdated=false;
+  for (int i=0; i < 10 && !rmUpdated; i++) {
+    sleep(100);
+    RMApp rmApp=rmApps.get(appId);
+    if (rmApp.getState() == RMAppState.RUNNING) {
+      rmUpdated=true;
+    }
+  }
+  RMApp rmApp=rmApps.get(appId);
   Assert.assertEquals(RMAppState.RUNNING,rmApp.getState());
   LOG.info("testDistributedSchedulingE2E - Allocate");
   AllocateRequest request=createAllocateRequest(rmClient.getNodeReports(NodeState.RUNNING));
@@ -26,6 +35,12 @@
   for (  Container allocatedContainer : allocResponse.getAllocatedContainers()) {
     ContainerTokenIdentifier containerTokenIdentifier=BuilderUtils.newContainerTokenIdentifier(allocatedContainer.getContainerToken());
     Assert.assertEquals(ExecutionType.OPPORTUNISTIC,containerTokenIdentifier.getExecutionType());
+  }
+  ResourceScheduler scheduler=cluster.getResourceManager().getResourceScheduler();
+  for (  Container allocatedContainer : allocResponse.getAllocatedContainers()) {
+    ContainerId containerId=allocatedContainer.getId();
+    RMContainer rmContainer=scheduler.getRMContainer(containerId);
+    Assert.assertEquals(ExecutionType.OPPORTUNISTIC,rmContainer.getExecutionType());
   }
   LOG.info("testDistributedSchedulingE2E - Finish");
 }
