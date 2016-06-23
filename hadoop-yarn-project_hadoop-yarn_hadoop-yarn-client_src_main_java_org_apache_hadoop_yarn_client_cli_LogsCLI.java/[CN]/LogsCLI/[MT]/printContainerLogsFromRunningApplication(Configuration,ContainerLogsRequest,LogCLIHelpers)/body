@@ -6,9 +6,10 @@
   PrintStream out=logCliHelper.createPrintStream(localDir,nodeId,containerIdStr);
   try {
     List<String> allLogs=getContainerLogFiles(getConf(),containerIdStr,nodeHttpAddress);
-    List<String> matchedFiles=getMatchedLogFiles(request,allLogs,true);
+    List<String> matchedFiles=getMatchedLogFiles(request,allLogs);
     if (matchedFiles.isEmpty()) {
-      return;
+      System.err.println("Can not find any log file matching the pattern: " + request.getLogTypes() + " for the container: "+ containerIdStr+ " within the application: "+ request.getAppId());
+      return -1;
     }
     ContainerLogsRequest newOptions=new ContainerLogsRequest(request);
     newOptions.setLogTypes(matchedFiles);
@@ -16,6 +17,7 @@
     String containerString="\n\nContainer: " + containerIdStr + " on "+ nodeId;
     out.println(containerString);
     out.println(StringUtils.repeat("=",containerString.length()));
+    boolean foundAnyLogs=false;
     for (    String logFile : newOptions.getLogTypes()) {
       out.println("LogType:" + logFile);
       out.println("Log Upload Time:" + Times.format(System.currentTimeMillis()));
@@ -26,12 +28,19 @@
         out.println(response.getEntity(String.class));
         out.println("End of LogType:" + logFile + ". This log file belongs"+ " to a running container ("+ containerIdStr+ ") and so may"+ " not be complete.");
         out.flush();
+        foundAnyLogs=true;
       }
  catch (      ClientHandlerException|UniformInterfaceException ex) {
         System.err.println("Can not find the log file:" + logFile + " for the container:"+ containerIdStr+ " in NodeManager:"+ nodeId);
       }
     }
-    logCliHelper.dumpAContainersLogsForALogType(newOptions,false);
+    int result=logCliHelper.dumpAContainerLogsForLogType(newOptions,false);
+    if (result == 0 || foundAnyLogs) {
+      return 0;
+    }
+ else {
+      return -1;
+    }
   }
   finally {
     logCliHelper.closePrintStream(out);
