@@ -1,0 +1,30 @@
+{
+  long checksumDataLength=0;
+  if (requestedLen <= toReconstructLen) {
+    int remainingLen=(int)requestedLen;
+    outputData=Arrays.copyOf(targetBuffer.array(),remainingLen);
+    int partialLength=remainingLen % getChecksum().getBytesPerChecksum();
+    int checksumRemaining=(remainingLen / getChecksum().getBytesPerChecksum()) * getChecksum().getChecksumSize();
+    int dataOffset=0;
+    if (checksumRemaining > 0) {
+      remainingLen=remainingLen - partialLength;
+      checksumBuf=new byte[checksumRemaining];
+      getChecksum().calculateChunkedSums(outputData,dataOffset,remainingLen,checksumBuf,0);
+      digester.update(checksumBuf,0,checksumBuf.length);
+      checksumDataLength=checksumBuf.length;
+      dataOffset=remainingLen;
+    }
+    if (partialLength > 0) {
+      byte[] partialCrc=new byte[getChecksum().getChecksumSize()];
+      getChecksum().update(outputData,dataOffset,partialLength);
+      getChecksum().writeValue(partialCrc,0,true);
+      digester.update(partialCrc);
+      checksumDataLength+=partialCrc.length;
+    }
+    clearBuffers();
+    return checksumDataLength;
+  }
+  getChecksum().calculateChunkedSums(outputData,0,outputData.length,checksumBuf,0);
+  digester.update(checksumBuf,0,checksumBuf.length);
+  return checksumBuf.length;
+}
