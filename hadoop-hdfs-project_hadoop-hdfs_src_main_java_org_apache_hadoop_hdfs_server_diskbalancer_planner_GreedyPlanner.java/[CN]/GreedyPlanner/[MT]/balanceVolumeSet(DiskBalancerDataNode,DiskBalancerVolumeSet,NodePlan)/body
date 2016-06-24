@@ -1,0 +1,29 @@
+{
+  Preconditions.checkNotNull(vSet);
+  Preconditions.checkNotNull(plan);
+  Preconditions.checkNotNull(node);
+  DiskBalancerVolumeSet currentSet=new DiskBalancerVolumeSet(vSet);
+  while (currentSet.isBalancingNeeded(this.threshold)) {
+    removeSkipVolumes(currentSet);
+    DiskBalancerVolume lowVolume=currentSet.getSortedQueue().first();
+    DiskBalancerVolume highVolume=currentSet.getSortedQueue().last();
+    Step nextStep=null;
+    if (!lowVolume.isSkip() && !highVolume.isSkip()) {
+      nextStep=computeMove(currentSet,lowVolume,highVolume);
+    }
+ else {
+      LOG.debug("Skipping compute move. lowVolume: {} highVolume: {}",lowVolume.getPath(),highVolume.getPath());
+    }
+    applyStep(nextStep,currentSet,lowVolume,highVolume);
+    if (nextStep != null) {
+      LOG.debug("Step : {} ",nextStep.toString());
+      plan.addStep(nextStep);
+    }
+  }
+  String message=String.format("Disk Volume set %s Type : %s plan completed.",currentSet.getSetID(),currentSet.getVolumes().get(0).getStorageType());
+  plan.setNodeName(node.getDataNodeName());
+  plan.setNodeUUID(node.getDataNodeUUID());
+  plan.setTimeStamp(Time.now());
+  plan.setPort(node.getDataNodePort());
+  LOG.info(message);
+}

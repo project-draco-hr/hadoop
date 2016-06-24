@@ -1,0 +1,26 @@
+{
+  LOG.info("Executing \"query plan\" command.");
+  Preconditions.checkState(cmd.hasOption(DiskBalancer.QUERY));
+  verifyCommandOptions(DiskBalancer.QUERY,cmd);
+  String nodeName=cmd.getOptionValue(DiskBalancer.QUERY);
+  Preconditions.checkNotNull(nodeName);
+  nodeName=nodeName.trim();
+  String nodeAddress=nodeName;
+  if (!nodeName.matches("[^\\:]+:[0-9]{2,5}")) {
+    int defaultIPC=NetUtils.createSocketAddr(getConf().getTrimmed(DFSConfigKeys.DFS_DATANODE_IPC_ADDRESS_KEY,DFSConfigKeys.DFS_DATANODE_IPC_ADDRESS_DEFAULT)).getPort();
+    nodeAddress=nodeName + ":" + defaultIPC;
+    LOG.debug("Using default data node port :  {}",nodeAddress);
+  }
+  ClientDatanodeProtocol dataNode=getDataNodeProxy(nodeAddress);
+  try {
+    DiskBalancerWorkStatus workStatus=dataNode.queryDiskBalancerPlan();
+    System.out.printf("Plan ID: %s %nResult: %s%n",workStatus.getPlanID(),workStatus.getResult().toString());
+    if (cmd.hasOption(DiskBalancer.VERBOSE)) {
+      System.out.printf("%s",workStatus.currentStateString());
+    }
+  }
+ catch (  DiskBalancerException ex) {
+    LOG.error("Query plan failed. ex: {}",ex);
+    throw ex;
+  }
+}
