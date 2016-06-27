@@ -1,0 +1,29 @@
+{
+  if (!reloadGroupsInBackground) {
+    return super.reload(key,oldValue);
+  }
+  backgroundRefreshQueued.incrementAndGet();
+  ListenableFuture<List<String>> listenableFuture=executorService.submit(new Callable<List<String>>(){
+    @Override public List<String> call() throws Exception {
+      boolean success=false;
+      try {
+        backgroundRefreshQueued.decrementAndGet();
+        backgroundRefreshRunning.incrementAndGet();
+        List<String> results=load(key);
+        success=true;
+        return results;
+      }
+  finally {
+        backgroundRefreshRunning.decrementAndGet();
+        if (success) {
+          backgroundRefreshSuccess.incrementAndGet();
+        }
+ else {
+          backgroundRefreshException.incrementAndGet();
+        }
+      }
+    }
+  }
+);
+  return listenableFuture;
+}
