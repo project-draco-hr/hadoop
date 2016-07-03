@@ -1,19 +1,16 @@
 {
-  boolean eosBefore=eos;
-  if (lastChunkLen < 0 && startOffset > firstChunkOffset && len > 0) {
-    int toSkip=(int)(startOffset - firstChunkOffset);
-    if (super.readAndDiscard(toSkip) != toSkip) {
-      throw new IOException("Could not skip required number of bytes");
+  UUID randomId=(LOG.isTraceEnabled() ? UUID.randomUUID() : null);
+  LOG.trace("Starting read #{} file {} from datanode {}",randomId,filename,datanodeID.getHostName());
+  if (curDataSlice == null || curDataSlice.remaining() == 0 && bytesNeededToFinish > 0) {
+    try (TraceScope ignored=tracer.newScope("BlockReaderRemote2#readNextPacket(" + blockId + ")")){
+      readNextPacket();
     }
+   }
+  LOG.trace("Finishing read #{}",randomId);
+  if (curDataSlice.remaining() == 0) {
+    return -1;
   }
-  int nRead=super.read(buf,off,len);
-  if (eos && !eosBefore && nRead >= 0) {
-    if (needChecksum()) {
-      sendReadResult(peer,Status.CHECKSUM_OK);
-    }
- else {
-      sendReadResult(peer,Status.SUCCESS);
-    }
-  }
+  int nRead=Math.min(curDataSlice.remaining(),len);
+  curDataSlice.get(buf,off,nRead);
   return nRead;
 }
