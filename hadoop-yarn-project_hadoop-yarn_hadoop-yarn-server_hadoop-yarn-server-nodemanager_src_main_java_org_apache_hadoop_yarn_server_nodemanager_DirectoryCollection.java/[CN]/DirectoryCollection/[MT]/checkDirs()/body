@@ -1,23 +1,39 @@
 {
   boolean setChanged=false;
-  Set<String> preCheckGoodDirs=new HashSet<String>(localDirs);
-  Set<String> preCheckFullDirs=new HashSet<String>(fullDirs);
-  Set<String> preCheckOtherErrorDirs=new HashSet<String>(errorDirs);
-  List<String> failedDirs=DirectoryCollection.concat(errorDirs,fullDirs);
-  List<String> allLocalDirs=DirectoryCollection.concat(localDirs,failedDirs);
+  Set<String> preCheckGoodDirs=null;
+  Set<String> preCheckFullDirs=null;
+  Set<String> preCheckOtherErrorDirs=null;
+  List<String> failedDirs=null;
+  List<String> allLocalDirs=null;
+  this.readLock.lock();
+  try {
+    preCheckGoodDirs=new HashSet<String>(localDirs);
+    preCheckFullDirs=new HashSet<String>(fullDirs);
+    preCheckOtherErrorDirs=new HashSet<String>(errorDirs);
+    failedDirs=DirectoryCollection.concat(errorDirs,fullDirs);
+    allLocalDirs=DirectoryCollection.concat(localDirs,failedDirs);
+  }
+  finally {
+    this.readLock.unlock();
+  }
   Map<String,DiskErrorInformation> dirsFailedCheck=testDirs(allLocalDirs,preCheckGoodDirs);
-  localDirs.clear();
-  errorDirs.clear();
-  fullDirs.clear();
-  for (  Map.Entry<String,DiskErrorInformation> entry : dirsFailedCheck.entrySet()) {
-    String dir=entry.getKey();
-    DiskErrorInformation errorInformation=entry.getValue();
+  this.writeLock.lock();
+  try {
+    localDirs.clear();
+    errorDirs.clear();
+    fullDirs.clear();
+    for (    Map.Entry<String,DiskErrorInformation> entry : dirsFailedCheck.entrySet()) {
+      String dir=entry.getKey();
+      DiskErrorInformation errorInformation=entry.getValue();
 switch (entry.getValue().cause) {
 case DISK_FULL:
-      fullDirs.add(entry.getKey());
-    break;
+        fullDirs.add(entry.getKey());
+      break;
 case OTHER:
-  errorDirs.add(entry.getKey());
+    errorDirs.add(entry.getKey());
+  break;
+default :
+LOG.warn(entry.getValue().cause + " is unknown for disk error.");
 break;
 }
 if (preCheckGoodDirs.contains(dir)) {
@@ -54,4 +70,8 @@ listener.onDirsChanged();
 }
 }
 return setChanged;
+}
+  finally {
+this.writeLock.unlock();
+}
 }
