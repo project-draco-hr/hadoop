@@ -52,18 +52,36 @@
     printHelpMessage(printOpts);
     return -1;
   }
-  if (appIdStr == null) {
-    System.err.println("ApplicationId cannot be null!");
+  if (appIdStr == null && containerIdStr == null) {
+    System.err.println("Both applicationId and containerId are missing, " + " one of them must be specified.");
     printHelpMessage(printOpts);
     return -1;
   }
   ApplicationId appId=null;
-  try {
-    appId=ApplicationId.fromString(appIdStr);
+  if (appIdStr != null) {
+    try {
+      appId=ApplicationId.fromString(appIdStr);
+    }
+ catch (    Exception e) {
+      System.err.println("Invalid ApplicationId specified");
+      return -1;
+    }
   }
- catch (  Exception e) {
-    System.err.println("Invalid ApplicationId specified");
-    return -1;
+  if (containerIdStr != null) {
+    try {
+      ContainerId containerId=ContainerId.fromString(containerIdStr);
+      if (appId == null) {
+        appId=containerId.getApplicationAttemptId().getApplicationId();
+      }
+ else       if (!containerId.getApplicationAttemptId().getApplicationId().equals(appId)) {
+        System.err.println("The Application:" + appId + " does not have the container:"+ containerId);
+        return -1;
+      }
+    }
+ catch (    Exception e) {
+      System.err.println("Invalid ContainerId specified");
+      return -1;
+    }
   }
   LogCLIHelpers logCliHelper=new LogCLIHelpers();
   logCliHelper.setConf(getConf());
@@ -108,11 +126,6 @@
   }
   int resultCode=0;
   if (containerIdStr != null) {
-    ContainerId containerId=ContainerId.fromString(containerIdStr);
-    if (!containerId.getApplicationAttemptId().getApplicationId().equals(appId)) {
-      System.err.println("The Application:" + appId + " does not have the container:"+ containerId);
-      return -1;
-    }
     return fetchContainerLogs(request,logCliHelper);
   }
  else {
