@@ -11,16 +11,32 @@
   Date startTime=new Date();
   System.out.println("Job started: " + startTime);
   int ret=job.waitForCompletion(true) ? 0 : 1;
-  org.apache.hadoop.mapreduce.Counters counters=job.getCounters();
-  long writetime=counters.findCounter(PerfCounters.TIMELINE_SERVICE_WRITE_TIME).getValue();
-  long writecounts=counters.findCounter(PerfCounters.TIMELINE_SERVICE_WRITE_COUNTER).getValue();
-  long writesize=counters.findCounter(PerfCounters.TIMELINE_SERVICE_WRITE_KBS).getValue();
-  double transacrate=writecounts * 1000 / (double)writetime;
-  double iorate=writesize * 1000 / (double)writetime;
-  int numMaps=Integer.parseInt(job.getConfiguration().get(MRJobConfig.NUM_MAPS));
-  System.out.println("TRANSACTION RATE (per mapper): " + transacrate + " ops/s");
-  System.out.println("IO RATE (per mapper): " + iorate + " KB/s");
-  System.out.println("TRANSACTION RATE (total): " + transacrate * numMaps + " ops/s");
-  System.out.println("IO RATE (total): " + iorate * numMaps + " KB/s");
+  if (job.isSuccessful()) {
+    org.apache.hadoop.mapreduce.Counters counters=job.getCounters();
+    long writecounts=counters.findCounter(PerfCounters.TIMELINE_SERVICE_WRITE_COUNTER).getValue();
+    long writefailures=counters.findCounter(PerfCounters.TIMELINE_SERVICE_WRITE_FAILURES).getValue();
+    if (writefailures > 0 && writefailures == writecounts) {
+      System.out.println("Job failed: all writes failed!");
+    }
+ else {
+      long writetime=counters.findCounter(PerfCounters.TIMELINE_SERVICE_WRITE_TIME).getValue();
+      long writesize=counters.findCounter(PerfCounters.TIMELINE_SERVICE_WRITE_KBS).getValue();
+      if (writetime == 0L) {
+        System.out.println("Job failed: write time is 0!");
+      }
+ else {
+        double transacrate=writecounts * 1000 / (double)writetime;
+        double iorate=writesize * 1000 / (double)writetime;
+        int numMaps=Integer.parseInt(job.getConfiguration().get(MRJobConfig.NUM_MAPS));
+        System.out.println("TRANSACTION RATE (per mapper): " + transacrate + " ops/s");
+        System.out.println("IO RATE (per mapper): " + iorate + " KB/s");
+        System.out.println("TRANSACTION RATE (total): " + transacrate * numMaps + " ops/s");
+        System.out.println("IO RATE (total): " + iorate * numMaps + " KB/s");
+      }
+    }
+  }
+ else {
+    System.out.println("Job failed: " + job.getStatus().getFailureInfo());
+  }
   return ret;
 }

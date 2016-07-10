@@ -7,7 +7,7 @@
           NodeHeartbeatResponse response=null;
           Set<NodeLabel> nodeLabelsForHeartbeat=nodeLabelsHandler.getNodeLabelsForHeartbeat();
           NodeStatus nodeStatus=getNodeStatus(lastHeartbeatID);
-          NodeHeartbeatRequest request=NodeHeartbeatRequest.newInstance(nodeStatus,NodeStatusUpdaterImpl.this.context.getContainerTokenSecretManager().getCurrentKey(),NodeStatusUpdaterImpl.this.context.getNMTokenSecretManager().getCurrentKey(),nodeLabelsForHeartbeat);
+          NodeHeartbeatRequest request=NodeHeartbeatRequest.newInstance(nodeStatus,NodeStatusUpdaterImpl.this.context.getContainerTokenSecretManager().getCurrentKey(),NodeStatusUpdaterImpl.this.context.getNMTokenSecretManager().getCurrentKey(),nodeLabelsForHeartbeat,NodeStatusUpdaterImpl.this.context.getRegisteredCollectors());
           if (logAggregationEnabled) {
             List<LogAggregationReport> logAggregationReports=getLogAggregationReportsForApps(context.getLogAggregationStatusForApps());
             if (logAggregationReports != null && !logAggregationReports.isEmpty()) {
@@ -55,6 +55,9 @@
               LOG.debug("Node's resource is updated to " + newResource.toString());
             }
           }
+          if (YarnConfiguration.timelineServiceV2Enabled(context.getConf())) {
+            updateTimelineClientsAddress(response);
+          }
         }
  catch (        ConnectException e) {
           dispatcher.getEventHandler().handle(new NodeManagerEvent(NodeManagerEventType.SHUTDOWN));
@@ -71,6 +74,31 @@ synchronized (heartbeatMonitor) {
               heartbeatMonitor.wait(nextHeartBeatInterval);
             }
  catch (            InterruptedException e) {
+            }
+          }
+        }
+      }
+    }
+    private void updateTimelineClientsAddress(    NodeHeartbeatResponse response){
+      Map<ApplicationId,String> knownCollectorsMap=response.getAppCollectorsMap();
+      if (knownCollectorsMap == null) {
+        if (LOG.isDebugEnabled()) {
+          LOG.debug("No collectors to update RM");
+        }
+      }
+ else {
+        Set<Map.Entry<ApplicationId,String>> rmKnownCollectors=knownCollectorsMap.entrySet();
+        for (        Map.Entry<ApplicationId,String> entry : rmKnownCollectors) {
+          ApplicationId appId=entry.getKey();
+          String collectorAddr=entry.getValue();
+          Application application=context.getApplications().get(appId);
+          if (application != null && !context.getRegisteredCollectors().containsKey(appId)) {
+            if (LOG.isDebugEnabled()) {
+              LOG.debug("Sync a new collector address: " + collectorAddr + " for application: "+ appId+ " from RM.");
+            }
+            NMTimelinePublisher nmTimelinePublisher=context.getNMTimelinePublisher();
+            if (nmTimelinePublisher != null) {
+              nmTimelinePublisher.setTimelineServiceAddress(application.getAppId(),collectorAddr);
             }
           }
         }

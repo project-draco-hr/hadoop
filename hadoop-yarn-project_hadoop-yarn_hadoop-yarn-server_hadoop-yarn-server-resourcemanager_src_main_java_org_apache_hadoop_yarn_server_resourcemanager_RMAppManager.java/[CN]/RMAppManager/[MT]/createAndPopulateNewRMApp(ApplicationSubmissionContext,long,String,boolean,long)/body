@@ -1,0 +1,33 @@
+{
+  if (!isRecovery) {
+    if (rmContext.getQueuePlacementManager() != null) {
+      rmContext.getQueuePlacementManager().placeApplication(submissionContext,user);
+    }
+  }
+  ApplicationId applicationId=submissionContext.getApplicationId();
+  ResourceRequest amReq=validateAndCreateResourceRequest(submissionContext,isRecovery);
+  Priority appPriority=rmContext.getScheduler().checkAndGetApplicationPriority(submissionContext.getPriority(),user,submissionContext.getQueue(),applicationId);
+  submissionContext.setPriority(appPriority);
+  UserGroupInformation userUgi=UserGroupInformation.createRemoteUser(user);
+  if (!isRecovery && YarnConfiguration.isAclEnabled(conf) && scheduler instanceof CapacityScheduler) {
+    String queueName=submissionContext.getQueue();
+    String appName=submissionContext.getApplicationName();
+    CSQueue csqueue=((CapacityScheduler)scheduler).getQueue(queueName);
+    if (null != csqueue && !authorizer.checkPermission(new AccessRequest(csqueue.getPrivilegedEntity(),userUgi,SchedulerUtils.toAccessType(QueueACL.SUBMIT_APPLICATIONS),applicationId.toString(),appName,Server.getRemoteAddress(),null)) && !authorizer.checkPermission(new AccessRequest(csqueue.getPrivilegedEntity(),userUgi,SchedulerUtils.toAccessType(QueueACL.ADMINISTER_QUEUE),applicationId.toString(),appName,Server.getRemoteAddress(),null))) {
+      throw new AccessControlException("User " + user + " does not have permission to submit "+ applicationId+ " to queue "+ submissionContext.getQueue());
+    }
+  }
+  RMAppImpl application=new RMAppImpl(applicationId,rmContext,this.conf,submissionContext.getApplicationName(),user,submissionContext.getQueue(),submissionContext,this.scheduler,this.masterService,submitTime,submissionContext.getApplicationType(),submissionContext.getApplicationTags(),amReq,startTime);
+  if (rmContext.getRMApps().putIfAbsent(applicationId,application) != null) {
+    String message="Application with id " + applicationId + " is already present! Cannot add a duplicate!";
+    LOG.warn(message);
+    throw new YarnException(message);
+  }
+  if (YarnConfiguration.timelineServiceV2Enabled(conf)) {
+    application.startTimelineCollector();
+  }
+  this.applicationACLsManager.addApplication(applicationId,submissionContext.getAMContainerSpec().getApplicationACLs());
+  String appViewACLs=submissionContext.getAMContainerSpec().getApplicationACLs().get(ApplicationAccessType.VIEW_APP);
+  rmContext.getSystemMetricsPublisher().appACLsUpdated(application,appViewACLs,System.currentTimeMillis());
+  return application;
+}

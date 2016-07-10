@@ -14,16 +14,29 @@
   this.readLock.lock();
   try {
     if (!isServiceStopped()) {
-      Application application=new ApplicationImpl(dispatcher,user,applicationID,credentials,context);
-      if (null == context.getApplications().putIfAbsent(applicationID,application)) {
-        LOG.info("Creating a new application reference for app " + applicationID);
-        LogAggregationContext logAggregationContext=containerTokenIdentifier.getLogAggregationContext();
-        Map<ApplicationAccessType,String> appAcls=container.getLaunchContext().getApplicationACLs();
-        context.getNMStateStore().storeApplication(applicationID,buildAppProto(applicationID,user,credentials,appAcls,logAggregationContext));
-        dispatcher.getEventHandler().handle(new ApplicationInitEvent(applicationID,appAcls,logAggregationContext));
+      FlowContext flowContext=null;
+      if (YarnConfiguration.timelineServiceV2Enabled(getConfig())) {
+        String flowName=launchContext.getEnvironment().get(TimelineUtils.FLOW_NAME_TAG_PREFIX);
+        String flowVersion=launchContext.getEnvironment().get(TimelineUtils.FLOW_VERSION_TAG_PREFIX);
+        String flowRunIdStr=launchContext.getEnvironment().get(TimelineUtils.FLOW_RUN_ID_TAG_PREFIX);
+        long flowRunId=0L;
+        if (flowRunIdStr != null && !flowRunIdStr.isEmpty()) {
+          flowRunId=Long.parseLong(flowRunIdStr);
+        }
+        flowContext=new FlowContext(flowName,flowVersion,flowRunId);
       }
-      this.context.getNMStateStore().storeContainer(containerId,request);
+      if (!context.getApplications().containsKey(applicationID)) {
+        Application application=new ApplicationImpl(dispatcher,user,flowContext,applicationID,credentials,context);
+        if (context.getApplications().putIfAbsent(applicationID,application) == null) {
+          LOG.info("Creating a new application reference for app " + applicationID);
+          LogAggregationContext logAggregationContext=containerTokenIdentifier.getLogAggregationContext();
+          Map<ApplicationAccessType,String> appAcls=container.getLaunchContext().getApplicationACLs();
+          context.getNMStateStore().storeApplication(applicationID,buildAppProto(applicationID,user,credentials,appAcls,logAggregationContext));
+          dispatcher.getEventHandler().handle(new ApplicationInitEvent(applicationID,appAcls,logAggregationContext));
+        }
+      }
       dispatcher.getEventHandler().handle(new ApplicationContainerInitEvent(container));
+      this.context.getNMStateStore().storeContainer(containerId,request);
       this.context.getContainerTokenSecretManager().startContainerSuccessful(containerTokenIdentifier);
       NMAuditLogger.logSuccess(user,AuditConstants.START_CONTAINER,"ContainerManageImpl",applicationID,containerId);
       metrics.launchedContainer();

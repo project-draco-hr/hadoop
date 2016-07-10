@@ -1,0 +1,33 @@
+{
+  if (pmemUsage != ResourceCalculatorProcessTree.UNAVAILABLE || cpuUsagePercentPerCore != ResourceCalculatorProcessTree.UNAVAILABLE) {
+    ContainerEntity entity=createContainerEntity(container.getContainerId());
+    long currentTimeMillis=System.currentTimeMillis();
+    if (pmemUsage != ResourceCalculatorProcessTree.UNAVAILABLE) {
+      TimelineMetric memoryMetric=new TimelineMetric();
+      memoryMetric.setId(ContainerMetric.MEMORY.toString());
+      memoryMetric.setRealtimeAggregationOp(TimelineMetricOperation.SUM);
+      memoryMetric.addValue(currentTimeMillis,pmemUsage);
+      entity.addMetric(memoryMetric);
+    }
+    if (cpuUsagePercentPerCore != ResourceCalculatorProcessTree.UNAVAILABLE) {
+      TimelineMetric cpuMetric=new TimelineMetric();
+      cpuMetric.setId(ContainerMetric.CPU.toString());
+      cpuMetric.setRealtimeAggregationOp(TimelineMetricOperation.SUM);
+      cpuMetric.addValue(currentTimeMillis,Math.round(cpuUsagePercentPerCore));
+      entity.addMetric(cpuMetric);
+    }
+    ApplicationId appId=container.getContainerId().getApplicationAttemptId().getApplicationId();
+    try {
+      TimelineClient timelineClient=getTimelineClient(appId);
+      if (timelineClient != null) {
+        timelineClient.putEntitiesAsync(entity);
+      }
+ else {
+        LOG.error("Seems like client has been removed before the container" + " metric could be published for " + container.getContainerId());
+      }
+    }
+ catch (    IOException|YarnException e) {
+      LOG.error("Failed to publish Container metrics for container " + container.getContainerId(),e);
+    }
+  }
+}

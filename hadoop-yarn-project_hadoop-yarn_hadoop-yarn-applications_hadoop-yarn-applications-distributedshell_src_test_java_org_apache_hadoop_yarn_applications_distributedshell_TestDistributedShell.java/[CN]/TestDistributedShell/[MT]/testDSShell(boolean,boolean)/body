@@ -1,0 +1,84 @@
+{
+  String[] args={"--jar",APPMASTER_JAR,"--num_containers","2","--shell_command",Shell.WINDOWS ? "dir" : "ls","--master_memory","512","--master_vcores","2","--container_memory","128","--container_vcores","1"};
+  if (haveDomain) {
+    String[] domainArgs={"--domain","TEST_DOMAIN","--view_acls","reader_user reader_group","--modify_acls","writer_user writer_group","--create"};
+    args=mergeArgs(args,domainArgs);
+  }
+  boolean isTestingTimelineV2=false;
+  if (timelineVersionWatcher.getTimelineVersion() == 2.0f) {
+    isTestingTimelineV2=true;
+    if (!defaultFlow) {
+      String[] flowArgs={"--flow_name","test_flow_name","--flow_version","test_flow_version","--flow_run_id","12345678"};
+      args=mergeArgs(args,flowArgs);
+    }
+    LOG.info("Setup: Using timeline v2!");
+  }
+  LOG.info("Initializing DS Client");
+  final Client client=new Client(new Configuration(yarnCluster.getConfig()));
+  boolean initSuccess=client.init(args);
+  Assert.assertTrue(initSuccess);
+  LOG.info("Running DS Client");
+  final AtomicBoolean result=new AtomicBoolean(false);
+  Thread t=new Thread(){
+    public void run(){
+      try {
+        result.set(client.run());
+      }
+ catch (      Exception e) {
+        throw new RuntimeException(e);
+      }
+    }
+  }
+;
+  t.start();
+  YarnClient yarnClient=YarnClient.createYarnClient();
+  yarnClient.init(new Configuration(yarnCluster.getConfig()));
+  yarnClient.start();
+  String hostName=NetUtils.getHostname();
+  boolean verified=false;
+  String errorMessage="";
+  ApplicationId appId=null;
+  ApplicationReport appReport=null;
+  while (!verified) {
+    List<ApplicationReport> apps=yarnClient.getApplications();
+    if (apps.size() == 0) {
+      Thread.sleep(10);
+      continue;
+    }
+    appReport=apps.get(0);
+    appId=appReport.getApplicationId();
+    if (appReport.getHost().equals("N/A")) {
+      Thread.sleep(10);
+      continue;
+    }
+    errorMessage="Expected host name to start with '" + hostName + "', was '"+ appReport.getHost()+ "'. Expected rpc port to be '-1', was '"+ appReport.getRpcPort()+ "'.";
+    if (checkHostname(appReport.getHost()) && appReport.getRpcPort() == -1) {
+      verified=true;
+    }
+    if (appReport.getYarnApplicationState() == YarnApplicationState.FINISHED && appReport.getFinalApplicationStatus() != FinalApplicationStatus.UNDEFINED) {
+      break;
+    }
+  }
+  Assert.assertTrue(errorMessage,verified);
+  t.join();
+  LOG.info("Client run completed for testDSShell. Result=" + result);
+  Assert.assertTrue(result.get());
+  if (timelineVersionWatcher.getTimelineVersion() == 1.5f) {
+    long scanInterval=conf.getLong(YarnConfiguration.TIMELINE_SERVICE_ENTITYGROUP_FS_STORE_SCAN_INTERVAL_SECONDS,YarnConfiguration.TIMELINE_SERVICE_ENTITYGROUP_FS_STORE_SCAN_INTERVAL_SECONDS_DEFAULT);
+    Path doneDir=new Path(YarnConfiguration.TIMELINE_SERVICE_ENTITYGROUP_FS_STORE_DONE_DIR_DEFAULT);
+    while (true) {
+      RemoteIterator<FileStatus> iterApps=fs.listStatusIterator(doneDir);
+      if (iterApps.hasNext()) {
+        break;
+      }
+      Thread.sleep(scanInterval * 2);
+    }
+  }
+  TimelineDomain domain=null;
+  if (!isTestingTimelineV2) {
+    checkTimelineV1(haveDomain);
+  }
+ else {
+    checkTimelineV2(haveDomain,appId,defaultFlow,appReport);
+  }
+}

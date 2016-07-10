@@ -1,0 +1,50 @@
+{
+  Configuration conf=new Configuration();
+  conf.set(YarnConfiguration.IPC_RPC_IMPL,rpcClass);
+  YarnRPC rpc=YarnRPC.create(conf);
+  String bindAddr="localhost:0";
+  InetSocketAddress addr=NetUtils.createSocketAddr(bindAddr);
+  Server server=rpc.getServer(ContainerManagementProtocol.class,new DummyContainerManager(),addr,conf,null,1);
+  server.start();
+  RPC.setProtocolEngine(conf,ContainerManagementProtocolPB.class,ProtobufRpcEngine.class);
+  ContainerManagementProtocol proxy=(ContainerManagementProtocol)rpc.getProxy(ContainerManagementProtocol.class,NetUtils.getConnectAddress(server),conf);
+  ContainerLaunchContext containerLaunchContext=RECORD_FACTORY.newRecordInstance(ContainerLaunchContext.class);
+  ApplicationId applicationId=ApplicationId.newInstance(0,0);
+  ApplicationAttemptId applicationAttemptId=ApplicationAttemptId.newInstance(applicationId,0);
+  ContainerId containerId=ContainerId.newContainerId(applicationAttemptId,100);
+  NodeId nodeId=NodeId.newInstance("localhost",1234);
+  Resource resource=Resource.newInstance(1234,2);
+  ContainerTokenIdentifier containerTokenIdentifier=new ContainerTokenIdentifier(containerId,"localhost","user",resource,System.currentTimeMillis() + 10000,42,42,Priority.newInstance(0),0);
+  Token containerToken=newContainerToken(nodeId,"password".getBytes(),containerTokenIdentifier);
+  StartContainerRequest scRequest=StartContainerRequest.newInstance(containerLaunchContext,containerToken);
+  List<StartContainerRequest> list=new ArrayList<StartContainerRequest>();
+  list.add(scRequest);
+  StartContainersRequest allRequests=StartContainersRequest.newInstance(list);
+  proxy.startContainers(allRequests);
+  List<ContainerId> containerIds=new ArrayList<ContainerId>();
+  containerIds.add(containerId);
+  GetContainerStatusesRequest gcsRequest=GetContainerStatusesRequest.newInstance(containerIds);
+  GetContainerStatusesResponse response=proxy.getContainerStatuses(gcsRequest);
+  List<ContainerStatus> statuses=response.getContainerStatuses();
+  boolean exception=false;
+  try {
+    StopContainersRequest stopRequest=RECORD_FACTORY.newRecordInstance(StopContainersRequest.class);
+    stopRequest.setContainerIds(containerIds);
+    proxy.stopContainers(stopRequest);
+  }
+ catch (  YarnException e) {
+    exception=true;
+    Assert.assertTrue(e.getMessage().contains(EXCEPTION_MSG));
+    Assert.assertTrue(e.getMessage().contains(EXCEPTION_CAUSE));
+    System.out.println("Test Exception is " + e.getMessage());
+  }
+catch (  Exception ex) {
+    ex.printStackTrace();
+  }
+ finally {
+    server.stop();
+  }
+  Assert.assertTrue(exception);
+  Assert.assertNotNull(statuses.get(0));
+  Assert.assertEquals(ContainerState.RUNNING,statuses.get(0).getState());
+}

@@ -1,0 +1,59 @@
+{
+  BufferedReader reader=null;
+  String strLine;
+  try {
+    reader=new BufferedReader(new FileReader(entityFile));
+    while ((strLine=reader.readLine()) != null) {
+      if (strLine.trim().length() > 0) {
+        org.apache.hadoop.yarn.api.records.timelineservice.TimelineEntity entity=FileSystemTimelineReaderImpl.getTimelineRecordFromJSON(strLine.trim(),org.apache.hadoop.yarn.api.records.timelineservice.TimelineEntity.class);
+        if (eventId == null) {
+          if (chkMetrics && entity.getMetrics().size() > 0) {
+            return;
+          }
+          if (chkCfg && entity.getConfigs().size() > 0) {
+            if (cfgsToVerify == null) {
+              return;
+            }
+ else {
+              for (Iterator<String> itr=cfgsToVerify.iterator(); itr.hasNext(); ) {
+                String config=itr.next();
+                if (entity.getConfigs().containsKey(config)) {
+                  itr.remove();
+                }
+              }
+              if (cfgsToVerify.isEmpty()) {
+                return;
+              }
+            }
+          }
+        }
+ else {
+          for (          TimelineEvent event : entity.getEvents()) {
+            if (event.getId().equals(eventId)) {
+              if (chkMetrics) {
+                assertTrue(entity.getMetrics().size() > 0);
+              }
+              if (chkCfg) {
+                assertTrue(entity.getConfigs().size() > 0);
+                if (cfgsToVerify != null) {
+                  for (                  String cfg : cfgsToVerify) {
+                    assertTrue(entity.getConfigs().containsKey(cfg));
+                  }
+                }
+              }
+              return;
+            }
+          }
+        }
+      }
+    }
+    if (cfgsToVerify != null) {
+      assertTrue(cfgsToVerify.isEmpty());
+      return;
+    }
+    fail("Expected event : " + eventId + " not found in the file "+ entityFile);
+  }
+  finally {
+    reader.close();
+  }
+}

@@ -1,0 +1,24 @@
+{
+  Map<String,byte[]> attributes=put.getAttributesMap();
+  if (!isFlowRunRegion) {
+    return;
+  }
+  List<Tag> tags=new ArrayList<>();
+  if ((attributes != null) && (attributes.size() > 0)) {
+    for (    Map.Entry<String,byte[]> attribute : attributes.entrySet()) {
+      Tag t=TimelineStorageUtils.getTagFromAttribute(attribute);
+      tags.add(t);
+    }
+    byte[] tagByteArray=Tag.fromList(tags);
+    NavigableMap<byte[],List<Cell>> newFamilyMap=new TreeMap<>(Bytes.BYTES_COMPARATOR);
+    for (    Map.Entry<byte[],List<Cell>> entry : put.getFamilyCellMap().entrySet()) {
+      List<Cell> newCells=new ArrayList<>(entry.getValue().size());
+      for (      Cell cell : entry.getValue()) {
+        long cellTimestamp=getCellTimestamp(cell.getTimestamp(),tags);
+        newCells.add(CellUtil.createCell(CellUtil.cloneRow(cell),CellUtil.cloneFamily(cell),CellUtil.cloneQualifier(cell),cellTimestamp,KeyValue.Type.Put,CellUtil.cloneValue(cell),tagByteArray));
+      }
+      newFamilyMap.put(entry.getKey(),newCells);
+    }
+    put.setFamilyCellMap(newFamilyMap);
+  }
+}

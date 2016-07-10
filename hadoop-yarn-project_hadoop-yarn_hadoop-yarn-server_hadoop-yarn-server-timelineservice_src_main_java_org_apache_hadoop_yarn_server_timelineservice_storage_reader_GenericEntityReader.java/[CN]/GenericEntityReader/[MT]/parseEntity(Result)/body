@@ -1,0 +1,54 @@
+{
+  if (result == null || result.isEmpty()) {
+    return null;
+  }
+  TimelineEntity entity=new TimelineEntity();
+  String entityType=EntityColumn.TYPE.readResult(result).toString();
+  entity.setType(entityType);
+  String entityId=EntityColumn.ID.readResult(result).toString();
+  entity.setId(entityId);
+  TimelineEntityFilters filters=getFilters();
+  Long createdTime=(Long)EntityColumn.CREATED_TIME.readResult(result);
+  entity.setCreatedTime(createdTime);
+  EnumSet<Field> fieldsToRetrieve=getDataToRetrieve().getFieldsToRetrieve();
+  boolean checkIsRelatedTo=!isSingleEntityRead() && filters.getIsRelatedTo() != null && filters.getIsRelatedTo().getFilterList().size() > 0;
+  if (hasField(fieldsToRetrieve,Field.IS_RELATED_TO) || checkIsRelatedTo) {
+    readRelationship(entity,result,EntityColumnPrefix.IS_RELATED_TO,true);
+    if (checkIsRelatedTo && !TimelineStorageUtils.matchIsRelatedTo(entity,filters.getIsRelatedTo())) {
+      return null;
+    }
+    if (!hasField(fieldsToRetrieve,Field.IS_RELATED_TO)) {
+      entity.getIsRelatedToEntities().clear();
+    }
+  }
+  boolean checkRelatesTo=!isSingleEntityRead() && filters.getRelatesTo() != null && filters.getRelatesTo().getFilterList().size() > 0;
+  if (hasField(fieldsToRetrieve,Field.RELATES_TO) || checkRelatesTo) {
+    readRelationship(entity,result,EntityColumnPrefix.RELATES_TO,false);
+    if (checkRelatesTo && !TimelineStorageUtils.matchRelatesTo(entity,filters.getRelatesTo())) {
+      return null;
+    }
+    if (!hasField(fieldsToRetrieve,Field.RELATES_TO)) {
+      entity.getRelatesToEntities().clear();
+    }
+  }
+  if (hasField(fieldsToRetrieve,Field.INFO)) {
+    readKeyValuePairs(entity,result,EntityColumnPrefix.INFO,false);
+  }
+  if (hasField(fieldsToRetrieve,Field.CONFIGS)) {
+    readKeyValuePairs(entity,result,EntityColumnPrefix.CONFIG,true);
+  }
+  boolean checkEvents=!isSingleEntityRead() && filters.getEventFilters() != null && filters.getEventFilters().getFilterList().size() > 0;
+  if (hasField(fieldsToRetrieve,Field.EVENTS) || checkEvents) {
+    readEvents(entity,result,EntityColumnPrefix.EVENT);
+    if (checkEvents && !TimelineStorageUtils.matchEventFilters(entity,filters.getEventFilters())) {
+      return null;
+    }
+    if (!hasField(fieldsToRetrieve,Field.EVENTS)) {
+      entity.getEvents().clear();
+    }
+  }
+  if (hasField(fieldsToRetrieve,Field.METRICS)) {
+    readMetrics(entity,result,EntityColumnPrefix.METRIC);
+  }
+  return entity;
+}

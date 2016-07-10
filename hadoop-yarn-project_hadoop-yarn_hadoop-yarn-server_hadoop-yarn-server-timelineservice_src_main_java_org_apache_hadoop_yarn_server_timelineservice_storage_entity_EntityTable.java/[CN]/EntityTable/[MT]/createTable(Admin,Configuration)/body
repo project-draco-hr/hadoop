@@ -1,0 +1,24 @@
+{
+  TableName table=getTableName(hbaseConf);
+  if (admin.tableExists(table)) {
+    throw new IOException("Table " + table.getNameAsString() + " already exists.");
+  }
+  HTableDescriptor entityTableDescp=new HTableDescriptor(table);
+  HColumnDescriptor infoCF=new HColumnDescriptor(EntityColumnFamily.INFO.getBytes());
+  infoCF.setBloomFilterType(BloomType.ROWCOL);
+  entityTableDescp.addFamily(infoCF);
+  HColumnDescriptor configCF=new HColumnDescriptor(EntityColumnFamily.CONFIGS.getBytes());
+  configCF.setBloomFilterType(BloomType.ROWCOL);
+  configCF.setBlockCacheEnabled(true);
+  entityTableDescp.addFamily(configCF);
+  HColumnDescriptor metricsCF=new HColumnDescriptor(EntityColumnFamily.METRICS.getBytes());
+  entityTableDescp.addFamily(metricsCF);
+  metricsCF.setBlockCacheEnabled(true);
+  metricsCF.setMinVersions(1);
+  metricsCF.setMaxVersions(DEFAULT_METRICS_MAX_VERSIONS);
+  metricsCF.setTimeToLive(hbaseConf.getInt(METRICS_TTL_CONF_NAME,DEFAULT_METRICS_TTL));
+  entityTableDescp.setRegionSplitPolicyClassName("org.apache.hadoop.hbase.regionserver.KeyPrefixRegionSplitPolicy");
+  entityTableDescp.setValue("KeyPrefixRegionSplitPolicy.prefix_length",TimelineHBaseSchemaConstants.USERNAME_SPLIT_KEY_PREFIX_LENGTH);
+  admin.createTable(entityTableDescp,TimelineHBaseSchemaConstants.getUsernameSplits());
+  LOG.info("Status of table creation for " + table.getNameAsString() + "="+ admin.tableExists(table));
+}

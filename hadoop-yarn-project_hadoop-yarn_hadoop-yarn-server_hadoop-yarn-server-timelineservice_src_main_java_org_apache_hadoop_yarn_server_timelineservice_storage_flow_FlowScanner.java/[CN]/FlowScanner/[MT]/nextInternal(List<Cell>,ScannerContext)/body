@@ -1,0 +1,45 @@
+{
+  Cell cell=null;
+  startNext();
+  ByteArrayComparator comp=new ByteArrayComparator();
+  byte[] previousColumnQualifier=Separator.EMPTY_BYTES;
+  AggregationOperation currentAggOp=null;
+  SortedSet<Cell> currentColumnCells=new TreeSet<>(KeyValue.COMPARATOR);
+  Set<String> alreadySeenAggDim=new HashSet<>();
+  int addedCnt=0;
+  long currentTimestamp=System.currentTimeMillis();
+  ValueConverter converter=null;
+  int limit=batchSize;
+  while (limit <= 0 || addedCnt < limit) {
+    cell=peekAtNextCell(scannerContext);
+    if (cell == null) {
+      break;
+    }
+    byte[] currentColumnQualifier=CellUtil.cloneQualifier(cell);
+    if (previousColumnQualifier == null) {
+      previousColumnQualifier=currentColumnQualifier;
+    }
+    converter=getValueConverter(currentColumnQualifier);
+    if (comp.compare(previousColumnQualifier,currentColumnQualifier) != 0) {
+      addedCnt+=emitCells(cells,currentColumnCells,currentAggOp,converter,currentTimestamp);
+      resetState(currentColumnCells,alreadySeenAggDim);
+      previousColumnQualifier=currentColumnQualifier;
+      currentAggOp=getCurrentAggOp(cell);
+      converter=getValueConverter(currentColumnQualifier);
+    }
+    collectCells(currentColumnCells,currentAggOp,cell,alreadySeenAggDim,converter,scannerContext);
+    nextCell(scannerContext);
+  }
+  if ((!currentColumnCells.isEmpty()) && ((limit <= 0 || addedCnt < limit))) {
+    addedCnt+=emitCells(cells,currentColumnCells,currentAggOp,converter,currentTimestamp);
+    if (LOG.isDebugEnabled()) {
+      if (addedCnt > 0) {
+        LOG.debug("emitted cells. " + addedCnt + " for "+ this.action+ " rowKey="+ FlowRunRowKey.parseRowKey(CellUtil.cloneRow(cells.get(0))));
+      }
+ else {
+        LOG.debug("emitted no cells for " + this.action);
+      }
+    }
+  }
+  return hasMore();
+}

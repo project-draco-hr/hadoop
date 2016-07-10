@@ -1,0 +1,60 @@
+{
+  Configuration hbaseConf=HBaseConfiguration.create();
+  String[] otherArgs=new GenericOptionsParser(hbaseConf,args).getRemainingArgs();
+  CommandLine commandLine=parseArgs(otherArgs);
+  String entityTableName=commandLine.getOptionValue(ENTITY_TABLE_NAME_SHORT);
+  if (StringUtils.isNotBlank(entityTableName)) {
+    hbaseConf.set(EntityTable.TABLE_NAME_CONF_NAME,entityTableName);
+  }
+  String entityTableTTLMetrics=commandLine.getOptionValue(TTL_OPTION_SHORT);
+  if (StringUtils.isNotBlank(entityTableTTLMetrics)) {
+    int metricsTTL=Integer.parseInt(entityTableTTLMetrics);
+    new EntityTable().setMetricsTTL(metricsTTL,hbaseConf);
+  }
+  String appToflowTableName=commandLine.getOptionValue(APP_TO_FLOW_TABLE_NAME_SHORT);
+  if (StringUtils.isNotBlank(appToflowTableName)) {
+    hbaseConf.set(AppToFlowTable.TABLE_NAME_CONF_NAME,appToflowTableName);
+  }
+  String applicationTableName=commandLine.getOptionValue(APP_TABLE_NAME_SHORT);
+  if (StringUtils.isNotBlank(applicationTableName)) {
+    hbaseConf.set(ApplicationTable.TABLE_NAME_CONF_NAME,applicationTableName);
+  }
+  List<Exception> exceptions=new ArrayList<>();
+  try {
+    boolean skipExisting=commandLine.hasOption(SKIP_EXISTING_TABLE_OPTION_SHORT);
+    if (skipExisting) {
+      LOG.info("Will skip existing tables and continue on htable creation " + "exceptions!");
+    }
+    createAllTables(hbaseConf,skipExisting);
+    LOG.info("Successfully created HBase schema. ");
+  }
+ catch (  IOException e) {
+    LOG.error("Error in creating hbase tables: " + e.getMessage());
+    exceptions.add(e);
+  }
+  if (commandLine.hasOption(PHOENIX_OPTION_SHORT)) {
+    Configuration phoenixConf=new Configuration();
+    try {
+      PhoenixOfflineAggregationWriterImpl phoenixWriter=new PhoenixOfflineAggregationWriterImpl();
+      phoenixWriter.init(phoenixConf);
+      phoenixWriter.start();
+      phoenixWriter.createPhoenixTables();
+      phoenixWriter.stop();
+      LOG.info("Successfully created Phoenix offline aggregation schema. ");
+    }
+ catch (    IOException e) {
+      LOG.error("Error in creating phoenix tables: " + e.getMessage());
+      exceptions.add(e);
+    }
+  }
+  if (exceptions.size() > 0) {
+    LOG.warn("Schema creation finished with the following exceptions");
+    for (    Exception e : exceptions) {
+      LOG.warn(e.getMessage());
+    }
+    System.exit(-1);
+  }
+ else {
+    LOG.info("Schema creation finished successfully");
+  }
+}

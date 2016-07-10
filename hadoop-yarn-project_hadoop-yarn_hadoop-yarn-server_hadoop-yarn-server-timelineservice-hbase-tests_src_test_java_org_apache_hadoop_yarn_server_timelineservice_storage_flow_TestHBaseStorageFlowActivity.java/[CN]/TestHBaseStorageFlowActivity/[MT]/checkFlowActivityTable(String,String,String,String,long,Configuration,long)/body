@@ -1,0 +1,30 @@
+{
+  Scan s=new Scan();
+  s.addFamily(FlowActivityColumnFamily.INFO.getBytes());
+  byte[] startRow=new FlowActivityRowKey(cluster,appCreatedTime,user,flow).getRowKey();
+  s.setStartRow(startRow);
+  String clusterStop=cluster + "1";
+  byte[] stopRow=new FlowActivityRowKey(clusterStop,appCreatedTime,user,flow).getRowKey();
+  s.setStopRow(stopRow);
+  Connection conn=ConnectionFactory.createConnection(c1);
+  Table table1=conn.getTable(TableName.valueOf(FlowActivityTable.DEFAULT_TABLE_NAME));
+  ResultScanner scanner=table1.getScanner(s);
+  int rowCount=0;
+  for (  Result result : scanner) {
+    assertNotNull(result);
+    assertTrue(!result.isEmpty());
+    Map<byte[],byte[]> values=result.getFamilyMap(FlowActivityColumnFamily.INFO.getBytes());
+    rowCount++;
+    byte[] row=result.getRow();
+    FlowActivityRowKey flowActivityRowKey=FlowActivityRowKey.parseRowKey(row);
+    assertNotNull(flowActivityRowKey);
+    assertEquals(cluster,flowActivityRowKey.getClusterId());
+    assertEquals(user,flowActivityRowKey.getUserId());
+    assertEquals(flow,flowActivityRowKey.getFlowName());
+    Long dayTs=TimelineStorageUtils.getTopOfTheDayTimestamp(appCreatedTime);
+    assertEquals(dayTs,flowActivityRowKey.getDayTimestamp());
+    assertEquals(1,values.size());
+    checkFlowActivityRunId(runid,flowVersion,values);
+  }
+  assertEquals(1,rowCount);
+}
