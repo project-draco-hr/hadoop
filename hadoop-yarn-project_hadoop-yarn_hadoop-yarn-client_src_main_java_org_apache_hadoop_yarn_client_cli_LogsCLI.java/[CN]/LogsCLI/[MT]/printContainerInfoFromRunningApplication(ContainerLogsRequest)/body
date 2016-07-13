@@ -1,0 +1,33 @@
+{
+  String containerIdStr=options.getContainerId();
+  String nodeIdStr=options.getNodeId();
+  List<ContainerReport> reports=getContainerReportsFromRunningApplication(options);
+  List<ContainerReport> filteredReports=filterContainersInfo(options,reports);
+  if (filteredReports.isEmpty()) {
+    StringBuilder sb=new StringBuilder();
+    if (containerIdStr != null && !containerIdStr.isEmpty()) {
+      sb.append("Trying to get container with ContainerId: " + containerIdStr + "\n");
+    }
+    if (nodeIdStr != null && !nodeIdStr.isEmpty()) {
+      sb.append("Trying to get container from NodeManager: " + nodeIdStr + "\n");
+    }
+    sb.append("Can not find any matched containers for the application: " + options.getAppId());
+    System.err.println(sb.toString());
+    return -1;
+  }
+  for (  ContainerReport report : filteredReports) {
+    String nodeId=report.getAssignedNode().toString();
+    String nodeHttpAddress=report.getNodeHttpAddress().replaceFirst(WebAppUtils.getHttpSchemePrefix(getConf()),"");
+    String containerId=report.getContainerId().toString();
+    String containerString=String.format(LogCLIHelpers.CONTAINER_ON_NODE_PATTERN,containerId,nodeId);
+    outStream.println(containerString);
+    outStream.println(StringUtils.repeat("=",containerString.length()));
+    outStream.printf(LogCLIHelpers.PER_LOG_FILE_INFO_PATTERN,"LogType","LogLength");
+    outStream.println(StringUtils.repeat("=",containerString.length()));
+    List<PerLogFileInfo> infos=getContainerLogFiles(getConf(),containerId,nodeHttpAddress);
+    for (    PerLogFileInfo info : infos) {
+      outStream.printf(LogCLIHelpers.PER_LOG_FILE_INFO_PATTERN,info.getFileName(),info.getFileLength());
+    }
+  }
+  return 0;
+}
