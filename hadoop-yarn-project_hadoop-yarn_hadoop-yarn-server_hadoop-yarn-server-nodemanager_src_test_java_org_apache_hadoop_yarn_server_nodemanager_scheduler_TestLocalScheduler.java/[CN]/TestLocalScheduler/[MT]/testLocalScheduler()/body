@@ -1,82 +1,58 @@
 {
   Configuration conf=new Configuration();
   LocalScheduler localScheduler=new LocalScheduler();
-  NodeStatusUpdater nodeStatusUpdater=Mockito.mock(NodeStatusUpdater.class);
-  Mockito.when(nodeStatusUpdater.getRMIdentifier()).thenReturn(12345l);
-  Context context=Mockito.mock(Context.class);
-  NMContainerTokenSecretManager nmContainerTokenSecretManager=new NMContainerTokenSecretManager(conf);
-  MasterKey mKey=new MasterKey(){
-    @Override public int getKeyId(){
-      return 1;
-    }
-    @Override public void setKeyId(    int keyId){
-    }
-    @Override public ByteBuffer getBytes(){
-      return ByteBuffer.allocate(8);
-    }
-    @Override public void setBytes(    ByteBuffer bytes){
-    }
-  }
-;
-  nmContainerTokenSecretManager.setMasterKey(mKey);
-  Mockito.when(context.getContainerTokenSecretManager()).thenReturn(nmContainerTokenSecretManager);
-  OpportunisticContainerAllocator containerAllocator=new OpportunisticContainerAllocator(nodeStatusUpdater,context,7777);
-  NMTokenSecretManagerInNM nmTokenSecretManagerInNM=new NMTokenSecretManagerInNM();
-  nmTokenSecretManagerInNM.setMasterKey(mKey);
-  localScheduler.initLocal(ApplicationAttemptId.newInstance(ApplicationId.newInstance(1,1),1),containerAllocator,nmTokenSecretManagerInNM,"test");
-  RequestInterceptor finalReqIntcptr=Mockito.mock(RequestInterceptor.class);
-  localScheduler.setNextInterceptor(finalReqIntcptr);
-  DistSchedRegisterResponse distSchedRegisterResponse=Records.newRecord(DistSchedRegisterResponse.class);
-  distSchedRegisterResponse.setRegisterResponse(Records.newRecord(RegisterApplicationMasterResponse.class));
-  distSchedRegisterResponse.setContainerTokenExpiryInterval(12345);
-  distSchedRegisterResponse.setContainerIdStart(0);
-  distSchedRegisterResponse.setMaxAllocatableCapabilty(Resource.newInstance(1024,4));
-  distSchedRegisterResponse.setMinAllocatableCapabilty(Resource.newInstance(512,2));
-  distSchedRegisterResponse.setNodesForScheduling(Arrays.asList(NodeId.newInstance("a",1),NodeId.newInstance("b",2)));
-  Mockito.when(finalReqIntcptr.registerApplicationMasterForDistributedScheduling(Mockito.any(RegisterApplicationMasterRequest.class))).thenReturn(distSchedRegisterResponse);
-  localScheduler.registerApplicationMaster(Records.newRecord(RegisterApplicationMasterRequest.class));
+  RequestInterceptor finalReqIntcptr=setup(conf,localScheduler);
+  registerAM(localScheduler,finalReqIntcptr,Arrays.asList(NodeId.newInstance("a",1),NodeId.newInstance("b",2)));
+  final AtomicBoolean flipFlag=new AtomicBoolean(false);
   Mockito.when(finalReqIntcptr.allocateForDistributedScheduling(Mockito.any(DistSchedAllocateRequest.class))).thenAnswer(new Answer<DistSchedAllocateResponse>(){
     @Override public DistSchedAllocateResponse answer(    InvocationOnMock invocationOnMock) throws Throwable {
-      return createAllocateResponse(Arrays.asList(NodeId.newInstance("c",3),NodeId.newInstance("d",4)));
+      flipFlag.set(!flipFlag.get());
+      if (flipFlag.get()) {
+        return createAllocateResponse(Arrays.asList(NodeId.newInstance("c",3),NodeId.newInstance("d",4)));
+      }
+ else {
+        return createAllocateResponse(Arrays.asList(NodeId.newInstance("d",4),NodeId.newInstance("c",3)));
+      }
     }
   }
 );
   AllocateRequest allocateRequest=Records.newRecord(AllocateRequest.class);
-  ResourceRequest guaranteedReq=Records.newRecord(ResourceRequest.class);
-  guaranteedReq.setExecutionTypeRequest(ExecutionTypeRequest.newInstance(ExecutionType.GUARANTEED,true));
-  guaranteedReq.setNumContainers(5);
-  guaranteedReq.setCapability(Resource.newInstance(2048,2));
-  guaranteedReq.setRelaxLocality(true);
-  guaranteedReq.setResourceName("*");
-  ResourceRequest opportunisticReq=Records.newRecord(ResourceRequest.class);
-  opportunisticReq.setExecutionTypeRequest(ExecutionTypeRequest.newInstance(ExecutionType.OPPORTUNISTIC,true));
-  opportunisticReq.setNumContainers(4);
-  opportunisticReq.setCapability(Resource.newInstance(1024,4));
-  opportunisticReq.setPriority(Priority.newInstance(100));
-  opportunisticReq.setRelaxLocality(true);
-  opportunisticReq.setResourceName("*");
+  ResourceRequest guaranteedReq=createResourceRequest(ExecutionType.GUARANTEED,5,"*");
+  ResourceRequest opportunisticReq=createResourceRequest(ExecutionType.OPPORTUNISTIC,4,"*");
   allocateRequest.setAskList(Arrays.asList(guaranteedReq,opportunisticReq));
   AllocateResponse allocateResponse=localScheduler.allocate(allocateRequest);
   Assert.assertEquals(4,allocateResponse.getAllocatedContainers().size());
-  Map<NodeId,List<ContainerId>> allocs=mapAllocs(allocateResponse);
+  Map<NodeId,List<ContainerId>> allocs=mapAllocs(allocateResponse,4);
   Assert.assertEquals(2,allocs.get(NodeId.newInstance("a",1)).size());
   Assert.assertEquals(2,allocs.get(NodeId.newInstance("b",2)).size());
   Assert.assertNull(allocs.get(NodeId.newInstance("c",3)));
   Assert.assertNull(allocs.get(NodeId.newInstance("d",4)));
   allocateRequest=Records.newRecord(AllocateRequest.class);
-  opportunisticReq=Records.newRecord(ResourceRequest.class);
-  opportunisticReq.setExecutionTypeRequest(ExecutionTypeRequest.newInstance(ExecutionType.OPPORTUNISTIC,true));
-  opportunisticReq.setNumContainers(6);
-  opportunisticReq.setCapability(Resource.newInstance(512,3));
-  opportunisticReq.setPriority(Priority.newInstance(100));
-  opportunisticReq.setRelaxLocality(true);
-  opportunisticReq.setResourceName("*");
+  opportunisticReq=createResourceRequest(ExecutionType.OPPORTUNISTIC,6,"*");
   allocateRequest.setAskList(Arrays.asList(guaranteedReq,opportunisticReq));
   allocateResponse=localScheduler.allocate(allocateRequest);
   Assert.assertEquals(6,allocateResponse.getAllocatedContainers().size());
-  allocs=mapAllocs(allocateResponse);
+  allocs=mapAllocs(allocateResponse,6);
   Assert.assertEquals(3,allocs.get(NodeId.newInstance("c",3)).size());
   Assert.assertEquals(3,allocs.get(NodeId.newInstance("d",4)).size());
   Assert.assertNull(allocs.get(NodeId.newInstance("a",1)));
   Assert.assertNull(allocs.get(NodeId.newInstance("b",2)));
+  allocateRequest=Records.newRecord(AllocateRequest.class);
+  opportunisticReq=createResourceRequest(ExecutionType.OPPORTUNISTIC,1,"*");
+  allocateRequest.setAskList(Arrays.asList(guaranteedReq,opportunisticReq));
+  allocateResponse=localScheduler.allocate(allocateRequest);
+  allocs=mapAllocs(allocateResponse,1);
+  Assert.assertEquals(1,allocs.get(NodeId.newInstance("d",4)).size());
+  allocateRequest=Records.newRecord(AllocateRequest.class);
+  opportunisticReq=createResourceRequest(ExecutionType.OPPORTUNISTIC,1,"*");
+  allocateRequest.setAskList(Arrays.asList(guaranteedReq,opportunisticReq));
+  allocateResponse=localScheduler.allocate(allocateRequest);
+  allocs=mapAllocs(allocateResponse,1);
+  Assert.assertEquals(1,allocs.get(NodeId.newInstance("c",3)).size());
+  allocateRequest=Records.newRecord(AllocateRequest.class);
+  opportunisticReq=createResourceRequest(ExecutionType.OPPORTUNISTIC,1,"*");
+  allocateRequest.setAskList(Arrays.asList(guaranteedReq,opportunisticReq));
+  allocateResponse=localScheduler.allocate(allocateRequest);
+  allocs=mapAllocs(allocateResponse,1);
+  Assert.assertEquals(1,allocs.get(NodeId.newInstance("d",4)).size());
 }
