@@ -2,41 +2,41 @@
   if (LOG.isDebugEnabled()) {
     LOG.debug("Node offered to app: " + getName() + " reserved: "+ reserved);
   }
-  Collection<Priority> prioritiesToTry=(reserved) ? Arrays.asList(node.getReservedContainer().getReservedPriority()) : getPriorities();
+  Collection<SchedulerRequestKey> keysToTry=(reserved) ? Arrays.asList(node.getReservedContainer().getReservedSchedulerKey()) : getSchedulerKeys();
 synchronized (this) {
-    for (    Priority priority : prioritiesToTry) {
-      if (!reserved && !hasContainerForNode(priority,node)) {
+    for (    SchedulerRequestKey schedulerKey : keysToTry) {
+      if (!reserved && !hasContainerForNode(schedulerKey,node)) {
         continue;
       }
-      addSchedulingOpportunity(priority);
-      ResourceRequest rackLocalRequest=getResourceRequest(priority,node.getRackName());
-      ResourceRequest localRequest=getResourceRequest(priority,node.getNodeName());
+      addSchedulingOpportunity(schedulerKey);
+      ResourceRequest rackLocalRequest=getResourceRequest(schedulerKey,node.getRackName());
+      ResourceRequest localRequest=getResourceRequest(schedulerKey,node.getNodeName());
       if (localRequest != null && !localRequest.getRelaxLocality()) {
         LOG.warn("Relax locality off is not supported on local request: " + localRequest);
       }
       NodeType allowedLocality;
       if (scheduler.isContinuousSchedulingEnabled()) {
-        allowedLocality=getAllowedLocalityLevelByTime(priority,scheduler.getNodeLocalityDelayMs(),scheduler.getRackLocalityDelayMs(),scheduler.getClock().getTime());
+        allowedLocality=getAllowedLocalityLevelByTime(schedulerKey,scheduler.getNodeLocalityDelayMs(),scheduler.getRackLocalityDelayMs(),scheduler.getClock().getTime());
       }
  else {
-        allowedLocality=getAllowedLocalityLevel(priority,scheduler.getNumClusterNodes(),scheduler.getNodeLocalityThreshold(),scheduler.getRackLocalityThreshold());
+        allowedLocality=getAllowedLocalityLevel(schedulerKey,scheduler.getNumClusterNodes(),scheduler.getNodeLocalityThreshold(),scheduler.getRackLocalityThreshold());
       }
       if (rackLocalRequest != null && rackLocalRequest.getNumContainers() != 0 && localRequest != null && localRequest.getNumContainers() != 0) {
-        return assignContainer(node,localRequest,NodeType.NODE_LOCAL,reserved);
+        return assignContainer(node,localRequest,NodeType.NODE_LOCAL,reserved,schedulerKey);
       }
       if (rackLocalRequest != null && !rackLocalRequest.getRelaxLocality()) {
         continue;
       }
       if (rackLocalRequest != null && rackLocalRequest.getNumContainers() != 0 && (allowedLocality.equals(NodeType.RACK_LOCAL) || allowedLocality.equals(NodeType.OFF_SWITCH))) {
-        return assignContainer(node,rackLocalRequest,NodeType.RACK_LOCAL,reserved);
+        return assignContainer(node,rackLocalRequest,NodeType.RACK_LOCAL,reserved,schedulerKey);
       }
-      ResourceRequest offSwitchRequest=getResourceRequest(priority,ResourceRequest.ANY);
+      ResourceRequest offSwitchRequest=getResourceRequest(schedulerKey,ResourceRequest.ANY);
       if (offSwitchRequest != null && !offSwitchRequest.getRelaxLocality()) {
         continue;
       }
       if (offSwitchRequest != null && offSwitchRequest.getNumContainers() != 0) {
-        if (!hasNodeOrRackLocalRequests(priority) || allowedLocality.equals(NodeType.OFF_SWITCH)) {
-          return assignContainer(node,offSwitchRequest,NodeType.OFF_SWITCH,reserved);
+        if (!hasNodeOrRackLocalRequests(schedulerKey) || allowedLocality.equals(NodeType.OFF_SWITCH)) {
+          return assignContainer(node,offSwitchRequest,NodeType.OFF_SWITCH,reserved,schedulerKey);
         }
       }
     }

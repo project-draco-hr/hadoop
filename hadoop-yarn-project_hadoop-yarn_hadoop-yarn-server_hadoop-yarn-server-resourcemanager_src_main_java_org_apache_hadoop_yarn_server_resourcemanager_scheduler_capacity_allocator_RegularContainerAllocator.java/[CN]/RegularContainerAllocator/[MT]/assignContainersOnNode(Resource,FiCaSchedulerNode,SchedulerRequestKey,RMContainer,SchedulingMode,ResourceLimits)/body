@@ -1,0 +1,43 @@
+{
+  ContainerAllocation allocation;
+  NodeType requestType=null;
+  ResourceRequest nodeLocalResourceRequest=application.getResourceRequest(schedulerKey,node.getNodeName());
+  if (nodeLocalResourceRequest != null) {
+    requestType=NodeType.NODE_LOCAL;
+    allocation=assignNodeLocalContainers(clusterResource,nodeLocalResourceRequest,node,schedulerKey,reservedContainer,schedulingMode,currentResoureLimits);
+    if (Resources.greaterThan(rc,clusterResource,allocation.getResourceToBeAllocated(),Resources.none())) {
+      allocation.requestNodeType=requestType;
+      return allocation;
+    }
+  }
+  ResourceRequest rackLocalResourceRequest=application.getResourceRequest(schedulerKey,node.getRackName());
+  if (rackLocalResourceRequest != null) {
+    if (!rackLocalResourceRequest.getRelaxLocality()) {
+      return ContainerAllocation.PRIORITY_SKIPPED;
+    }
+    if (requestType != NodeType.NODE_LOCAL) {
+      requestType=NodeType.RACK_LOCAL;
+    }
+    allocation=assignRackLocalContainers(clusterResource,rackLocalResourceRequest,node,schedulerKey,reservedContainer,schedulingMode,currentResoureLimits);
+    if (Resources.greaterThan(rc,clusterResource,allocation.getResourceToBeAllocated(),Resources.none())) {
+      allocation.requestNodeType=requestType;
+      return allocation;
+    }
+  }
+  ResourceRequest offSwitchResourceRequest=application.getResourceRequest(schedulerKey,ResourceRequest.ANY);
+  if (offSwitchResourceRequest != null) {
+    if (!offSwitchResourceRequest.getRelaxLocality()) {
+      return ContainerAllocation.PRIORITY_SKIPPED;
+    }
+    if (requestType != NodeType.NODE_LOCAL && requestType != NodeType.RACK_LOCAL) {
+      requestType=NodeType.OFF_SWITCH;
+    }
+    allocation=assignOffSwitchContainers(clusterResource,offSwitchResourceRequest,node,schedulerKey,reservedContainer,schedulingMode,currentResoureLimits);
+    allocation.requestNodeType=requestType;
+    if (allocation.state == AllocationState.LOCALITY_SKIPPED) {
+      allocation.state=AllocationState.APP_SKIPPED;
+    }
+    return allocation;
+  }
+  return ContainerAllocation.PRIORITY_SKIPPED;
+}
