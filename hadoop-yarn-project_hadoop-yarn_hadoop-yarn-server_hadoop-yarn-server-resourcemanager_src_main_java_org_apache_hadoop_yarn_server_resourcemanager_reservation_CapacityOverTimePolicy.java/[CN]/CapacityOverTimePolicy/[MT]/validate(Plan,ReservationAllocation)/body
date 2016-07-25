@@ -1,41 +1,63 @@
 {
-  ReservationAllocation oldReservation=plan.getReservationById(reservation.getReservationId());
-  long startTime=reservation.getStartTime();
-  long endTime=reservation.getEndTime();
-  long step=plan.getStep();
-  Resource planTotalCapacity=plan.getTotalCapacity();
-  Resource maxAvgRes=Resources.multiply(planTotalCapacity,maxAvg);
-  Resource maxInsRes=Resources.multiply(planTotalCapacity,maxInst);
+  try {
+    super.validate(plan,reservation);
+  }
+ catch (  PlanningException p) {
+    throw new PlanningQuotaException(p);
+  }
+  RLESparseResourceAllocation consumptionForUserOverTime=plan.getConsumptionForUserOverTime(reservation.getUser(),reservation.getStartTime() - validWindow,reservation.getEndTime() + validWindow);
+  ReservationAllocation old=plan.getReservationById(reservation.getReservationId());
+  if (old != null) {
+    consumptionForUserOverTime=RLESparseResourceAllocation.merge(plan.getResourceCalculator(),plan.getTotalCapacity(),consumptionForUserOverTime,old.getResourcesOverTime(),RLEOperator.add,reservation.getStartTime() - validWindow,reservation.getEndTime() + validWindow);
+  }
+  RLESparseResourceAllocation resRLE=reservation.getResourcesOverTime();
+  RLESparseResourceAllocation toCheck=RLESparseResourceAllocation.merge(plan.getResourceCalculator(),plan.getTotalCapacity(),consumptionForUserOverTime,resRLE,RLEOperator.add,Long.MIN_VALUE,Long.MAX_VALUE);
+  NavigableMap<Long,Resource> integralUp=new TreeMap<>();
+  NavigableMap<Long,Resource> integralDown=new TreeMap<>();
+  long prevTime=toCheck.getEarliestStartTime();
+  IntegralResource prevResource=new IntegralResource(0L,0L);
   IntegralResource runningTot=new IntegralResource(0L,0L);
-  IntegralResource maxAllowed=new IntegralResource(maxAvgRes);
-  maxAllowed.multiplyBy(validWindow / step);
-  RLESparseResourceAllocation userCons=plan.getConsumptionForUserOverTime(reservation.getUser(),startTime - validWindow,endTime + validWindow);
-  for (long t=startTime - validWindow; t < endTime + validWindow; t+=step) {
-    Resource currExistingAllocTot=plan.getTotalCommittedResources(t);
-    Resource currExistingAllocForUser=userCons.getCapacityAtTime(t);
-    Resource currNewAlloc=reservation.getResourcesAtTime(t);
-    Resource currOldAlloc=Resources.none();
-    if (oldReservation != null) {
-      currOldAlloc=oldReservation.getResourcesAtTime(t);
+  Map<Long,Resource> temp=new TreeMap<>();
+  for (  Map.Entry<Long,Resource> pointToCheck : toCheck.getCumulative().entrySet()) {
+    Long timeToCheck=pointToCheck.getKey();
+    Resource resourceToCheck=pointToCheck.getValue();
+    Long nextPoint=toCheck.getCumulative().higherKey(timeToCheck);
+    if (nextPoint == null || toCheck.getCumulative().get(nextPoint) == null) {
+      continue;
     }
-    Resource inst=Resources.subtract(Resources.add(currExistingAllocTot,currNewAlloc),currOldAlloc);
-    if (Resources.greaterThan(plan.getResourceCalculator(),planTotalCapacity,inst,planTotalCapacity)) {
-      throw new ResourceOverCommitException(" Resources at time " + t + " would be overcommitted ("+ inst+ " over "+ plan.getTotalCapacity()+ ") by accepting reservation: "+ reservation.getReservationId());
+    for (int i=1; i <= (nextPoint - timeToCheck) / validWindow; i++) {
+      temp.put(timeToCheck + (i * validWindow),resourceToCheck);
     }
-    if (Resources.greaterThan(plan.getResourceCalculator(),planTotalCapacity,Resources.subtract(Resources.add(currExistingAllocForUser,currNewAlloc),currOldAlloc),maxInsRes)) {
-      throw new PlanningQuotaException("Instantaneous quota capacity " + maxInst + " would be passed at time "+ t+ " by accepting reservation: "+ reservation.getReservationId());
+  }
+  temp.putAll(toCheck.getCumulative());
+  for (  Map.Entry<Long,Resource> currPoint : temp.entrySet()) {
+    Long currTime=currPoint.getKey();
+    Resource currResource=currPoint.getValue();
+    prevResource.multiplyBy(currTime - prevTime);
+    runningTot.add(prevResource);
+    integralUp.put(currTime,normalizeToResource(runningTot,validWindow));
+    integralDown.put(currTime + validWindow,normalizeToResource(runningTot,validWindow));
+    if (currResource != null) {
+      prevResource.memory=currResource.getMemorySize();
+      prevResource.vcores=currResource.getVirtualCores();
     }
-    runningTot.add(currExistingAllocForUser);
-    runningTot.add(currNewAlloc);
-    runningTot.subtract(currOldAlloc);
-    if (t > startTime) {
-      Resource pastOldAlloc=userCons.getCapacityAtTime(t - validWindow);
-      Resource pastNewAlloc=reservation.getResourcesAtTime(t - validWindow);
-      runningTot.subtract(pastOldAlloc);
-      runningTot.subtract(pastNewAlloc);
+ else {
+      prevResource.memory=0L;
+      prevResource.vcores=0L;
     }
-    if (maxAllowed.compareTo(runningTot) < 0) {
-      throw new PlanningQuotaException("Integral (avg over time) quota capacity " + maxAvg + " over a window of "+ validWindow / 1000 + " seconds, " + " would be passed at time " + t + "(" + new Date(t) + ") by accepting reservation: " + reservation.getReservationId());
-    }
+    prevTime=currTime;
+  }
+  RLESparseResourceAllocation intUp=new RLESparseResourceAllocation(integralUp,plan.getResourceCalculator());
+  RLESparseResourceAllocation intDown=new RLESparseResourceAllocation(integralDown,plan.getResourceCalculator());
+  RLESparseResourceAllocation integral=RLESparseResourceAllocation.merge(plan.getResourceCalculator(),plan.getTotalCapacity(),intUp,intDown,RLEOperator.subtract,Long.MIN_VALUE,Long.MAX_VALUE);
+  NavigableMap<Long,Resource> tlimit=new TreeMap<>();
+  Resource maxAvgRes=Resources.multiply(plan.getTotalCapacity(),maxAvg);
+  tlimit.put(toCheck.getEarliestStartTime() - validWindow,maxAvgRes);
+  RLESparseResourceAllocation targetLimit=new RLESparseResourceAllocation(tlimit,plan.getResourceCalculator());
+  try {
+    RLESparseResourceAllocation.merge(plan.getResourceCalculator(),plan.getTotalCapacity(),targetLimit,integral,RLEOperator.subtractTestNonNegative,reservation.getStartTime() - validWindow,reservation.getEndTime() + validWindow);
+  }
+ catch (  PlanningException p) {
+    throw new PlanningQuotaException("Integral (avg over time) quota capacity " + maxAvg + " over a window of "+ validWindow / 1000 + " seconds, " + " would be exceeded by accepting reservation: " + reservation.getReservationId(),p);
   }
 }
