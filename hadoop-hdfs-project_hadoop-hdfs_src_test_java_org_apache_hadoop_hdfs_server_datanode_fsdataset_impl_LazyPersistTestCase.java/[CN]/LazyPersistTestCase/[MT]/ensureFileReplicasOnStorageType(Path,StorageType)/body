@@ -2,9 +2,23 @@
   LOG.info("Ensure path: " + path + " is on StorageType: "+ storageType);
   assertThat(fs.exists(path),is(true));
   long fileLength=client.getFileInfo(path.toString()).getLen();
-  LocatedBlocks locatedBlocks=client.getLocatedBlocks(path.toString(),0,fileLength);
-  for (  LocatedBlock locatedBlock : locatedBlocks.getLocatedBlocks()) {
-    assertThat(locatedBlock.getStorageTypes()[0],is(storageType));
+  GenericTestUtils.waitFor(new Supplier<Boolean>(){
+    @Override public Boolean get(){
+      try {
+        LocatedBlocks locatedBlocks=client.getLocatedBlocks(path.toString(),0,fileLength);
+        for (        LocatedBlock locatedBlock : locatedBlocks.getLocatedBlocks()) {
+          if (locatedBlock.getStorageTypes()[0] != storageType) {
+            return false;
+          }
+        }
+        return true;
+      }
+ catch (      IOException ioe) {
+        LOG.warn("Exception got in ensureFileReplicasOnStorageType()",ioe);
+        return false;
+      }
+    }
   }
-  return locatedBlocks;
+,100,30 * 1000);
+  return client.getLocatedBlocks(path.toString(),0,fileLength);
 }
