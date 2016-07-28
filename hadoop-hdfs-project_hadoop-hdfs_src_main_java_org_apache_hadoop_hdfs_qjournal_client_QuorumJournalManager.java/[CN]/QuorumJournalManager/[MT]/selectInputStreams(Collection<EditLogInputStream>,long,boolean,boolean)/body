@@ -1,0 +1,21 @@
+{
+  QuorumCall<AsyncLogger,RemoteEditLogManifest> q=loggers.getEditLogManifest(fromTxnId,inProgressOk);
+  Map<AsyncLogger,RemoteEditLogManifest> resps=loggers.waitForWriteQuorum(q,selectInputStreamsTimeoutMs,"selectInputStreams");
+  LOG.debug("selectInputStream manifests:\n" + Joiner.on("\n").withKeyValueSeparator(": ").join(resps));
+  final PriorityQueue<EditLogInputStream> allStreams=new PriorityQueue<EditLogInputStream>(64,JournalSet.EDIT_LOG_INPUT_STREAM_COMPARATOR);
+  for (  Map.Entry<AsyncLogger,RemoteEditLogManifest> e : resps.entrySet()) {
+    AsyncLogger logger=e.getKey();
+    RemoteEditLogManifest manifest=e.getValue();
+    long committedTxnId=manifest.getCommittedTxnId();
+    for (    RemoteEditLog remoteLog : manifest.getLogs()) {
+      URL url=logger.buildURLToFetchLogs(remoteLog.getStartTxId());
+      long endTxId=remoteLog.getEndTxId();
+      if (onlyDurableTxns && inProgressOk) {
+        endTxId=Math.min(endTxId,committedTxnId);
+      }
+      EditLogInputStream elis=EditLogFileInputStream.fromUrl(connectionFactory,url,remoteLog.getStartTxId(),endTxId,remoteLog.isInProgress());
+      allStreams.add(elis);
+    }
+  }
+  JournalSet.chainAndMakeRedundantStreams(streams,allStreams,fromTxnId);
+}
