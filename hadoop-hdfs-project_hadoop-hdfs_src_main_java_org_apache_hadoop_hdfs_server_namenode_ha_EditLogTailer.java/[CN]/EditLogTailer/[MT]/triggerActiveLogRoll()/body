@@ -1,23 +1,29 @@
 {
   LOG.info("Triggering log roll on remote NameNode");
+  Future<Void> future=null;
   try {
-    new MultipleNameNodeProxy<Void>(){
-      @Override protected Void doWork() throws IOException {
-        cachedActiveProxy.rollEditLog();
-        return null;
-      }
-    }
-.call();
+    future=rollEditsRpcExecutor.submit(getNameNodeProxy());
+    future.get(rollEditsTimeoutMs,TimeUnit.MILLISECONDS);
     lastRollTriggerTxId=lastLoadedTxnId;
   }
- catch (  IOException ioe) {
-    if (ioe instanceof RemoteException) {
-      ioe=((RemoteException)ioe).unwrapRemoteException();
+ catch (  ExecutionException e) {
+    Throwable cause=e.getCause();
+    if (cause instanceof RemoteException) {
+      IOException ioe=((RemoteException)cause).unwrapRemoteException();
       if (ioe instanceof StandbyException) {
         LOG.info("Skipping log roll. Remote node is not in Active state: " + ioe.getMessage().split("\n")[0]);
         return;
       }
     }
-    LOG.warn("Unable to trigger a roll of the active NN",ioe);
+    LOG.warn("Unable to trigger a roll of the active NN",e);
+  }
+catch (  TimeoutException e) {
+    if (future != null) {
+      future.cancel(true);
+    }
+    LOG.warn(String.format("Unable to finish rolling edits in %d ms",rollEditsTimeoutMs));
+  }
+catch (  InterruptedException e) {
+    LOG.warn("Unable to trigger a roll of the active NN",e);
   }
 }
