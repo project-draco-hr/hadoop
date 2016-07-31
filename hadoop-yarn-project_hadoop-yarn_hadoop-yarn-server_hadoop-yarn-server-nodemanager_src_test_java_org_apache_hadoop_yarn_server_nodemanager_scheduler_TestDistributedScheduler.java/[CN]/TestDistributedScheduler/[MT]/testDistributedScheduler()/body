@@ -1,0 +1,58 @@
+{
+  Configuration conf=new Configuration();
+  DistributedScheduler distributedScheduler=new DistributedScheduler();
+  RequestInterceptor finalReqIntcptr=setup(conf,distributedScheduler);
+  registerAM(distributedScheduler,finalReqIntcptr,Arrays.asList(NodeId.newInstance("a",1),NodeId.newInstance("b",2)));
+  final AtomicBoolean flipFlag=new AtomicBoolean(true);
+  Mockito.when(finalReqIntcptr.allocateForDistributedScheduling(Mockito.any(DistributedSchedulingAllocateRequest.class))).thenAnswer(new Answer<DistributedSchedulingAllocateResponse>(){
+    @Override public DistributedSchedulingAllocateResponse answer(    InvocationOnMock invocationOnMock) throws Throwable {
+      flipFlag.set(!flipFlag.get());
+      if (flipFlag.get()) {
+        return createAllocateResponse(Arrays.asList(NodeId.newInstance("c",3),NodeId.newInstance("d",4)));
+      }
+ else {
+        return createAllocateResponse(Arrays.asList(NodeId.newInstance("d",4),NodeId.newInstance("c",3)));
+      }
+    }
+  }
+);
+  AllocateRequest allocateRequest=Records.newRecord(AllocateRequest.class);
+  ResourceRequest guaranteedReq=createResourceRequest(ExecutionType.GUARANTEED,5,"*");
+  ResourceRequest opportunisticReq=createResourceRequest(ExecutionType.OPPORTUNISTIC,4,"*");
+  allocateRequest.setAskList(Arrays.asList(guaranteedReq,opportunisticReq));
+  AllocateResponse allocateResponse=distributedScheduler.allocate(allocateRequest);
+  Assert.assertEquals(4,allocateResponse.getAllocatedContainers().size());
+  Map<NodeId,List<ContainerId>> allocs=mapAllocs(allocateResponse,4);
+  Assert.assertEquals(2,allocs.get(NodeId.newInstance("a",1)).size());
+  Assert.assertEquals(2,allocs.get(NodeId.newInstance("b",2)).size());
+  Assert.assertNull(allocs.get(NodeId.newInstance("c",3)));
+  Assert.assertNull(allocs.get(NodeId.newInstance("d",4)));
+  allocateRequest=Records.newRecord(AllocateRequest.class);
+  opportunisticReq=createResourceRequest(ExecutionType.OPPORTUNISTIC,6,"*");
+  allocateRequest.setAskList(Arrays.asList(guaranteedReq,opportunisticReq));
+  allocateResponse=distributedScheduler.allocate(allocateRequest);
+  Assert.assertEquals(6,allocateResponse.getAllocatedContainers().size());
+  allocs=mapAllocs(allocateResponse,6);
+  Assert.assertEquals(3,allocs.get(NodeId.newInstance("c",3)).size());
+  Assert.assertEquals(3,allocs.get(NodeId.newInstance("d",4)).size());
+  Assert.assertNull(allocs.get(NodeId.newInstance("a",1)));
+  Assert.assertNull(allocs.get(NodeId.newInstance("b",2)));
+  allocateRequest=Records.newRecord(AllocateRequest.class);
+  opportunisticReq=createResourceRequest(ExecutionType.OPPORTUNISTIC,1,"*");
+  allocateRequest.setAskList(Arrays.asList(guaranteedReq,opportunisticReq));
+  allocateResponse=distributedScheduler.allocate(allocateRequest);
+  allocs=mapAllocs(allocateResponse,1);
+  Assert.assertEquals(1,allocs.get(NodeId.newInstance("d",4)).size());
+  allocateRequest=Records.newRecord(AllocateRequest.class);
+  opportunisticReq=createResourceRequest(ExecutionType.OPPORTUNISTIC,1,"*");
+  allocateRequest.setAskList(Arrays.asList(guaranteedReq,opportunisticReq));
+  allocateResponse=distributedScheduler.allocate(allocateRequest);
+  allocs=mapAllocs(allocateResponse,1);
+  Assert.assertEquals(1,allocs.get(NodeId.newInstance("c",3)).size());
+  allocateRequest=Records.newRecord(AllocateRequest.class);
+  opportunisticReq=createResourceRequest(ExecutionType.OPPORTUNISTIC,1,"*");
+  allocateRequest.setAskList(Arrays.asList(guaranteedReq,opportunisticReq));
+  allocateResponse=distributedScheduler.allocate(allocateRequest);
+  allocs=mapAllocs(allocateResponse,1);
+  Assert.assertEquals(1,allocs.get(NodeId.newInstance("d",4)).size());
+}
