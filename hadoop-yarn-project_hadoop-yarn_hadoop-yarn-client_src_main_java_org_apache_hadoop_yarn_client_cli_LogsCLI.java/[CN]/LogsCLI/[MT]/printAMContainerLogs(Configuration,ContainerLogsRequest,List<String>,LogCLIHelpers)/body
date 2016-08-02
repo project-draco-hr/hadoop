@@ -3,7 +3,7 @@
   List<ContainerLogsRequest> requests=new ArrayList<ContainerLogsRequest>();
   boolean getAMContainerLists=false;
   String appId=request.getAppId().toString();
-  String errorMessage="";
+  StringBuilder errorMessage=new StringBuilder();
   try {
     amContainersList=getAMContainerInfoForRMWebService(conf,appId);
     if (amContainersList != null && !amContainersList.isEmpty()) {
@@ -21,27 +21,33 @@
     }
   }
  catch (  Exception ex) {
-    errorMessage=ex.getMessage();
+    errorMessage.append(ex.getMessage() + "\n");
     if (request.isAppFinished()) {
-      try {
-        amContainersList=getAMContainerInfoForAHSWebService(conf,appId);
-        if (amContainersList != null && !amContainersList.isEmpty()) {
-          getAMContainerLists=true;
-          for (          JSONObject amContainer : amContainersList) {
-            ContainerLogsRequest amRequest=new ContainerLogsRequest(request);
-            amRequest.setContainerId(amContainer.getString("amContainerId"));
-            requests.add(amRequest);
+      if (!conf.getBoolean(YarnConfiguration.TIMELINE_SERVICE_ENABLED,YarnConfiguration.DEFAULT_TIMELINE_SERVICE_ENABLED)) {
+        errorMessage.append("Please enable the timeline service " + "and make sure the timeline server is running.");
+      }
+ else {
+        try {
+          amContainersList=getAMContainerInfoForAHSWebService(conf,appId);
+          if (amContainersList != null && !amContainersList.isEmpty()) {
+            getAMContainerLists=true;
+            for (            JSONObject amContainer : amContainersList) {
+              ContainerLogsRequest amRequest=new ContainerLogsRequest(request);
+              amRequest.setContainerId(amContainer.getString("amContainerId"));
+              requests.add(amRequest);
+            }
           }
         }
-      }
- catch (      Exception e) {
-        errorMessage=e.getMessage();
+ catch (        Exception e) {
+          errorMessage.append(e.getMessage());
+        }
       }
     }
   }
   if (!getAMContainerLists) {
     System.err.println("Unable to get AM container informations " + "for the application:" + appId);
     System.err.println(errorMessage);
+    System.err.println("Can not get AMContainers logs for " + "the application:" + appId + " with the appOwner:"+ request.getAppOwner());
     return -1;
   }
   if (amContainers.contains("ALL")) {
