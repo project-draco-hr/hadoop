@@ -1,0 +1,38 @@
+{
+  Class<? extends Writable> rpcRequestClass=getRpcRequestWrapper(header.getRpcKind());
+  if (rpcRequestClass == null) {
+    LOG.warn("Unknown rpc kind " + header.getRpcKind() + " from client "+ getHostAddress());
+    final String err="Unknown rpc kind in rpc header" + header.getRpcKind();
+    throw new WrappedRpcServerException(RpcErrorCodeProto.FATAL_INVALID_RPC_HEADER,err);
+  }
+  Writable rpcRequest;
+  try {
+    rpcRequest=buffer.newInstance(rpcRequestClass,conf);
+  }
+ catch (  Throwable t) {
+    LOG.warn("Unable to read call parameters for client " + getHostAddress() + "on connection protocol "+ this.protocolName+ " for rpcKind "+ header.getRpcKind(),t);
+    String err="IPC server unable to read call parameters: " + t.getMessage();
+    throw new WrappedRpcServerException(RpcErrorCodeProto.FATAL_DESERIALIZING_REQUEST,err);
+  }
+  TraceScope traceScope=null;
+  if (header.hasTraceInfo()) {
+    if (tracer != null) {
+      SpanId parentSpanId=new SpanId(header.getTraceInfo().getTraceId(),header.getTraceInfo().getParentId());
+      traceScope=tracer.newScope(RpcClientUtil.toTraceName(rpcRequest.toString()),parentSpanId);
+      traceScope.detach();
+    }
+  }
+  CallerContext callerContext=null;
+  if (header.hasCallerContext()) {
+    callerContext=new CallerContext.Builder(header.getCallerContext().getContext()).setSignature(header.getCallerContext().getSignature().toByteArray()).build();
+  }
+  Call call=new Call(header.getCallId(),header.getRetryCount(),rpcRequest,this,ProtoUtil.convert(header.getRpcKind()),header.getClientId().toByteArray(),traceScope,callerContext);
+  call.setPriorityLevel(callQueue.getPriorityLevel(call));
+  if (callQueue.isClientBackoffEnabled()) {
+    queueRequestOrAskClientToBackOff(call);
+  }
+ else {
+    callQueue.put(call);
+  }
+  incRpcCount();
+}

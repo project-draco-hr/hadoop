@@ -1,18 +1,16 @@
 {
   ResponseBuffer buf=responseBuffer.get().reset();
-  int estimatedLen=header.getSerializedSize();
-  estimatedLen+=CodedOutputStream.computeRawVarint32Size(estimatedLen);
-  if (rv instanceof RpcWrapper) {
-    estimatedLen+=((RpcWrapper)rv).getLength();
+  try {
+    RpcWritable.wrap(header).writeTo(buf);
+    if (rv != null) {
+      RpcWritable.wrap(rv).writeTo(buf);
+    }
+    call.setResponse(ByteBuffer.wrap(buf.toByteArray()));
   }
-  buf.ensureCapacity(estimatedLen);
-  header.writeDelimitedTo(buf);
-  if (rv != null) {
-    rv.write(buf);
-  }
-  call.setResponse(ByteBuffer.wrap(buf.toByteArray()));
-  if (buf.capacity() > maxRespSize) {
-    LOG.warn("Large response size " + buf.size() + " for call "+ call.toString());
-    buf.setCapacity(INITIAL_RESP_BUF_SIZE);
+  finally {
+    if (buf.capacity() > maxRespSize) {
+      LOG.warn("Large response size " + buf.size() + " for call "+ call.toString());
+      buf.setCapacity(INITIAL_RESP_BUF_SIZE);
+    }
   }
 }

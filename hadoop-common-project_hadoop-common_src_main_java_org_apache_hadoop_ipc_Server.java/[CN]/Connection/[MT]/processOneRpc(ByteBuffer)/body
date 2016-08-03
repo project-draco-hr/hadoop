@@ -1,0 +1,30 @@
+{
+  int callId=-1;
+  int retry=RpcConstants.INVALID_RETRY_COUNT;
+  try {
+    final RpcWritable.Buffer buffer=RpcWritable.Buffer.wrap(bb);
+    final RpcRequestHeaderProto header=getMessage(RpcRequestHeaderProto.getDefaultInstance(),buffer);
+    callId=header.getCallId();
+    retry=header.getRetryCount();
+    if (LOG.isDebugEnabled()) {
+      LOG.debug(" got #" + callId);
+    }
+    checkRpcHeaders(header);
+    if (callId < 0) {
+      processRpcOutOfBandRequest(header,buffer);
+    }
+ else     if (!connectionContextRead) {
+      throw new WrappedRpcServerException(RpcErrorCodeProto.FATAL_INVALID_RPC_HEADER,"Connection context not established");
+    }
+ else {
+      processRpcRequest(header,buffer);
+    }
+  }
+ catch (  WrappedRpcServerException wrse) {
+    Throwable ioe=wrse.getCause();
+    final Call call=new Call(callId,retry,null,this);
+    setupResponse(call,RpcStatusProto.FATAL,wrse.getRpcErrorCodeProto(),null,ioe.getClass().getName(),ioe.getMessage());
+    call.sendResponse();
+    throw wrse;
+  }
+}
