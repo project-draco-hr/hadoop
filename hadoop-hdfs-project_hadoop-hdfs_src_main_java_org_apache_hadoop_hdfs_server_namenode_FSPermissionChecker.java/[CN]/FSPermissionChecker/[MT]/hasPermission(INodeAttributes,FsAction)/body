@@ -1,30 +1,24 @@
 {
   if (inode == null) {
-    return;
+    return true;
   }
   final FsPermission mode=inode.getFsPermission();
   final AclFeature aclFeature=inode.getAclFeature();
   if (aclFeature != null) {
     int firstEntry=aclFeature.getEntryAt(0);
     if (AclEntryStatusFormat.getScope(firstEntry) == AclEntryScope.ACCESS) {
-      checkAccessAcl(inode,path,access,mode,aclFeature);
-      return;
+      return hasAclPermission(inode,access,mode,aclFeature);
     }
   }
+  final FsAction checkAction;
   if (getUser().equals(inode.getUserName())) {
-    if (mode.getUserAction().implies(access)) {
-      return;
-    }
+    checkAction=mode.getUserAction();
   }
  else   if (getGroups().contains(inode.getGroupName())) {
-    if (mode.getGroupAction().implies(access)) {
-      return;
-    }
+    checkAction=mode.getGroupAction();
   }
  else {
-    if (mode.getOtherAction().implies(access)) {
-      return;
-    }
+    checkAction=mode.getOtherAction();
   }
-  throw new AccessControlException(toAccessControlString(inode,path,access,mode));
+  return checkAction.implies(access);
 }
