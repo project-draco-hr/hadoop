@@ -1,0 +1,25 @@
+{
+  PartitionedResourceRequests partitionedAsks=partitionAskList(request.getAskList());
+  List<ContainerId> releasedContainers=request.getReleaseList();
+  int numReleasedContainers=releasedContainers.size();
+  if (numReleasedContainers > 0) {
+    LOG.info("AttemptID: " + applicationAttemptId + " released: "+ numReleasedContainers);
+    appContext.getContainersAllocated().removeAll(releasedContainers);
+  }
+  ResourceBlacklistRequest rbr=request.getResourceBlacklistRequest();
+  if (rbr != null) {
+    appContext.getBlacklist().removeAll(rbr.getBlacklistRemovals());
+    appContext.getBlacklist().addAll(rbr.getBlacklistAdditions());
+  }
+  appContext.addToOutstandingReqs(partitionedAsks.getOpportunistic());
+  List<Container> allocatedContainers=new ArrayList<>();
+  for (  Priority priority : appContext.getOutstandingOpReqs().descendingKeySet()) {
+    Map<Resource,List<Container>> allocated=allocate(rmIdentifier,appContext,priority,applicationAttemptId,appSubmitter);
+    for (    Map.Entry<Resource,List<Container>> e : allocated.entrySet()) {
+      appContext.matchAllocationToOutstandingRequest(e.getKey(),e.getValue());
+      allocatedContainers.addAll(e.getValue());
+    }
+  }
+  request.setAskList(partitionedAsks.getGuaranteed());
+  return allocatedContainers;
+}
