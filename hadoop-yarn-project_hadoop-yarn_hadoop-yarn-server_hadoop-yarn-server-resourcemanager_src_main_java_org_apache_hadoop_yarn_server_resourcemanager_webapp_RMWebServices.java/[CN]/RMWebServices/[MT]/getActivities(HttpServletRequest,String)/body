@@ -1,0 +1,47 @@
+{
+  YarnScheduler scheduler=rm.getRMContext().getScheduler();
+  if (scheduler instanceof AbstractYarnScheduler) {
+    String errMessage="";
+    AbstractYarnScheduler abstractYarnScheduler=(AbstractYarnScheduler)scheduler;
+    ActivitiesManager activitiesManager=abstractYarnScheduler.getActivitiesManager();
+    if (null == activitiesManager) {
+      errMessage="Not Capacity Scheduler";
+      return new ActivitiesInfo(errMessage,nodeId);
+    }
+    List<FiCaSchedulerNode> nodeList=abstractYarnScheduler.getNodeTracker().getAllNodes();
+    boolean illegalInput=false;
+    if (nodeList.size() == 0) {
+      illegalInput=true;
+      errMessage="No node manager running in the cluster";
+    }
+ else {
+      if (nodeId != null) {
+        String hostName=nodeId;
+        String portName="";
+        if (nodeId.contains(":")) {
+          int index=nodeId.indexOf(":");
+          hostName=nodeId.substring(0,index);
+          portName=nodeId.substring(index + 1);
+        }
+        boolean correctNodeId=false;
+        for (        FiCaSchedulerNode node : nodeList) {
+          if ((portName.equals("") && node.getRMNode().getHostName().equals(hostName)) || (!portName.equals("") && node.getRMNode().getHostName().equals(hostName) && String.valueOf(node.getRMNode().getCommandPort()).equals(portName))) {
+            correctNodeId=true;
+            nodeId=node.getNodeID().toString();
+            break;
+          }
+        }
+        if (!correctNodeId) {
+          illegalInput=true;
+          errMessage="Cannot find node manager with given node id";
+        }
+      }
+    }
+    if (!illegalInput) {
+      activitiesManager.recordNextNodeUpdateActivities(nodeId);
+      return activitiesManager.getActivitiesInfo(nodeId);
+    }
+    return new ActivitiesInfo(errMessage,nodeId);
+  }
+  return null;
+}

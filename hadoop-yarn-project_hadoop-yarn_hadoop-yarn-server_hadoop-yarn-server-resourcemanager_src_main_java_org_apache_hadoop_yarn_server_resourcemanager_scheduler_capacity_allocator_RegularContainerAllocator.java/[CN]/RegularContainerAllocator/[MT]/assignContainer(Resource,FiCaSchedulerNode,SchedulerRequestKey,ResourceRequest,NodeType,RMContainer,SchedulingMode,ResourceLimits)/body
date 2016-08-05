@@ -1,9 +1,11 @@
 {
+  Priority priority=schedulerKey.getPriority();
   lastResourceRequest=request;
   if (LOG.isDebugEnabled()) {
     LOG.debug("assignContainers: node=" + node.getNodeName() + " application="+ application.getApplicationId()+ " priority="+ schedulerKey.getPriority()+ " request="+ request+ " type="+ type);
   }
   if (!SchedulerUtils.checkResourceRequestMatchingNodePartition(request.getNodeLabelExpression(),node.getPartition(),schedulingMode)) {
+    ActivitiesLogger.APP.recordAppActivityWithoutAllocation(activitiesManager,node,application,priority,ActivityDiagnosticConstant.REQUEST_CAN_NOT_ACCESS_NODE_LABEL,ActivityState.REJECTED);
     return new ContainerAllocation(rmContainer,null,AllocationState.LOCALITY_SKIPPED);
   }
   Resource capability=request.getCapability();
@@ -11,6 +13,7 @@
   Resource totalResource=node.getTotalResource();
   if (!Resources.lessThanOrEqual(rc,clusterResource,capability,totalResource)) {
     LOG.warn("Node : " + node.getNodeID() + " does not have sufficient resource for request : "+ request+ " node total capability : "+ node.getTotalResource());
+    ActivitiesLogger.APP.recordSkippedAppActivityWithoutAllocation(activitiesManager,node,application,priority,ActivityDiagnosticConstant.NOT_SUFFICIENT_RESOURCE);
     return ContainerAllocation.LOCALITY_SKIPPED;
   }
   boolean shouldAllocOrReserveNewContainer=shouldAllocOrReserveNewContainer(schedulerKey,capability);
@@ -42,6 +45,7 @@
         }
         unreservedContainer=application.findNodeToUnreserve(clusterResource,node,schedulerKey,resourceNeedToUnReserve);
         if (null == unreservedContainer) {
+          ActivitiesLogger.APP.recordSkippedAppActivityWithoutAllocation(activitiesManager,node,application,priority,ActivityDiagnosticConstant.LOCALITY_SKIPPED);
           return ContainerAllocation.LOCALITY_SKIPPED;
         }
       }
@@ -58,6 +62,7 @@
           if (LOG.isDebugEnabled()) {
             LOG.debug("we needed to unreserve to be able to allocate");
           }
+          ActivitiesLogger.APP.recordSkippedAppActivityWithoutAllocation(activitiesManager,node,application,priority,ActivityDiagnosticConstant.LOCALITY_SKIPPED);
           return ContainerAllocation.LOCALITY_SKIPPED;
         }
       }
@@ -66,6 +71,7 @@
       result.setToKillContainers(null);
       return result;
     }
+    ActivitiesLogger.APP.recordSkippedAppActivityWithoutAllocation(activitiesManager,node,application,priority,ActivityDiagnosticConstant.LOCALITY_SKIPPED);
     return ContainerAllocation.LOCALITY_SKIPPED;
   }
 }

@@ -3,11 +3,19 @@
     if (LOG.isDebugEnabled()) {
       LOG.debug("Skip this queue=" + getQueuePath() + ", because it is not able to access partition="+ node.getPartition());
     }
+    ActivitiesLogger.QUEUE.recordQueueActivity(activitiesManager,node,getParentName(),getQueueName(),ActivityState.REJECTED,ActivityDiagnosticConstant.NOT_ABLE_TO_ACCESS_PARTITION + node.getPartition());
+    if (rootQueue) {
+      ActivitiesLogger.NODE.finishSkippedNodeAllocation(activitiesManager,node);
+    }
     return CSAssignment.NULL_ASSIGNMENT;
   }
   if (!super.hasPendingResourceRequest(node.getPartition(),clusterResource,schedulingMode)) {
     if (LOG.isDebugEnabled()) {
       LOG.debug("Skip this queue=" + getQueuePath() + ", because it doesn't need more resource, schedulingMode="+ schedulingMode.name()+ " node-partition="+ node.getPartition());
+    }
+    ActivitiesLogger.QUEUE.recordQueueActivity(activitiesManager,node,getParentName(),getQueueName(),ActivityState.SKIPPED,ActivityDiagnosticConstant.QUEUE_DO_NOT_NEED_MORE_RESOURCE);
+    if (rootQueue) {
+      ActivitiesLogger.NODE.finishSkippedNodeAllocation(activitiesManager,node);
     }
     return CSAssignment.NULL_ASSIGNMENT;
   }
@@ -17,11 +25,26 @@
       LOG.debug("Trying to assign containers to child-queue of " + getQueueName());
     }
     if (!super.canAssignToThisQueue(clusterResource,node.getPartition(),resourceLimits,Resources.createResource(getMetrics().getReservedMB(),getMetrics().getReservedVirtualCores()),schedulingMode)) {
+      ActivitiesLogger.QUEUE.recordQueueActivity(activitiesManager,node,getParentName(),getQueueName(),ActivityState.SKIPPED,ActivityDiagnosticConstant.QUEUE_MAX_CAPACITY_LIMIT);
+      if (rootQueue) {
+        ActivitiesLogger.NODE.finishSkippedNodeAllocation(activitiesManager,node);
+      }
       break;
     }
     CSAssignment assignedToChild=assignContainersToChildQueues(clusterResource,node,resourceLimits,schedulingMode);
     assignment.setType(assignedToChild.getType());
     if (Resources.greaterThan(resourceCalculator,clusterResource,assignedToChild.getResource(),Resources.none())) {
+      ActivitiesLogger.QUEUE.recordQueueActivity(activitiesManager,node,getParentName(),getQueueName(),ActivityState.ACCEPTED,ActivityDiagnosticConstant.EMPTY);
+      if (node.getReservedContainer() == null) {
+        if (rootQueue) {
+          ActivitiesLogger.NODE.finishAllocatedNodeAllocation(activitiesManager,node,assignedToChild.getAssignmentInformation().getFirstAllocatedOrReservedContainerId(),AllocationState.ALLOCATED);
+        }
+      }
+ else {
+        if (rootQueue) {
+          ActivitiesLogger.NODE.finishAllocatedNodeAllocation(activitiesManager,node,assignedToChild.getAssignmentInformation().getFirstAllocatedOrReservedContainerId(),AllocationState.RESERVED);
+        }
+      }
       allocateResource(clusterResource,assignedToChild.getResource(),node.getPartition(),assignedToChild.isIncreasedAllocation());
       Resources.addTo(assignment.getResource(),assignedToChild.getResource());
       Resources.addTo(assignment.getAssignmentInformation().getAllocated(),assignedToChild.getAssignmentInformation().getAllocated());
@@ -35,6 +58,10 @@
     }
  else {
       assignment.setSkippedType(assignedToChild.getSkippedType());
+      ActivitiesLogger.QUEUE.recordQueueActivity(activitiesManager,node,getParentName(),getQueueName(),ActivityState.SKIPPED,ActivityDiagnosticConstant.EMPTY);
+      if (rootQueue) {
+        ActivitiesLogger.NODE.finishSkippedNodeAllocation(activitiesManager,node);
+      }
       break;
     }
     if (LOG.isDebugEnabled()) {
