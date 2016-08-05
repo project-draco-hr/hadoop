@@ -1,0 +1,62 @@
+{
+  String containerIdStr=request.getContainerId().toString();
+  String localDir=request.getOutputLocalDir();
+  String nodeHttpAddress=request.getNodeHttpAddress();
+  if (nodeHttpAddress == null || nodeHttpAddress.isEmpty()) {
+    System.err.println("Can not get the logs for the container: " + containerIdStr);
+    System.err.println("The node http address is required to get container " + "logs for the Running application.");
+    return -1;
+  }
+  String nodeId=request.getNodeId();
+  PrintStream out=logCliHelper.createPrintStream(localDir,nodeId,containerIdStr);
+  try {
+    List<PerLogFileInfo> allLogFileInfos=getContainerLogFiles(getConf(),containerIdStr,nodeHttpAddress);
+    List<String> fileNames=new ArrayList<String>();
+    for (    PerLogFileInfo fileInfo : allLogFileInfos) {
+      fileNames.add(fileInfo.getFileName());
+    }
+    Set<String> matchedFiles=getMatchedLogFiles(request,fileNames,useRegex);
+    if (matchedFiles.isEmpty()) {
+      System.err.println("Can not find any log file matching the pattern: " + request.getLogTypes() + " for the container: "+ containerIdStr+ " within the application: "+ request.getAppId());
+      return -1;
+    }
+    ContainerLogsRequest newOptions=new ContainerLogsRequest(request);
+    newOptions.setLogTypes(matchedFiles);
+    Client webServiceClient=Client.create();
+    String containerString=String.format(LogCLIHelpers.CONTAINER_ON_NODE_PATTERN,containerIdStr,nodeId);
+    out.println(containerString);
+    out.println(StringUtils.repeat("=",containerString.length()));
+    boolean foundAnyLogs=false;
+    for (    String logFile : newOptions.getLogTypes()) {
+      out.println("LogType:" + logFile);
+      out.println("Log Upload Time:" + Times.format(System.currentTimeMillis()));
+      out.println("Log Contents:");
+      try {
+        WebResource webResource=webServiceClient.resource(WebAppUtils.getHttpSchemePrefix(conf) + nodeHttpAddress);
+        ClientResponse response=webResource.path("ws").path("v1").path("node").path("containers").path(containerIdStr).path("logs").path(logFile).queryParam("size",Long.toString(request.getBytes())).accept(MediaType.TEXT_PLAIN).get(ClientResponse.class);
+        out.println(response.getEntity(String.class));
+        StringBuilder sb=new StringBuilder();
+        sb.append("End of LogType:" + logFile + ".");
+        if (request.getContainerState() == ContainerState.RUNNING) {
+          sb.append(" This log file belongs" + " to a running container (" + containerIdStr + ") and so may"+ " not be complete.");
+        }
+        out.println(sb.toString());
+        out.flush();
+        foundAnyLogs=true;
+      }
+ catch (      ClientHandlerException|UniformInterfaceException ex) {
+        System.err.println("Can not find the log file:" + logFile + " for the container:"+ containerIdStr+ " in NodeManager:"+ nodeId);
+      }
+    }
+    int result=logCliHelper.dumpAContainerLogsForLogType(newOptions,false);
+    if (result == 0 || foundAnyLogs) {
+      return 0;
+    }
+ else {
+      return -1;
+    }
+  }
+  finally {
+    logCliHelper.closePrintStream(out);
+  }
+}
