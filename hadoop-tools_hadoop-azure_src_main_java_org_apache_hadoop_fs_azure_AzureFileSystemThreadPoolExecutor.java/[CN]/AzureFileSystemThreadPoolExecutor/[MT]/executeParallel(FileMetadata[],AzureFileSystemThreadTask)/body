@@ -1,0 +1,75 @@
+{
+  boolean operationStatus=false;
+  boolean threadsEnabled=false;
+  int threadCount=this.threadCount;
+  ThreadPoolExecutor ioThreadPool=null;
+  long start=Time.monotonicNow();
+  threadCount=Math.min(contents.length,threadCount);
+  if (threadCount > 1) {
+    try {
+      ioThreadPool=getThreadPool(threadCount);
+      threadsEnabled=true;
+    }
+ catch (    Exception e) {
+      LOG.warn("Failed to create thread pool with threads {} for operation {} on blob {}." + " Use config {} to set less number of threads. Setting config value to <= 1 will disable threads.",threadCount,operation,key,config);
+    }
+  }
+ else {
+    LOG.warn("Disabling threads for {} operation as thread count {} is <= 1",operation,threadCount);
+  }
+  if (threadsEnabled) {
+    LOG.debug("Using thread pool for {} operation with threads {}",operation,threadCount);
+    boolean started=false;
+    AzureFileSystemThreadRunnable runnable=new AzureFileSystemThreadRunnable(contents,threadOperation,operation);
+    for (int i=0; i < threadCount && runnable.lastException == null && runnable.operationStatus; i++) {
+      try {
+        ioThreadPool.execute(runnable);
+        started=true;
+      }
+ catch (      RejectedExecutionException ex) {
+        LOG.error("Rejected execution of thread for {} operation on blob {}." + " Continuing with existing threads. Use config {} to set less number of threads" + " to avoid this error",operation,key,config);
+      }
+    }
+    ioThreadPool.shutdown();
+    try {
+      ioThreadPool.awaitTermination(Long.MAX_VALUE,TimeUnit.DAYS);
+    }
+ catch (    InterruptedException intrEx) {
+      ioThreadPool.shutdownNow();
+      Thread.currentThread().interrupt();
+      LOG.error("Threads got interrupted {} blob operation for {} ",operation,key);
+    }
+    int threadsNotUsed=threadCount - runnable.threadsUsed.get();
+    if (threadsNotUsed > 0) {
+      LOG.warn("{} threads not used for {} operation on blob {}",threadsNotUsed,operation,key);
+    }
+    if (!started) {
+      threadsEnabled=false;
+      LOG.info("Not able to schedule threads to {} blob {}. Fall back to {} blob serially.",operation,key,operation);
+    }
+ else {
+      IOException lastException=runnable.lastException;
+      if (lastException == null && runnable.operationStatus && runnable.filesProcessed.get() < contents.length) {
+        LOG.error("{} failed as operation on subfolders and files failed.",operation);
+        lastException=new IOException(operation + " failed as operation on subfolders and files failed.");
+      }
+      if (lastException != null) {
+        throw lastException;
+      }
+      operationStatus=runnable.operationStatus;
+    }
+  }
+  if (!threadsEnabled) {
+    LOG.debug("Serializing the {} operation",operation);
+    for (int i=0; i < contents.length; i++) {
+      if (!threadOperation.execute(contents[i])) {
+        LOG.warn("Failed to {} file {}",operation,contents[i]);
+        return false;
+      }
+    }
+    operationStatus=true;
+  }
+  long end=Time.monotonicNow();
+  LOG.info("Time taken for {} operation is: {} ms with threads: {}",operation,(end - start),threadCount);
+  return operationStatus;
+}

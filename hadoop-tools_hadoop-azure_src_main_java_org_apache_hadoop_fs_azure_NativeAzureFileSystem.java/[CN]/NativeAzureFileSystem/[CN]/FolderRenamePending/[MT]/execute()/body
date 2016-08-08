@@ -1,13 +1,13 @@
 {
-  for (  FileMetadata file : this.getFiles()) {
-    if (file.getBlobMaterialization() == BlobMaterialization.Explicit) {
-      String srcName=file.getKey();
-      String suffix=srcName.substring((this.getSrcKey()).length());
-      String dstName=this.getDstKey() + suffix;
-      boolean acquireLease=fs.getStoreInterface().isAtomicRenameKey(srcName);
-      fs.getStoreInterface().rename(srcName,dstName,acquireLease,null);
+  AzureFileSystemThreadTask task=new AzureFileSystemThreadTask(){
+    @Override public boolean execute(    FileMetadata file) throws IOException {
+      renameFile(file);
+      return true;
     }
   }
+;
+  AzureFileSystemThreadPoolExecutor executor=this.fs.getThreadPoolExecutor(this.fs.renameThreadCount,"AzureBlobRenameThread","Rename",getSrcKey(),AZURE_RENAME_THREADS);
+  executor.executeParallel(this.getFiles(),task);
   FileMetadata srcMetadata2=this.getSourceMetadata();
   if (srcMetadata2.getBlobMaterialization() == BlobMaterialization.Explicit) {
     fs.getStoreInterface().rename(this.getSrcKey(),this.getDstKey(),false,folderLease);

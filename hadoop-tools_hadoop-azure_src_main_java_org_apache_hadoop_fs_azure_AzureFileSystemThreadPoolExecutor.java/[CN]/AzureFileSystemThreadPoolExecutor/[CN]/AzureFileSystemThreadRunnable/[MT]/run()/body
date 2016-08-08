@@ -1,0 +1,31 @@
+{
+  long start=Time.monotonicNow();
+  int currentIndex;
+  int processedFilesCount=0;
+  while ((currentIndex=fileIndex.getAndIncrement()) < files.length) {
+    processedFilesCount++;
+    FileMetadata file=files[currentIndex];
+    try {
+      if (!task.execute(file)) {
+        LOG.error("{} operation failed for file {}",this.operation,file.getKey());
+        operationStatus=false;
+      }
+ else {
+        filesProcessed.getAndIncrement();
+      }
+    }
+ catch (    Exception e) {
+      LOG.error("Encountered Exception for {} operation for file {}",this.operation,file.getKey());
+      lastException=new IOException("Encountered Exception for " + this.operation + " operation for file "+ file.getKey(),e);
+    }
+    if (lastException != null || !operationStatus) {
+      LOG.warn("Terminating execution of {} operation now as some other thread" + " already got exception or operation failed",this.operation,file.getKey());
+      break;
+    }
+  }
+  long end=Time.monotonicNow();
+  LOG.debug("Time taken to process {} files count for {} operation: {} ms",processedFilesCount,this.operation,(end - start));
+  if (processedFilesCount > 0) {
+    threadsUsed.getAndIncrement();
+  }
+}

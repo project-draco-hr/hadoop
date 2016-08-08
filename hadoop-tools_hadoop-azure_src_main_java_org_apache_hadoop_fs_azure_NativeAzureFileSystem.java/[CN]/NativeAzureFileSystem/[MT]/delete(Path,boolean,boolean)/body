@@ -88,54 +88,45 @@
       }
     }
     String priorLastKey=null;
-    PartialListing listing=null;
-    try {
-      listing=store.listAll(key,AZURE_LIST_ALL,1,priorLastKey);
-    }
- catch (    IOException e) {
-      Throwable innerException=NativeAzureFileSystemHelper.checkForAzureStorageException(e);
-      if (innerException instanceof StorageException && NativeAzureFileSystemHelper.isFileNotFoundException((StorageException)innerException)) {
-        return false;
+    long start=Time.monotonicNow();
+    ArrayList<FileMetadata> fileMetadataList=new ArrayList<FileMetadata>();
+    do {
+      try {
+        PartialListing listing=store.listAll(key,AZURE_LIST_ALL,AZURE_UNBOUNDED_DEPTH,priorLastKey);
+        for (        FileMetadata file : listing.getFiles()) {
+          fileMetadataList.add(file);
+        }
+        priorLastKey=listing.getPriorLastKey();
       }
-      throw e;
+ catch (      IOException e) {
+        Throwable innerException=NativeAzureFileSystemHelper.checkForAzureStorageException(e);
+        if (innerException instanceof StorageException && NativeAzureFileSystemHelper.isFileNotFoundException((StorageException)innerException)) {
+          return false;
+        }
+        throw e;
+      }
     }
-    if (listing == null) {
-      return false;
-    }
-    FileMetadata[] contents=listing.getFiles();
+ while (priorLastKey != null);
+    long end=Time.monotonicNow();
+    LOG.debug("Time taken to list {} blobs for delete operation: {} ms",fileMetadataList.size(),(end - start));
+    final FileMetadata[] contents=fileMetadataList.toArray(new FileMetadata[fileMetadataList.size()]);
     if (!recursive && contents.length > 0) {
       throw new IOException("Non-recursive delete of non-empty directory " + f.toString());
     }
-    for (    FileMetadata p : contents) {
-      String suffix=p.getKey().substring(p.getKey().lastIndexOf(PATH_DELIMITER));
-      if (!p.isDir()) {
-        try {
-          store.delete(key + suffix);
-          instrumentation.fileDeleted();
-        }
- catch (        IOException e) {
-          Throwable innerException=NativeAzureFileSystemHelper.checkForAzureStorageException(e);
-          if (innerException instanceof StorageException && NativeAzureFileSystemHelper.isFileNotFoundException((StorageException)innerException)) {
-            return false;
-          }
-          throw e;
-        }
-      }
- else {
-        if (!delete(new Path(f.toString() + suffix),true)) {
-          return false;
-        }
+    AzureFileSystemThreadTask task=new AzureFileSystemThreadTask(){
+      @Override public boolean execute(      FileMetadata file) throws IOException {
+        return deleteFile(file.getKey(),file.isDir());
       }
     }
-    try {
-      store.delete(key);
+;
+    AzureFileSystemThreadPoolExecutor executor=getThreadPoolExecutor(this.deleteThreadCount,"AzureBlobDeleteThread","Delete",key,AZURE_DELETE_THREADS);
+    if (!executor.executeParallel(contents,task)) {
+      LOG.error("Failed to delete files / subfolders in blob {}",key);
+      return false;
     }
- catch (    IOException e) {
-      Throwable innerException=NativeAzureFileSystemHelper.checkForAzureStorageException(e);
-      if (innerException instanceof StorageException && NativeAzureFileSystemHelper.isFileNotFoundException((StorageException)innerException)) {
-        return false;
-      }
-      throw e;
+    if (!deleteFile(metaFile.getKey(),metaFile.isDir())) {
+      LOG.error("Failed delete directory {}",f.toString());
+      return false;
     }
     Path parent=absolutePath.getParent();
     if (parent != null && parent.getParent() != null) {
@@ -143,7 +134,6 @@
         updateParentFolderLastModifiedTime(key);
       }
     }
-    instrumentation.directoryDeleted();
   }
   LOG.debug("Delete Successful for : {}",f.toString());
   return true;
