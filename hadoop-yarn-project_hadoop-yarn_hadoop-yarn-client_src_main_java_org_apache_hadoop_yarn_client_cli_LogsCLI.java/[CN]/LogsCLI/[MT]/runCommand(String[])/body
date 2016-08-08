@@ -20,6 +20,7 @@
   boolean showContainerLogInfo=false;
   boolean useRegex=false;
   String[] logFiles=null;
+  String[] logFilesRegex=null;
   List<String> amContainersList=new ArrayList<String>();
   String localDir=null;
   long bytes=Long.MAX_VALUE;
@@ -34,7 +35,6 @@
     localDir=commandLine.getOptionValue(OUT_OPTION);
     showApplicationLogInfo=commandLine.hasOption(SHOW_APPLICATION_LOG_INFO);
     showContainerLogInfo=commandLine.hasOption(SHOW_CONTAINER_LOG_INFO);
-    useRegex=commandLine.hasOption(REGEX_OPTION);
     if (getAMContainerLogs) {
       try {
         amContainersList=parseAMContainer(commandLine,printOpts);
@@ -46,6 +46,10 @@
     }
     if (commandLine.hasOption(PER_CONTAINER_LOG_FILES_OPTION)) {
       logFiles=commandLine.getOptionValues(PER_CONTAINER_LOG_FILES_OPTION);
+    }
+    if (commandLine.hasOption(PER_CONTAINER_LOG_FILES_REGEX_OPTION)) {
+      logFilesRegex=commandLine.getOptionValues(PER_CONTAINER_LOG_FILES_REGEX_OPTION);
+      useRegex=true;
     }
     if (commandLine.hasOption(SIZE_OPTION)) {
       bytes=Long.parseLong(commandLine.getOptionValue(SIZE_OPTION));
@@ -91,6 +95,10 @@
     System.err.println("Invalid options. Can only accept one of " + "show_application_log_info/show_container_log_info.");
     return -1;
   }
+  if (logFiles != null && logFiles.length > 0 && logFilesRegex != null && logFilesRegex.length > 0) {
+    System.err.println("Invalid options. Can only accept one of " + "log_files/log_files_pattern.");
+    return -1;
+  }
   if (localDir != null) {
     File file=new File(localDir);
     if (file.exists() && file.isFile()) {
@@ -123,11 +131,14 @@
     }
   }
   Set<String> logs=new HashSet<String>();
-  if (fetchAllLogFiles(logFiles,useRegex)) {
+  if (fetchAllLogFiles(logFiles,logFilesRegex)) {
     logs.add("ALL");
   }
  else   if (logFiles != null && logFiles.length > 0) {
     logs.addAll(Arrays.asList(logFiles));
+  }
+ else   if (logFilesRegex != null && logFilesRegex.length > 0) {
+    logs.addAll(Arrays.asList(logFilesRegex));
   }
   ContainerLogsRequest request=new ContainerLogsRequest(appId,isApplicationFinished(appState),appOwner,nodeAddress,null,containerIdStr,localDir,logs,bytes,null);
   if (showContainerLogInfo) {
