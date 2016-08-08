@@ -1,19 +1,21 @@
 {
-  ReplicaInfo info=getReplicaInfo(b);
-  FsVolumeReference ref=info.getVolume().obtainReference();
-  try {
-    InputStream blockInStream=openAndSeek(info.getBlockFile(),blkOffset);
+  try (AutoCloseableLock lock=datasetLock.acquire()){
+    ReplicaInfo info=getReplicaInfo(b);
+    FsVolumeReference ref=info.getVolume().obtainReference();
     try {
-      InputStream metaInStream=openAndSeek(info.getMetaFile(),metaOffset);
-      return new ReplicaInputStreams(blockInStream,metaInStream,ref);
+      InputStream blockInStream=openAndSeek(info.getBlockFile(),blkOffset);
+      try {
+        InputStream metaInStream=openAndSeek(info.getMetaFile(),metaOffset);
+        return new ReplicaInputStreams(blockInStream,metaInStream,ref);
+      }
+ catch (      IOException e) {
+        IOUtils.cleanup(null,blockInStream);
+        throw e;
+      }
     }
  catch (    IOException e) {
-      IOUtils.cleanup(null,blockInStream);
+      IOUtils.cleanup(null,ref);
       throw e;
     }
   }
- catch (  IOException e) {
-    IOUtils.cleanup(null,ref);
-    throw e;
-  }
-}
+ }

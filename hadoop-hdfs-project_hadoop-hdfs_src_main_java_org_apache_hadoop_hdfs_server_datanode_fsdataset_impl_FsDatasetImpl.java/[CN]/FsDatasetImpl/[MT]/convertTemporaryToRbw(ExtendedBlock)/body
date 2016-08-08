@@ -1,10 +1,10 @@
 {
-  final long blockId=b.getBlockId();
-  final long expectedGs=b.getGenerationStamp();
-  final long visible=b.getNumBytes();
-  LOG.info("Convert " + b + " from Temporary to RBW, visible length="+ visible);
-  final ReplicaInPipeline temp;
-{
+  try (AutoCloseableLock lock=datasetLock.acquire()){
+    final long blockId=b.getBlockId();
+    final long expectedGs=b.getGenerationStamp();
+    final long visible=b.getNumBytes();
+    LOG.info("Convert " + b + " from Temporary to RBW, visible length="+ visible);
+    final ReplicaInPipeline temp;
     final ReplicaInfo r=volumeMap.get(b.getBlockPoolId(),blockId);
     if (r == null) {
       throw new ReplicaNotFoundException(ReplicaNotFoundException.NON_EXISTENT_REPLICA + b);
@@ -13,22 +13,22 @@
       throw new ReplicaAlreadyExistsException("r.getState() != ReplicaState.TEMPORARY, r=" + r);
     }
     temp=(ReplicaInPipeline)r;
+    if (temp.getGenerationStamp() != expectedGs) {
+      throw new ReplicaAlreadyExistsException("temp.getGenerationStamp() != expectedGs = " + expectedGs + ", temp="+ temp);
+    }
+    final long numBytes=temp.getNumBytes();
+    if (numBytes < visible) {
+      throw new IOException(numBytes + " = numBytes < visible = " + visible+ ", temp="+ temp);
+    }
+    final FsVolumeImpl v=(FsVolumeImpl)temp.getVolume();
+    if (v == null) {
+      throw new IOException("r.getVolume() = null, temp=" + temp);
+    }
+    BlockPoolSlice bpslice=v.getBlockPoolSlice(b.getBlockPoolId());
+    final File dest=moveBlockFiles(b.getLocalBlock(),temp.getBlockFile(),bpslice.getRbwDir());
+    final ReplicaBeingWritten rbw=new ReplicaBeingWritten(blockId,numBytes,expectedGs,v,dest.getParentFile(),Thread.currentThread(),0);
+    rbw.setBytesAcked(visible);
+    volumeMap.add(b.getBlockPoolId(),rbw);
+    return rbw;
   }
-  if (temp.getGenerationStamp() != expectedGs) {
-    throw new ReplicaAlreadyExistsException("temp.getGenerationStamp() != expectedGs = " + expectedGs + ", temp="+ temp);
-  }
-  final long numBytes=temp.getNumBytes();
-  if (numBytes < visible) {
-    throw new IOException(numBytes + " = numBytes < visible = " + visible+ ", temp="+ temp);
-  }
-  final FsVolumeImpl v=(FsVolumeImpl)temp.getVolume();
-  if (v == null) {
-    throw new IOException("r.getVolume() = null, temp=" + temp);
-  }
-  BlockPoolSlice bpslice=v.getBlockPoolSlice(b.getBlockPoolId());
-  final File dest=moveBlockFiles(b.getLocalBlock(),temp.getBlockFile(),bpslice.getRbwDir());
-  final ReplicaBeingWritten rbw=new ReplicaBeingWritten(blockId,numBytes,expectedGs,v,dest.getParentFile(),Thread.currentThread(),0);
-  rbw.setBytesAcked(visible);
-  volumeMap.add(b.getBlockPoolId(),rbw);
-  return rbw;
-}
+ }

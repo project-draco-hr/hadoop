@@ -4,7 +4,7 @@
   }
   Map<String,List<ReplicaInfo>> blkToInvalidate=new HashMap<>();
   List<String> storageToRemove=new ArrayList<>();
-synchronized (this) {
+  try (AutoCloseableLock lock=datasetLock.acquire()){
     for (int idx=0; idx < dataStorage.getNumStorageDirs(); idx++) {
       Storage.StorageDirectory sd=dataStorage.getStorageDir(idx);
       final File absRoot=sd.getRoot().getAbsoluteFile();
@@ -30,16 +30,16 @@ synchronized (this) {
     }
     setupAsyncLazyPersistThreads();
   }
-  for (  Map.Entry<String,List<ReplicaInfo>> entry : blkToInvalidate.entrySet()) {
+   for (  Map.Entry<String,List<ReplicaInfo>> entry : blkToInvalidate.entrySet()) {
     String bpid=entry.getKey();
     List<ReplicaInfo> blocks=entry.getValue();
     for (    ReplicaInfo block : blocks) {
       invalidate(bpid,block);
     }
   }
-synchronized (this) {
+  try (AutoCloseableLock lock=datasetLock.acquire()){
     for (    String storageUuid : storageToRemove) {
       storageMap.remove(storageUuid);
     }
   }
-}
+ }

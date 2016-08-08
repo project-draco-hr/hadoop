@@ -1,26 +1,28 @@
 {
-  long replicaGenerationStamp=rbw.getGenerationStamp();
-  if (replicaGenerationStamp < b.getGenerationStamp() || replicaGenerationStamp > newGS) {
-    throw new ReplicaNotFoundException(ReplicaNotFoundException.UNEXPECTED_GS_REPLICA + b + ". Expected GS range is ["+ b.getGenerationStamp()+ ", "+ newGS+ "].");
-  }
-  long bytesAcked=rbw.getBytesAcked();
-  long numBytes=rbw.getNumBytes();
-  if (bytesAcked < minBytesRcvd || numBytes > maxBytesRcvd) {
-    throw new ReplicaNotFoundException("Unmatched length replica " + rbw + ": BytesAcked = "+ bytesAcked+ " BytesRcvd = "+ numBytes+ " are not in the range of ["+ minBytesRcvd+ ", "+ maxBytesRcvd+ "].");
-  }
-  FsVolumeReference ref=rbw.getVolume().obtainReference();
-  try {
-    if (numBytes > bytesAcked) {
-      final File replicafile=rbw.getBlockFile();
-      truncateBlock(replicafile,rbw.getMetaFile(),numBytes,bytesAcked);
-      rbw.setNumBytes(bytesAcked);
-      rbw.setLastChecksumAndDataLen(bytesAcked,null);
+  try (AutoCloseableLock lock=datasetLock.acquire()){
+    long replicaGenerationStamp=rbw.getGenerationStamp();
+    if (replicaGenerationStamp < b.getGenerationStamp() || replicaGenerationStamp > newGS) {
+      throw new ReplicaNotFoundException(ReplicaNotFoundException.UNEXPECTED_GS_REPLICA + b + ". Expected GS range is ["+ b.getGenerationStamp()+ ", "+ newGS+ "].");
     }
-    bumpReplicaGS(rbw,newGS);
+    long bytesAcked=rbw.getBytesAcked();
+    long numBytes=rbw.getNumBytes();
+    if (bytesAcked < minBytesRcvd || numBytes > maxBytesRcvd) {
+      throw new ReplicaNotFoundException("Unmatched length replica " + rbw + ": BytesAcked = "+ bytesAcked+ " BytesRcvd = "+ numBytes+ " are not in the range of ["+ minBytesRcvd+ ", "+ maxBytesRcvd+ "].");
+    }
+    FsVolumeReference ref=rbw.getVolume().obtainReference();
+    try {
+      if (numBytes > bytesAcked) {
+        final File replicafile=rbw.getBlockFile();
+        truncateBlock(replicafile,rbw.getMetaFile(),numBytes,bytesAcked);
+        rbw.setNumBytes(bytesAcked);
+        rbw.setLastChecksumAndDataLen(bytesAcked,null);
+      }
+      bumpReplicaGS(rbw,newGS);
+    }
+ catch (    IOException e) {
+      IOUtils.cleanup(null,ref);
+      throw e;
+    }
+    return new ReplicaHandler(rbw,ref);
   }
- catch (  IOException e) {
-    IOUtils.cleanup(null,ref);
-    throw e;
-  }
-  return new ReplicaHandler(rbw,ref);
-}
+ }

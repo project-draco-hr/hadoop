@@ -1,38 +1,40 @@
 {
-  ReplicaInfo replicaInfo=volumeMap.get(b.getBlockPoolId(),b.getBlockId());
-  if (replicaInfo != null) {
-    throw new ReplicaAlreadyExistsException("Block " + b + " already exists in state "+ replicaInfo.getState()+ " and thus cannot be created.");
-  }
-  FsVolumeReference ref=null;
-  if (allowLazyPersist && lazyWriter != null && b.getNumBytes() % cacheManager.getOsPageSize() == 0 && reserveLockedMemory(b.getNumBytes())) {
-    try {
-      ref=volumes.getNextTransientVolume(b.getNumBytes());
-      datanode.getMetrics().incrRamDiskBlocksWrite();
+  try (AutoCloseableLock lock=datasetLock.acquire()){
+    ReplicaInfo replicaInfo=volumeMap.get(b.getBlockPoolId(),b.getBlockId());
+    if (replicaInfo != null) {
+      throw new ReplicaAlreadyExistsException("Block " + b + " already exists in state "+ replicaInfo.getState()+ " and thus cannot be created.");
     }
- catch (    DiskOutOfSpaceException de) {
-    }
+    FsVolumeReference ref=null;
+    if (allowLazyPersist && lazyWriter != null && b.getNumBytes() % cacheManager.getOsPageSize() == 0 && reserveLockedMemory(b.getNumBytes())) {
+      try {
+        ref=volumes.getNextTransientVolume(b.getNumBytes());
+        datanode.getMetrics().incrRamDiskBlocksWrite();
+      }
+ catch (      DiskOutOfSpaceException de) {
+      }
  finally {
-      if (ref == null) {
-        cacheManager.release(b.getNumBytes());
+        if (ref == null) {
+          cacheManager.release(b.getNumBytes());
+        }
       }
     }
+    if (ref == null) {
+      ref=volumes.getNextVolume(storageType,b.getNumBytes());
+    }
+    FsVolumeImpl v=(FsVolumeImpl)ref.getVolume();
+    if (allowLazyPersist && !v.isTransientStorage()) {
+      datanode.getMetrics().incrRamDiskBlocksWriteFallback();
+    }
+    File f;
+    try {
+      f=v.createRbwFile(b.getBlockPoolId(),b.getLocalBlock());
+    }
+ catch (    IOException e) {
+      IOUtils.cleanup(null,ref);
+      throw e;
+    }
+    ReplicaBeingWritten newReplicaInfo=new ReplicaBeingWritten(b.getBlockId(),b.getGenerationStamp(),v,f.getParentFile(),b.getNumBytes());
+    volumeMap.add(b.getBlockPoolId(),newReplicaInfo);
+    return new ReplicaHandler(newReplicaInfo,ref);
   }
-  if (ref == null) {
-    ref=volumes.getNextVolume(storageType,b.getNumBytes());
-  }
-  FsVolumeImpl v=(FsVolumeImpl)ref.getVolume();
-  if (allowLazyPersist && !v.isTransientStorage()) {
-    datanode.getMetrics().incrRamDiskBlocksWriteFallback();
-  }
-  File f;
-  try {
-    f=v.createRbwFile(b.getBlockPoolId(),b.getLocalBlock());
-  }
- catch (  IOException e) {
-    IOUtils.cleanup(null,ref);
-    throw e;
-  }
-  ReplicaBeingWritten newReplicaInfo=new ReplicaBeingWritten(b.getBlockId(),b.getGenerationStamp(),v,f.getParentFile(),b.getNumBytes());
-  volumeMap.add(b.getBlockPoolId(),newReplicaInfo);
-  return new ReplicaHandler(newReplicaInfo,ref);
-}
+ }

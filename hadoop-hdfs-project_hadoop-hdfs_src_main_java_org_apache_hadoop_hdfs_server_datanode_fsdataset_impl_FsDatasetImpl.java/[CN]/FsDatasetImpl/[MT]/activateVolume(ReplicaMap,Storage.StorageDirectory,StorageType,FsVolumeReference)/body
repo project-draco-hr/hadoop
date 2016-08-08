@@ -1,12 +1,14 @@
 {
-  DatanodeStorage dnStorage=storageMap.get(sd.getStorageUuid());
-  if (dnStorage != null) {
-    final String errorMsg=String.format("Found duplicated storage UUID: %s in %s.",sd.getStorageUuid(),sd.getVersionFile());
-    LOG.error(errorMsg);
-    throw new IOException(errorMsg);
+  try (AutoCloseableLock lock=datasetLock.acquire()){
+    DatanodeStorage dnStorage=storageMap.get(sd.getStorageUuid());
+    if (dnStorage != null) {
+      final String errorMsg=String.format("Found duplicated storage UUID: %s in %s.",sd.getStorageUuid(),sd.getVersionFile());
+      LOG.error(errorMsg);
+      throw new IOException(errorMsg);
+    }
+    volumeMap.addAll(replicaMap);
+    storageMap.put(sd.getStorageUuid(),new DatanodeStorage(sd.getStorageUuid(),DatanodeStorage.State.NORMAL,storageType));
+    asyncDiskService.addVolume(sd.getCurrentDir());
+    volumes.addVolume(ref);
   }
-  volumeMap.addAll(replicaMap);
-  storageMap.put(sd.getStorageUuid(),new DatanodeStorage(sd.getStorageUuid(),DatanodeStorage.State.NORMAL,storageType));
-  asyncDiskService.addVolume(sd.getCurrentDir());
-  volumes.addVolume(ref);
-}
+ }

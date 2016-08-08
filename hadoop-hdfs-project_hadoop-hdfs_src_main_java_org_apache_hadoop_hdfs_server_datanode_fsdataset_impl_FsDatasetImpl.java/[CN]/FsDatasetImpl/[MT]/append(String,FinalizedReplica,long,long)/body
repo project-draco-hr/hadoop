@@ -1,41 +1,43 @@
 {
-  cacheManager.uncacheBlock(bpid,replicaInfo.getBlockId());
-  replicaInfo.breakHardLinksIfNeeded();
-  File blkfile=replicaInfo.getBlockFile();
-  FsVolumeImpl v=(FsVolumeImpl)replicaInfo.getVolume();
-  long bytesReserved=estimateBlockLen - replicaInfo.getNumBytes();
-  if (v.getAvailable() < bytesReserved) {
-    throw new DiskOutOfSpaceException("Insufficient space for appending to " + replicaInfo);
-  }
-  File newBlkFile=new File(v.getRbwDir(bpid),replicaInfo.getBlockName());
-  File oldmeta=replicaInfo.getMetaFile();
-  ReplicaBeingWritten newReplicaInfo=new ReplicaBeingWritten(replicaInfo.getBlockId(),replicaInfo.getNumBytes(),newGS,v,newBlkFile.getParentFile(),Thread.currentThread(),bytesReserved);
-  File newmeta=newReplicaInfo.getMetaFile();
-  if (LOG.isDebugEnabled()) {
-    LOG.debug("Renaming " + oldmeta + " to "+ newmeta);
-  }
-  try {
-    NativeIO.renameTo(oldmeta,newmeta);
-  }
- catch (  IOException e) {
-    throw new IOException("Block " + replicaInfo + " reopen failed. "+ " Unable to move meta file  "+ oldmeta+ " to rbw dir "+ newmeta,e);
-  }
-  if (LOG.isDebugEnabled()) {
-    LOG.debug("Renaming " + blkfile + " to "+ newBlkFile+ ", file length="+ blkfile.length());
-  }
-  try {
-    NativeIO.renameTo(blkfile,newBlkFile);
-  }
- catch (  IOException e) {
+  try (AutoCloseableLock lock=datasetLock.acquire()){
+    cacheManager.uncacheBlock(bpid,replicaInfo.getBlockId());
+    replicaInfo.breakHardLinksIfNeeded();
+    File blkfile=replicaInfo.getBlockFile();
+    FsVolumeImpl v=(FsVolumeImpl)replicaInfo.getVolume();
+    long bytesReserved=estimateBlockLen - replicaInfo.getNumBytes();
+    if (v.getAvailable() < bytesReserved) {
+      throw new DiskOutOfSpaceException("Insufficient space for appending to " + replicaInfo);
+    }
+    File newBlkFile=new File(v.getRbwDir(bpid),replicaInfo.getBlockName());
+    File oldmeta=replicaInfo.getMetaFile();
+    ReplicaBeingWritten newReplicaInfo=new ReplicaBeingWritten(replicaInfo.getBlockId(),replicaInfo.getNumBytes(),newGS,v,newBlkFile.getParentFile(),Thread.currentThread(),bytesReserved);
+    File newmeta=newReplicaInfo.getMetaFile();
+    if (LOG.isDebugEnabled()) {
+      LOG.debug("Renaming " + oldmeta + " to "+ newmeta);
+    }
     try {
-      NativeIO.renameTo(newmeta,oldmeta);
+      NativeIO.renameTo(oldmeta,newmeta);
     }
- catch (    IOException ex) {
-      LOG.warn("Cannot move meta file " + newmeta + "back to the finalized directory "+ oldmeta,ex);
+ catch (    IOException e) {
+      throw new IOException("Block " + replicaInfo + " reopen failed. "+ " Unable to move meta file  "+ oldmeta+ " to rbw dir "+ newmeta,e);
     }
-    throw new IOException("Block " + replicaInfo + " reopen failed. "+ " Unable to move block file "+ blkfile+ " to rbw dir "+ newBlkFile,e);
+    if (LOG.isDebugEnabled()) {
+      LOG.debug("Renaming " + blkfile + " to "+ newBlkFile+ ", file length="+ blkfile.length());
+    }
+    try {
+      NativeIO.renameTo(blkfile,newBlkFile);
+    }
+ catch (    IOException e) {
+      try {
+        NativeIO.renameTo(newmeta,oldmeta);
+      }
+ catch (      IOException ex) {
+        LOG.warn("Cannot move meta file " + newmeta + "back to the finalized directory "+ oldmeta,ex);
+      }
+      throw new IOException("Block " + replicaInfo + " reopen failed. "+ " Unable to move block file "+ blkfile+ " to rbw dir "+ newBlkFile,e);
+    }
+    volumeMap.add(bpid,newReplicaInfo);
+    v.reserveSpaceForReplica(bytesReserved);
+    return newReplicaInfo;
   }
-  volumeMap.add(bpid,newReplicaInfo);
-  v.reserveSpaceForReplica(bytesReserved);
-  return newReplicaInfo;
-}
+ }

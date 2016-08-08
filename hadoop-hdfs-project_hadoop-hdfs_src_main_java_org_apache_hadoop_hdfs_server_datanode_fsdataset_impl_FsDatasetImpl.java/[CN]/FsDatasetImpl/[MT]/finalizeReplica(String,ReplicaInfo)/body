@@ -1,22 +1,24 @@
 {
-  FinalizedReplica newReplicaInfo=null;
-  if (replicaInfo.getState() == ReplicaState.RUR && ((ReplicaUnderRecovery)replicaInfo).getOriginalReplica().getState() == ReplicaState.FINALIZED) {
-    newReplicaInfo=(FinalizedReplica)((ReplicaUnderRecovery)replicaInfo).getOriginalReplica();
-  }
+  try (AutoCloseableLock lock=datasetLock.acquire()){
+    FinalizedReplica newReplicaInfo=null;
+    if (replicaInfo.getState() == ReplicaState.RUR && ((ReplicaUnderRecovery)replicaInfo).getOriginalReplica().getState() == ReplicaState.FINALIZED) {
+      newReplicaInfo=(FinalizedReplica)((ReplicaUnderRecovery)replicaInfo).getOriginalReplica();
+    }
  else {
-    FsVolumeImpl v=(FsVolumeImpl)replicaInfo.getVolume();
-    File f=replicaInfo.getBlockFile();
-    if (v == null) {
-      throw new IOException("No volume for temporary file " + f + " for block "+ replicaInfo);
+      FsVolumeImpl v=(FsVolumeImpl)replicaInfo.getVolume();
+      File f=replicaInfo.getBlockFile();
+      if (v == null) {
+        throw new IOException("No volume for temporary file " + f + " for block "+ replicaInfo);
+      }
+      File dest=v.addFinalizedBlock(bpid,replicaInfo,f,replicaInfo.getBytesReserved());
+      newReplicaInfo=new FinalizedReplica(replicaInfo,v,dest.getParentFile());
+      if (v.isTransientStorage()) {
+        releaseLockedMemory(replicaInfo.getOriginalBytesReserved() - replicaInfo.getNumBytes(),false);
+        ramDiskReplicaTracker.addReplica(bpid,replicaInfo.getBlockId(),v,replicaInfo.getNumBytes());
+        datanode.getMetrics().addRamDiskBytesWrite(replicaInfo.getNumBytes());
+      }
     }
-    File dest=v.addFinalizedBlock(bpid,replicaInfo,f,replicaInfo.getBytesReserved());
-    newReplicaInfo=new FinalizedReplica(replicaInfo,v,dest.getParentFile());
-    if (v.isTransientStorage()) {
-      releaseLockedMemory(replicaInfo.getOriginalBytesReserved() - replicaInfo.getNumBytes(),false);
-      ramDiskReplicaTracker.addReplica(bpid,replicaInfo.getBlockId(),v,replicaInfo.getNumBytes());
-      datanode.getMetrics().addRamDiskBytesWrite(replicaInfo.getNumBytes());
-    }
+    volumeMap.add(bpid,newReplicaInfo);
+    return newReplicaInfo;
   }
-  volumeMap.add(bpid,newReplicaInfo);
-  return newReplicaInfo;
-}
+ }
