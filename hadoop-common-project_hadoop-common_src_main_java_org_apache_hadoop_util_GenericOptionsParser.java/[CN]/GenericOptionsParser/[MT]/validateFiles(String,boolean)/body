@@ -1,0 +1,57 @@
+{
+  if (files == null) {
+    return null;
+  }
+  String[] fileArr=files.split(",");
+  if (fileArr.length == 0) {
+    throw new IllegalArgumentException("File name can't be empty string");
+  }
+  List<String> finalPaths=new ArrayList<>(fileArr.length);
+  for (int i=0; i < fileArr.length; i++) {
+    String tmp=fileArr[i];
+    if (tmp.isEmpty()) {
+      throw new IllegalArgumentException("File name can't be empty string");
+    }
+    URI pathURI;
+    final String wildcard="*";
+    boolean isWildcard=tmp.endsWith(wildcard) && expandWildcard;
+    try {
+      if (isWildcard) {
+        tmp=tmp.substring(0,tmp.length() - 1);
+      }
+      pathURI=matchesCurrentDirectory(tmp) ? new File(Path.CUR_DIR).toURI() : new URI(tmp);
+    }
+ catch (    URISyntaxException e) {
+      throw new IllegalArgumentException(e);
+    }
+    Path path=new Path(pathURI);
+    FileSystem localFs=FileSystem.getLocal(conf);
+    if (pathURI.getScheme() == null) {
+      if (!localFs.exists(path)) {
+        throw new FileNotFoundException("File " + tmp + " does not exist.");
+      }
+      if (isWildcard) {
+        expandWildcard(finalPaths,path,localFs);
+      }
+ else {
+        finalPaths.add(path.makeQualified(localFs.getUri(),localFs.getWorkingDirectory()).toString());
+      }
+    }
+ else {
+      FileSystem fs=path.getFileSystem(conf);
+      if (!fs.exists(path)) {
+        throw new FileNotFoundException("File " + tmp + " does not exist.");
+      }
+      if (isWildcard) {
+        expandWildcard(finalPaths,path,fs);
+      }
+ else {
+        finalPaths.add(path.makeQualified(fs.getUri(),fs.getWorkingDirectory()).toString());
+      }
+    }
+  }
+  if (finalPaths.isEmpty()) {
+    throw new IllegalArgumentException("Path " + files + " cannot be empty.");
+  }
+  return StringUtils.join(",",finalPaths);
+}
