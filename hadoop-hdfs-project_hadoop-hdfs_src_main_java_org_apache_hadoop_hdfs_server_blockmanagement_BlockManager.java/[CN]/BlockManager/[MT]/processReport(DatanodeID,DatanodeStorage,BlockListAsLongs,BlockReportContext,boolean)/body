@@ -4,6 +4,7 @@
   final long endTime;
   DatanodeDescriptor node;
   Collection<Block> invalidatedBlocks=Collections.emptyList();
+  String strBlockReportId=context != null ? Long.toHexString(context.getReportId()) : "";
   try {
     node=datanodeManager.getDatanode(nodeID);
     if (node == null || !node.isRegistered()) {
@@ -14,7 +15,7 @@
       storageInfo=node.updateStorage(storage);
     }
     if (namesystem.isInStartupSafeMode() && storageInfo.getBlockReportCount() > 0) {
-      blockLog.info("BLOCK* processReport: " + "discarded non-initial block report from {}" + " because namenode still in startup phase",nodeID);
+      blockLog.info("BLOCK* processReport 0x{}: " + "discarded non-initial block report from {}" + " because namenode still in startup phase",strBlockReportId,nodeID);
       blockReportLeaseManager.removeLease(node);
       return !node.hasStaleStorages();
     }
@@ -24,11 +25,11 @@
       }
     }
     if (storageInfo.getBlockReportCount() == 0) {
-      LOG.info("Processing first storage report for " + storageInfo.getStorageID() + " from datanode "+ nodeID.getDatanodeUuid());
+      blockLog.info("BLOCK* processReport 0x{}: Processing first " + "storage report for {} from datanode {}",strBlockReportId,storageInfo.getStorageID(),nodeID.getDatanodeUuid());
       processFirstBlockReport(storageInfo,newReport);
     }
  else {
-      invalidatedBlocks=processReport(storageInfo,newReport,context != null ? context.isSorted() : false);
+      invalidatedBlocks=processReport(storageInfo,newReport,context);
     }
     storageInfo.receivedBlockReport();
     if (context != null) {
@@ -60,12 +61,12 @@
     namesystem.writeUnlock();
   }
   for (  Block b : invalidatedBlocks) {
-    blockLog.debug("BLOCK* processReport: {} on node {} size {} does not " + "belong to any file",b,node,b.getNumBytes());
+    blockLog.debug("BLOCK* processReport 0x{}: {} on node {} size {} does not" + " belong to any file",strBlockReportId,b,node,b.getNumBytes());
   }
   final NameNodeMetrics metrics=NameNode.getNameNodeMetrics();
   if (metrics != null) {
     metrics.addBlockReport((int)(endTime - startTime));
   }
-  blockLog.info("BLOCK* processReport: from storage {} node {}, " + "blocks: {}, hasStaleStorage: {}, processing time: {} msecs, " + "invalidatedBlocks: {}",storage.getStorageID(),nodeID,newReport.getNumberOfBlocks(),node.hasStaleStorages(),(endTime - startTime),invalidatedBlocks.size());
+  blockLog.info("BLOCK* processReport 0x{}: from storage {} node {}, " + "blocks: {}, hasStaleStorage: {}, processing time: {} msecs, " + "invalidatedBlocks: {}",strBlockReportId,storage.getStorageID(),nodeID,newReport.getNumberOfBlocks(),node.hasStaleStorages(),(endTime - startTime),invalidatedBlocks.size());
   return !node.hasStaleStorages();
 }
