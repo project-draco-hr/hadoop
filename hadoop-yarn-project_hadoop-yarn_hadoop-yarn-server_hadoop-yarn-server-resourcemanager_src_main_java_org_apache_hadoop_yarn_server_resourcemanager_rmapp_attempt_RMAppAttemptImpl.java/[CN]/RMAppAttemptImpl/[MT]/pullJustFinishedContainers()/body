@@ -1,12 +1,16 @@
 {
   this.writeLock.lock();
   try {
-    List<ContainerStatus> returnList=new ArrayList<ContainerStatus>();
+    List<ContainerStatus> returnList=new ArrayList<>();
     sendFinishedContainersToNM();
-    boolean keepContainersAcressAttempts=this.submissionContext.getKeepContainersAcrossApplicationAttempts();
-    for (    NodeId nodeId : justFinishedContainers.keySet()) {
-      List<ContainerStatus> finishedContainers=justFinishedContainers.put(nodeId,new ArrayList<ContainerStatus>());
-      if (keepContainersAcressAttempts) {
+    boolean keepContainersAcrossAppAttempts=this.submissionContext.getKeepContainersAcrossApplicationAttempts();
+    for (    Map.Entry<NodeId,List<ContainerStatus>> entry : justFinishedContainers.entrySet()) {
+      NodeId nodeId=entry.getKey();
+      List<ContainerStatus> finishedContainers=entry.getValue();
+      if (finishedContainers.isEmpty()) {
+        continue;
+      }
+      if (keepContainersAcrossAppAttempts) {
         returnList.addAll(finishedContainers);
       }
  else {
@@ -16,11 +20,10 @@
           }
         }
       }
-      if (!finishedContainers.isEmpty()) {
-        finishedContainersSentToAM.putIfAbsent(nodeId,new ArrayList<ContainerStatus>());
-        finishedContainersSentToAM.get(nodeId).addAll(finishedContainers);
-      }
+      finishedContainersSentToAM.putIfAbsent(nodeId,new ArrayList<>());
+      finishedContainersSentToAM.get(nodeId).addAll(finishedContainers);
     }
+    justFinishedContainers.clear();
     return returnList;
   }
   finally {
