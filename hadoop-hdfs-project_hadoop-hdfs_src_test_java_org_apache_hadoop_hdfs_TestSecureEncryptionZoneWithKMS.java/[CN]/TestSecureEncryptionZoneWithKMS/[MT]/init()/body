@@ -1,0 +1,58 @@
+{
+  baseDir=getTestDir();
+  FileUtil.fullyDelete(baseDir);
+  assertTrue(baseDir.mkdirs());
+  Properties kdcConf=MiniKdc.createConf();
+  kdc=new MiniKdc(kdcConf,baseDir);
+  kdc.start();
+  baseConf=new HdfsConfiguration();
+  SecurityUtil.setAuthenticationMethod(AuthenticationMethod.KERBEROS,baseConf);
+  UserGroupInformation.setConfiguration(baseConf);
+  assertTrue("Expected configuration to enable security",UserGroupInformation.isSecurityEnabled());
+  File keytabFile=new File(baseDir,"test.keytab");
+  keytab=keytabFile.getAbsolutePath();
+  String krbInstance=Path.WINDOWS ? "127.0.0.1" : "localhost";
+  kdc.createPrincipal(keytabFile,HDFS_USER_NAME + "/" + krbInstance,SPNEGO_USER_NAME + "/" + krbInstance,OOZIE_USER_NAME + "/" + krbInstance,OOZIE_PROXIED_USER_NAME + "/" + krbInstance);
+  hdfsPrincipal=HDFS_USER_NAME + "/" + krbInstance+ "@"+ kdc.getRealm();
+  spnegoPrincipal=SPNEGO_USER_NAME + "/" + krbInstance+ "@"+ kdc.getRealm();
+  ooziePrincipal=OOZIE_USER_NAME + "/" + krbInstance+ "@"+ kdc.getRealm();
+  baseConf.set("hadoop.proxyuser.oozie.hosts","*");
+  baseConf.set("hadoop.proxyuser.oozie.groups","*");
+  baseConf.set("hadoop.user.group.static.mapping.overrides",OOZIE_PROXIED_USER_NAME + "=oozie");
+  baseConf.set(DFS_NAMENODE_KERBEROS_PRINCIPAL_KEY,hdfsPrincipal);
+  baseConf.set(DFS_NAMENODE_KEYTAB_FILE_KEY,keytab);
+  baseConf.set(DFS_DATANODE_KERBEROS_PRINCIPAL_KEY,hdfsPrincipal);
+  baseConf.set(DFS_DATANODE_KEYTAB_FILE_KEY,keytab);
+  baseConf.set(DFS_WEB_AUTHENTICATION_KERBEROS_PRINCIPAL_KEY,spnegoPrincipal);
+  baseConf.setBoolean(DFS_BLOCK_ACCESS_TOKEN_ENABLE_KEY,true);
+  baseConf.set(DFS_DATA_TRANSFER_PROTECTION_KEY,"authentication");
+  baseConf.set(DFS_HTTP_POLICY_KEY,HttpConfig.Policy.HTTPS_ONLY.name());
+  baseConf.set(DFS_NAMENODE_HTTPS_ADDRESS_KEY,"localhost:0");
+  baseConf.set(DFS_DATANODE_HTTPS_ADDRESS_KEY,"localhost:0");
+  baseConf.set(DFS_JOURNALNODE_HTTPS_ADDRESS_KEY,"localhost:0");
+  baseConf.setInt(IPC_CLIENT_CONNECT_MAX_RETRIES_ON_SASL_KEY,10);
+  baseConf.set(KMS_CLIENT_ENC_KEY_CACHE_SIZE,"4");
+  baseConf.set(KMS_CLIENT_ENC_KEY_CACHE_LOW_WATERMARK,"0.5");
+  String keystoresDir=baseDir.getAbsolutePath();
+  String sslConfDir=KeyStoreTestUtil.getClasspathDir(TestSecureEncryptionZoneWithKMS.class);
+  KeyStoreTestUtil.setupSSLConfig(keystoresDir,sslConfDir,baseConf,false);
+  baseConf.set(DFS_CLIENT_HTTPS_KEYSTORE_RESOURCE_KEY,KeyStoreTestUtil.getClientSSLConfigFileName());
+  baseConf.set(DFS_SERVER_HTTPS_KEYSTORE_RESOURCE_KEY,KeyStoreTestUtil.getServerSSLConfigFileName());
+  File kmsFile=new File(baseDir,"kms-site.xml");
+  if (kmsFile.exists()) {
+    FileUtil.fullyDelete(kmsFile);
+  }
+  Configuration kmsConf=new Configuration(true);
+  kmsConf.set(KMSConfiguration.KEY_PROVIDER_URI,"jceks://file@" + new Path(baseDir.toString(),"kms.keystore").toUri());
+  kmsConf.set("hadoop.kms.authentication.type","kerberos");
+  kmsConf.set("hadoop.kms.authentication.kerberos.keytab",keytab);
+  kmsConf.set("hadoop.kms.authentication.kerberos.principal","HTTP/localhost");
+  kmsConf.set("hadoop.kms.authentication.kerberos.name.rules","DEFAULT");
+  kmsConf.set("hadoop.kms.acl.GENERATE_EEK","hdfs");
+  Writer writer=new FileWriter(kmsFile);
+  kmsConf.writeXml(writer);
+  writer.close();
+  MiniKMS.Builder miniKMSBuilder=new MiniKMS.Builder();
+  miniKMS=miniKMSBuilder.setKmsConfDir(baseDir).build();
+  miniKMS.start();
+}
