@@ -2,13 +2,7 @@
   Set<URI> ret=new HashSet<URI>();
   Set<URI> nonPreferredUris=new HashSet<URI>();
   for (  String nsId : nameServices) {
-    URI nsUri;
-    try {
-      nsUri=new URI(HdfsConstants.HDFS_URI_SCHEME + "://" + nsId);
-    }
- catch (    URISyntaxException ue) {
-      throw new IllegalArgumentException(ue);
-    }
+    URI nsUri=createUri(HdfsConstants.HDFS_URI_SCHEME,nsId,-1);
     boolean useLogicalUri=false;
     try {
       useLogicalUri=HAUtil.useLogicalUri(conf,nsUri);
@@ -40,7 +34,7 @@
   for (  String key : keys) {
     String addr=conf.get(key);
     if (addr != null) {
-      URI uri=createUri("hdfs",NetUtils.createSocketAddr(addr));
+      URI uri=createUri(HdfsConstants.HDFS_URI_SCHEME,NetUtils.createSocketAddr(addr));
       if (!uriFound) {
         uriFound=true;
         ret.add(uri);
@@ -52,11 +46,14 @@
   }
   if (!uriFound) {
     URI defaultUri=FileSystem.getDefaultUri(conf);
-    if (defaultUri != null && (defaultUri.getPort() != -1)) {
-      defaultUri=createUri(defaultUri.getScheme(),NetUtils.createSocketAddr(defaultUri.getHost(),defaultUri.getPort()));
-    }
-    if (defaultUri != null && HdfsConstants.HDFS_URI_SCHEME.equals(defaultUri.getScheme()) && !nonPreferredUris.contains(defaultUri)) {
-      ret.add(defaultUri);
+    if (defaultUri != null) {
+      if (defaultUri.getPort() != -1) {
+        defaultUri=createUri(defaultUri.getScheme(),NetUtils.createSocketAddr(defaultUri.getHost(),defaultUri.getPort()));
+      }
+      defaultUri=trimUri(defaultUri);
+      if (HdfsConstants.HDFS_URI_SCHEME.equals(defaultUri.getScheme()) && !nonPreferredUris.contains(defaultUri)) {
+        ret.add(defaultUri);
+      }
     }
   }
   return ret;
