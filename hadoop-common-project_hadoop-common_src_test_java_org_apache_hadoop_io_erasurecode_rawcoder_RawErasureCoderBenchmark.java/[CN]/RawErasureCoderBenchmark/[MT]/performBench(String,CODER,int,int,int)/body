@@ -1,0 +1,42 @@
+{
+  BenchData.configure(dataSizeMB,chunkSizeKB);
+  RawErasureEncoder encoder=null;
+  RawErasureDecoder decoder=null;
+  ByteBuffer testData;
+  boolean isEncode=opType.equals("encode");
+  if (isEncode) {
+    encoder=getRawEncoder(coder.ordinal());
+    testData=genTestData(encoder.preferDirectBuffer(),BenchData.bufferSizeKB);
+  }
+ else {
+    decoder=getRawDecoder(coder.ordinal());
+    testData=genTestData(decoder.preferDirectBuffer(),BenchData.bufferSizeKB);
+  }
+  ExecutorService executor=Executors.newFixedThreadPool(numThreads);
+  List<Future<Long>> futures=new ArrayList<>(numThreads);
+  StopWatch sw=new StopWatch().start();
+  for (int i=0; i < numThreads; i++) {
+    futures.add(executor.submit(new BenchmarkCallable(isEncode,encoder,decoder,testData.duplicate())));
+  }
+  List<Long> durations=new ArrayList<>(numThreads);
+  try {
+    for (    Future<Long> future : futures) {
+      durations.add(future.get());
+    }
+    long duration=sw.now(TimeUnit.MILLISECONDS);
+    double totalDataSize=BenchData.totalDataSizeKB * numThreads / 1024.0;
+    DecimalFormat df=new DecimalFormat("#.##");
+    System.out.println(coder + " " + opType+ " "+ df.format(totalDataSize)+ "MB data, with chunk size "+ BenchData.chunkSize / 1024 + "KB");
+    System.out.println("Total time: " + df.format(duration / 1000.0) + " s.");
+    System.out.println("Total throughput: " + df.format(totalDataSize / duration * 1000.0) + " MB/s");
+    printThreadStatistics(durations,df);
+  }
+ catch (  Exception e) {
+    System.out.println("Error waiting for thread to finish.");
+    e.printStackTrace();
+    throw e;
+  }
+ finally {
+    executor.shutdown();
+  }
+}
