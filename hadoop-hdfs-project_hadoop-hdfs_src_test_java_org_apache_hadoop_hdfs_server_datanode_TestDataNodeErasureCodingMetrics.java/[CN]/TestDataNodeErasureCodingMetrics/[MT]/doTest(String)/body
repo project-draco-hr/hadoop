@@ -22,13 +22,17 @@
       break;
     }
   }
-  byte[] indices=lastBlock.getBlockIndices();
-  DataNode toCorruptDn=cluster.getDataNodes().get(indices[0]);
+  LOG.info("Block locations: " + Arrays.asList(locations));
+  LOG.info("Erasure coding worker datanode: " + workerDn);
+  assertNotNull("Failed to find a worker datanode",workerDn);
+  DataNode toCorruptDn=cluster.getDataNode(locations[0].getIpcPort());
+  LOG.info("Datanode to be corrupted: " + toCorruptDn);
+  assertNotNull("Failed to find a datanode to be corrupted",toCorruptDn);
   toCorruptDn.shutdown();
   setDataNodeDead(toCorruptDn.getDatanodeId());
   DFSTestUtil.waitForDatanodeState(cluster,toCorruptDn.getDatanodeUuid(),false,10000);
-  final BlockManager bm=cluster.getNamesystem().getBlockManager();
-  BlockManagerTestUtil.getComputedDatanodeWork(bm);
+  int workCount=getComputedDatanodeWork();
+  assertTrue("Wrongly computed block reconstruction work",workCount > 0);
   cluster.triggerHeartbeats();
   StripedFileTestUtil.waitForReconstructionFinished(file,fs,GROUPSIZE);
   return workerDn;
