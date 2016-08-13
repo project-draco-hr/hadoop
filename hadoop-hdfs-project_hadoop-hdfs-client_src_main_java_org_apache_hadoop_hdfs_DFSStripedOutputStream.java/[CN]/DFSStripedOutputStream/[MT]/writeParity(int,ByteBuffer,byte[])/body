@@ -5,11 +5,19 @@
   if (current.isHealthy()) {
     try {
       DataChecksum sum=getDataChecksum();
-      sum.calculateChunkedSums(buffer.array(),0,len,checksumBuf,0);
+      if (buffer.isDirect()) {
+        ByteBuffer directCheckSumBuf=BUFFER_POOL.getBuffer(true,checksumBuf.length);
+        sum.calculateChunkedSums(buffer,directCheckSumBuf);
+        directCheckSumBuf.get(checksumBuf);
+        BUFFER_POOL.putBuffer(directCheckSumBuf);
+      }
+ else {
+        sum.calculateChunkedSums(buffer.array(),0,len,checksumBuf,0);
+      }
       for (int i=0; i < len; i+=sum.getBytesPerChecksum()) {
         int chunkLen=Math.min(sum.getBytesPerChecksum(),len - i);
         int ckOffset=i / sum.getBytesPerChecksum() * getChecksumSize();
-        super.writeChunk(buffer.array(),i,chunkLen,checksumBuf,ckOffset,getChecksumSize());
+        super.writeChunk(buffer,chunkLen,checksumBuf,ckOffset,getChecksumSize());
       }
     }
  catch (    Exception e) {
