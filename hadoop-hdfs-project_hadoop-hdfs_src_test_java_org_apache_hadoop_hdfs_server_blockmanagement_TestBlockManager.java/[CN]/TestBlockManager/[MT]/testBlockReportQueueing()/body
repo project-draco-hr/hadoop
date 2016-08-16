@@ -8,9 +8,10 @@
     final ExecutorService executor=Executors.newCachedThreadPool();
     final CyclicBarrier startBarrier=new CyclicBarrier(2);
     final CountDownLatch endLatch=new CountDownLatch(3);
+    final CountDownLatch doneLatch=new CountDownLatch(1);
     FutureTask<?> blockingOp=new FutureTask<Void>(new Callable<Void>(){
       @Override public Void call() throws IOException {
-        return bm.runBlockOp(new Callable<Void>(){
+        bm.runBlockOp(new Callable<Void>(){
           @Override public Void call() throws InterruptedException, BrokenBarrierException {
             startBarrier.await();
             endLatch.countDown();
@@ -18,6 +19,8 @@
           }
         }
 );
+        doneLatch.countDown();
+        return null;
       }
     }
 );
@@ -49,7 +52,7 @@
     startBarrier.await(1,TimeUnit.SECONDS);
     assertTrue(endLatch.await(1,TimeUnit.SECONDS));
     assertEquals(0,bm.getBlockOpQueueLength());
-    assertTrue(blockingOp.isDone());
+    assertTrue(doneLatch.await(1,TimeUnit.SECONDS));
   }
   finally {
     cluster.shutdown();
