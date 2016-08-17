@@ -1,0 +1,40 @@
+{
+  if (!checkShouldSucceed && violation == null) {
+    Assert.fail("Test is misconfigured. checkShouldSucceed is set to false" + " and a ResourceViolation is not specified.");
+  }
+  JobConf conf=setupJobConf(rlConf);
+  JobResourceUploader uploader=new StubedUploader(conf);
+  long configuredSizeOfResourceBytes=rlConf.sizeOfResource * 1024 * 1024;
+  when(mockedStatus.getLen()).thenReturn(configuredSizeOfResourceBytes);
+  when(mockedStatus.isDirectory()).thenReturn(false);
+  Map<URI,FileStatus> statCache=new HashMap<URI,FileStatus>();
+  try {
+    uploader.checkLocalizationLimits(conf,conf.getStringCollection("tmpfiles"),conf.getStringCollection("tmpjars"),conf.getStringCollection("tmparchives"),conf.getJar(),statCache);
+    Assert.assertTrue("Limits check succeeded when it should have failed.",checkShouldSucceed);
+  }
+ catch (  IOException e) {
+    if (checkShouldSucceed) {
+      Assert.fail("Limits check failed when it should have succeeded: " + e);
+    }
+switch (violation) {
+case NUMBER_OF_RESOURCES:
+      if (!e.getMessage().contains(JobResourceUploader.MAX_RESOURCE_ERR_MSG)) {
+        Assert.fail("Test failed unexpectedly: " + e);
+      }
+    break;
+case TOTAL_RESOURCE_SIZE:
+  if (!e.getMessage().contains(JobResourceUploader.MAX_TOTAL_RESOURCE_MB_ERR_MSG)) {
+    Assert.fail("Test failed unexpectedly: " + e);
+  }
+break;
+case SINGLE_RESOURCE_SIZE:
+if (!e.getMessage().contains(JobResourceUploader.MAX_SINGLE_RESOURCE_MB_ERR_MSG)) {
+Assert.fail("Test failed unexpectedly: " + e);
+}
+break;
+default :
+Assert.fail("Test failed unexpectedly: " + e);
+break;
+}
+}
+}
