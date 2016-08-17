@@ -1,4 +1,21 @@
 {
   incrementStatistic(INVOCATION_LIST_FILES);
-  return super.listFiles(f,recursive);
+  Path path=qualify(f);
+  LOG.debug("listFiles({}, {})",path,recursive);
+  try {
+    final FileStatus fileStatus=getFileStatus(path);
+    if (fileStatus.isFile()) {
+      LOG.debug("Path is a file");
+      return new Listing.SingleStatusRemoteIterator(toLocatedFileStatus(fileStatus));
+    }
+ else {
+      String key=maybeAddTrailingSlash(pathToKey(path));
+      String delimiter=recursive ? null : "/";
+      LOG.debug("Requesting all entries under {} with delimiter '{}'",key,delimiter);
+      return listing.createLocatedFileStatusIterator(listing.createFileStatusListingIterator(path,createListObjectsRequest(key,delimiter),ACCEPT_ALL,new Listing.AcceptFilesOnly(path)));
+    }
+  }
+ catch (  AmazonClientException e) {
+    throw translateException("listFiles",path,e);
+  }
 }

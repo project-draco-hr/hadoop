@@ -1,0 +1,39 @@
+{
+  int added=0, ignored=0;
+  List<FileStatus> stats=new ArrayList<>(objects.getObjectSummaries().size() + objects.getCommonPrefixes().size());
+  for (  S3ObjectSummary summary : objects.getObjectSummaries()) {
+    String key=summary.getKey();
+    Path keyPath=owner.keyToQualifiedPath(key);
+    if (LOG.isDebugEnabled()) {
+      LOG.debug("{}: {}",keyPath,stringify(summary));
+    }
+    if (acceptor.accept(keyPath,summary) && filter.accept(keyPath)) {
+      FileStatus status=createFileStatus(keyPath,summary,owner.getDefaultBlockSize(keyPath));
+      LOG.debug("Adding: {}",status);
+      stats.add(status);
+      added++;
+    }
+ else {
+      LOG.debug("Ignoring: {}",keyPath);
+      ignored++;
+    }
+  }
+  for (  String prefix : objects.getCommonPrefixes()) {
+    Path keyPath=owner.keyToQualifiedPath(prefix);
+    if (acceptor.accept(keyPath,prefix) && filter.accept(keyPath)) {
+      FileStatus status=new S3AFileStatus(true,false,keyPath);
+      LOG.debug("Adding directory: {}",status);
+      added++;
+      stats.add(status);
+    }
+ else {
+      LOG.debug("Ignoring directory: {}",keyPath);
+      ignored++;
+    }
+  }
+  batchSize=stats.size();
+  statusBatchIterator=stats.listIterator();
+  boolean hasNext=statusBatchIterator.hasNext();
+  LOG.debug("Added {} entries; ignored {}; hasNext={}; hasMoreObjects={}",added,ignored,hasNext,objects.isTruncated());
+  return hasNext;
+}

@@ -1,52 +1,27 @@
 {
-  String key=pathToKey(f);
-  LOG.debug("List status for path: {}",f);
+  Path path=qualify(f);
+  String key=pathToKey(path);
+  LOG.debug("List status for path: {}",path);
   incrementStatistic(INVOCATION_LIST_STATUS);
-  final List<FileStatus> result=new ArrayList<FileStatus>();
-  final FileStatus fileStatus=getFileStatus(f);
+  List<FileStatus> result;
+  final FileStatus fileStatus=getFileStatus(path);
   if (fileStatus.isDirectory()) {
     if (!key.isEmpty()) {
-      key=key + "/";
+      key=key + '/';
     }
-    ListObjectsRequest request=new ListObjectsRequest();
-    request.setBucketName(bucket);
-    request.setPrefix(key);
-    request.setDelimiter("/");
-    request.setMaxKeys(maxKeys);
+    ListObjectsRequest request=createListObjectsRequest(key,"/");
     LOG.debug("listStatus: doing listObjects for directory {}",key);
-    ObjectListing objects=listObjects(request);
-    Path fQualified=f.makeQualified(uri,workingDir);
-    while (true) {
-      for (      S3ObjectSummary summary : objects.getObjectSummaries()) {
-        Path keyPath=keyToPath(summary.getKey()).makeQualified(uri,workingDir);
-        if (keyPath.equals(fQualified) || summary.getKey().endsWith(S3N_FOLDER_SUFFIX)) {
-          LOG.debug("Ignoring: {}",keyPath);
-        }
- else {
-          S3AFileStatus status=createFileStatus(keyPath,summary,getDefaultBlockSize(keyPath));
-          result.add(status);
-          LOG.debug("Adding: {}",status);
-        }
-      }
-      for (      String prefix : objects.getCommonPrefixes()) {
-        Path keyPath=keyToPath(prefix).makeQualified(uri,workingDir);
-        if (!keyPath.equals(f)) {
-          result.add(new S3AFileStatus(true,false,keyPath));
-          LOG.debug("Adding: rd: {}",keyPath);
-        }
-      }
-      if (objects.isTruncated()) {
-        LOG.debug("listStatus: list truncated - getting next batch");
-        objects=continueListObjects(objects);
-      }
- else {
-        break;
-      }
+    Listing.FileStatusListingIterator files=listing.createFileStatusListingIterator(path,request,ACCEPT_ALL,new Listing.AcceptAllButSelfAndS3nDirs(path));
+    result=new ArrayList<>(files.getBatchSize());
+    while (files.hasNext()) {
+      result.add(files.next());
     }
+    return result.toArray(new FileStatus[result.size()]);
   }
  else {
-    LOG.debug("Adding: rd (not a dir): {}",f);
-    result.add(fileStatus);
+    LOG.debug("Adding: rd (not a dir): {}",path);
+    FileStatus[] stats=new FileStatus[1];
+    stats[0]=fileStatus;
+    return stats;
   }
-  return result.toArray(new FileStatus[result.size()]);
 }

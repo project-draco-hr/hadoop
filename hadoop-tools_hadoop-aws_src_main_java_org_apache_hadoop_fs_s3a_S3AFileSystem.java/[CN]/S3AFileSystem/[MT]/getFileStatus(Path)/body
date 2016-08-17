@@ -1,26 +1,27 @@
 {
-  String key=pathToKey(f);
   incrementStatistic(INVOCATION_GET_FILE_STATUS);
-  LOG.debug("Getting path status for {}  ({})",f,key);
+  final Path path=qualify(f);
+  String key=pathToKey(path);
+  LOG.debug("Getting path status for {}  ({})",path,key);
   if (!key.isEmpty()) {
     try {
       ObjectMetadata meta=getObjectMetadata(key);
       if (objectRepresentsDirectory(key,meta.getContentLength())) {
         LOG.debug("Found exact file: fake directory");
-        return new S3AFileStatus(true,true,f.makeQualified(uri,workingDir));
+        return new S3AFileStatus(true,true,path);
       }
  else {
         LOG.debug("Found exact file: normal file");
-        return new S3AFileStatus(meta.getContentLength(),dateToLong(meta.getLastModified()),f.makeQualified(uri,workingDir),getDefaultBlockSize(f.makeQualified(uri,workingDir)));
+        return new S3AFileStatus(meta.getContentLength(),dateToLong(meta.getLastModified()),path,getDefaultBlockSize(path));
       }
     }
  catch (    AmazonServiceException e) {
       if (e.getStatusCode() != 404) {
-        throw translateException("getFileStatus",f,e);
+        throw translateException("getFileStatus",path,e);
       }
     }
 catch (    AmazonClientException e) {
-      throw translateException("getFileStatus",f,e);
+      throw translateException("getFileStatus",path,e);
     }
     if (!key.endsWith("/")) {
       String newKey=key + "/";
@@ -28,11 +29,11 @@ catch (    AmazonClientException e) {
         ObjectMetadata meta=getObjectMetadata(newKey);
         if (objectRepresentsDirectory(newKey,meta.getContentLength())) {
           LOG.debug("Found file (with /): fake directory");
-          return new S3AFileStatus(true,true,f.makeQualified(uri,workingDir));
+          return new S3AFileStatus(true,true,path);
         }
  else {
           LOG.warn("Found file (with /): real file? should not happen: {}",key);
-          return new S3AFileStatus(meta.getContentLength(),dateToLong(meta.getLastModified()),f.makeQualified(uri,workingDir),getDefaultBlockSize(f.makeQualified(uri,workingDir)));
+          return new S3AFileStatus(meta.getContentLength(),dateToLong(meta.getLastModified()),path,getDefaultBlockSize(path));
         }
       }
  catch (      AmazonServiceException e) {
@@ -46,9 +47,7 @@ catch (      AmazonClientException e) {
     }
   }
   try {
-    if (!key.isEmpty() && !key.endsWith("/")) {
-      key=key + "/";
-    }
+    key=maybeAddTrailingSlash(key);
     ListObjectsRequest request=new ListObjectsRequest();
     request.setBucketName(bucket);
     request.setPrefix(key);
@@ -65,11 +64,11 @@ catch (      AmazonClientException e) {
           LOG.debug("Prefix: {}",prefix);
         }
       }
-      return new S3AFileStatus(true,false,f.makeQualified(uri,workingDir));
+      return new S3AFileStatus(true,false,path);
     }
  else     if (key.isEmpty()) {
       LOG.debug("Found root directory");
-      return new S3AFileStatus(true,true,f.makeQualified(uri,workingDir));
+      return new S3AFileStatus(true,true,path);
     }
   }
  catch (  AmazonServiceException e) {
@@ -80,6 +79,6 @@ catch (      AmazonClientException e) {
 catch (  AmazonClientException e) {
     throw translateException("getFileStatus",key,e);
   }
-  LOG.debug("Not Found: {}",f);
-  throw new FileNotFoundException("No such file or directory: " + f);
+  LOG.debug("Not Found: {}",path);
+  throw new FileNotFoundException("No such file or directory: " + path);
 }
