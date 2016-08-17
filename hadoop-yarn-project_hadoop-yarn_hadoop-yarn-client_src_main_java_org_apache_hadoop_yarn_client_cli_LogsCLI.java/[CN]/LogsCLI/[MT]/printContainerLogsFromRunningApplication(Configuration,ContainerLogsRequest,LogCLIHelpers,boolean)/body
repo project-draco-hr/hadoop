@@ -10,12 +10,7 @@
   String nodeId=request.getNodeId();
   PrintStream out=logCliHelper.createPrintStream(localDir,nodeId,containerIdStr);
   try {
-    List<PerLogFileInfo> allLogFileInfos=getContainerLogFiles(getConf(),containerIdStr,nodeHttpAddress);
-    List<String> fileNames=new ArrayList<String>();
-    for (    PerLogFileInfo fileInfo : allLogFileInfos) {
-      fileNames.add(fileInfo.getFileName());
-    }
-    Set<String> matchedFiles=getMatchedLogFiles(request,fileNames,useRegex);
+    Set<String> matchedFiles=getMatchedContainerLogFiles(request,useRegex);
     if (matchedFiles.isEmpty()) {
       System.err.println("Can not find any log file matching the pattern: " + request.getLogTypes() + " for the container: "+ containerIdStr+ " within the application: "+ request.getAppId());
       return -1;
@@ -27,14 +22,27 @@
     out.println(containerString);
     out.println(StringUtils.repeat("=",containerString.length()));
     boolean foundAnyLogs=false;
+    byte[] buffer=new byte[65536];
     for (    String logFile : newOptions.getLogTypes()) {
       out.println("LogType:" + logFile);
       out.println("Log Upload Time:" + Times.format(System.currentTimeMillis()));
       out.println("Log Contents:");
+      InputStream is=null;
       try {
-        WebResource webResource=webServiceClient.resource(WebAppUtils.getHttpSchemePrefix(conf) + nodeHttpAddress);
-        ClientResponse response=webResource.path("ws").path("v1").path("node").path("containers").path(containerIdStr).path("logs").path(logFile).queryParam("size",Long.toString(request.getBytes())).accept(MediaType.TEXT_PLAIN).get(ClientResponse.class);
-        out.println(response.getEntity(String.class));
+        ClientResponse response=getResponeFromNMWebService(conf,webServiceClient,request,logFile);
+        if (response != null && response.getStatusInfo().getStatusCode() == ClientResponse.Status.OK.getStatusCode()) {
+          is=response.getEntityInputStream();
+          int len=0;
+          while ((len=is.read(buffer)) != -1) {
+            out.write(buffer,0,len);
+          }
+          out.println();
+        }
+ else {
+          out.println("Can not get any logs for the log file: " + logFile);
+          String msg="Response from the NodeManager:" + nodeId + " WebService is "+ ((response == null) ? "null" : "not successful," + " HTTP error code: " + response.getStatus() + ", Server response:\n"+ response.getEntity(String.class));
+          out.println(msg);
+        }
         StringBuilder sb=new StringBuilder();
         sb.append("End of LogType:" + logFile + ".");
         if (request.getContainerState() == ContainerState.RUNNING) {
@@ -46,6 +54,9 @@
       }
  catch (      ClientHandlerException|UniformInterfaceException ex) {
         System.err.println("Can not find the log file:" + logFile + " for the container:"+ containerIdStr+ " in NodeManager:"+ nodeId);
+      }
+ finally {
+        IOUtils.closeQuietly(is);
       }
     }
     int result=logCliHelper.dumpAContainerLogsForLogType(newOptions,false);
