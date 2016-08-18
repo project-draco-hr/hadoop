@@ -1,0 +1,50 @@
+{
+  DecommissioningNodeContext context=decomNodes.get(rmNode.getNodeID());
+  long now=mclock.getTime();
+  if (rmNode.getState() == NodeState.DECOMMISSIONED) {
+    if (context == null) {
+      return;
+    }
+    context.nodeState=rmNode.getState();
+    if (context.decommissionedTime == 0) {
+      context.decommissionedTime=now;
+    }
+ else     if (now - context.decommissionedTime > 60000L) {
+      decomNodes.remove(rmNode.getNodeID());
+    }
+  }
+ else   if (rmNode.getState() == NodeState.DECOMMISSIONING) {
+    if (context == null) {
+      context=new DecommissioningNodeContext(rmNode.getNodeID());
+      decomNodes.put(rmNode.getNodeID(),context);
+      context.nodeState=rmNode.getState();
+      context.decommissionedTime=0;
+    }
+    context.updateTimeout(rmNode.getDecommissioningTimeout());
+    context.lastUpdateTime=now;
+    if (remoteNodeStatus.getKeepAliveApplications() != null) {
+      context.appIds.addAll(remoteNodeStatus.getKeepAliveApplications());
+    }
+    int numActiveContainers=0;
+    for (    ContainerStatus cs : remoteNodeStatus.getContainersStatuses()) {
+      ContainerState newState=cs.getState();
+      if (newState == ContainerState.RUNNING || newState == ContainerState.NEW) {
+        numActiveContainers++;
+      }
+      context.numActiveContainers=numActiveContainers;
+      ApplicationId aid=cs.getContainerId().getApplicationAttemptId().getApplicationId();
+      if (!context.appIds.contains(aid)) {
+        context.appIds.add(aid);
+      }
+    }
+    context.numActiveContainers=numActiveContainers;
+    if (context.numActiveContainers == 0 && context.lastContainerFinishTime == 0) {
+      context.lastContainerFinishTime=now;
+    }
+  }
+ else {
+    if (context != null) {
+      decomNodes.remove(rmNode.getNodeID());
+    }
+  }
+}

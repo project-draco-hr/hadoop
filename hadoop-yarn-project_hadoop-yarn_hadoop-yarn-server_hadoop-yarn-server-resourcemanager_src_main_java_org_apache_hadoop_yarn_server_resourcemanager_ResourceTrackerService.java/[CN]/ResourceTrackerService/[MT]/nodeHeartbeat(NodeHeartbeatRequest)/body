@@ -13,6 +13,7 @@
     return YarnServerBuilderUtils.newNodeHeartbeatResponse(NodeAction.RESYNC,message);
   }
   this.nmLivelinessMonitor.receivedPing(nodeId);
+  this.decommissioningWatcher.update(rmNode,remoteNodeStatus);
   NodeHeartbeatResponse lastNodeHeartbeatResponse=rmNode.getLastNodeHeartBeatResponse();
   if (remoteNodeStatus.getResponseId() + 1 == lastNodeHeartbeatResponse.getResponseId()) {
     LOG.info("Received duplicate heartbeat from node " + rmNode.getNodeAddress() + " responseId="+ remoteNodeStatus.getResponseId());
@@ -27,6 +28,13 @@
   boolean timelineV2Enabled=YarnConfiguration.timelineServiceV2Enabled(getConfig());
   if (timelineV2Enabled) {
     updateAppCollectorsMap(request);
+  }
+  if (rmNode.getState() == NodeState.DECOMMISSIONING && decommissioningWatcher.checkReadyToBeDecommissioned(rmNode.getNodeID())) {
+    String message="DECOMMISSIONING " + nodeId + " is ready to be decommissioned";
+    LOG.info(message);
+    this.rmContext.getDispatcher().getEventHandler().handle(new RMNodeEvent(nodeId,RMNodeEventType.DECOMMISSION));
+    this.nmLivelinessMonitor.unregister(nodeId);
+    return YarnServerBuilderUtils.newNodeHeartbeatResponse(NodeAction.SHUTDOWN,message);
   }
   NodeHeartbeatResponse nodeHeartBeatResponse=YarnServerBuilderUtils.newNodeHeartbeatResponse(lastNodeHeartbeatResponse.getResponseId() + 1,NodeAction.NORMAL,null,null,null,null,nextHeartBeatInterval);
   rmNode.updateNodeHeartbeatResponseForCleanup(nodeHeartBeatResponse);

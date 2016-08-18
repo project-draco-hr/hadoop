@@ -1,7 +1,6 @@
 {
   Configuration conf=new Configuration();
   int timeoutValue=500;
-  File excludeHostFile=new File(TEMP_DIR + File.separator + "excludeHostFile.txt");
   conf.set(YarnConfiguration.RM_NODES_INCLUDE_FILE_PATH,"");
   conf.set(YarnConfiguration.RM_NODES_EXCLUDE_FILE_PATH,"");
   conf.setInt(YarnConfiguration.RM_NODEMANAGER_UNTRACKED_REMOVAL_TIMEOUT_MSEC,timeoutValue);
@@ -28,13 +27,17 @@
   writeToHostsFile("host1",ip);
   conf.set(YarnConfiguration.RM_NODES_INCLUDE_FILE_PATH,hostFile.getAbsolutePath());
   refreshNodesOption(doGraceful,conf);
+  if (doGraceful) {
+    rm.waitForState(nm2.getNodeId(),NodeState.DECOMMISSIONING);
+  }
   nm1.nodeHeartbeat(true);
+  nm2.nodeHeartbeat(true);
   rm.drainEvents();
   Assert.assertTrue("Node should not be in active node list",!rmContext.getRMNodes().containsKey(nm2.getNodeId()));
   RMNode rmNode=rmContext.getInactiveRMNodes().get(nm2.getNodeId());
-  Assert.assertEquals("Node should be in inactive node list",rmNode.getState(),NodeState.SHUTDOWN);
+  Assert.assertEquals("Node should be in inactive node list",rmNode.getState(),doGraceful ? NodeState.DECOMMISSIONED : NodeState.SHUTDOWN);
   Assert.assertEquals("Active nodes should be 2",metrics.getNumActiveNMs(),2);
-  Assert.assertEquals("Shutdown nodes should be 1",metrics.getNumShutdownNMs(),1);
+  Assert.assertEquals("Shutdown nodes should be expected",metrics.getNumShutdownNMs(),doGraceful ? 0 : 1);
   int nodeRemovalTimeout=conf.getInt(YarnConfiguration.RM_NODEMANAGER_UNTRACKED_REMOVAL_TIMEOUT_MSEC,YarnConfiguration.DEFAULT_RM_NODEMANAGER_UNTRACKED_REMOVAL_TIMEOUT_MSEC);
   int nodeRemovalInterval=rmContext.getNodesListManager().getNodeRemovalCheckInterval();
   long maxThreadSleeptime=nodeRemovalInterval + nodeRemovalTimeout;
@@ -48,11 +51,13 @@
   rm.drainEvents();
   writeToHostsFile("host1",ip);
   refreshNodesOption(doGraceful,conf);
+  rm.waitForState(nm2.getNodeId(),doGraceful ? NodeState.DECOMMISSIONING : NodeState.SHUTDOWN);
+  nm2.nodeHeartbeat(true);
   rm.drainEvents();
   rmNode=rmContext.getInactiveRMNodes().get(nm2.getNodeId());
-  Assert.assertEquals("Node should be shutdown",rmNode.getState(),NodeState.SHUTDOWN);
+  Assert.assertEquals("Node should be shutdown",rmNode.getState(),doGraceful ? NodeState.DECOMMISSIONED : NodeState.SHUTDOWN);
   Assert.assertEquals("Active nodes should be 2",metrics.getNumActiveNMs(),2);
-  Assert.assertEquals("Shutdown nodes should be 1",metrics.getNumShutdownNMs(),1);
+  Assert.assertEquals("Shutdown nodes should be expected",metrics.getNumShutdownNMs(),doGraceful ? 0 : 1);
   latch.await(maxThreadSleeptime - 2000,TimeUnit.MILLISECONDS);
   writeToHostsFile("host1",ip,"host2");
   refreshNodesOption(doGraceful,conf);
@@ -78,23 +83,6 @@
   if (rmNode.getState() == NodeState.DECOMMISSIONED) {
     Assert.assertEquals("Decommissioned/ing nodes should be 1 now",metrics.getNumDecommisionedNMs(),1);
   }
-  writeToHostsFile("host1",ip,"host2");
-  writeToHostsFile(excludeHostFile,"host2");
-  refreshNodesOption(doGraceful,conf);
-  nm1.nodeHeartbeat(true);
-  nm3.nodeHeartbeat(true);
-  latch.await(maxThreadSleeptime,TimeUnit.MILLISECONDS);
-  rmNode=doGraceful ? rmContext.getRMNodes().get(nm2.getNodeId()) : rmContext.getInactiveRMNodes().get(nm2.getNodeId());
-  Assert.assertNotEquals("Timer for this node was not canceled!",rmNode,null);
-  Assert.assertTrue("Node should be DECOMMISSIONED or DECOMMISSIONING",(rmNode.getState() == NodeState.DECOMMISSIONED) || (rmNode.getState() == NodeState.DECOMMISSIONING));
-  writeToHostsFile("host1",ip);
-  writeToHostsFile(excludeHostFile,"");
-  refreshNodesOption(doGraceful,conf);
-  latch.await(maxThreadSleeptime,TimeUnit.MILLISECONDS);
-  rmNode=doGraceful ? rmContext.getRMNodes().get(nm2.getNodeId()) : rmContext.getInactiveRMNodes().get(nm2.getNodeId());
-  Assert.assertEquals("Node should have been forgotten!",rmNode,null);
-  Assert.assertEquals("Shutdown nodes should be 0 now",metrics.getNumDecommisionedNMs(),0);
-  Assert.assertEquals("Shutdown nodes should be 0 now",metrics.getNumShutdownNMs(),0);
-  Assert.assertEquals("Active nodes should be 2",metrics.getNumActiveNMs(),2);
+  testNodeRemovalUtilDecomToUntracked(rmContext,conf,nm1,nm2,nm3,maxThreadSleeptime,doGraceful);
   rm.stop();
 }

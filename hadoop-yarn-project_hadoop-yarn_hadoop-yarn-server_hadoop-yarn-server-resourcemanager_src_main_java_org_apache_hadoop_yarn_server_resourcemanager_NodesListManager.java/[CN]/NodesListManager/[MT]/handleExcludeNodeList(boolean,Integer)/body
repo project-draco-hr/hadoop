@@ -1,0 +1,57 @@
+{
+  List<RMNode> nodesToRecom=new ArrayList<RMNode>();
+  List<RMNode> nodesToDecom=new ArrayList<RMNode>();
+  Set<String> includes=new HashSet<String>();
+  Map<String,Integer> excludes=new HashMap<String,Integer>();
+  hostsReader.getHostDetails(includes,excludes);
+  for (  RMNode n : this.rmContext.getRMNodes().values()) {
+    NodeState s=n.getState();
+    boolean isExcluded=!isValidNode(n.getHostName(),includes,excludes.keySet());
+    String nodeStr="node " + n.getNodeID() + " with state "+ s;
+    if (!isExcluded) {
+      if (s == NodeState.DECOMMISSIONING) {
+        LOG.info("Recommission " + nodeStr);
+        nodesToRecom.add(n);
+      }
+    }
+ else {
+      if (graceful) {
+        Integer timeoutToUse=(excludes.get(n.getHostName()) != null) ? excludes.get(n.getHostName()) : timeout;
+        if (s != NodeState.DECOMMISSIONED && s != NodeState.DECOMMISSIONING) {
+          LOG.info("Gracefully decommission " + nodeStr);
+          nodesToDecom.add(n);
+        }
+ else         if (s == NodeState.DECOMMISSIONING && !Objects.equals(n.getDecommissioningTimeout(),timeoutToUse)) {
+          LOG.info("Update " + nodeStr + " timeout to be "+ timeoutToUse);
+          nodesToDecom.add(n);
+        }
+ else {
+          LOG.info("No action for " + nodeStr);
+        }
+      }
+ else {
+        if (s != NodeState.DECOMMISSIONED) {
+          LOG.info("Forcefully decommission " + nodeStr);
+          nodesToDecom.add(n);
+        }
+      }
+    }
+  }
+  for (  RMNode n : nodesToRecom) {
+    RMNodeEvent e=new RMNodeEvent(n.getNodeID(),RMNodeEventType.RECOMMISSION);
+    this.rmContext.getDispatcher().getEventHandler().handle(e);
+  }
+  for (  RMNode n : nodesToDecom) {
+    RMNodeEvent e;
+    if (graceful) {
+      Integer timeoutToUse=(excludes.get(n.getHostName()) != null) ? excludes.get(n.getHostName()) : timeout;
+      e=new RMNodeDecommissioningEvent(n.getNodeID(),timeoutToUse);
+    }
+ else {
+      RMNodeEventType eventType=isUntrackedNode(n.getHostName()) ? RMNodeEventType.SHUTDOWN : RMNodeEventType.DECOMMISSION;
+      e=new RMNodeEvent(n.getNodeID(),eventType);
+    }
+    this.rmContext.getDispatcher().getEventHandler().handle(e);
+  }
+  updateInactiveNodes();
+}

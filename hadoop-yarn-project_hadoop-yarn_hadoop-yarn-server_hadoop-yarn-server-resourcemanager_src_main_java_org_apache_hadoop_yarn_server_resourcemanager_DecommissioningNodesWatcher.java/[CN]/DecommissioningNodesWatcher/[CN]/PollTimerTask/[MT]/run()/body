@@ -1,0 +1,40 @@
+{
+  logDecommissioningNodesStatus();
+  long now=mclock.getTime();
+  Set<NodeId> staleNodes=new HashSet<NodeId>();
+  for (Iterator<Map.Entry<NodeId,DecommissioningNodeContext>> it=decomNodes.entrySet().iterator(); it.hasNext(); ) {
+    Map.Entry<NodeId,DecommissioningNodeContext> e=it.next();
+    DecommissioningNodeContext d=e.getValue();
+    if (now - d.lastUpdateTime < 5000L) {
+      continue;
+    }
+    if (d.nodeState != NodeState.DECOMMISSIONING) {
+      LOG.debug("remove " + d.nodeState + " "+ d.nodeId);
+      it.remove();
+      continue;
+    }
+ else     if (now - d.lastUpdateTime > 60000L) {
+      RMNode rmNode=getRmNode(d.nodeId);
+      if (rmNode != null && rmNode.getState() == NodeState.DECOMMISSIONED) {
+        LOG.debug("remove " + rmNode.getState() + " "+ d.nodeId);
+        it.remove();
+        continue;
+      }
+    }
+    if (d.timeoutMs >= 0 && d.decommissioningStartTime + d.timeoutMs < now) {
+      staleNodes.add(d.nodeId);
+      LOG.debug("Identified stale and timeout node " + d.nodeId);
+    }
+  }
+  for (  NodeId nodeId : staleNodes) {
+    RMNode rmNode=this.rmContext.getRMNodes().get(nodeId);
+    if (rmNode == null || rmNode.getState() != NodeState.DECOMMISSIONING) {
+      remove(nodeId);
+      continue;
+    }
+    if (rmNode.getState() == NodeState.DECOMMISSIONING && checkReadyToBeDecommissioned(rmNode.getNodeID())) {
+      LOG.info("DECOMMISSIONING " + nodeId + " timeout");
+      this.rmContext.getDispatcher().getEventHandler().handle(new RMNodeEvent(nodeId,RMNodeEventType.DECOMMISSION));
+    }
+  }
+}

@@ -1,0 +1,22 @@
+{
+  if (!LOG.isDebugEnabled() || decomNodes.size() == 0) {
+    return;
+  }
+  StringBuilder sb=new StringBuilder();
+  long now=mclock.getTime();
+  for (  DecommissioningNodeContext d : decomNodes.values()) {
+    DecommissioningNodeStatus s=checkDecommissioningStatus(d.nodeId);
+    sb.append(String.format("%n  %-34s %4ds fresh:%3ds containers:%2d %14s",d.nodeId.getHost(),(now - d.decommissioningStartTime) / 1000,(now - d.lastUpdateTime) / 1000,d.numActiveContainers,s));
+    if (s == DecommissioningNodeStatus.WAIT_APP || s == DecommissioningNodeStatus.WAIT_CONTAINER) {
+      sb.append(String.format(" timeout:%4ds",getTimeoutInSec(d)));
+    }
+    for (    ApplicationId aid : d.appIds) {
+      sb.append("\n    " + aid);
+      RMApp rmApp=rmContext.getRMApps().get(aid);
+      if (rmApp != null) {
+        sb.append(String.format(" %s %9s %5.2f%% %5ds",rmApp.getState(),(rmApp.getApplicationType() == null) ? "" : rmApp.getApplicationType(),100.0 * rmApp.getProgress(),(mclock.getTime() - rmApp.getStartTime()) / 1000));
+      }
+    }
+  }
+  LOG.info("Decommissioning Nodes: " + sb.toString());
+}

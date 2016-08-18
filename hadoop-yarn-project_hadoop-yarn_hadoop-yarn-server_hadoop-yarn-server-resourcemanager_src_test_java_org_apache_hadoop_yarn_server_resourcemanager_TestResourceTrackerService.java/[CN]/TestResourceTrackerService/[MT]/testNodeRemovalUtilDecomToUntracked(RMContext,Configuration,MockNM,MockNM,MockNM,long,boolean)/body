@@ -1,0 +1,24 @@
+{
+  ClusterMetrics metrics=ClusterMetrics.getMetrics();
+  String ip=NetUtils.normalizeHostName("localhost");
+  CountDownLatch latch=new CountDownLatch(1);
+  writeToHostsFile("host1",ip,"host2");
+  writeToHostsFile(excludeHostFile,"host2");
+  refreshNodesOption(doGraceful,conf);
+  nm1.nodeHeartbeat(true);
+  nm3.nodeHeartbeat(true);
+  latch.await(maxThreadSleeptime,TimeUnit.MILLISECONDS);
+  RMNode rmNode=doGraceful ? rmContext.getRMNodes().get(nm2.getNodeId()) : rmContext.getInactiveRMNodes().get(nm2.getNodeId());
+  Assert.assertNotEquals("Timer for this node was not canceled!",rmNode,null);
+  Assert.assertTrue("Node should be DECOMMISSIONED or DECOMMISSIONING",(rmNode.getState() == NodeState.DECOMMISSIONED) || (rmNode.getState() == NodeState.DECOMMISSIONING));
+  writeToHostsFile("host1",ip);
+  writeToHostsFile(excludeHostFile,"");
+  refreshNodesOption(doGraceful,conf);
+  nm2.nodeHeartbeat(true);
+  latch.await(maxThreadSleeptime,TimeUnit.MILLISECONDS);
+  rmNode=doGraceful ? rmContext.getRMNodes().get(nm2.getNodeId()) : rmContext.getInactiveRMNodes().get(nm2.getNodeId());
+  Assert.assertEquals("Node should have been forgotten!",rmNode,null);
+  Assert.assertEquals("Shutdown nodes should be 0 now",metrics.getNumDecommisionedNMs(),0);
+  Assert.assertEquals("Shutdown nodes should be 0 now",metrics.getNumShutdownNMs(),0);
+  Assert.assertEquals("Active nodes should be 2",metrics.getNumActiveNMs(),2);
+}
