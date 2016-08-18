@@ -1,63 +1,9 @@
 {
-  List<String> newQueueNames=new ArrayList<String>();
-  newQueueNames.add(name);
-  int sepIndex=name.length();
-  FSParentQueue parent=null;
-  while (sepIndex != -1) {
-    int prevSepIndex=sepIndex;
-    sepIndex=name.lastIndexOf('.',sepIndex - 1);
-    String node=name.substring(sepIndex + 1,prevSepIndex);
-    if (!isQueueNameValid(node)) {
-      throw new InvalidQueueNameException("Illegal node name at offset " + (sepIndex + 1) + " for queue name "+ name);
-    }
-    FSQueue queue;
-    String curName=null;
-    curName=name.substring(0,sepIndex);
-    queue=queues.get(curName);
-    if (queue == null) {
-      newQueueNames.add(curName);
-    }
- else {
-      if (queue instanceof FSParentQueue) {
-        parent=(FSParentQueue)queue;
-        break;
-      }
- else {
-        return null;
-      }
-    }
+  List<String> newQueueNames=new ArrayList<>();
+  FSParentQueue parent=buildNewQueueList(name,newQueueNames);
+  FSQueue queue=null;
+  if (parent != null) {
+    queue=createNewQueues(queueType,parent,newQueueNames);
   }
-  AllocationConfiguration queueConf=scheduler.getAllocationConfiguration();
-  FSLeafQueue leafQueue=null;
-  for (int i=newQueueNames.size() - 1; i >= 0; i--) {
-    String queueName=newQueueNames.get(i);
-    if (i == 0 && queueType != FSQueueType.PARENT) {
-      leafQueue=new FSLeafQueue(name,scheduler,parent);
-      try {
-        leafQueue.setPolicy(queueConf.getDefaultSchedulingPolicy());
-      }
- catch (      AllocationConfigurationException ex) {
-        LOG.warn("Failed to set default scheduling policy " + queueConf.getDefaultSchedulingPolicy() + " on new leaf queue.",ex);
-      }
-      parent.addChildQueue(leafQueue);
-      queues.put(leafQueue.getName(),leafQueue);
-      leafQueues.add(leafQueue);
-      leafQueue.updatePreemptionVariables();
-      return leafQueue;
-    }
- else {
-      FSParentQueue newParent=new FSParentQueue(queueName,scheduler,parent);
-      try {
-        newParent.setPolicy(queueConf.getDefaultSchedulingPolicy());
-      }
- catch (      AllocationConfigurationException ex) {
-        LOG.warn("Failed to set default scheduling policy " + queueConf.getDefaultSchedulingPolicy() + " on new parent queue.",ex);
-      }
-      parent.addChildQueue(newParent);
-      queues.put(newParent.getName(),newParent);
-      newParent.updatePreemptionVariables();
-      parent=newParent;
-    }
-  }
-  return parent;
+  return queue;
 }

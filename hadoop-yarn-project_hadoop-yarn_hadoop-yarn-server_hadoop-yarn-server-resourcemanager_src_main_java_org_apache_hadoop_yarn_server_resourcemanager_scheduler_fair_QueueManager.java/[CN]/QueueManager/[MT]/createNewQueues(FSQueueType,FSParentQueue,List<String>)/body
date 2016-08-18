@@ -1,0 +1,37 @@
+{
+  AllocationConfiguration queueConf=scheduler.getAllocationConfiguration();
+  Iterator<String> i=newQueueNames.iterator();
+  FSParentQueue parent=topParent;
+  FSQueue queue=null;
+  while (i.hasNext()) {
+    FSParentQueue newParent=null;
+    String queueName=i.next();
+    if (!i.hasNext() && (queueType != FSQueueType.PARENT)) {
+      FSLeafQueue leafQueue=new FSLeafQueue(queueName,scheduler,parent);
+      try {
+        leafQueue.setPolicy(queueConf.getDefaultSchedulingPolicy());
+      }
+ catch (      AllocationConfigurationException ex) {
+        LOG.warn("Failed to set default scheduling policy " + queueConf.getDefaultSchedulingPolicy() + " on new leaf queue.",ex);
+      }
+      leafQueues.add(leafQueue);
+      queue=leafQueue;
+    }
+ else {
+      newParent=new FSParentQueue(queueName,scheduler,parent);
+      try {
+        newParent.setPolicy(queueConf.getDefaultSchedulingPolicy());
+      }
+ catch (      AllocationConfigurationException ex) {
+        LOG.warn("Failed to set default scheduling policy " + queueConf.getDefaultSchedulingPolicy() + " on new parent queue.",ex);
+      }
+      queue=newParent;
+    }
+    parent.addChildQueue(queue);
+    setChildResourceLimits(parent,queue,queueConf);
+    queues.put(queue.getName(),queue);
+    queue.updatePreemptionVariables();
+    parent=newParent;
+  }
+  return queue;
+}
