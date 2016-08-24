@@ -1,0 +1,35 @@
+{
+  dfsClient.checkOpen();
+  if (closed.get()) {
+    throw new IOException("Stream closed");
+  }
+  int len=strategy.getTargetLength();
+  CorruptedBlocks corruptedBlocks=new CorruptedBlocks();
+  if (pos < getFileLength()) {
+    try {
+      if (pos > blockEnd) {
+        blockSeekTo(pos);
+      }
+      int realLen=(int)Math.min(len,(blockEnd - pos + 1L));
+synchronized (infoLock) {
+        if (locatedBlocks.isLastBlockComplete()) {
+          realLen=(int)Math.min(realLen,locatedBlocks.getFileLength() - pos);
+        }
+      }
+      int result=0;
+      while (result < realLen) {
+        if (!curStripeRange.include(getOffsetInBlockGroup())) {
+          readOneStripe(corruptedBlocks);
+        }
+        int ret=copyToTargetBuf(strategy,realLen - result);
+        result+=ret;
+        pos+=ret;
+      }
+      return result;
+    }
+  finally {
+      reportCheckSumFailure(corruptedBlocks,currentLocatedBlock.getLocations().length,true);
+    }
+  }
+  return -1;
+}
