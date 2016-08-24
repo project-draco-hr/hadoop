@@ -6,6 +6,7 @@
   long skipSize=0;
   String resFileName=DEFAULT_RES_FILE_NAME;
   String compressionClass=null;
+  String storagePolicy=null;
   boolean isSequential=false;
   String version=TestDFSIO.class.getSimpleName() + ".1.8";
   LOG.info(version);
@@ -62,6 +63,9 @@
  else     if (args[i].equalsIgnoreCase("-resfile")) {
       resFileName=args[++i];
     }
+ else     if (args[i].equalsIgnoreCase("-storagePolicy")) {
+      storagePolicy=args[++i];
+    }
  else {
       System.err.println("Illegal argument: " + args[i]);
       return -1;
@@ -82,6 +86,31 @@
   config.setInt("test.io.file.buffer.size",bufferSize);
   config.setLong("test.io.skip.size",skipSize);
   FileSystem fs=FileSystem.get(config);
+  if (storagePolicy != null) {
+    boolean isValid=false;
+    Collection<BlockStoragePolicy> storagePolicies=((DistributedFileSystem)fs).getAllStoragePolicies();
+    try {
+      for (      BlockStoragePolicy policy : storagePolicies) {
+        if (policy.getName().equals(storagePolicy)) {
+          isValid=true;
+          break;
+        }
+      }
+    }
+ catch (    Exception e) {
+      throw new IOException("Get block storage policies error: ",e);
+    }
+    if (!isValid) {
+      System.out.println("Invalid block storage policy: " + storagePolicy);
+      System.out.println("Current supported storage policy list: ");
+      for (      BlockStoragePolicy policy : storagePolicies) {
+        System.out.println(policy.getName());
+      }
+      return -1;
+    }
+    config.set("test.io.block.storage.policy",storagePolicy);
+    LOG.info("storagePolicy = " + storagePolicy);
+  }
   if (isSequential) {
     long tStart=System.currentTimeMillis();
     sequentialTest(fs,testType,nrBytes,nrFiles);
