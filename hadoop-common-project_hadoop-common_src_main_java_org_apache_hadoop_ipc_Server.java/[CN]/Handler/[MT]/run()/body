@@ -8,6 +8,15 @@
       if (LOG.isDebugEnabled()) {
         LOG.debug(Thread.currentThread().getName() + ": " + call+ " for RpcKind "+ call.rpcKind);
       }
+      if (!call.connection.channel.isOpen()) {
+        LOG.info(Thread.currentThread().getName() + ": skipped " + call);
+        continue;
+      }
+      String errorClass=null;
+      String error=null;
+      RpcStatusProto returnStatus=RpcStatusProto.SUCCESS;
+      RpcErrorCodeProto detailedErr=null;
+      Writable value=null;
       CurCall.set(call);
       if (call.traceScope != null) {
         call.traceScope.reattach();
@@ -15,12 +24,44 @@
         traceScope.getSpan().addTimelineAnnotation("called");
       }
       CallerContext.setCurrent(call.callerContext);
-      UserGroupInformation remoteUser=call.getRemoteUser();
-      if (remoteUser != null) {
-        remoteUser.doAs(call);
-      }
+      try {
+        if (call.connection.user == null) {
+          value=call(call.rpcKind,call.connection.protocolName,call.rpcRequest,call.timestamp);
+        }
  else {
-        call.run();
+          value=call.connection.user.doAs(new PrivilegedExceptionAction<Writable>(){
+            @Override public Writable run() throws Exception {
+              return call(call.rpcKind,call.connection.protocolName,call.rpcRequest,call.timestamp);
+            }
+          }
+);
+        }
+      }
+ catch (      Throwable e) {
+        if (e instanceof UndeclaredThrowableException) {
+          e=e.getCause();
+        }
+        logException(LOG,e,call);
+        if (e instanceof RpcServerException) {
+          RpcServerException rse=((RpcServerException)e);
+          returnStatus=rse.getRpcStatusProto();
+          detailedErr=rse.getRpcErrorCodeProto();
+        }
+ else {
+          returnStatus=RpcStatusProto.ERROR;
+          detailedErr=RpcErrorCodeProto.ERROR_APPLICATION;
+        }
+        errorClass=e.getClass().getName();
+        error=StringUtils.stringifyException(e);
+        String exceptionHdr=errorClass + ": ";
+        if (error.startsWith(exceptionHdr)) {
+          error=error.substring(exceptionHdr.length());
+        }
+      }
+      CurCall.set(null);
+synchronized (call.connection.responseQueue) {
+        setupResponse(call,returnStatus,detailedErr,value,errorClass,error);
+        call.sendResponse();
       }
     }
  catch (    InterruptedException e) {
@@ -38,7 +79,6 @@ catch (    Exception e) {
       }
     }
  finally {
-      CurCall.set(null);
       IOUtils.cleanup(LOG,traceScope);
     }
   }
