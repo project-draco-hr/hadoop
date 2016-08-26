@@ -18,7 +18,6 @@
     if (lastINode != null && lastINode.isFile()) {
       throw new FileAlreadyExistsException("Path is not a directory: " + src);
     }
-    INodesInPath existing=lastINode != null ? iip : iip.getExistingINodes();
     if (lastINode == null) {
       if (fsd.isPermissionEnabled()) {
         fsd.checkAncestorAccess(pc,iip,FsAction.WRITE);
@@ -27,20 +26,16 @@
         fsd.verifyParentDir(iip,src);
       }
       fsn.checkFsObjectLimit();
-      List<String> nonExisting=iip.getPath(existing.length(),iip.length() - existing.length());
-      int length=nonExisting.size();
-      if (length > 1) {
-        List<String> ancestors=nonExisting.subList(0,length - 1);
-        existing=createChildrenDirectories(fsd,existing,ancestors,addImplicitUwx(permissions,permissions));
-        if (existing == null) {
-          throw new IOException("Failed to create directory: " + src);
-        }
+      INodesInPath existing=createParentDirectories(fsd,iip,permissions,false);
+      if (existing != null) {
+        existing=createSingleDirectory(fsd,existing,iip.getLastLocalName(),permissions);
       }
-      if ((existing=createChildrenDirectories(fsd,existing,nonExisting.subList(length - 1,length),permissions)) == null) {
+      if (existing == null) {
         throw new IOException("Failed to create directory: " + src);
       }
+      iip=existing;
     }
-    return fsd.getAuditFileInfo(existing);
+    return fsd.getAuditFileInfo(iip);
   }
   finally {
     fsd.writeUnlock();
