@@ -1,0 +1,49 @@
+{
+  ContainerLaunch.ShellScriptBuilder sb=ContainerLaunch.ShellScriptBuilder.create();
+  Set<String> whitelist=new HashSet<>();
+  whitelist.add(YarnConfiguration.NM_DOCKER_CONTAINER_EXECUTOR_IMAGE_NAME);
+  whitelist.add(ApplicationConstants.Environment.HADOOP_YARN_HOME.name());
+  whitelist.add(ApplicationConstants.Environment.HADOOP_COMMON_HOME.name());
+  whitelist.add(ApplicationConstants.Environment.HADOOP_HDFS_HOME.name());
+  whitelist.add(ApplicationConstants.Environment.HADOOP_CONF_DIR.name());
+  whitelist.add(ApplicationConstants.Environment.JAVA_HOME.name());
+  if (environment != null) {
+    for (    Map.Entry<String,String> env : environment.entrySet()) {
+      if (!whitelist.contains(env.getKey())) {
+        sb.env(env.getKey(),env.getValue());
+      }
+ else {
+        sb.whitelistedEnv(env.getKey(),env.getValue());
+      }
+    }
+  }
+  if (resources != null) {
+    for (    Map.Entry<Path,List<String>> resourceEntry : resources.entrySet()) {
+      for (      String linkName : resourceEntry.getValue()) {
+        if (new Path(linkName).getName().equals(WILDCARD)) {
+          for (          File wildLink : readDirAsUser(user,resourceEntry.getKey())) {
+            sb.symlink(new Path(wildLink.toString()),new Path(wildLink.getName()));
+          }
+        }
+ else {
+          sb.symlink(resourceEntry.getKey(),new Path(linkName));
+        }
+      }
+    }
+  }
+  if (getConf() != null && getConf().getBoolean(YarnConfiguration.NM_LOG_CONTAINER_DEBUG_INFO,YarnConfiguration.DEFAULT_NM_LOG_CONTAINER_DEBUG_INFO)) {
+    sb.copyDebugInformation(new Path(outFilename),new Path(logDir,outFilename));
+    sb.listDebugInformation(new Path(logDir,DIRECTORY_CONTENTS));
+  }
+  sb.command(command);
+  PrintStream pout=null;
+  try {
+    pout=new PrintStream(out,false,"UTF-8");
+    sb.write(pout);
+  }
+  finally {
+    if (out != null) {
+      out.close();
+    }
+  }
+}
