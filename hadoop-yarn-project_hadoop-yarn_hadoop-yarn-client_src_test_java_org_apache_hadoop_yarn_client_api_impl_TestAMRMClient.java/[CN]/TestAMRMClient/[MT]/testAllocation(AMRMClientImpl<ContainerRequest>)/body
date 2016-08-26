@@ -7,14 +7,8 @@
   amClient.addContainerRequest(new ContainerRequest(capability,nodes,racks,priority));
   amClient.removeContainerRequest(new ContainerRequest(capability,nodes,racks,priority));
   amClient.removeContainerRequest(new ContainerRequest(capability,nodes,racks,priority));
-  int containersRequestedNode=amClient.remoteRequestsTable.get(priority,node,ExecutionType.GUARANTEED,capability).remoteRequest.getNumContainers();
-  int containersRequestedRack=amClient.remoteRequestsTable.get(priority,rack,ExecutionType.GUARANTEED,capability).remoteRequest.getNumContainers();
-  int containersRequestedAny=amClient.remoteRequestsTable.get(priority,ResourceRequest.ANY,ExecutionType.GUARANTEED,capability).remoteRequest.getNumContainers();
-  assertEquals(2,containersRequestedNode);
-  assertEquals(2,containersRequestedRack);
-  assertEquals(2,containersRequestedAny);
-  assertEquals(3,amClient.ask.size());
-  assertEquals(0,amClient.release.size());
+  assertNumContainers(amClient,0,2,2,2,3,0);
+  int containersRequestedAny=2;
   int allocatedContainerCount=0;
   int iterationsLeft=3;
   Set<ContainerId> releases=new TreeSet<ContainerId>();
@@ -79,23 +73,5 @@
   assertEquals(3,amClient.ask.size());
   snoopRequest=amClient.ask.iterator().next();
   assertEquals(0,snoopRequest.getNumContainers());
-  iterationsLeft=3;
-  while (!releases.isEmpty() || iterationsLeft-- > 0) {
-    AllocateResponse allocResponse=amClient.allocate(0.1f);
-    assertEquals(0,allocResponse.getAllocatedContainers().size());
-    if (allocResponse.getCompletedContainersStatuses().size() > 0) {
-      for (      ContainerStatus cStatus : allocResponse.getCompletedContainersStatuses()) {
-        if (releases.contains(cStatus.getContainerId())) {
-          assertEquals(cStatus.getState(),ContainerState.COMPLETE);
-          assertEquals(-100,cStatus.getExitStatus());
-          releases.remove(cStatus.getContainerId());
-        }
-      }
-    }
-    if (iterationsLeft > 0) {
-      sleep(100);
-    }
-  }
-  assertEquals(0,amClient.ask.size());
-  assertEquals(0,amClient.release.size());
+  waitForContainerCompletion(3,amClient,releases);
 }

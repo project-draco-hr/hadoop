@@ -1,0 +1,44 @@
+{
+  assertEquals(0,amClient.ask.size());
+  assertEquals(0,amClient.release.size());
+  amClient.addContainerRequest(new ContainerRequest(capability,nodes,racks,priority));
+  amClient.addContainerRequest(new ContainerRequest(capability,nodes,racks,priority));
+  amClient.addContainerRequest(new ContainerRequest(capability,nodes,racks,priority,1));
+  amClient.addContainerRequest(new ContainerRequest(capability,nodes,racks,priority,1));
+  amClient.addContainerRequest(new ContainerRequest(capability,nodes,racks,priority,2));
+  amClient.addContainerRequest(new ContainerRequest(capability,nodes,racks,priority,2));
+  amClient.removeContainerRequest(new ContainerRequest(capability,nodes,racks,priority));
+  amClient.removeContainerRequest(new ContainerRequest(capability,nodes,racks,priority,1));
+  amClient.removeContainerRequest(new ContainerRequest(capability,nodes,racks,priority,2));
+  assertNumContainers(amClient,0,1,1,1,9,0);
+  assertNumContainers(amClient,1,1,1,1,9,0);
+  assertNumContainers(amClient,2,1,1,1,9,0);
+  int containersRequestedAny=3;
+  List<Container> allocatedContainers=new ArrayList<>();
+  int iterationsLeft=5;
+  Set<ContainerId> releases=new TreeSet<ContainerId>();
+  while (allocatedContainers.size() < containersRequestedAny && iterationsLeft-- > 0) {
+    AllocateResponse allocResponse=amClient.allocate(0.1f);
+    assertEquals(0,amClient.ask.size());
+    assertEquals(0,amClient.release.size());
+    allocatedContainers.addAll(allocResponse.getAllocatedContainers());
+    for (    Container container : allocResponse.getAllocatedContainers()) {
+      ContainerId rejectContainerId=container.getId();
+      releases.add(rejectContainerId);
+      amClient.releaseAssignedContainer(rejectContainerId);
+    }
+    if (allocatedContainers.size() < containersRequestedAny) {
+      sleep(100);
+    }
+  }
+  assertEquals(containersRequestedAny,allocatedContainers.size());
+  Set<Long> expAllocIds=new HashSet<>(Arrays.asList(Long.valueOf(0),Long.valueOf(1),Long.valueOf(2)));
+  Set<Long> actAllocIds=new HashSet<>();
+  for (  Container ac : allocatedContainers) {
+    actAllocIds.add(Long.valueOf(ac.getAllocationRequestId()));
+  }
+  assertEquals(expAllocIds,actAllocIds);
+  assertEquals(3,amClient.release.size());
+  assertEquals(0,amClient.ask.size());
+  waitForContainerCompletion(3,amClient,releases);
+}
