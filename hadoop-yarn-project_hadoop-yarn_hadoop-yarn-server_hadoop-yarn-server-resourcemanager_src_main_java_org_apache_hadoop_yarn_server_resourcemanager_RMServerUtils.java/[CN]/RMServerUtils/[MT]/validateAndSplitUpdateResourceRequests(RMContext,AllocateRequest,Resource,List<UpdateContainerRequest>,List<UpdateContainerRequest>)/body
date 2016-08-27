@@ -1,0 +1,46 @@
+{
+  List<UpdateContainerError> errors=new ArrayList<>();
+  Set<ContainerId> outstandingUpdate=new HashSet<>();
+  for (  UpdateContainerRequest updateReq : request.getUpdateRequests()) {
+    RMContainer rmContainer=rmContext.getScheduler().getRMContainer(updateReq.getContainerId());
+    String msg=null;
+    if (rmContainer == null) {
+      msg=INVALID_CONTAINER_ID;
+    }
+    if (msg == null && updateReq.getContainerVersion() != rmContainer.getContainer().getVersion()) {
+      msg=INCORRECT_CONTAINER_VERSION_ERROR + "|" + updateReq.getContainerVersion()+ "|"+ rmContainer.getContainer().getVersion();
+    }
+    if (msg == null && outstandingUpdate.contains(updateReq.getContainerId())) {
+      msg=UPDATE_OUTSTANDING_ERROR;
+    }
+    if (msg == null) {
+      Resource original=rmContainer.getContainer().getResource();
+      Resource target=updateReq.getCapability();
+      if (Resources.fitsIn(target,original)) {
+        if (validateIncreaseDecreaseRequest(rmContext,updateReq,maximumAllocation,false)) {
+          decreaseResourceReqs.add(updateReq);
+          outstandingUpdate.add(updateReq.getContainerId());
+        }
+ else {
+          msg=RESOURCE_OUTSIDE_ALLOWED_RANGE;
+        }
+      }
+ else {
+        if (validateIncreaseDecreaseRequest(rmContext,updateReq,maximumAllocation,true)) {
+          increaseResourceReqs.add(updateReq);
+          outstandingUpdate.add(updateReq.getContainerId());
+        }
+ else {
+          msg=RESOURCE_OUTSIDE_ALLOWED_RANGE;
+        }
+      }
+    }
+    if (msg != null) {
+      UpdateContainerError updateError=RECORD_FACTORY.newRecordInstance(UpdateContainerError.class);
+      updateError.setReason(msg);
+      updateError.setUpdateContainerRequest(updateReq);
+      errors.add(updateError);
+    }
+  }
+  return errors;
+}

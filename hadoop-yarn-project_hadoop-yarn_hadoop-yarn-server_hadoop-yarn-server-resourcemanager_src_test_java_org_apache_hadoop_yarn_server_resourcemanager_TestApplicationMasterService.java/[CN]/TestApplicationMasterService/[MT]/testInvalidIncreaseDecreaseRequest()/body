@@ -11,29 +11,16 @@
     MockAM am1=rm.sendAMLaunched(attempt1.getAppAttemptId());
     RegisterApplicationMasterResponse registerResponse=am1.registerAppAttempt();
     sentRMContainerLaunched(rm,ContainerId.newContainerId(am1.getApplicationAttemptId(),1));
-    am1.sendContainerResizingRequest(Arrays.asList(ContainerResourceChangeRequest.newInstance(ContainerId.newContainerId(attempt1.getAppAttemptId(),1),Resources.createResource(2048))),null);
-    boolean exceptionCaught=false;
-    try {
-      am1.sendContainerResizingRequest(Arrays.asList(ContainerResourceChangeRequest.newInstance(ContainerId.newContainerId(attempt1.getAppAttemptId(),1),Resources.createResource(-1))),null);
-    }
- catch (    InvalidResourceRequestException e) {
-      exceptionCaught=true;
-    }
-    Assert.assertTrue(exceptionCaught);
-    try {
-      am1.sendContainerResizingRequest(Arrays.asList(ContainerResourceChangeRequest.newInstance(ContainerId.newContainerId(attempt1.getAppAttemptId(),1),Resources.add(registerResponse.getMaximumResourceCapability(),Resources.createResource(1)))),null);
-    }
- catch (    InvalidResourceRequestException e) {
-      exceptionCaught=true;
-    }
-    Assert.assertTrue(exceptionCaught);
-    try {
-      am1.sendContainerResizingRequest(Arrays.asList(ContainerResourceChangeRequest.newInstance(ContainerId.newContainerId(attempt1.getAppAttemptId(),1),Resources.add(registerResponse.getMaximumResourceCapability(),Resources.createResource(1)))),Arrays.asList(ContainerResourceChangeRequest.newInstance(ContainerId.newContainerId(attempt1.getAppAttemptId(),1),Resources.add(registerResponse.getMaximumResourceCapability(),Resources.createResource(1)))));
-    }
- catch (    InvalidResourceRequestException e) {
-      exceptionCaught=true;
-    }
-    Assert.assertTrue(exceptionCaught);
+    am1.sendContainerResizingRequest(Arrays.asList(UpdateContainerRequest.newInstance(0,ContainerId.newContainerId(attempt1.getAppAttemptId(),1),ContainerUpdateType.INCREASE_RESOURCE,Resources.createResource(2048),null)));
+    AllocateResponse response=am1.sendContainerResizingRequest(Arrays.asList(UpdateContainerRequest.newInstance(0,ContainerId.newContainerId(attempt1.getAppAttemptId(),1),ContainerUpdateType.INCREASE_RESOURCE,Resources.createResource(-1),null)));
+    Assert.assertEquals(1,response.getUpdateErrors().size());
+    Assert.assertEquals("RESOURCE_OUTSIDE_ALLOWED_RANGE",response.getUpdateErrors().get(0).getReason());
+    response=am1.sendContainerResizingRequest(Arrays.asList(UpdateContainerRequest.newInstance(0,ContainerId.newContainerId(attempt1.getAppAttemptId(),1),ContainerUpdateType.INCREASE_RESOURCE,Resources.add(registerResponse.getMaximumResourceCapability(),Resources.createResource(1)),null)));
+    Assert.assertEquals(1,response.getUpdateErrors().size());
+    Assert.assertEquals("RESOURCE_OUTSIDE_ALLOWED_RANGE",response.getUpdateErrors().get(0).getReason());
+    response=am1.sendContainerResizingRequest(Arrays.asList(UpdateContainerRequest.newInstance(0,ContainerId.newContainerId(attempt1.getAppAttemptId(),1),ContainerUpdateType.INCREASE_RESOURCE,Resources.createResource(2048,4),null),UpdateContainerRequest.newInstance(0,ContainerId.newContainerId(attempt1.getAppAttemptId(),1),ContainerUpdateType.DECREASE_RESOURCE,Resources.createResource(1024,1),null)));
+    Assert.assertEquals(1,response.getUpdateErrors().size());
+    Assert.assertEquals("UPDATE_OUTSTANDING_ERROR",response.getUpdateErrors().get(0).getReason());
   }
   finally {
     if (rm != null) {

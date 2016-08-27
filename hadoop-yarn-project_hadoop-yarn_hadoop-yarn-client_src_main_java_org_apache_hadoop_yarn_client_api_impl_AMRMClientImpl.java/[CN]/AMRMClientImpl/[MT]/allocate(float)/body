@@ -9,26 +9,9 @@
   Map<ContainerId,SimpleEntry<Container,Resource>> oldChange=new HashMap<>();
   try {
 synchronized (this) {
-      askList=new ArrayList<ResourceRequest>(ask.size());
-      for (      ResourceRequest r : ask) {
-        ResourceRequest rr=ResourceRequest.newInstance(r.getPriority(),r.getResourceName(),r.getCapability(),r.getNumContainers(),r.getRelaxLocality(),r.getNodeLabelExpression(),r.getExecutionTypeRequest());
-        rr.setAllocationRequestId(r.getAllocationRequestId());
-        askList.add(rr);
-      }
-      List<ContainerResourceChangeRequest> increaseList=new ArrayList<>();
-      List<ContainerResourceChangeRequest> decreaseList=new ArrayList<>();
+      askList=cloneAsks();
       oldChange.putAll(change);
-      for (      Map.Entry<ContainerId,SimpleEntry<Container,Resource>> entry : change.entrySet()) {
-        Container container=entry.getValue().getKey();
-        Resource original=container.getResource();
-        Resource target=entry.getValue().getValue();
-        if (Resources.fitsIn(target,original)) {
-          decreaseList.add(ContainerResourceChangeRequest.newInstance(container.getId(),target));
-        }
- else {
-          increaseList.add(ContainerResourceChangeRequest.newInstance(container.getId(),target));
-        }
-      }
+      List<UpdateContainerRequest> updateList=createUpdateList();
       releaseList=new ArrayList<ContainerId>(release);
       ask.clear();
       release.clear();
@@ -36,7 +19,7 @@ synchronized (this) {
       blacklistToAdd.addAll(blacklistAdditions);
       blacklistToRemove.addAll(blacklistRemovals);
       ResourceBlacklistRequest blacklistRequest=ResourceBlacklistRequest.newInstance(blacklistToAdd,blacklistToRemove);
-      allocateRequest=AllocateRequest.newInstance(lastResponseId,progressIndicator,askList,releaseList,blacklistRequest,increaseList,decreaseList);
+      allocateRequest=AllocateRequest.newInstance(lastResponseId,progressIndicator,askList,releaseList,blacklistRequest,updateList);
       blacklistAdditions.clear();
       blacklistRemovals.clear();
     }
@@ -75,9 +58,8 @@ synchronized (this) {
       }
       if (!pendingChange.isEmpty()) {
         List<ContainerStatus> completed=allocateResponse.getCompletedContainersStatuses();
-        List<Container> changed=new ArrayList<>();
-        changed.addAll(allocateResponse.getIncreasedContainers());
-        changed.addAll(allocateResponse.getDecreasedContainers());
+        List<UpdatedContainer> changed=new ArrayList<>();
+        changed.addAll(allocateResponse.getUpdatedContainers());
         for (        ContainerStatus status : completed) {
           ContainerId containerId=status.getContainerId();
           pendingChange.remove(containerId);
