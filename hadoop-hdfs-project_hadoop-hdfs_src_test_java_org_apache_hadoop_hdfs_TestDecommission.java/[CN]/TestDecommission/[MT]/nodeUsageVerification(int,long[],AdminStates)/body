@@ -2,25 +2,22 @@
   Map<String,Map<String,String>> usage=null;
   DatanodeInfo decommissionedNodeInfo=null;
   String zeroNodeUsage="0.00%";
-  conf.setInt(DFSConfigKeys.DFS_REPLICATION_KEY,1);
-  conf.setInt(DFSConfigKeys.DFS_HEARTBEAT_INTERVAL_KEY,1);
-  conf.setInt(DFSConfigKeys.DFS_NAMENODE_HEARTBEAT_RECHECK_INTERVAL_KEY,1);
+  getConf().setInt(DFSConfigKeys.DFS_REPLICATION_KEY,1);
+  getConf().setInt(DFSConfigKeys.DFS_HEARTBEAT_INTERVAL_KEY,1);
+  getConf().setInt(DFSConfigKeys.DFS_NAMENODE_HEARTBEAT_RECHECK_INTERVAL_KEY,1);
   FileSystem fileSys=null;
   Path file1=new Path("testNodeUsage.dat");
   try {
-    SimulatedFSDataset.setFactory(conf);
-    cluster=new MiniDFSCluster.Builder(conf).nnTopology(MiniDFSNNTopology.simpleFederatedTopology(1)).numDataNodes(numDatanodes).simulatedCapacities(nodesCapacity).build();
-    cluster.waitActive();
-    DFSClient client=getDfsClient(cluster.getNameNode(0),conf);
-    validateCluster(client,numDatanodes);
+    SimulatedFSDataset.setFactory(getConf());
+    startCluster(1,numDatanodes,false,nodesCapacity,false);
     ArrayList<ArrayList<DatanodeInfo>> namenodeDecomList=new ArrayList<ArrayList<DatanodeInfo>>(1);
     namenodeDecomList.add(0,new ArrayList<DatanodeInfo>(numDatanodes));
     if (decommissionState == AdminStates.DECOMMISSIONED) {
       ArrayList<DatanodeInfo> decommissionedNode=namenodeDecomList.get(0);
-      decommissionedNodeInfo=decommissionNode(0,null,decommissionedNode,decommissionState);
+      decommissionedNodeInfo=takeNodeOutofService(0,null,0,decommissionedNode,decommissionState);
     }
-    fileSys=cluster.getFileSystem(0);
-    FSNamesystem ns=cluster.getNamesystem(0);
+    fileSys=getCluster().getFileSystem(0);
+    FSNamesystem ns=getCluster().getNamesystem(0);
     writeFile(fileSys,file1,1);
     Thread.sleep(2000);
     usage=(Map<String,Map<String,String>>)JSON.parse(ns.getNodeUsage());
@@ -28,17 +25,16 @@
     assertTrue(!minUsageBeforeDecom.equalsIgnoreCase(zeroNodeUsage));
     if (decommissionState == AdminStates.DECOMMISSION_INPROGRESS) {
       ArrayList<DatanodeInfo> decommissioningNodes=namenodeDecomList.get(0);
-      decommissionedNodeInfo=decommissionNode(0,null,decommissioningNodes,decommissionState);
+      decommissionedNodeInfo=takeNodeOutofService(0,null,0,decommissioningNodes,decommissionState);
       usage=(Map<String,Map<String,String>>)JSON.parse(ns.getNodeUsage());
       assertTrue(usage.get("nodeUsage").get("min").equalsIgnoreCase(zeroNodeUsage));
     }
-    recommissionNode(0,decommissionedNodeInfo);
+    putNodeInService(0,decommissionedNodeInfo);
     usage=(Map<String,Map<String,String>>)JSON.parse(ns.getNodeUsage());
     String nodeusageAfterRecommi=decommissionState == AdminStates.DECOMMISSION_INPROGRESS ? minUsageBeforeDecom : zeroNodeUsage;
     assertTrue(usage.get("nodeUsage").get("min").equalsIgnoreCase(nodeusageAfterRecommi));
   }
   finally {
     cleanupFile(fileSys,file1);
-    cluster.shutdown();
   }
 }

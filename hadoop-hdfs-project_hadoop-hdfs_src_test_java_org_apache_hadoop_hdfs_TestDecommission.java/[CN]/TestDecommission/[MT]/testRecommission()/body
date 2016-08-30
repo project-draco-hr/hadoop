@@ -2,29 +2,29 @@
   final int numDatanodes=6;
   try {
     LOG.info("Starting test testRecommission");
-    startCluster(1,numDatanodes,conf);
+    startCluster(1,numDatanodes);
     final Path file1=new Path("testDecommission.dat");
     final int replicas=numDatanodes - 1;
     ArrayList<DatanodeInfo> decommissionedNodes=Lists.newArrayList();
-    final FileSystem fileSys=cluster.getFileSystem();
+    final FileSystem fileSys=getCluster().getFileSystem();
     writeFile(fileSys,file1,replicas);
     BlockLocation loc=fileSys.getFileBlockLocations(file1,0,1)[0];
     assertEquals("Unexpected number of replicas from getFileBlockLocations",replicas,loc.getHosts().length);
     final String toDecomHost=loc.getNames()[0];
     String toDecomUuid=null;
-    for (    DataNode d : cluster.getDataNodes()) {
+    for (    DataNode d : getCluster().getDataNodes()) {
       if (d.getDatanodeId().getXferAddr().equals(toDecomHost)) {
         toDecomUuid=d.getDatanodeId().getDatanodeUuid();
         break;
       }
     }
     assertNotNull("Could not find a dn with the block!",toDecomUuid);
-    final DatanodeInfo decomNode=decommissionNode(0,toDecomUuid,decommissionedNodes,AdminStates.DECOMMISSIONED);
+    final DatanodeInfo decomNode=takeNodeOutofService(0,toDecomUuid,0,decommissionedNodes,AdminStates.DECOMMISSIONED);
     decommissionedNodes.add(decomNode);
-    final BlockManager blockManager=cluster.getNamesystem().getBlockManager();
+    final BlockManager blockManager=getCluster().getNamesystem().getBlockManager();
     final DatanodeManager datanodeManager=blockManager.getDatanodeManager();
     BlockManagerTestUtil.recheckDecommissionState(datanodeManager);
-    DFSClient client=getDfsClient(cluster.getNameNode(),conf);
+    DFSClient client=getDfsClient(0);
     assertEquals("All datanodes must be alive",numDatanodes,client.datanodeReport(DatanodeReportType.LIVE).length);
     final ExtendedBlock b=DFSTestUtil.getFirstBlock(fileSys,file1);
     final String uuid=toDecomUuid;
@@ -46,14 +46,12 @@
       }
     }
 ,500,30000);
-    recommissionNode(0,decomNode);
+    putNodeInService(0,decomNode);
     BlockManagerTestUtil.recheckDecommissionState(datanodeManager);
-    DFSTestUtil.waitForReplication(cluster,b,1,replicas,0);
+    DFSTestUtil.waitForReplication(getCluster(),b,1,replicas,0);
     cleanupFile(fileSys,file1);
   }
   finally {
-    if (cluster != null) {
-      cluster.shutdown();
-    }
+    shutdownCluster();
   }
 }

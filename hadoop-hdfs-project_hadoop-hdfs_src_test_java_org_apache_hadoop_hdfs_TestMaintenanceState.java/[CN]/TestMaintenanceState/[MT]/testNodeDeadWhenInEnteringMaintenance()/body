@@ -1,0 +1,22 @@
+{
+  LOG.info("Starting testNodeDeadWhenInEnteringMaintenance");
+  final int numNamenodes=1;
+  final int numDatanodes=1;
+  final int replicas=1;
+  final Path file1=new Path("/testNodeDeadWhenInEnteringMaintenance.dat");
+  startCluster(numNamenodes,numDatanodes);
+  FileSystem fileSys=getCluster().getFileSystem(0);
+  FSNamesystem ns=getCluster().getNamesystem(0);
+  writeFile(fileSys,file1,replicas,1);
+  DatanodeInfo nodeOutofService=takeNodeOutofService(0,getFirstBlockFirstReplicaUuid(fileSys,file1),Long.MAX_VALUE,null,AdminStates.ENTERING_MAINTENANCE);
+  assertEquals(1,ns.getNumEnteringMaintenanceDataNodes());
+  MiniDFSCluster.DataNodeProperties dnProp=getCluster().stopDataNode(nodeOutofService.getXferAddr());
+  DFSTestUtil.waitForDatanodeState(getCluster(),nodeOutofService.getDatanodeUuid(),false,20000);
+  DFSClient client=getDfsClient(0);
+  assertEquals("maintenance node shouldn't be alive",numDatanodes - 1,client.datanodeReport(DatanodeReportType.LIVE).length);
+  getCluster().restartDataNode(dnProp,true);
+  getCluster().waitActive();
+  waitNodeState(nodeOutofService,AdminStates.ENTERING_MAINTENANCE);
+  assertEquals(1,ns.getNumEnteringMaintenanceDataNodes());
+  cleanupFile(fileSys,file1);
+}

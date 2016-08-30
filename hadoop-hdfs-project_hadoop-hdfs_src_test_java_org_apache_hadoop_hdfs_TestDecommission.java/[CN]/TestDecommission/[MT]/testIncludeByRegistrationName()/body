@@ -1,19 +1,15 @@
 {
-  Configuration hdfsConf=new Configuration(conf);
   final String registrationName="127.0.0.100";
   final String nonExistentDn="127.0.0.10";
-  hdfsConf.set(DFSConfigKeys.DFS_DATANODE_HOST_NAME_KEY,registrationName);
-  cluster=new MiniDFSCluster.Builder(hdfsConf).numDataNodes(1).checkDataNodeHostConfig(true).setupHostsFile(true).build();
-  cluster.waitActive();
-  ArrayList<String> nodes=new ArrayList<String>();
-  nodes.add(nonExistentDn);
-  writeConfigFile(hostsFile,nodes);
-  refreshNodes(cluster.getNamesystem(0),hdfsConf);
+  getConf().set(DFSConfigKeys.DFS_DATANODE_HOST_NAME_KEY,registrationName);
+  startCluster(1,1,false,null,true);
+  initIncludeHost(nonExistentDn);
+  refreshNodes(0);
   LOG.info("Waiting for DN to be marked as dead.");
-  final DFSClient client=getDfsClient(cluster.getNameNode(0),hdfsConf);
+  final DFSClient client=getDfsClient(0);
   GenericTestUtils.waitFor(new Supplier<Boolean>(){
     @Override public Boolean get(){
-      BlockManagerTestUtil.checkHeartbeat(cluster.getNamesystem().getBlockManager());
+      BlockManagerTestUtil.checkHeartbeat(getCluster().getNamesystem().getBlockManager());
       try {
         DatanodeInfo info[]=client.datanodeReport(DatanodeReportType.DEAD);
         return info.length == 1;
@@ -25,17 +21,15 @@
     }
   }
 ,500,5000);
-  int dnPort=cluster.getDataNodes().get(0).getXferPort();
-  nodes=new ArrayList<String>();
-  nodes.add(registrationName + ":" + dnPort);
-  writeConfigFile(hostsFile,nodes);
-  refreshNodes(cluster.getNamesystem(0),hdfsConf);
-  cluster.restartDataNode(0);
-  cluster.triggerHeartbeats();
+  int dnPort=getCluster().getDataNodes().get(0).getXferPort();
+  initIncludeHost(registrationName + ":" + dnPort);
+  refreshNodes(0);
+  getCluster().restartDataNode(0);
+  getCluster().triggerHeartbeats();
   LOG.info("Waiting for DN to come back.");
   GenericTestUtils.waitFor(new Supplier<Boolean>(){
     @Override public Boolean get(){
-      BlockManagerTestUtil.checkHeartbeat(cluster.getNamesystem().getBlockManager());
+      BlockManagerTestUtil.checkHeartbeat(getCluster().getNamesystem().getBlockManager());
       try {
         DatanodeInfo info[]=client.datanodeReport(DatanodeReportType.LIVE);
         if (info.length == 1) {

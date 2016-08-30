@@ -1,0 +1,50 @@
+{
+  DFSClient client=getDfsClient(nnIndex);
+  DatanodeInfo[] info=client.datanodeReport(DatanodeReportType.ALL);
+  boolean isDecommissionRequest=waitForState == AdminStates.DECOMMISSION_INPROGRESS || waitForState == AdminStates.DECOMMISSIONED;
+  int index=0;
+  if (datanodeUuid == null) {
+    boolean found=false;
+    while (!found) {
+      index=myrand.nextInt(info.length);
+      if ((isDecommissionRequest && !info[index].isDecommissioned()) || (!isDecommissionRequest && !info[index].isInMaintenance())) {
+        found=true;
+      }
+    }
+  }
+ else {
+    for (; index < info.length; index++) {
+      if (info[index].getDatanodeUuid().equals(datanodeUuid)) {
+        break;
+      }
+    }
+    if (index == info.length) {
+      throw new IOException("invalid datanodeUuid " + datanodeUuid);
+    }
+  }
+  String nodename=info[index].getXferAddr();
+  LOG.info("Taking node: " + nodename + " out of service");
+  ArrayList<String> decommissionNodes=new ArrayList<String>();
+  if (decommissionedNodes != null) {
+    for (    DatanodeInfo dn : decommissionedNodes) {
+      decommissionNodes.add(dn.getName());
+    }
+  }
+  Map<String,Long> maintenanceNodes=new HashMap<>();
+  if (inMaintenanceNodes != null) {
+    for (    Map.Entry<DatanodeInfo,Long> dn : inMaintenanceNodes.entrySet()) {
+      maintenanceNodes.put(dn.getKey().getName(),dn.getValue());
+    }
+  }
+  if (isDecommissionRequest) {
+    decommissionNodes.add(nodename);
+  }
+ else {
+    maintenanceNodes.put(nodename,maintenanceExpirationInMS);
+  }
+  hostsFileWriter.initOutOfServiceHosts(decommissionNodes,maintenanceNodes);
+  refreshNodes(nnIndex);
+  DatanodeInfo ret=NameNodeAdapter.getDatanode(cluster.getNamesystem(nnIndex),info[index]);
+  waitNodeState(ret,waitForState);
+  return ret;
+}
