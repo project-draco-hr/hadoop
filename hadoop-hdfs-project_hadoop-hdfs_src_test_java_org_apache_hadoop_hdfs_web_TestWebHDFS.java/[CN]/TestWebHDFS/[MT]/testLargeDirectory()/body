@@ -13,11 +13,42 @@
         FileSystem fs=WebHdfsTestUtil.getWebHdfsFileSystem(conf,WebHdfsConstants.WEBHDFS_SCHEME);
         Path d=new Path("/my-dir");
         Assert.assertTrue(fs.mkdirs(d));
-        for (int i=0; i < listLimit * 3; i++) {
-          Path p=new Path(d,"file-" + i);
+        RemoteIterator<FileStatus> it=fs.listStatusIterator(d);
+        assertFalse(it.hasNext());
+        Path p=new Path(d,"file-" + 0);
+        Assert.assertTrue(fs.createNewFile(p));
+        it=fs.listStatusIterator(d);
+        assertTrue(it.hasNext());
+        it.next();
+        assertFalse(it.hasNext());
+        for (int i=1; i < listLimit * 3; i++) {
+          p=new Path(d,"file-" + i);
           Assert.assertTrue(fs.createNewFile(p));
         }
-        Assert.assertEquals(listLimit * 3,fs.listStatus(d).length);
+        FileStatus[] statuses=fs.listStatus(d);
+        Assert.assertEquals(listLimit * 3,statuses.length);
+        GenericTestUtils.setLogLevel(WebHdfsFileSystem.LOG,Level.TRACE);
+        GenericTestUtils.setLogLevel(NamenodeWebHdfsMethods.LOG,Level.TRACE);
+        it=fs.listStatusIterator(d);
+        int count=0;
+        while (it.hasNext()) {
+          FileStatus stat=it.next();
+          assertEquals("FileStatuses not equal",statuses[count],stat);
+          count++;
+        }
+        assertEquals("Different # of statuses!",statuses.length,count);
+        it=fs.listStatusIterator(d);
+        for (int i=0; i < statuses.length; i++) {
+          FileStatus stat=it.next();
+          assertEquals("FileStatuses not equal",statuses[i],stat);
+        }
+        assertFalse("No more items expected",it.hasNext());
+        try {
+          it.next();
+          fail("Iterator should error if out of elements.");
+        }
+ catch (        IllegalStateException e) {
+        }
         return null;
       }
     }
