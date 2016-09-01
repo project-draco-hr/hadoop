@@ -1,0 +1,38 @@
+{
+  if (!connection.channel.isOpen()) {
+    Server.LOG.info(Thread.currentThread().getName() + ": skipped " + this);
+    return null;
+  }
+  String errorClass=null;
+  String error=null;
+  RpcStatusProto returnStatus=RpcStatusProto.SUCCESS;
+  RpcErrorCodeProto detailedErr=null;
+  Writable value=null;
+  try {
+    value=call(rpcKind,connection.protocolName,rpcRequest,timestamp);
+  }
+ catch (  Throwable e) {
+    if (e instanceof UndeclaredThrowableException) {
+      e=e.getCause();
+    }
+    logException(Server.LOG,e,this);
+    if (e instanceof RpcServerException) {
+      RpcServerException rse=((RpcServerException)e);
+      returnStatus=rse.getRpcStatusProto();
+      detailedErr=rse.getRpcErrorCodeProto();
+    }
+ else {
+      returnStatus=RpcStatusProto.ERROR;
+      detailedErr=RpcErrorCodeProto.ERROR_APPLICATION;
+    }
+    errorClass=e.getClass().getName();
+    error=StringUtils.stringifyException(e);
+    String exceptionHdr=errorClass + ": ";
+    if (error.startsWith(exceptionHdr)) {
+      error=error.substring(exceptionHdr.length());
+    }
+  }
+  setupResponse(this,returnStatus,detailedErr,value,errorClass,error);
+  sendResponse();
+  return null;
+}
