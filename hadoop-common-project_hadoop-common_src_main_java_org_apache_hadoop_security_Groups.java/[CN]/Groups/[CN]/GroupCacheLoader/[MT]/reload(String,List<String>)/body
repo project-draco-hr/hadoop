@@ -5,23 +5,21 @@
   backgroundRefreshQueued.incrementAndGet();
   ListenableFuture<List<String>> listenableFuture=executorService.submit(new Callable<List<String>>(){
     @Override public List<String> call() throws Exception {
-      boolean success=false;
-      try {
-        backgroundRefreshQueued.decrementAndGet();
-        backgroundRefreshRunning.incrementAndGet();
-        List<String> results=load(key);
-        success=true;
-        return results;
-      }
-  finally {
-        backgroundRefreshRunning.decrementAndGet();
-        if (success) {
-          backgroundRefreshSuccess.incrementAndGet();
-        }
- else {
-          backgroundRefreshException.incrementAndGet();
-        }
-      }
+      backgroundRefreshQueued.decrementAndGet();
+      backgroundRefreshRunning.incrementAndGet();
+      List<String> results=load(key);
+      return results;
+    }
+  }
+);
+  Futures.addCallback(listenableFuture,new FutureCallback<List<String>>(){
+    @Override public void onSuccess(    List<String> result){
+      backgroundRefreshSuccess.incrementAndGet();
+      backgroundRefreshRunning.decrementAndGet();
+    }
+    @Override public void onFailure(    Throwable t){
+      backgroundRefreshException.incrementAndGet();
+      backgroundRefreshRunning.decrementAndGet();
     }
   }
 );
