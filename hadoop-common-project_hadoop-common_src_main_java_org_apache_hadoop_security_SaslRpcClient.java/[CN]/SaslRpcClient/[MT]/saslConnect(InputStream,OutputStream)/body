@@ -5,10 +5,11 @@
   sendSaslMessage(outStream,negotiateRequest);
   boolean done=false;
   do {
-    int totalLen=inStream.readInt();
-    RpcResponseMessageWrapper responseWrapper=new RpcResponseMessageWrapper();
-    responseWrapper.readFields(inStream);
-    RpcResponseHeaderProto header=responseWrapper.getMessageHeader();
+    int rpcLen=inStream.readInt();
+    ByteBuffer bb=ByteBuffer.allocate(rpcLen);
+    inStream.readFully(bb.array());
+    RpcWritable.Buffer saslPacket=RpcWritable.Buffer.wrap(bb);
+    RpcResponseHeaderProto header=saslPacket.getValue(RpcResponseHeaderProto.getDefaultInstance());
 switch (header.getStatus()) {
 case ERROR:
 case FATAL:
@@ -16,13 +17,13 @@ case FATAL:
 default :
     break;
 }
-if (totalLen != responseWrapper.getLength()) {
-  throw new SaslException("Received malformed response length");
-}
 if (header.getCallId() != AuthProtocol.SASL.callId) {
   throw new SaslException("Non-SASL response during negotiation");
 }
-RpcSaslProto saslMessage=RpcSaslProto.parseFrom(responseWrapper.getMessageBytes());
+RpcSaslProto saslMessage=saslPacket.getValue(RpcSaslProto.getDefaultInstance());
+if (saslPacket.remaining() > 0) {
+  throw new SaslException("Received malformed response length");
+}
 RpcSaslProto.Builder response=null;
 switch (saslMessage.getState()) {
 case NEGOTIATE:

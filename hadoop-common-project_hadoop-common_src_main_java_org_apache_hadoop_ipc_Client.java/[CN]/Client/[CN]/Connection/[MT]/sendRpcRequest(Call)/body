@@ -2,10 +2,10 @@
   if (shouldCloseConnection.get()) {
     return;
   }
-  final DataOutputBuffer d=new DataOutputBuffer();
   RpcRequestHeaderProto header=ProtoUtil.makeRpcRequestHeader(call.rpcKind,OperationProto.RPC_FINAL_PACKET,call.id,call.retry,clientId);
-  header.writeDelimitedTo(d);
-  call.rpcRequest.write(d);
+  final ResponseBuffer buf=new ResponseBuffer();
+  header.writeDelimitedTo(buf);
+  RpcWritable.wrap(call.rpcRequest).writeTo(buf);
 synchronized (sendRpcRequestLock) {
     Future<?> senderFuture=sendParamsExecutor.submit(new Runnable(){
       @Override public void run(){
@@ -14,11 +14,10 @@ synchronized (Connection.this.out) {
             if (shouldCloseConnection.get()) {
               return;
             }
-            if (LOG.isDebugEnabled())             LOG.debug(getName() + " sending #" + call.id);
-            byte[] data=d.getData();
-            int totalLength=d.getLength();
-            out.writeInt(totalLength);
-            out.write(data,0,totalLength);
+            if (LOG.isDebugEnabled()) {
+              LOG.debug(getName() + " sending #" + call.id);
+            }
+            buf.writeTo(out);
             out.flush();
           }
         }
@@ -26,7 +25,7 @@ synchronized (Connection.this.out) {
           markClosed(e);
         }
  finally {
-          IOUtils.closeStream(d);
+          IOUtils.closeStream(buf);
         }
       }
     }
