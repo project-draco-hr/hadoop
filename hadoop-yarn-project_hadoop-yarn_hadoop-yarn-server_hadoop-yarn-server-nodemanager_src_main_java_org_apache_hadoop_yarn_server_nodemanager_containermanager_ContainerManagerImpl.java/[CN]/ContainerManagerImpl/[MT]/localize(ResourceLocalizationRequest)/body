@@ -1,3 +1,21 @@
 {
+  ContainerId containerId=request.getContainerId();
+  Container container=context.getContainers().get(containerId);
+  if (container == null) {
+    throw new YarnException("Specified " + containerId + " does not exist!");
+  }
+  if (!container.getContainerState().equals(org.apache.hadoop.yarn.server.nodemanager.containermanager.container.ContainerState.RUNNING)) {
+    throw new YarnException(containerId + " is at " + container.getContainerState()+ " state. Not able to localize new resources.");
+  }
+  try {
+    Map<LocalResourceVisibility,Collection<LocalResourceRequest>> req=container.getResourceSet().addResources(request.getLocalResources());
+    if (req != null && !req.isEmpty()) {
+      dispatcher.getEventHandler().handle(new ContainerLocalizationRequestEvent(container,req));
+    }
+  }
+ catch (  URISyntaxException e) {
+    LOG.info("Error when parsing local resource URI for " + containerId,e);
+    throw new YarnException(e);
+  }
   return ResourceLocalizationResponse.newInstance();
 }

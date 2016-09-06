@@ -1,2 +1,23 @@
 {
+  ContainerResourceLocalizedEvent rsrcEvent=(ContainerResourceLocalizedEvent)event;
+  LocalResourceRequest resourceRequest=rsrcEvent.getResource();
+  Path location=rsrcEvent.getLocation();
+  List<String> syms=container.resourceSet.resourceLocalized(resourceRequest,location);
+  if (null == syms) {
+    LOG.info("Localized resource " + resourceRequest + " for container "+ container.containerId);
+    return ContainerState.LOCALIZING;
+  }
+  if (shouldBeUploadedToSharedCache(container,resourceRequest)) {
+    container.resourceSet.getResourcesToBeUploaded().put(resourceRequest,location);
+  }
+  if (!container.resourceSet.getPendingResources().isEmpty()) {
+    return ContainerState.LOCALIZING;
+  }
+  container.dispatcher.getEventHandler().handle(new ContainerLocalizationEvent(LocalizationEventType.CONTAINER_RESOURCES_LOCALIZED,container));
+  container.sendLaunchEvent();
+  container.metrics.endInitingContainer();
+  if (container.recoveredStatus != RecoveredContainerStatus.LAUNCHED && container.recoveredStatus != RecoveredContainerStatus.COMPLETED) {
+    container.dispatcher.getEventHandler().handle(new SharedCacheUploadEvent(container.resourceSet.getResourcesToBeUploaded(),container.getLaunchContext(),container.getUser(),SharedCacheUploadEventType.UPLOAD));
+  }
+  return ContainerState.LOCALIZED;
 }
