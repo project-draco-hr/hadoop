@@ -24,7 +24,7 @@
       bpUsed=datanode.getBlockPoolUsed();
       percentBpUsed=datanode.getBlockPoolUsedPercent();
       LOG.info("Datanode configCapacity " + configCapacity + " used "+ used+ " non DFS used "+ nonDFSUsed+ " remaining "+ remaining+ " perentUsed "+ percentUsed+ " percentRemaining "+ percentRemaining);
-      assertTrue(configCapacity == (used + remaining + nonDFSUsed));
+      assertTrue(configCapacity >= (used + remaining + nonDFSUsed));
       assertTrue(percentUsed == DFSUtilClient.getPercentUsed(used,configCapacity));
       assertTrue(percentRemaining == DFSUtilClient.getPercentRemaining(remaining,configCapacity));
       assertTrue(percentBpUsed == DFSUtilClient.getPercentUsed(bpUsed,configCapacity));
@@ -44,10 +44,21 @@
     LOG.info("Data node directory " + cluster.getDataDirectory());
     LOG.info("Name node diskCapacity " + diskCapacity + " configCapacity "+ configCapacity+ " reserved "+ reserved+ " used "+ used+ " remaining "+ remaining+ " nonDFSUsed "+ nonDFSUsed+ " remaining "+ remaining+ " percentUsed "+ percentUsed+ " percentRemaining "+ percentRemaining+ " bpUsed "+ bpUsed+ " percentBpUsed "+ percentBpUsed);
     assertTrue(configCapacity == diskCapacity - reserved);
-    assertTrue(configCapacity == (used + remaining + nonDFSUsed));
+    assertTrue(configCapacity >= (used + remaining + nonDFSUsed));
     assertTrue(percentUsed == DFSUtilClient.getPercentUsed(used,configCapacity));
     assertTrue(percentBpUsed == DFSUtilClient.getPercentUsed(bpUsed,configCapacity));
     assertTrue(percentRemaining == ((float)remaining * 100.0f) / (float)configCapacity);
+    final int fileCount=5;
+    final DistributedFileSystem fs=cluster.getFileSystem();
+    DFSOutputStream[] streams=new DFSOutputStream[fileCount];
+    for (int i=0; i < fileCount; i++) {
+      streams[i]=(DFSOutputStream)fs.create(new Path("/f" + i)).getWrappedStream();
+      streams[i].write("1".getBytes());
+      streams[i].hsync();
+    }
+    triggerHeartbeats(cluster.getDataNodes());
+    assertTrue(configCapacity > (namesystem.getCapacityUsed() + namesystem.getCapacityRemaining() + namesystem.getNonDfsUsedSpace()));
+    assertTrue((namesystem.getCapacityUsed() + namesystem.getCapacityRemaining() + namesystem.getNonDfsUsedSpace()+ fileCount * fs.getDefaultBlockSize()) - configCapacity < 1 * 1024);
   }
   finally {
     if (cluster != null) {
