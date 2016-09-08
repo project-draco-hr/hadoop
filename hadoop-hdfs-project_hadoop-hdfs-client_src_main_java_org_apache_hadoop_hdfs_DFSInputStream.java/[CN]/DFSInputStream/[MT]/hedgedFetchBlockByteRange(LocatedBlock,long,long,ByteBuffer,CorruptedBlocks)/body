@@ -1,0 +1,66 @@
+{
+  final DfsClientConf conf=dfsClient.getConf();
+  ArrayList<Future<ByteBuffer>> futures=new ArrayList<>();
+  CompletionService<ByteBuffer> hedgedService=new ExecutorCompletionService<>(dfsClient.getHedgedReadsThreadPool());
+  ArrayList<DatanodeInfo> ignored=new ArrayList<>();
+  ByteBuffer bb;
+  int len=(int)(end - start + 1);
+  int hedgedReadId=0;
+  block=refreshLocatedBlock(block);
+  while (true) {
+    hedgedReadOpsLoopNumForTesting++;
+    DNAddrPair chosenNode=null;
+    if (futures.isEmpty()) {
+      chosenNode=chooseDataNode(block,ignored);
+      bb=ByteBuffer.allocate(len);
+      Callable<ByteBuffer> getFromDataNodeCallable=getFromOneDataNode(chosenNode,block,start,end,bb,corruptedBlocks,hedgedReadId++);
+      Future<ByteBuffer> firstRequest=hedgedService.submit(getFromDataNodeCallable);
+      futures.add(firstRequest);
+      try {
+        Future<ByteBuffer> future=hedgedService.poll(conf.getHedgedReadThresholdMillis(),TimeUnit.MILLISECONDS);
+        if (future != null) {
+          ByteBuffer result=future.get();
+          result.flip();
+          buf.put(result);
+          return;
+        }
+        DFSClient.LOG.debug("Waited {}ms to read from {}; spawning hedged " + "read",conf.getHedgedReadThresholdMillis(),chosenNode.info);
+        ignored.add(chosenNode.info);
+        dfsClient.getHedgedReadMetrics().incHedgedReadOps();
+      }
+ catch (      ExecutionException e) {
+      }
+catch (      InterruptedException e) {
+        throw new InterruptedIOException("Interrupted while waiting for reading task");
+      }
+    }
+ else {
+      try {
+        chosenNode=getBestNodeDNAddrPair(block,ignored);
+        if (chosenNode == null) {
+          chosenNode=chooseDataNode(block,ignored);
+        }
+        bb=ByteBuffer.allocate(len);
+        Callable<ByteBuffer> getFromDataNodeCallable=getFromOneDataNode(chosenNode,block,start,end,bb,corruptedBlocks,hedgedReadId++);
+        Future<ByteBuffer> oneMoreRequest=hedgedService.submit(getFromDataNodeCallable);
+        futures.add(oneMoreRequest);
+      }
+ catch (      IOException ioe) {
+        DFSClient.LOG.debug("Failed getting node for hedged read: {}",ioe.getMessage());
+      }
+      try {
+        ByteBuffer result=getFirstToComplete(hedgedService,futures);
+        cancelAll(futures);
+        dfsClient.getHedgedReadMetrics().incHedgedReadWins();
+        result.flip();
+        buf.put(result);
+        return;
+      }
+ catch (      InterruptedException ie) {
+      }
+      if (chosenNode != null && chosenNode.info != null) {
+        ignored.add(chosenNode.info);
+      }
+    }
+  }
+}

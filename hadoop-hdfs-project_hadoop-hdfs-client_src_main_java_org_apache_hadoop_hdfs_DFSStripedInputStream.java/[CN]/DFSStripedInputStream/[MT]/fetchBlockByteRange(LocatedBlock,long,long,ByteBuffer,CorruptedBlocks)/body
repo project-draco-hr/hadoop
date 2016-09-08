@@ -1,0 +1,19 @@
+{
+  LocatedStripedBlock blockGroup=getBlockGroupAt(block.getStartOffset());
+  AlignedStripe[] stripes=StripedBlockUtil.divideByteRangeIntoStripes(ecPolicy,cellSize,blockGroup,start,end,buf);
+  CompletionService<Void> readService=new ExecutorCompletionService<>(dfsClient.getStripedReadsThreadPool());
+  final LocatedBlock[] blks=StripedBlockUtil.parseStripedBlockGroup(blockGroup,cellSize,dataBlkNum,parityBlkNum);
+  final BlockReaderInfo[] preaderInfos=new BlockReaderInfo[groupSize];
+  try {
+    for (    AlignedStripe stripe : stripes) {
+      StripeReader preader=new PositionStripeReader(readService,stripe,blks,preaderInfos,corruptedBlocks);
+      preader.readStripe();
+    }
+    buf.position(buf.position() + (int)(end - start + 1));
+  }
+  finally {
+    for (    BlockReaderInfo preaderInfo : preaderInfos) {
+      closeReader(preaderInfo);
+    }
+  }
+}
