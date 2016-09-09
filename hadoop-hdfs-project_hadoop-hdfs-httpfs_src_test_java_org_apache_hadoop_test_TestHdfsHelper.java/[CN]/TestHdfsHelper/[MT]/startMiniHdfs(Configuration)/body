@@ -14,14 +14,23 @@
     conf.set("hadoop.security.authentication","simple");
     conf.setBoolean(DFSConfigKeys.DFS_NAMENODE_ACLS_ENABLED_KEY,true);
     conf.setBoolean(DFSConfigKeys.DFS_NAMENODE_XATTRS_ENABLED_KEY,true);
+    FileSystemTestHelper helper=new FileSystemTestHelper();
+    final String jceksPath=JavaKeyStoreProvider.SCHEME_NAME + "://file" + new Path(helper.getTestRootDir(),"test.jks").toUri();
+    conf.set(DFSConfigKeys.DFS_ENCRYPTION_KEY_PROVIDER_URI,jceksPath);
     MiniDFSCluster.Builder builder=new MiniDFSCluster.Builder(conf);
     builder.numDataNodes(2);
     MiniDFSCluster miniHdfs=builder.build();
-    FileSystem fileSystem=miniHdfs.getFileSystem();
+    final String testkey="testkey";
+    DFSTestUtil.createKey(testkey,miniHdfs,conf);
+    DistributedFileSystem fileSystem=miniHdfs.getFileSystem();
+    fileSystem.getClient().setKeyProvider(miniHdfs.getNameNode().getNamesystem().getProvider());
     fileSystem.mkdirs(new Path("/tmp"));
     fileSystem.mkdirs(new Path("/user"));
     fileSystem.setPermission(new Path("/tmp"),FsPermission.valueOf("-rwxrwxrwx"));
     fileSystem.setPermission(new Path("/user"),FsPermission.valueOf("-rwxrwxrwx"));
+    fileSystem.mkdirs(ENCRYPTION_ZONE);
+    fileSystem.createEncryptionZone(ENCRYPTION_ZONE,testkey);
+    fileSystem.create(ENCRYPTED_FILE).close();
     MINI_DFS=miniHdfs;
   }
   return MINI_DFS;
