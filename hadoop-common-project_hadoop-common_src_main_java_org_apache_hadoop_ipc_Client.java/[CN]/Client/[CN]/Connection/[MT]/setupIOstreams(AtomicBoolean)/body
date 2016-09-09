@@ -14,12 +14,9 @@
     Random rand=null;
     while (true) {
       setupConnection();
-      InputStream inStream=NetUtils.getInputStream(socket);
-      OutputStream outStream=NetUtils.getOutputStream(socket);
-      writeConnectionHeader(outStream);
+      ipcStreams=new IpcStreams(socket,maxResponseLength);
+      writeConnectionHeader(ipcStreams);
       if (authProtocol == AuthProtocol.SASL) {
-        final InputStream in2=inStream;
-        final OutputStream out2=outStream;
         UserGroupInformation ticket=remoteId.getTicket();
         if (ticket.getRealUser() != null) {
           ticket=ticket.getRealUser();
@@ -27,7 +24,7 @@
         try {
           authMethod=ticket.doAs(new PrivilegedExceptionAction<AuthMethod>(){
             @Override public AuthMethod run() throws IOException, InterruptedException {
-              return setupSaslConnection(in2,out2);
+              return setupSaslConnection(ipcStreams);
             }
           }
 );
@@ -44,8 +41,7 @@
           continue;
         }
         if (authMethod != AuthMethod.SIMPLE) {
-          inStream=saslRpcClient.getInputStream(inStream);
-          outStream=saslRpcClient.getOutputStream(outStream);
+          ipcStreams.setSaslClient(saslRpcClient);
           remoteId.saslQop=(String)saslRpcClient.getNegotiatedProperty(Sasl.QOP);
           LOG.debug("Negotiated QOP is :" + remoteId.saslQop);
           if (fallbackToSimpleAuth != null) {
@@ -62,13 +58,8 @@
         }
       }
       if (doPing) {
-        inStream=new PingInputStream(inStream);
+        ipcStreams.setInputStream(new PingInputStream(ipcStreams.in));
       }
-      this.in=new DataInputStream(new BufferedInputStream(inStream));
-      if (!(outStream instanceof BufferedOutputStream)) {
-        outStream=new BufferedOutputStream(outStream);
-      }
-      this.out=new DataOutputStream(outStream);
       writeConnectionContext(remoteId,authMethod);
       touch();
       span=Tracer.getCurrentSpan();
