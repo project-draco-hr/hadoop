@@ -1,6 +1,7 @@
 {
   long size=kvbuffer.length + partitions * APPROX_HEADER_LENGTH;
   FSDataOutputStream out=null;
+  FSDataOutputStream partitionOut=null;
   try {
     final SpillRecord spillRec=new SpillRecord(partitions);
     final Path filename=mapOutputFile.getSpillFileForWrite(numSpills,size);
@@ -10,7 +11,7 @@
       IFile.Writer<K,V> writer=null;
       try {
         long segmentStart=out.getPos();
-        FSDataOutputStream partitionOut=CryptoUtils.wrapIfNecessary(job,out);
+        partitionOut=CryptoUtils.wrapIfNecessary(job,out,false);
         writer=new IFile.Writer<K,V>(job,partitionOut,keyClass,valClass,codec,spilledRecordsCounter);
         if (i == partition) {
           final long recordStart=out.getPos();
@@ -18,6 +19,10 @@
           mapOutputByteCounter.increment(out.getPos() - recordStart);
         }
         writer.close();
+        if (partitionOut != out) {
+          partitionOut.close();
+          partitionOut=null;
+        }
         rec.startOffset=segmentStart;
         rec.rawLength=writer.getRawLength() + CryptoUtils.cryptoPadding(job);
         rec.partLength=writer.getCompressedLength() + CryptoUtils.cryptoPadding(job);
@@ -41,5 +46,8 @@
   }
   finally {
     if (out != null)     out.close();
+    if (partitionOut != null) {
+      partitionOut.close();
+    }
   }
 }
