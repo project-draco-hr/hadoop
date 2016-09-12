@@ -1,0 +1,24 @@
+{
+  BlockManager spy=Mockito.spy(cluster.getNamesystem().getBlockManager());
+  final DataNode dn=cluster.getDataNodes().get(0);
+  final DatanodeID datanodeID=dn.getDatanodeId();
+  Mockito.doNothing().when(spy).processIncrementalBlockReport(Mockito.eq(datanodeID),Mockito.any());
+  Whitebox.setInternalState(cluster.getNamesystem(),"blockManager",spy);
+  final Path ecDir=new Path("/ec");
+  final Path repDir=new Path("/rep");
+  dfs.mkdirs(ecDir);
+  dfs.mkdirs(repDir);
+  dfs.getClient().setErasureCodingPolicy(ecDir.toString(),null);
+  final Path[] repFiles=new Path[GROUP_SIZE];
+  for (int i=0; i < GROUP_SIZE; i++) {
+    repFiles[i]=new Path(repDir,"f" + i);
+    DFSTestUtil.createFile(dfs,repFiles[i],1L,(short)3,0L);
+  }
+  final Path ecFile=new Path(ecDir,"f");
+  DFSTestUtil.createFile(dfs,ecFile,BLOCK_STRIPED_CELL_SIZE * NUM_DATA_BLOCKS,(short)1,0L);
+  DataNodeTestUtils.triggerBlockReport(dn);
+  BlockInfoStriped blockInfo=(BlockInfoStriped)cluster.getNamesystem().getFSDirectory().getINode(ecFile.toString()).asFile().getLastBlock();
+  NumberReplicas nr=spy.countNodes(blockInfo);
+  Assert.assertEquals(GROUP_SIZE,nr.liveReplicas());
+  Assert.assertEquals(0,nr.excessReplicas());
+}
