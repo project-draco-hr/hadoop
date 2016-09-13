@@ -1,0 +1,27 @@
+{
+  try (AutoCloseableLock lock=datasetLock.acquire()){
+    long replicaGenerationStamp=rbw.getGenerationStamp();
+    if (replicaGenerationStamp < b.getGenerationStamp() || replicaGenerationStamp > newGS) {
+      throw new ReplicaNotFoundException(ReplicaNotFoundException.UNEXPECTED_GS_REPLICA + b + ". Expected GS range is ["+ b.getGenerationStamp()+ ", "+ newGS+ "].");
+    }
+    long bytesAcked=rbw.getBytesAcked();
+    long numBytes=rbw.getNumBytes();
+    if (bytesAcked < minBytesRcvd || numBytes > maxBytesRcvd) {
+      throw new ReplicaNotFoundException("Unmatched length replica " + rbw + ": BytesAcked = "+ bytesAcked+ " BytesRcvd = "+ numBytes+ " are not in the range of ["+ minBytesRcvd+ ", "+ maxBytesRcvd+ "].");
+    }
+    FsVolumeReference ref=rbw.getReplicaInfo().getVolume().obtainReference();
+    try {
+      if (numBytes > bytesAcked) {
+        rbw.getReplicaInfo().truncateBlock(bytesAcked);
+        rbw.setNumBytes(bytesAcked);
+        rbw.setLastChecksumAndDataLen(bytesAcked,null);
+      }
+      rbw.getReplicaInfo().bumpReplicaGS(newGS);
+    }
+ catch (    IOException e) {
+      IOUtils.cleanup(null,ref);
+      throw e;
+    }
+    return new ReplicaHandler(rbw,ref);
+  }
+ }

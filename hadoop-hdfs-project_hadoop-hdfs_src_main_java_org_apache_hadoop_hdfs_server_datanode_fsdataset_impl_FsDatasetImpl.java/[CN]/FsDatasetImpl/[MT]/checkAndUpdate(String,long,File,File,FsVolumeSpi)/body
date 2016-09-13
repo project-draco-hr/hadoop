@@ -14,7 +14,7 @@
         }
         return;
       }
-      if (!memBlockInfo.getBlockFile().exists()) {
+      if (!memBlockInfo.blockDataExists()) {
         volumeMap.remove(bpid,blockId);
         if (vol.isTransientStorage()) {
           ramDiskReplicaTracker.discardReplica(bpid,blockId,true);
@@ -27,7 +27,7 @@
       return;
     }
     if (memBlockInfo == null) {
-      ReplicaInfo diskBlockInfo=new FinalizedReplica(blockId,diskFile.length(),diskGS,vol,diskFile.getParentFile());
+      ReplicaInfo diskBlockInfo=new ReplicaBuilder(ReplicaState.FINALIZED).setBlockId(blockId).setLength(diskFile.length()).setGenerationStamp(diskGS).setFsVolume(vol).setDirectoryToUse(diskFile.getParentFile()).build();
       volumeMap.add(bpid,diskBlockInfo);
       if (vol.isTransientStorage()) {
         long lockedBytesReserved=cacheManager.reserve(diskBlockInfo.getNumBytes()) > 0 ? diskBlockInfo.getNumBytes() : 0;
@@ -36,26 +36,24 @@
       LOG.warn("Added missing block to memory " + diskBlockInfo);
       return;
     }
-    File memFile=memBlockInfo.getBlockFile();
-    if (memFile.exists()) {
-      if (memFile.compareTo(diskFile) != 0) {
+    if (memBlockInfo.blockDataExists()) {
+      if (memBlockInfo.getBlockURI().compareTo(diskFile.toURI()) != 0) {
         if (diskMetaFile.exists()) {
-          if (memBlockInfo.getMetaFile().exists()) {
-            ReplicaInfo diskBlockInfo=new FinalizedReplica(blockId,diskFile.length(),diskGS,vol,diskFile.getParentFile());
+          if (memBlockInfo.metadataExists()) {
+            ReplicaInfo diskBlockInfo=new ReplicaBuilder(ReplicaState.FINALIZED).setBlockId(blockId).setLength(diskFile.length()).setGenerationStamp(diskGS).setFsVolume(vol).setDirectoryToUse(diskFile.getParentFile()).build();
             ((FsVolumeImpl)vol).getBlockPoolSlice(bpid).resolveDuplicateReplicas(memBlockInfo,diskBlockInfo,volumeMap);
           }
         }
  else {
           if (!diskFile.delete()) {
-            LOG.warn("Failed to delete " + diskFile + ". Will retry on next scan");
+            LOG.warn("Failed to delete " + diskFile);
           }
         }
       }
     }
  else {
-      LOG.warn("Block file in volumeMap " + memFile.getAbsolutePath() + " does not exist. Updating it to the file found during scan "+ diskFile.getAbsolutePath());
-      memBlockInfo.setDir(diskFile.getParentFile());
-      memFile=diskFile;
+      LOG.warn("Block file in replica " + memBlockInfo.getBlockURI() + " does not exist. Updating it to the file found during scan "+ diskFile.getAbsolutePath());
+      memBlockInfo.updateWithReplica(StorageLocation.parse(diskFile.toString()));
       LOG.warn("Updating generation stamp for block " + blockId + " from "+ memBlockInfo.getGenerationStamp()+ " to "+ diskGS);
       memBlockInfo.setGenerationStamp(diskGS);
     }
@@ -67,15 +65,21 @@
         }
       }
  else {
-        long gs=diskMetaFile != null && diskMetaFile.exists() && diskMetaFile.getParent().equals(memFile.getParent()) ? diskGS : HdfsConstants.GRANDFATHER_GENERATION_STAMP;
-        LOG.warn("Updating generation stamp for block " + blockId + " from "+ memBlockInfo.getGenerationStamp()+ " to "+ gs);
-        memBlockInfo.setGenerationStamp(gs);
+        try {
+          File memFile=new File(memBlockInfo.getBlockURI());
+          long gs=diskMetaFile != null && diskMetaFile.exists() && diskMetaFile.getParent().equals(memFile.getParent()) ? diskGS : HdfsConstants.GRANDFATHER_GENERATION_STAMP;
+          LOG.warn("Updating generation stamp for block " + blockId + " from "+ memBlockInfo.getGenerationStamp()+ " to "+ gs);
+          memBlockInfo.setGenerationStamp(gs);
+        }
+ catch (        IllegalArgumentException e) {
+          LOG.warn("Block URI could not be resolved to a file",e);
+        }
       }
     }
-    if (memBlockInfo.getNumBytes() != memFile.length()) {
+    if (memBlockInfo.getNumBytes() != memBlockInfo.getBlockDataLength()) {
       corruptBlock=new Block(memBlockInfo);
-      LOG.warn("Updating size of block " + blockId + " from "+ memBlockInfo.getNumBytes()+ " to "+ memFile.length());
-      memBlockInfo.setNumBytes(memFile.length());
+      LOG.warn("Updating size of block " + blockId + " from "+ memBlockInfo.getNumBytes()+ " to "+ memBlockInfo.getBlockDataLength());
+      memBlockInfo.setNumBytes(memBlockInfo.getBlockDataLength());
     }
   }
    if (corruptBlock != null) {

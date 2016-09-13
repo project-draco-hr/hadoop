@@ -3,7 +3,7 @@
   long blockId=block.getBlockId();
   long genStamp=block.getGenerationStamp();
   if (isFinalized) {
-    newReplica=new FinalizedReplica(blockId,block.getNumBytes(),genStamp,volume,DatanodeUtil.idToBlockDir(finalizedDir,blockId));
+    newReplica=new ReplicaBuilder(ReplicaState.FINALIZED).setBlockId(blockId).setLength(block.getNumBytes()).setGenerationStamp(genStamp).setFsVolume(volume).setDirectoryToUse(DatanodeUtil.idToBlockDir(finalizedDir,blockId)).build();
   }
  else {
     File file=new File(rbwDir,block.getBlockName());
@@ -13,7 +13,7 @@
     try {
       sc=new Scanner(restartMeta,"UTF-8");
       if (sc.hasNextLong() && (sc.nextLong() > timer.now())) {
-        newReplica=new ReplicaBeingWritten(blockId,validateIntegrityAndSetLength(file,genStamp),genStamp,volume,file.getParentFile(),null,0);
+        newReplica=new ReplicaBuilder(ReplicaState.RBW).setBlockId(blockId).setLength(validateIntegrityAndSetLength(file,genStamp)).setGenerationStamp(genStamp).setFsVolume(volume).setDirectoryToUse(file.getParentFile()).setWriterThread(null).setBytesToReserve(0).build();
         loadRwr=false;
       }
       sc.close();
@@ -29,7 +29,8 @@
       }
     }
     if (loadRwr) {
-      newReplica=new ReplicaWaitingToBeRecovered(blockId,validateIntegrityAndSetLength(file,genStamp),genStamp,volume,file.getParentFile());
+      ReplicaBuilder builder=new ReplicaBuilder(ReplicaState.RWR).setBlockId(blockId).setLength(validateIntegrityAndSetLength(file,genStamp)).setGenerationStamp(genStamp).setFsVolume(volume).setDirectoryToUse(file.getParentFile());
+      newReplica=builder.build();
     }
   }
   ReplicaInfo oldReplica=volumeMap.get(bpid,newReplica.getBlockId());

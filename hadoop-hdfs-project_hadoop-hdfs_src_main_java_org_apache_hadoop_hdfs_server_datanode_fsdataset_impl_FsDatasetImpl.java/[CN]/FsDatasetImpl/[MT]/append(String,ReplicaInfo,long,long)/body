@@ -1,0 +1,16 @@
+{
+  try (AutoCloseableLock lock=datasetLock.acquire()){
+    if (replicaInfo.getState() != ReplicaState.FINALIZED) {
+      throw new IOException("Only a Finalized replica can be appended to; " + "Replica with blk id " + replicaInfo.getBlockId() + " has state "+ replicaInfo.getState());
+    }
+    cacheManager.uncacheBlock(bpid,replicaInfo.getBlockId());
+    replicaInfo.breakHardLinksIfNeeded();
+    FsVolumeImpl v=(FsVolumeImpl)replicaInfo.getVolume();
+    ReplicaInPipeline rip=v.append(bpid,replicaInfo,newGS,estimateBlockLen);
+    if (rip.getReplicaInfo().getState() != ReplicaState.RBW) {
+      throw new IOException("Append on block " + replicaInfo.getBlockId() + " returned a replica of state "+ rip.getReplicaInfo().getState()+ "; expected RBW");
+    }
+    volumeMap.add(bpid,rip.getReplicaInfo());
+    return rip;
+  }
+ }

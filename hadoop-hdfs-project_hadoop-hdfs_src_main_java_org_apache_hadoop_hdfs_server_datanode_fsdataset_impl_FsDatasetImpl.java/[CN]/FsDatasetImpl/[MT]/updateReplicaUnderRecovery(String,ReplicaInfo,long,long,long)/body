@@ -1,0 +1,30 @@
+{
+  if (rur.getRecoveryID() != recoveryId) {
+    throw new IOException("rur.getRecoveryID() != recoveryId = " + recoveryId + ", rur="+ rur);
+  }
+  boolean copyOnTruncate=newBlockId > 0L && rur.getBlockId() != newBlockId;
+  if (!copyOnTruncate) {
+    rur.bumpReplicaGS(recoveryId);
+  }
+  if (rur.getNumBytes() < newlength) {
+    throw new IOException("rur.getNumBytes() < newlength = " + newlength + ", rur="+ rur);
+  }
+  if (rur.getNumBytes() > newlength) {
+    if (!copyOnTruncate) {
+      rur.breakHardLinksIfNeeded();
+      rur.truncateBlock(newlength);
+      rur.setNumBytes(newlength);
+    }
+ else {
+      FsVolumeImpl volume=(FsVolumeImpl)rur.getVolume();
+      ReplicaInPipeline newReplicaInfo=volume.updateRURCopyOnTruncate(rur,bpid,newBlockId,recoveryId,newlength);
+      if (newReplicaInfo.getState() != ReplicaState.RBW) {
+        throw new IOException("Append on block " + rur.getBlockId() + " returned a replica of state "+ newReplicaInfo.getState()+ "; expected RBW");
+      }
+      newReplicaInfo.setNumBytes(newlength);
+      volumeMap.add(bpid,newReplicaInfo.getReplicaInfo());
+      finalizeReplica(bpid,newReplicaInfo.getReplicaInfo());
+    }
+  }
+  return finalizeReplica(bpid,rur);
+}

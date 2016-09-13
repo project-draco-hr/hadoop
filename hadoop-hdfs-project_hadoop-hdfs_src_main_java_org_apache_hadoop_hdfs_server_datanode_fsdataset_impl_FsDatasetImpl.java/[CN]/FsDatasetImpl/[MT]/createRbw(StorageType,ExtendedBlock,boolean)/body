@@ -25,16 +25,18 @@
     if (allowLazyPersist && !v.isTransientStorage()) {
       datanode.getMetrics().incrRamDiskBlocksWriteFallback();
     }
-    File f;
+    ReplicaInPipeline newReplicaInfo;
     try {
-      f=v.createRbwFile(b.getBlockPoolId(),b.getLocalBlock());
+      newReplicaInfo=v.createRbw(b);
+      if (newReplicaInfo.getReplicaInfo().getState() != ReplicaState.RBW) {
+        throw new IOException("CreateRBW returned a replica of state " + newReplicaInfo.getReplicaInfo().getState() + " for block "+ b.getBlockId());
+      }
     }
  catch (    IOException e) {
       IOUtils.cleanup(null,ref);
       throw e;
     }
-    ReplicaBeingWritten newReplicaInfo=new ReplicaBeingWritten(b.getBlockId(),b.getGenerationStamp(),v,f.getParentFile(),b.getNumBytes());
-    volumeMap.add(b.getBlockPoolId(),newReplicaInfo);
+    volumeMap.add(b.getBlockPoolId(),newReplicaInfo.getReplicaInfo());
     return new ReplicaHandler(newReplicaInfo,ref);
   }
  }

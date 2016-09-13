@@ -1,14 +1,16 @@
 {
-  File blockFile=getBlockFileNoExistsCheck(b,true);
-  if (isNativeIOAvailable) {
-    return NativeIO.getShareDeleteFileInputStream(blockFile,seekOffset);
+  ReplicaInfo info;
+synchronized (this) {
+    info=volumeMap.get(b.getBlockPoolId(),b.getLocalBlock());
+  }
+  if (info != null && info.getVolume().isTransientStorage()) {
+    ramDiskReplicaTracker.touch(b.getBlockPoolId(),b.getBlockId());
+    datanode.getMetrics().incrRamDiskBlocksReadHits();
+  }
+  if (info != null && info.blockDataExists()) {
+    return info.getDataInputStream(seekOffset);
   }
  else {
-    try {
-      return openAndSeek(blockFile,seekOffset);
-    }
- catch (    FileNotFoundException fnfe) {
-      throw new IOException("Block " + b + " is not valid. "+ "Expected block file at "+ blockFile+ " does not exist.");
-    }
+    throw new IOException("No data exists for block " + b);
   }
 }
