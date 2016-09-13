@@ -1,0 +1,37 @@
+{
+  final Server server=setupTestServer(conf,2);
+  final Configuration newConf=new Configuration(conf);
+  newConf.set(CommonConfigurationKeysPublic.HADOOP_RPC_SOCKET_FACTORY_CLASS_DEFAULT_KEY,"");
+  Client client=null;
+  TestRpcService proxy1=null;
+  TestRpcService proxy2=null;
+  TestRpcService proxy3=null;
+  try {
+    proxy1=getClient(addr,newConf,retryPolicy1);
+    proxy1.ping(null,newEmptyRequest());
+    client=ProtobufRpcEngine.getClient(newConf);
+    final Set<ConnectionId> conns=client.getConnectionIds();
+    assertEquals("number of connections in cache is wrong",1,conns.size());
+    proxy2=getClient(addr,newConf,retryPolicy2);
+    proxy2.ping(null,newEmptyRequest());
+    assertEquals("number of connections in cache is wrong",1,conns.size());
+    proxy3=getClient(addr,newConf,anotherRetryPolicy);
+    proxy3.ping(null,newEmptyRequest());
+    assertEquals("number of connections in cache is wrong",2,conns.size());
+  }
+  finally {
+    server.stop();
+    if (client != null) {
+      client.getConnectionIds().clear();
+    }
+    if (proxy1 != null) {
+      RPC.stopProxy(proxy1);
+    }
+    if (proxy2 != null) {
+      RPC.stopProxy(proxy2);
+    }
+    if (proxy3 != null) {
+      RPC.stopProxy(proxy3);
+    }
+  }
+}

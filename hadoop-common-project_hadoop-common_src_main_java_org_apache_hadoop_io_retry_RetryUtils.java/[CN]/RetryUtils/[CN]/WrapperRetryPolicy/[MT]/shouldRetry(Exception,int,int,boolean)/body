@@ -1,0 +1,26 @@
+{
+  if (e instanceof ServiceException) {
+    final Throwable cause=e.getCause();
+    if (cause != null && cause instanceof Exception) {
+      e=(Exception)cause;
+    }
+  }
+  final RetryPolicy p;
+  if (e instanceof RetriableException || RetryPolicies.getWrappedRetriableException(e) != null) {
+    p=multipleLinearRandomRetry;
+  }
+ else   if (e instanceof RemoteException) {
+    final RemoteException re=(RemoteException)e;
+    p=re.getClassName().equals(remoteExceptionToRetry) ? multipleLinearRandomRetry : RetryPolicies.TRY_ONCE_THEN_FAIL;
+  }
+ else   if (e instanceof IOException || e instanceof ServiceException) {
+    p=multipleLinearRandomRetry;
+  }
+ else {
+    p=RetryPolicies.TRY_ONCE_THEN_FAIL;
+  }
+  if (LOG.isDebugEnabled()) {
+    LOG.debug("RETRY " + retries + ") policy="+ p.getClass().getSimpleName()+ ", exception="+ e);
+  }
+  return p.shouldRetry(e,retries,failovers,isMethodIdempotent);
+}
