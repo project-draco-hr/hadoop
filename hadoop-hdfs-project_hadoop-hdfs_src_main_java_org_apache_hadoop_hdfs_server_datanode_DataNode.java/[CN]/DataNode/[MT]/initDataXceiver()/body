@@ -1,0 +1,27 @@
+{
+  TcpPeerServer tcpPeerServer;
+  if (secureResources != null) {
+    tcpPeerServer=new TcpPeerServer(secureResources);
+  }
+ else {
+    int backlogLength=getConf().getInt(CommonConfigurationKeysPublic.IPC_SERVER_LISTEN_QUEUE_SIZE_KEY,CommonConfigurationKeysPublic.IPC_SERVER_LISTEN_QUEUE_SIZE_DEFAULT);
+    tcpPeerServer=new TcpPeerServer(dnConf.socketWriteTimeout,DataNode.getStreamingAddr(getConf()),backlogLength);
+  }
+  if (dnConf.getTransferSocketRecvBufferSize() > 0) {
+    tcpPeerServer.setReceiveBufferSize(dnConf.getTransferSocketRecvBufferSize());
+  }
+  streamingAddr=tcpPeerServer.getStreamingAddr();
+  LOG.info("Opened streaming server at " + streamingAddr);
+  this.threadGroup=new ThreadGroup("dataXceiverServer");
+  xserver=new DataXceiverServer(tcpPeerServer,getConf(),this);
+  this.dataXceiverServer=new Daemon(threadGroup,xserver);
+  this.threadGroup.setDaemon(true);
+  if (getConf().getBoolean(HdfsClientConfigKeys.Read.ShortCircuit.KEY,HdfsClientConfigKeys.Read.ShortCircuit.DEFAULT) || getConf().getBoolean(HdfsClientConfigKeys.DFS_CLIENT_DOMAIN_SOCKET_DATA_TRAFFIC,HdfsClientConfigKeys.DFS_CLIENT_DOMAIN_SOCKET_DATA_TRAFFIC_DEFAULT)) {
+    DomainPeerServer domainPeerServer=getDomainPeerServer(getConf(),streamingAddr.getPort());
+    if (domainPeerServer != null) {
+      this.localDataXceiverServer=new Daemon(threadGroup,new DataXceiverServer(domainPeerServer,getConf(),this));
+      LOG.info("Listening on UNIX domain socket: " + domainPeerServer.getBindPath());
+    }
+  }
+  this.shortCircuitRegistry=new ShortCircuitRegistry(getConf());
+}
