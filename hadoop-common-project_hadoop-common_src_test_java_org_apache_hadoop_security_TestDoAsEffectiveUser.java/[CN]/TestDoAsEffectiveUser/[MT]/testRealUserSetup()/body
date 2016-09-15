@@ -2,23 +2,21 @@
   final Configuration conf=new Configuration();
   conf.setStrings(DefaultImpersonationProvider.getTestProvider().getProxySuperuserGroupConfKey(REAL_USER_SHORT_NAME),"group1");
   configureSuperUserIPAddresses(conf,REAL_USER_SHORT_NAME);
-  Server server=new RPC.Builder(conf).setProtocol(TestProtocol.class).setInstance(new TestImpl()).setBindAddress(ADDRESS).setPort(0).setNumHandlers(5).setVerbose(true).build();
+  RPC.setProtocolEngine(conf,TestRpcService.class,ProtobufRpcEngine.class);
+  UserGroupInformation.setConfiguration(conf);
+  final Server server=setupTestServer(conf,5);
   refreshConf(conf);
   try {
-    server.start();
     UserGroupInformation realUserUgi=UserGroupInformation.createRemoteUser(REAL_USER_NAME);
-    checkRemoteUgi(server,realUserUgi,conf);
+    checkRemoteUgi(realUserUgi,conf);
     UserGroupInformation proxyUserUgi=UserGroupInformation.createProxyUserForTesting(PROXY_USER_NAME,realUserUgi,GROUP_NAMES);
-    checkRemoteUgi(server,proxyUserUgi,conf);
+    checkRemoteUgi(proxyUserUgi,conf);
   }
  catch (  Exception e) {
     e.printStackTrace();
     Assert.fail();
   }
  finally {
-    server.stop();
-    if (proxy != null) {
-      RPC.stopProxy(proxy);
-    }
+    stop(server,client);
   }
 }
