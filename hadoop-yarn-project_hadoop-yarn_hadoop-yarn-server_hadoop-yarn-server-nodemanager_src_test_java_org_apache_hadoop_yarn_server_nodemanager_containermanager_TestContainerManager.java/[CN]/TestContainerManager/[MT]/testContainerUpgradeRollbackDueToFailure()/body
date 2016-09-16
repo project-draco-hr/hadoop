@@ -1,0 +1,23 @@
+{
+  if (Shell.WINDOWS) {
+    return;
+  }
+  containerManager.start();
+  ContainerId cId=createContainerId(0);
+  File oldStartFile=new File(tmpDir,"start_file_o.txt").getAbsoluteFile();
+  String pid=prepareInitialContainer(cId,oldStartFile);
+  File newStartFile=new File(tmpDir,"start_file_n.txt").getAbsoluteFile();
+  prepareContainerUpgrade(false,true,false,cId,newStartFile);
+  Assert.assertFalse("Original Process is still alive!",DefaultContainerExecutor.containerIsAlive(pid));
+  int timeoutSecs=0;
+  while (!oldStartFile.exists() && timeoutSecs++ < 20) {
+    System.out.println("\nFiles: " + Arrays.toString(oldStartFile.getParentFile().list()));
+    Thread.sleep(1000);
+    LOG.info("Waiting for New process start-file to be created");
+  }
+  BufferedReader reader=new BufferedReader(new FileReader(oldStartFile));
+  Assert.assertEquals("Hello World!",reader.readLine());
+  String rolledBackPid=reader.readLine().trim();
+  Assert.assertEquals(null,reader.readLine());
+  Assert.assertNotEquals("The Rolled-back process should be a different pid",pid,rolledBackPid);
+}

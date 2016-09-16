@@ -18,27 +18,15 @@
         LOG.warn("Unable to update remainingRetryAttempts in state store for " + container.getContainerId(),e);
       }
     }
-    LOG.info("Relaunching Container " + container.getContainerId() + ". Remaining retry attempts(after relaunch) : "+ container.remainingRetryAttempts+ ". Interval between retries is "+ container.containerRetryContext.getRetryInterval()+ "ms");
-    container.wasLaunched=false;
-    container.metrics.endRunningContainer();
-    if (container.containerRetryContext.getRetryInterval() == 0) {
-      container.sendRelaunchEvent();
-    }
- else {
-      new Thread(){
-        @Override public void run(){
-          try {
-            Thread.sleep(container.containerRetryContext.getRetryInterval());
-            container.sendRelaunchEvent();
-          }
- catch (          InterruptedException e) {
-            return;
-          }
-        }
-      }
-.start();
-    }
+    doRelaunch(container,container.remainingRetryAttempts,container.containerRetryContext.getRetryInterval());
     return ContainerState.RELAUNCHING;
+  }
+ else   if (container.canRollback()) {
+    container.addDiagnostics("Container Re-init Auto Rolled-Back.");
+    LOG.info("Rolling back Container reInitialization for [" + container.getContainerId() + "] !!");
+    container.reInitContext=container.reInitContext.createContextForRollback();
+    new KilledForReInitializationTransition().transition(container,event);
+    return ContainerState.LOCALIZED;
   }
  else {
     new ExitedWithFailureTransition(true).transition(container,event);

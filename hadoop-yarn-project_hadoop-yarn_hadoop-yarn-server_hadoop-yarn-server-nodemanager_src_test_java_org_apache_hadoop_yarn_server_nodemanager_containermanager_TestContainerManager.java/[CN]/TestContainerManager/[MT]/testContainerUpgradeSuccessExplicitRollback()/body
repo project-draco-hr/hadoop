@@ -1,0 +1,23 @@
+{
+  String[] pids=testContainerUpgradeSuccess(false);
+  File oldStartFile=new File(tmpDir,"start_file_o.txt").getAbsoluteFile();
+  oldStartFile.delete();
+  ContainerId cId=createContainerId(0);
+  containerManager.rollbackReInitialization(cId);
+  Assert.assertFalse("Original Process is still alive!",DefaultContainerExecutor.containerIsAlive(pids[0]));
+  int timeoutSecs=0;
+  while (!DefaultContainerExecutor.containerIsAlive(pids[1]) && timeoutSecs++ < 20) {
+    Thread.sleep(1000);
+    LOG.info("Waiting for Upgraded process to die..");
+  }
+  timeoutSecs=0;
+  while (!oldStartFile.exists() && timeoutSecs++ < 20) {
+    Thread.sleep(1000);
+    LOG.info("Waiting for New process start-file to be created");
+  }
+  BufferedReader reader=new BufferedReader(new FileReader(oldStartFile));
+  Assert.assertEquals("Hello World!",reader.readLine());
+  String rolledBackPid=reader.readLine().trim();
+  Assert.assertEquals(null,reader.readLine());
+  Assert.assertNotEquals("The Rolled-back process should be a different pid",pids[0],rolledBackPid);
+}
