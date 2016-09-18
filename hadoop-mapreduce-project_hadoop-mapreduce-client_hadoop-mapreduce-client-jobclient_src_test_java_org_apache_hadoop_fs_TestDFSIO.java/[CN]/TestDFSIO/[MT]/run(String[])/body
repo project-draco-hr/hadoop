@@ -2,6 +2,7 @@
   TestType testType=null;
   int bufferSize=DEFAULT_BUFFER_SIZE;
   long nrBytes=1 * MEGA;
+  String erasureCodePolicyName=null;
   int nrFiles=1;
   long skipSize=0;
   String resFileName=DEFAULT_RES_FILE_NAME;
@@ -66,18 +67,29 @@
  else     if (args[i].equalsIgnoreCase("-storagePolicy")) {
       storagePolicy=args[++i];
     }
+ else     if (args[i].equalsIgnoreCase("-erasureCodePolicy")) {
+      erasureCodePolicyName=args[++i];
+    }
  else {
       System.err.println("Illegal argument: " + args[i]);
       return -1;
     }
   }
-  if (testType == null)   return -1;
-  if (testType == TestType.TEST_TYPE_READ_BACKWARD)   skipSize=-bufferSize;
- else   if (testType == TestType.TEST_TYPE_READ_SKIP && skipSize == 0)   skipSize=bufferSize;
+  if (testType == null) {
+    return -1;
+  }
+  if (testType == TestType.TEST_TYPE_READ_BACKWARD) {
+    skipSize=-bufferSize;
+  }
+ else   if (testType == TestType.TEST_TYPE_READ_SKIP && skipSize == 0) {
+    skipSize=bufferSize;
+  }
   LOG.info("nrFiles = " + nrFiles);
   LOG.info("nrBytes (MB) = " + toMB(nrBytes));
   LOG.info("bufferSize = " + bufferSize);
-  if (skipSize > 0)   LOG.info("skipSize = " + skipSize);
+  if (skipSize > 0) {
+    LOG.info("skipSize = " + skipSize);
+  }
   LOG.info("baseDir = " + getBaseDir(config));
   if (compressionClass != null) {
     config.set("test.io.compression.class",compressionClass);
@@ -86,30 +98,15 @@
   config.setInt("test.io.file.buffer.size",bufferSize);
   config.setLong("test.io.skip.size",skipSize);
   FileSystem fs=FileSystem.get(config);
-  if (storagePolicy != null) {
-    boolean isValid=false;
-    Collection<BlockStoragePolicy> storagePolicies=((DistributedFileSystem)fs).getAllStoragePolicies();
-    try {
-      for (      BlockStoragePolicy policy : storagePolicies) {
-        if (policy.getName().equals(storagePolicy)) {
-          isValid=true;
-          break;
-        }
-      }
-    }
- catch (    Exception e) {
-      throw new IOException("Get block storage policies error: ",e);
-    }
-    if (!isValid) {
-      System.out.println("Invalid block storage policy: " + storagePolicy);
-      System.out.println("Current supported storage policy list: ");
-      for (      BlockStoragePolicy policy : storagePolicies) {
-        System.out.println(policy.getName());
-      }
+  if (erasureCodePolicyName != null) {
+    if (!checkErasureCodePolicy(erasureCodePolicyName,fs,testType)) {
       return -1;
     }
-    config.set("test.io.block.storage.policy",storagePolicy);
-    LOG.info("storagePolicy = " + storagePolicy);
+  }
+  if (storagePolicy != null) {
+    if (!checkStoragePolicy(storagePolicy,fs)) {
+      return -1;
+    }
   }
   if (isSequential) {
     long tStart=System.currentTimeMillis();
