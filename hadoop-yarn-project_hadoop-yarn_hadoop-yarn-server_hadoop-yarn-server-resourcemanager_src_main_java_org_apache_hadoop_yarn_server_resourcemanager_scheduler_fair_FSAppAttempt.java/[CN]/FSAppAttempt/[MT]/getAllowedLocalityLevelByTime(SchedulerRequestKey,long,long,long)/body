@@ -2,35 +2,41 @@
   if (nodeLocalityDelayMs < 0 || rackLocalityDelayMs < 0) {
     return NodeType.OFF_SWITCH;
   }
-  if (!allowedLocalityLevel.containsKey(schedulerKey)) {
-    lastScheduledContainer.put(schedulerKey,currentTimeMs);
-    if (LOG.isDebugEnabled()) {
-      LOG.debug("Init the lastScheduledContainer time, priority: " + schedulerKey.getPriority() + ", time: "+ currentTimeMs);
+  try {
+    writeLock.lock();
+    if (!allowedLocalityLevel.containsKey(schedulerKey)) {
+      lastScheduledContainer.put(schedulerKey,currentTimeMs);
+      if (LOG.isDebugEnabled()) {
+        LOG.debug("Init the lastScheduledContainer time, priority: " + schedulerKey.getPriority() + ", time: "+ currentTimeMs);
+      }
+      allowedLocalityLevel.put(schedulerKey,NodeType.NODE_LOCAL);
+      return NodeType.NODE_LOCAL;
     }
-    allowedLocalityLevel.put(schedulerKey,NodeType.NODE_LOCAL);
-    return NodeType.NODE_LOCAL;
-  }
-  NodeType allowed=allowedLocalityLevel.get(schedulerKey);
-  if (allowed.equals(NodeType.OFF_SWITCH)) {
-    return NodeType.OFF_SWITCH;
-  }
-  long waitTime=currentTimeMs;
-  if (lastScheduledContainer.containsKey(schedulerKey)) {
-    waitTime-=lastScheduledContainer.get(schedulerKey);
-  }
+    NodeType allowed=allowedLocalityLevel.get(schedulerKey);
+    if (allowed.equals(NodeType.OFF_SWITCH)) {
+      return NodeType.OFF_SWITCH;
+    }
+    long waitTime=currentTimeMs;
+    if (lastScheduledContainer.containsKey(schedulerKey)) {
+      waitTime-=lastScheduledContainer.get(schedulerKey);
+    }
  else {
-    waitTime-=getStartTime();
-  }
-  long thresholdTime=allowed.equals(NodeType.NODE_LOCAL) ? nodeLocalityDelayMs : rackLocalityDelayMs;
-  if (waitTime > thresholdTime) {
-    if (allowed.equals(NodeType.NODE_LOCAL)) {
-      allowedLocalityLevel.put(schedulerKey,NodeType.RACK_LOCAL);
-      resetSchedulingOpportunities(schedulerKey,currentTimeMs);
+      waitTime-=getStartTime();
     }
- else     if (allowed.equals(NodeType.RACK_LOCAL)) {
-      allowedLocalityLevel.put(schedulerKey,NodeType.OFF_SWITCH);
-      resetSchedulingOpportunities(schedulerKey,currentTimeMs);
+    long thresholdTime=allowed.equals(NodeType.NODE_LOCAL) ? nodeLocalityDelayMs : rackLocalityDelayMs;
+    if (waitTime > thresholdTime) {
+      if (allowed.equals(NodeType.NODE_LOCAL)) {
+        allowedLocalityLevel.put(schedulerKey,NodeType.RACK_LOCAL);
+        resetSchedulingOpportunities(schedulerKey,currentTimeMs);
+      }
+ else       if (allowed.equals(NodeType.RACK_LOCAL)) {
+        allowedLocalityLevel.put(schedulerKey,NodeType.OFF_SWITCH);
+        resetSchedulingOpportunities(schedulerKey,currentTimeMs);
+      }
     }
+    return allowedLocalityLevel.get(schedulerKey);
   }
-  return allowedLocalityLevel.get(schedulerKey);
+  finally {
+    writeLock.unlock();
+  }
 }

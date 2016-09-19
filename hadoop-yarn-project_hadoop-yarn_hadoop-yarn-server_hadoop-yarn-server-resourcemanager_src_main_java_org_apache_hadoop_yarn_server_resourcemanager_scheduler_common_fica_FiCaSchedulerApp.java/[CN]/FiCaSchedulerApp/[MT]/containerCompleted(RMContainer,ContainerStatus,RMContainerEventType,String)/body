@@ -1,15 +1,21 @@
 {
-  ContainerId containerId=rmContainer.getContainerId();
-  if (null == liveContainers.remove(containerId)) {
-    return false;
+  try {
+    writeLock.lock();
+    ContainerId containerId=rmContainer.getContainerId();
+    if (null == liveContainers.remove(containerId)) {
+      return false;
+    }
+    newlyAllocatedContainers.remove(rmContainer);
+    rmContainer.handle(new RMContainerFinishedEvent(containerId,containerStatus,event));
+    containersToPreempt.remove(containerId);
+    Resource containerResource=rmContainer.getContainer().getResource();
+    RMAuditLogger.logSuccess(getUser(),AuditConstants.RELEASE_CONTAINER,"SchedulerApp",getApplicationId(),containerId,containerResource);
+    queue.getMetrics().releaseResources(getUser(),1,containerResource);
+    attemptResourceUsage.decUsed(partition,containerResource);
+    lastMemoryAggregateAllocationUpdateTime=-1;
+    return true;
   }
-  newlyAllocatedContainers.remove(rmContainer);
-  rmContainer.handle(new RMContainerFinishedEvent(containerId,containerStatus,event));
-  containersToPreempt.remove(containerId);
-  Resource containerResource=rmContainer.getContainer().getResource();
-  RMAuditLogger.logSuccess(getUser(),AuditConstants.RELEASE_CONTAINER,"SchedulerApp",getApplicationId(),containerId,containerResource);
-  queue.getMetrics().releaseResources(getUser(),1,containerResource);
-  attemptResourceUsage.decUsed(partition,containerResource);
-  lastMemoryAggregateAllocationUpdateTime=-1;
-  return true;
+  finally {
+    writeLock.unlock();
+  }
 }

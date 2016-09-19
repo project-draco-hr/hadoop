@@ -1,17 +1,23 @@
 {
-  Set<ContainerId> currentContPreemption=Collections.unmodifiableSet(new HashSet<ContainerId>(containersToPreempt));
-  containersToPreempt.clear();
-  Resource tot=Resource.newInstance(0,0);
-  for (  ContainerId c : currentContPreemption) {
-    Resources.addTo(tot,liveContainers.get(c).getContainer().getResource());
+  try {
+    writeLock.lock();
+    Set<ContainerId> currentContPreemption=Collections.unmodifiableSet(new HashSet<ContainerId>(containersToPreempt));
+    containersToPreempt.clear();
+    Resource tot=Resource.newInstance(0,0);
+    for (    ContainerId c : currentContPreemption) {
+      Resources.addTo(tot,liveContainers.get(c).getContainer().getResource());
+    }
+    int numCont=(int)Math.ceil(Resources.divide(rc,clusterResource,tot,minimumAllocation));
+    ResourceRequest rr=ResourceRequest.newInstance(Priority.UNDEFINED,ResourceRequest.ANY,minimumAllocation,numCont);
+    List<Container> newlyAllocatedContainers=pullNewlyAllocatedContainers();
+    List<Container> newlyIncreasedContainers=pullNewlyIncreasedContainers();
+    List<Container> newlyDecreasedContainers=pullNewlyDecreasedContainers();
+    List<NMToken> updatedNMTokens=pullUpdatedNMTokens();
+    Resource headroom=getHeadroom();
+    setApplicationHeadroomForMetrics(headroom);
+    return new Allocation(newlyAllocatedContainers,headroom,null,currentContPreemption,Collections.singletonList(rr),updatedNMTokens,newlyIncreasedContainers,newlyDecreasedContainers);
   }
-  int numCont=(int)Math.ceil(Resources.divide(rc,clusterResource,tot,minimumAllocation));
-  ResourceRequest rr=ResourceRequest.newInstance(Priority.UNDEFINED,ResourceRequest.ANY,minimumAllocation,numCont);
-  List<Container> newlyAllocatedContainers=pullNewlyAllocatedContainers();
-  List<Container> newlyIncreasedContainers=pullNewlyIncreasedContainers();
-  List<Container> newlyDecreasedContainers=pullNewlyDecreasedContainers();
-  List<NMToken> updatedNMTokens=pullUpdatedNMTokens();
-  Resource headroom=getHeadroom();
-  setApplicationHeadroomForMetrics(headroom);
-  return new Allocation(newlyAllocatedContainers,headroom,null,currentContPreemption,Collections.singletonList(rr),updatedNMTokens,newlyIncreasedContainers,newlyDecreasedContainers);
+  finally {
+    writeLock.unlock();
+  }
 }

@@ -1,16 +1,22 @@
 {
-  Container container=rmContainer.getContainer();
-  ContainerId containerId=container.getId();
-  newlyAllocatedContainers.remove(rmContainer);
-  rmContainer.handle(new RMContainerFinishedEvent(containerId,containerStatus,event));
-  if (LOG.isDebugEnabled()) {
-    LOG.debug("Completed container: " + rmContainer.getContainerId() + " in state: "+ rmContainer.getState()+ " event:"+ event);
+  try {
+    writeLock.lock();
+    Container container=rmContainer.getContainer();
+    ContainerId containerId=container.getId();
+    newlyAllocatedContainers.remove(rmContainer);
+    rmContainer.handle(new RMContainerFinishedEvent(containerId,containerStatus,event));
+    if (LOG.isDebugEnabled()) {
+      LOG.debug("Completed container: " + rmContainer.getContainerId() + " in state: "+ rmContainer.getState()+ " event:"+ event);
+    }
+    liveContainers.remove(rmContainer.getContainerId());
+    Resource containerResource=rmContainer.getContainer().getResource();
+    RMAuditLogger.logSuccess(getUser(),AuditConstants.RELEASE_CONTAINER,"SchedulerApp",getApplicationId(),containerId,containerResource);
+    queue.getMetrics().releaseResources(getUser(),1,containerResource);
+    this.attemptResourceUsage.decUsed(containerResource);
+    preemptionMap.remove(rmContainer);
+    lastMemoryAggregateAllocationUpdateTime=-1;
   }
-  liveContainers.remove(rmContainer.getContainerId());
-  Resource containerResource=rmContainer.getContainer().getResource();
-  RMAuditLogger.logSuccess(getUser(),AuditConstants.RELEASE_CONTAINER,"SchedulerApp",getApplicationId(),containerId,containerResource);
-  queue.getMetrics().releaseResources(getUser(),1,containerResource);
-  this.attemptResourceUsage.decUsed(containerResource);
-  preemptionMap.remove(rmContainer);
-  lastMemoryAggregateAllocationUpdateTime=-1;
+  finally {
+    writeLock.unlock();
+  }
 }
