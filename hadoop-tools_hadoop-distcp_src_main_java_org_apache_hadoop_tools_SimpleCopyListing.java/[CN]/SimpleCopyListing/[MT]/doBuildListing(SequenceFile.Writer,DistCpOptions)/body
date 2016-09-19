@@ -3,6 +3,7 @@
     numListstatusThreads=options.getNumListstatusThreads();
   }
   try {
+    List<FileStatusInfo> statusList=Lists.newArrayList();
     for (    Path path : options.getSourcePaths()) {
       FileSystem sourceFS=path.getFileSystem(getConf());
       final boolean preserveAcls=options.shouldPreserve(FileAttribute.ACL);
@@ -24,7 +25,12 @@
             LOG.debug("Recording source-path: " + sourceStatus.getPath() + " for copy.");
           }
           CopyListingFileStatus sourceCopyListingStatus=DistCpUtils.toCopyListingFileStatus(sourceFS,sourceStatus,preserveAcls && sourceStatus.isDirectory(),preserveXAttrs && sourceStatus.isDirectory(),preserveRawXAttrs && sourceStatus.isDirectory());
-          writeToFileListing(fileListWriter,sourceCopyListingStatus,sourcePathRoot);
+          if (randomizeFileListing) {
+            addToFileListing(statusList,new FileStatusInfo(sourceCopyListingStatus,sourcePathRoot),fileListWriter);
+          }
+ else {
+            writeToFileListing(fileListWriter,sourceCopyListingStatus,sourcePathRoot);
+          }
           if (sourceStatus.isDirectory()) {
             if (LOG.isDebugEnabled()) {
               LOG.debug("Adding source dir for traverse: " + sourceStatus.getPath());
@@ -32,8 +38,11 @@
             sourceDirs.add(sourceStatus);
           }
         }
-        traverseDirectory(fileListWriter,sourceFS,sourceDirs,sourcePathRoot,options,null);
+        traverseDirectory(fileListWriter,sourceFS,sourceDirs,sourcePathRoot,options,null,statusList);
       }
+    }
+    if (randomizeFileListing) {
+      writeToFileListing(statusList,fileListWriter);
     }
     fileListWriter.close();
     printStats();
