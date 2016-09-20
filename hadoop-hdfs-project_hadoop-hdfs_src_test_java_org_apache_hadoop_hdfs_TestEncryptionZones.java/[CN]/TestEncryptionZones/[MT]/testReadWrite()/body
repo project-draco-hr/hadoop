@@ -11,11 +11,20 @@
   verifyFilesEqual(fs,baseFile,encFile1,len);
   assertNumZones(1);
   String keyName=dfsAdmin.listEncryptionZones().next().getKeyName();
+  FileEncryptionInfo feInfo1=getFileEncryptionInfo(encFile1);
   cluster.getNamesystem().getProvider().rollNewVersion(keyName);
+  boolean rollSucceeded=false;
+  for (int i=0; i <= EagerKeyGeneratorKeyProviderCryptoExtension.KMS_KEY_CACHE_SIZE_DEFAULT + CommonConfigurationKeysPublic.KMS_CLIENT_ENC_KEY_CACHE_SIZE_DEFAULT; ++i) {
+    KeyProviderCryptoExtension.EncryptedKeyVersion ekv2=cluster.getNamesystem().getProvider().generateEncryptedKey(TEST_KEY);
+    if (!(feInfo1.getEzKeyVersionName().equals(ekv2.getEncryptionKeyVersionName()))) {
+      rollSucceeded=true;
+      break;
+    }
+  }
+  Assert.assertTrue("rollover did not generate a new key even after" + " queue is drained",rollSucceeded);
   verifyFilesEqual(fs,baseFile,encFile1,len);
   final Path encFile2=new Path(zone,"myfile2");
   DFSTestUtil.createFile(fs,encFile2,len,(short)1,0xFEED);
-  FileEncryptionInfo feInfo1=getFileEncryptionInfo(encFile1);
   FileEncryptionInfo feInfo2=getFileEncryptionInfo(encFile2);
   assertFalse("EDEKs should be different",Arrays.equals(feInfo1.getEncryptedDataEncryptionKey(),feInfo2.getEncryptedDataEncryptionKey()));
   assertNotEquals("Key was rolled, versions should be different",feInfo1.getEzKeyVersionName(),feInfo2.getEzKeyVersionName());
