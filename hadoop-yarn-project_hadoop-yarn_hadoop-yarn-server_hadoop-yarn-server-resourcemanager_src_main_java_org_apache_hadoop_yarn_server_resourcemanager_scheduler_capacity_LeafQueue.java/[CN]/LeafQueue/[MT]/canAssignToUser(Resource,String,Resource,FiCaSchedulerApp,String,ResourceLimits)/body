@@ -1,21 +1,27 @@
 {
-  User user=getUser(userName);
-  currentResourceLimits.setAmountNeededUnreserve(Resources.none());
-  if (Resources.greaterThan(resourceCalculator,clusterResource,user.getUsed(nodePartition),limit)) {
-    if (this.reservationsContinueLooking && nodePartition.equals(CommonNodeLabelsManager.NO_LABEL)) {
-      if (Resources.lessThanOrEqual(resourceCalculator,clusterResource,Resources.subtract(user.getUsed(),application.getCurrentReservation()),limit)) {
-        if (LOG.isDebugEnabled()) {
-          LOG.debug("User " + userName + " in queue "+ getQueueName()+ " will exceed limit based on reservations - "+ " consumed: "+ user.getUsed()+ " reserved: "+ application.getCurrentReservation()+ " limit: "+ limit);
+  try {
+    readLock.lock();
+    User user=getUser(userName);
+    currentResourceLimits.setAmountNeededUnreserve(Resources.none());
+    if (Resources.greaterThan(resourceCalculator,clusterResource,user.getUsed(nodePartition),limit)) {
+      if (this.reservationsContinueLooking && nodePartition.equals(CommonNodeLabelsManager.NO_LABEL)) {
+        if (Resources.lessThanOrEqual(resourceCalculator,clusterResource,Resources.subtract(user.getUsed(),application.getCurrentReservation()),limit)) {
+          if (LOG.isDebugEnabled()) {
+            LOG.debug("User " + userName + " in queue "+ getQueueName()+ " will exceed limit based on reservations - "+ " consumed: "+ user.getUsed()+ " reserved: "+ application.getCurrentReservation()+ " limit: "+ limit);
+          }
+          Resource amountNeededToUnreserve=Resources.subtract(user.getUsed(nodePartition),limit);
+          currentResourceLimits.setAmountNeededUnreserve(amountNeededToUnreserve);
+          return true;
         }
-        Resource amountNeededToUnreserve=Resources.subtract(user.getUsed(nodePartition),limit);
-        currentResourceLimits.setAmountNeededUnreserve(amountNeededToUnreserve);
-        return true;
       }
+      if (LOG.isDebugEnabled()) {
+        LOG.debug("User " + userName + " in queue "+ getQueueName()+ " will exceed limit - "+ " consumed: "+ user.getUsed(nodePartition)+ " limit: "+ limit);
+      }
+      return false;
     }
-    if (LOG.isDebugEnabled()) {
-      LOG.debug("User " + userName + " in queue "+ getQueueName()+ " will exceed limit - "+ " consumed: "+ user.getUsed(nodePartition)+ " limit: "+ limit);
-    }
-    return false;
+    return true;
   }
-  return true;
+  finally {
+    readLock.unlock();
+  }
 }

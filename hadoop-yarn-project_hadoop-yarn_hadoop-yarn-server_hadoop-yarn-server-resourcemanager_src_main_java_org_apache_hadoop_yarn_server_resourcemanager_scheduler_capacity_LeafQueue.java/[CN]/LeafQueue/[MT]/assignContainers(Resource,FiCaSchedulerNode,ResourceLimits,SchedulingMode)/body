@@ -1,76 +1,80 @@
 {
-  updateCurrentResourceLimits(currentResourceLimits,clusterResource);
-  if (LOG.isDebugEnabled()) {
-    LOG.debug("assignContainers: node=" + node.getNodeName() + " #applications="+ orderingPolicy.getNumSchedulableEntities());
-  }
-  setPreemptionAllowed(currentResourceLimits,node.getPartition());
-  RMContainer reservedContainer=node.getReservedContainer();
-  if (reservedContainer != null) {
-    FiCaSchedulerApp application=getApplication(reservedContainer.getApplicationAttemptId());
-    ActivitiesLogger.APP.startAppAllocationRecording(activitiesManager,node.getNodeID(),SystemClock.getInstance().getTime(),application);
-synchronized (application) {
+  try {
+    writeLock.lock();
+    updateCurrentResourceLimits(currentResourceLimits,clusterResource);
+    if (LOG.isDebugEnabled()) {
+      LOG.debug("assignContainers: node=" + node.getNodeName() + " #applications="+ orderingPolicy.getNumSchedulableEntities());
+    }
+    setPreemptionAllowed(currentResourceLimits,node.getPartition());
+    RMContainer reservedContainer=node.getReservedContainer();
+    if (reservedContainer != null) {
+      FiCaSchedulerApp application=getApplication(reservedContainer.getApplicationAttemptId());
+      ActivitiesLogger.APP.startAppAllocationRecording(activitiesManager,node.getNodeID(),SystemClock.getInstance().getTime(),application);
       CSAssignment assignment=application.assignContainers(clusterResource,node,currentResourceLimits,schedulingMode,reservedContainer);
       handleExcessReservedContainer(clusterResource,assignment,node,application);
       killToPreemptContainers(clusterResource,node,assignment);
       return assignment;
     }
-  }
-  if (schedulingMode == SchedulingMode.RESPECT_PARTITION_EXCLUSIVITY && !accessibleToPartition(node.getPartition())) {
-    ActivitiesLogger.QUEUE.recordQueueActivity(activitiesManager,node,getParent().getQueueName(),getQueueName(),ActivityState.REJECTED,ActivityDiagnosticConstant.NOT_ABLE_TO_ACCESS_PARTITION + node.getPartition());
-    return CSAssignment.NULL_ASSIGNMENT;
-  }
-  if (!hasPendingResourceRequest(node.getPartition(),clusterResource,schedulingMode)) {
-    if (LOG.isDebugEnabled()) {
-      LOG.debug("Skip this queue=" + getQueuePath() + ", because it doesn't need more resource, schedulingMode="+ schedulingMode.name()+ " node-partition="+ node.getPartition());
-    }
-    ActivitiesLogger.QUEUE.recordQueueActivity(activitiesManager,node,getParent().getQueueName(),getQueueName(),ActivityState.SKIPPED,ActivityDiagnosticConstant.QUEUE_DO_NOT_NEED_MORE_RESOURCE);
-    return CSAssignment.NULL_ASSIGNMENT;
-  }
-  for (Iterator<FiCaSchedulerApp> assignmentIterator=orderingPolicy.getAssignmentIterator(); assignmentIterator.hasNext(); ) {
-    FiCaSchedulerApp application=assignmentIterator.next();
-    ActivitiesLogger.APP.startAppAllocationRecording(activitiesManager,node.getNodeID(),SystemClock.getInstance().getTime(),application);
-    if (!super.canAssignToThisQueue(clusterResource,node.getPartition(),currentResourceLimits,application.getCurrentReservation(),schedulingMode)) {
-      ActivitiesLogger.APP.recordRejectedAppActivityFromLeafQueue(activitiesManager,node,application,application.getPriority(),ActivityDiagnosticConstant.QUEUE_MAX_CAPACITY_LIMIT);
-      ActivitiesLogger.QUEUE.recordQueueActivity(activitiesManager,node,getParent().getQueueName(),getQueueName(),ActivityState.SKIPPED,ActivityDiagnosticConstant.EMPTY);
+    if (schedulingMode == SchedulingMode.RESPECT_PARTITION_EXCLUSIVITY && !accessibleToPartition(node.getPartition())) {
+      ActivitiesLogger.QUEUE.recordQueueActivity(activitiesManager,node,getParent().getQueueName(),getQueueName(),ActivityState.REJECTED,ActivityDiagnosticConstant.NOT_ABLE_TO_ACCESS_PARTITION + node.getPartition());
       return CSAssignment.NULL_ASSIGNMENT;
     }
-    Resource userLimit=computeUserLimitAndSetHeadroom(application,clusterResource,node.getPartition(),schedulingMode);
-    if (!canAssignToUser(clusterResource,application.getUser(),userLimit,application,node.getPartition(),currentResourceLimits)) {
-      application.updateAMContainerDiagnostics(AMState.ACTIVATED,"User capacity has reached its maximum limit.");
-      ActivitiesLogger.APP.recordRejectedAppActivityFromLeafQueue(activitiesManager,node,application,application.getPriority(),ActivityDiagnosticConstant.USER_CAPACITY_MAXIMUM_LIMIT);
-      continue;
-    }
-    CSAssignment assignment=application.assignContainers(clusterResource,node,currentResourceLimits,schedulingMode,null);
-    if (LOG.isDebugEnabled()) {
-      LOG.debug("post-assignContainers for application " + application.getApplicationId());
-      application.showRequests();
-    }
-    Resource assigned=assignment.getResource();
-    handleExcessReservedContainer(clusterResource,assignment,node,application);
-    killToPreemptContainers(clusterResource,node,assignment);
-    if (Resources.greaterThan(resourceCalculator,clusterResource,assigned,Resources.none())) {
-      RMContainer reservedOrAllocatedRMContainer=application.getRMContainer(assignment.getAssignmentInformation().getFirstAllocatedOrReservedContainerId());
-      allocateResource(clusterResource,application,assigned,node.getPartition(),reservedOrAllocatedRMContainer,assignment.isIncreasedAllocation());
-      Resource reservedRes=assignment.getAssignmentInformation().getReserved();
-      if (reservedRes != null && !reservedRes.equals(Resources.none())) {
-        incReservedResource(node.getPartition(),reservedRes);
+    if (!hasPendingResourceRequest(node.getPartition(),clusterResource,schedulingMode)) {
+      if (LOG.isDebugEnabled()) {
+        LOG.debug("Skip this queue=" + getQueuePath() + ", because it doesn't need more resource, schedulingMode="+ schedulingMode.name()+ " node-partition="+ node.getPartition());
       }
-      ActivitiesLogger.QUEUE.recordQueueActivity(activitiesManager,node,getParent().getQueueName(),getQueueName(),ActivityState.ACCEPTED,ActivityDiagnosticConstant.EMPTY);
-      return assignment;
-    }
- else     if (assignment.getSkippedType() == CSAssignment.SkippedType.OTHER) {
-      ActivitiesLogger.APP.finishSkippedAppAllocationRecording(activitiesManager,application.getApplicationId(),ActivityState.SKIPPED,ActivityDiagnosticConstant.EMPTY);
-      application.updateNodeInfoForAMDiagnostics(node);
-    }
- else     if (assignment.getSkippedType() == CSAssignment.SkippedType.QUEUE_LIMIT) {
-      return assignment;
-    }
- else {
-      ActivitiesLogger.QUEUE.recordQueueActivity(activitiesManager,node,getParent().getQueueName(),getQueueName(),ActivityState.SKIPPED,ActivityDiagnosticConstant.RESPECT_FIFO);
-      ActivitiesLogger.APP.finishSkippedAppAllocationRecording(activitiesManager,application.getApplicationId(),ActivityState.SKIPPED,ActivityDiagnosticConstant.EMPTY);
+      ActivitiesLogger.QUEUE.recordQueueActivity(activitiesManager,node,getParent().getQueueName(),getQueueName(),ActivityState.SKIPPED,ActivityDiagnosticConstant.QUEUE_DO_NOT_NEED_MORE_RESOURCE);
       return CSAssignment.NULL_ASSIGNMENT;
     }
+    for (Iterator<FiCaSchedulerApp> assignmentIterator=orderingPolicy.getAssignmentIterator(); assignmentIterator.hasNext(); ) {
+      FiCaSchedulerApp application=assignmentIterator.next();
+      ActivitiesLogger.APP.startAppAllocationRecording(activitiesManager,node.getNodeID(),SystemClock.getInstance().getTime(),application);
+      if (!super.canAssignToThisQueue(clusterResource,node.getPartition(),currentResourceLimits,application.getCurrentReservation(),schedulingMode)) {
+        ActivitiesLogger.APP.recordRejectedAppActivityFromLeafQueue(activitiesManager,node,application,application.getPriority(),ActivityDiagnosticConstant.QUEUE_MAX_CAPACITY_LIMIT);
+        ActivitiesLogger.QUEUE.recordQueueActivity(activitiesManager,node,getParent().getQueueName(),getQueueName(),ActivityState.SKIPPED,ActivityDiagnosticConstant.EMPTY);
+        return CSAssignment.NULL_ASSIGNMENT;
+      }
+      Resource userLimit=computeUserLimitAndSetHeadroom(application,clusterResource,node.getPartition(),schedulingMode);
+      if (!canAssignToUser(clusterResource,application.getUser(),userLimit,application,node.getPartition(),currentResourceLimits)) {
+        application.updateAMContainerDiagnostics(AMState.ACTIVATED,"User capacity has reached its maximum limit.");
+        ActivitiesLogger.APP.recordRejectedAppActivityFromLeafQueue(activitiesManager,node,application,application.getPriority(),ActivityDiagnosticConstant.USER_CAPACITY_MAXIMUM_LIMIT);
+        continue;
+      }
+      CSAssignment assignment=application.assignContainers(clusterResource,node,currentResourceLimits,schedulingMode,null);
+      if (LOG.isDebugEnabled()) {
+        LOG.debug("post-assignContainers for application " + application.getApplicationId());
+        application.showRequests();
+      }
+      Resource assigned=assignment.getResource();
+      handleExcessReservedContainer(clusterResource,assignment,node,application);
+      killToPreemptContainers(clusterResource,node,assignment);
+      if (Resources.greaterThan(resourceCalculator,clusterResource,assigned,Resources.none())) {
+        RMContainer reservedOrAllocatedRMContainer=application.getRMContainer(assignment.getAssignmentInformation().getFirstAllocatedOrReservedContainerId());
+        allocateResource(clusterResource,application,assigned,node.getPartition(),reservedOrAllocatedRMContainer,assignment.isIncreasedAllocation());
+        Resource reservedRes=assignment.getAssignmentInformation().getReserved();
+        if (reservedRes != null && !reservedRes.equals(Resources.none())) {
+          incReservedResource(node.getPartition(),reservedRes);
+        }
+        ActivitiesLogger.QUEUE.recordQueueActivity(activitiesManager,node,getParent().getQueueName(),getQueueName(),ActivityState.ACCEPTED,ActivityDiagnosticConstant.EMPTY);
+        return assignment;
+      }
+ else       if (assignment.getSkippedType() == CSAssignment.SkippedType.OTHER) {
+        ActivitiesLogger.APP.finishSkippedAppAllocationRecording(activitiesManager,application.getApplicationId(),ActivityState.SKIPPED,ActivityDiagnosticConstant.EMPTY);
+        application.updateNodeInfoForAMDiagnostics(node);
+      }
+ else       if (assignment.getSkippedType() == CSAssignment.SkippedType.QUEUE_LIMIT) {
+        return assignment;
+      }
+ else {
+        ActivitiesLogger.QUEUE.recordQueueActivity(activitiesManager,node,getParent().getQueueName(),getQueueName(),ActivityState.SKIPPED,ActivityDiagnosticConstant.RESPECT_FIFO);
+        ActivitiesLogger.APP.finishSkippedAppAllocationRecording(activitiesManager,application.getApplicationId(),ActivityState.SKIPPED,ActivityDiagnosticConstant.EMPTY);
+        return CSAssignment.NULL_ASSIGNMENT;
+      }
+    }
+    ActivitiesLogger.QUEUE.recordQueueActivity(activitiesManager,node,getParent().getQueueName(),getQueueName(),ActivityState.SKIPPED,ActivityDiagnosticConstant.EMPTY);
+    return CSAssignment.NULL_ASSIGNMENT;
   }
-  ActivitiesLogger.QUEUE.recordQueueActivity(activitiesManager,node,getParent().getQueueName(),getQueueName(),ActivityState.SKIPPED,ActivityDiagnosticConstant.EMPTY);
-  return CSAssignment.NULL_ASSIGNMENT;
+  finally {
+    writeLock.unlock();
+  }
 }

@@ -1,17 +1,23 @@
 {
-  Map<String,Resource> userNameToHeadroom=new HashMap<String,Resource>();
-  Resource pendingConsideringUserLimit=Resource.newInstance(0,0);
-  for (  FiCaSchedulerApp app : getApplications()) {
-    String userName=app.getUser();
-    if (!userNameToHeadroom.containsKey(userName)) {
-      User user=getUser(userName);
-      Resource headroom=Resources.subtract(computeUserLimit(app,resources,user,partition,SchedulingMode.RESPECT_PARTITION_EXCLUSIVITY),user.getUsed(partition));
-      headroom=Resources.componentwiseMax(headroom,Resources.none());
-      userNameToHeadroom.put(userName,headroom);
+  try {
+    readLock.lock();
+    Map<String,Resource> userNameToHeadroom=new HashMap<>();
+    Resource pendingConsideringUserLimit=Resource.newInstance(0,0);
+    for (    FiCaSchedulerApp app : getApplications()) {
+      String userName=app.getUser();
+      if (!userNameToHeadroom.containsKey(userName)) {
+        User user=getUser(userName);
+        Resource headroom=Resources.subtract(computeUserLimit(app,resources,user,partition,SchedulingMode.RESPECT_PARTITION_EXCLUSIVITY),user.getUsed(partition));
+        headroom=Resources.componentwiseMax(headroom,Resources.none());
+        userNameToHeadroom.put(userName,headroom);
+      }
+      Resource minpendingConsideringUserLimit=Resources.componentwiseMin(userNameToHeadroom.get(userName),app.getAppAttemptResourceUsage().getPending(partition));
+      Resources.addTo(pendingConsideringUserLimit,minpendingConsideringUserLimit);
+      Resources.subtractFrom(userNameToHeadroom.get(userName),minpendingConsideringUserLimit);
     }
-    Resource minpendingConsideringUserLimit=Resources.componentwiseMin(userNameToHeadroom.get(userName),app.getAppAttemptResourceUsage().getPending(partition));
-    Resources.addTo(pendingConsideringUserLimit,minpendingConsideringUserLimit);
-    Resources.subtractFrom(userNameToHeadroom.get(userName),minpendingConsideringUserLimit);
+    return pendingConsideringUserLimit;
   }
-  return pendingConsideringUserLimit;
+  finally {
+    readLock.unlock();
+  }
 }

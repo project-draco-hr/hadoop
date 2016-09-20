@@ -1,13 +1,19 @@
 {
-  if (!(newlyParsedQueue instanceof LeafQueue) || !newlyParsedQueue.getQueuePath().equals(getQueuePath())) {
-    throw new IOException("Trying to reinitialize " + getQueuePath() + " from "+ newlyParsedQueue.getQueuePath());
+  try {
+    writeLock.lock();
+    if (!(newlyParsedQueue instanceof LeafQueue) || !newlyParsedQueue.getQueuePath().equals(getQueuePath())) {
+      throw new IOException("Trying to reinitialize " + getQueuePath() + " from "+ newlyParsedQueue.getQueuePath());
+    }
+    LeafQueue newlyParsedLeafQueue=(LeafQueue)newlyParsedQueue;
+    Resource oldMax=getMaximumAllocation();
+    Resource newMax=newlyParsedLeafQueue.getMaximumAllocation();
+    if (newMax.getMemorySize() < oldMax.getMemorySize() || newMax.getVirtualCores() < oldMax.getVirtualCores()) {
+      throw new IOException("Trying to reinitialize " + getQueuePath() + " the maximum allocation size can not be decreased!"+ " Current setting: "+ oldMax+ ", trying to set it to: "+ newMax);
+    }
+    setupQueueConfigs(clusterResource);
+    activateApplications();
   }
-  LeafQueue newlyParsedLeafQueue=(LeafQueue)newlyParsedQueue;
-  Resource oldMax=getMaximumAllocation();
-  Resource newMax=newlyParsedLeafQueue.getMaximumAllocation();
-  if (newMax.getMemorySize() < oldMax.getMemorySize() || newMax.getVirtualCores() < oldMax.getVirtualCores()) {
-    throw new IOException("Trying to reinitialize " + getQueuePath() + " the maximum allocation size can not be decreased!"+ " Current setting: "+ oldMax+ ", trying to set it to: "+ newMax);
+  finally {
+    writeLock.unlock();
   }
-  setupQueueConfigs(clusterResource);
-  activateApplications();
 }

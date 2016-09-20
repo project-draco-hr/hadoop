@@ -1,21 +1,27 @@
 {
-  super.allocateResource(clusterResource,resource,nodePartition,isIncreasedAllocation);
-  Resource resourceByLabel=labelManager.getResourceByLabel(nodePartition,clusterResource);
-  if (null != rmContainer && rmContainer.getNodeLabelExpression().equals(RMNodeLabelsManager.NO_LABEL) && !nodePartition.equals(RMNodeLabelsManager.NO_LABEL)) {
-    TreeSet<RMContainer> rmContainers=null;
-    if (null == (rmContainers=ignorePartitionExclusivityRMContainers.get(nodePartition))) {
-      rmContainers=new TreeSet<>();
-      ignorePartitionExclusivityRMContainers.put(nodePartition,rmContainers);
+  try {
+    writeLock.lock();
+    super.allocateResource(clusterResource,resource,nodePartition,isIncreasedAllocation);
+    Resource resourceByLabel=labelManager.getResourceByLabel(nodePartition,clusterResource);
+    if (null != rmContainer && rmContainer.getNodeLabelExpression().equals(RMNodeLabelsManager.NO_LABEL) && !nodePartition.equals(RMNodeLabelsManager.NO_LABEL)) {
+      TreeSet<RMContainer> rmContainers=null;
+      if (null == (rmContainers=ignorePartitionExclusivityRMContainers.get(nodePartition))) {
+        rmContainers=new TreeSet<>();
+        ignorePartitionExclusivityRMContainers.put(nodePartition,rmContainers);
+      }
+      rmContainers.add(rmContainer);
     }
-    rmContainers.add(rmContainer);
+    String userName=application.getUser();
+    User user=getUserAndAddIfAbsent(userName);
+    user.assignContainer(resource,nodePartition);
+    updateQueueUsageRatio(nodePartition,user.updateUsageRatio(resourceCalculator,resourceByLabel,nodePartition));
+    Resources.subtractFrom(application.getHeadroom(),resource);
+    metrics.setAvailableResourcesToUser(userName,application.getHeadroom());
+    if (LOG.isDebugEnabled()) {
+      LOG.debug(getQueueName() + " user=" + userName+ " used="+ queueUsage.getUsed()+ " numContainers="+ numContainers+ " headroom = "+ application.getHeadroom()+ " user-resources="+ user.getUsed());
+    }
   }
-  String userName=application.getUser();
-  User user=getUser(userName);
-  user.assignContainer(resource,nodePartition);
-  updateQueueUsageRatio(nodePartition,user.updateUsageRatio(resourceCalculator,resourceByLabel,nodePartition));
-  Resources.subtractFrom(application.getHeadroom(),resource);
-  metrics.setAvailableResourcesToUser(userName,application.getHeadroom());
-  if (LOG.isDebugEnabled()) {
-    LOG.debug(getQueueName() + " user=" + userName+ " used="+ queueUsage.getUsed()+ " numContainers="+ numContainers+ " headroom = "+ application.getHeadroom()+ " user-resources="+ user.getUsed());
+  finally {
+    writeLock.unlock();
   }
 }

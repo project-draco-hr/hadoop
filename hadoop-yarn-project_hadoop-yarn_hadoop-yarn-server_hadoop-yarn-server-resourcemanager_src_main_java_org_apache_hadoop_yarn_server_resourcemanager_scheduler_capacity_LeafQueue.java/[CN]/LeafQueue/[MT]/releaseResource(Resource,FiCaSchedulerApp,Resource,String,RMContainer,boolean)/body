@@ -1,21 +1,27 @@
 {
-  super.releaseResource(clusterResource,resource,nodePartition,isChangeResource);
-  Resource resourceByLabel=labelManager.getResourceByLabel(nodePartition,clusterResource);
-  if (null != rmContainer && rmContainer.getNodeLabelExpression().equals(RMNodeLabelsManager.NO_LABEL) && !nodePartition.equals(RMNodeLabelsManager.NO_LABEL)) {
-    if (ignorePartitionExclusivityRMContainers.containsKey(nodePartition)) {
-      Set<RMContainer> rmContainers=ignorePartitionExclusivityRMContainers.get(nodePartition);
-      rmContainers.remove(rmContainer);
-      if (rmContainers.isEmpty()) {
-        ignorePartitionExclusivityRMContainers.remove(nodePartition);
+  try {
+    writeLock.lock();
+    super.releaseResource(clusterResource,resource,nodePartition,isChangeResource);
+    Resource resourceByLabel=labelManager.getResourceByLabel(nodePartition,clusterResource);
+    if (null != rmContainer && rmContainer.getNodeLabelExpression().equals(RMNodeLabelsManager.NO_LABEL) && !nodePartition.equals(RMNodeLabelsManager.NO_LABEL)) {
+      if (ignorePartitionExclusivityRMContainers.containsKey(nodePartition)) {
+        Set<RMContainer> rmContainers=ignorePartitionExclusivityRMContainers.get(nodePartition);
+        rmContainers.remove(rmContainer);
+        if (rmContainers.isEmpty()) {
+          ignorePartitionExclusivityRMContainers.remove(nodePartition);
+        }
       }
     }
+    String userName=application.getUser();
+    User user=getUserAndAddIfAbsent(userName);
+    user.releaseContainer(resource,nodePartition);
+    updateQueueUsageRatio(nodePartition,user.updateUsageRatio(resourceCalculator,resourceByLabel,nodePartition));
+    metrics.setAvailableResourcesToUser(userName,application.getHeadroom());
+    if (LOG.isDebugEnabled()) {
+      LOG.debug(getQueueName() + " used=" + queueUsage.getUsed()+ " numContainers="+ numContainers+ " user="+ userName+ " user-resources="+ user.getUsed());
+    }
   }
-  String userName=application.getUser();
-  User user=getUser(userName);
-  user.releaseContainer(resource,nodePartition);
-  updateQueueUsageRatio(nodePartition,user.updateUsageRatio(resourceCalculator,resourceByLabel,nodePartition));
-  metrics.setAvailableResourcesToUser(userName,application.getHeadroom());
-  if (LOG.isDebugEnabled()) {
-    LOG.debug(getQueueName() + " used=" + queueUsage.getUsed()+ " numContainers="+ numContainers+ " user="+ userName+ " user-resources="+ user.getUsed());
+  finally {
+    writeLock.unlock();
   }
 }

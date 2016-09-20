@@ -1,31 +1,37 @@
 {
-  this.accessibleLabels=csContext.getConfiguration().getAccessibleNodeLabels(getQueuePath());
-  this.defaultLabelExpression=csContext.getConfiguration().getDefaultNodeLabelExpression(getQueuePath());
-  if (this.accessibleLabels == null && parent != null) {
-    this.accessibleLabels=parent.getAccessibleNodeLabels();
-  }
-  if (this.defaultLabelExpression == null && parent != null && this.accessibleLabels.containsAll(parent.getAccessibleNodeLabels())) {
-    this.defaultLabelExpression=parent.getDefaultNodeLabelExpression();
-  }
-  setupConfigurableCapacities();
-  this.maximumAllocation=csContext.getConfiguration().getMaximumAllocationPerQueue(getQueuePath());
-  authorizer=YarnAuthorizationProvider.getInstance(csContext.getConf());
-  this.state=csContext.getConfiguration().getState(getQueuePath());
-  this.acls=csContext.getConfiguration().getAcls(getQueuePath());
-  CSQueueUtils.updateQueueStatistics(resourceCalculator,clusterResource,minimumAllocation,this,labelManager,null);
-  if (parent != null && parent.getParent() != null) {
-    if (parent.getAccessibleNodeLabels() != null && !parent.getAccessibleNodeLabels().contains(RMNodeLabelsManager.ANY)) {
-      if (this.getAccessibleNodeLabels().contains(RMNodeLabelsManager.ANY)) {
-        throw new IOException("Parent's accessible queue is not ANY(*), " + "but child's accessible queue is *");
-      }
+  try {
+    writeLock.lock();
+    this.accessibleLabels=csContext.getConfiguration().getAccessibleNodeLabels(getQueuePath());
+    this.defaultLabelExpression=csContext.getConfiguration().getDefaultNodeLabelExpression(getQueuePath());
+    if (this.accessibleLabels == null && parent != null) {
+      this.accessibleLabels=parent.getAccessibleNodeLabels();
+    }
+    if (this.defaultLabelExpression == null && parent != null && this.accessibleLabels.containsAll(parent.getAccessibleNodeLabels())) {
+      this.defaultLabelExpression=parent.getDefaultNodeLabelExpression();
+    }
+    setupConfigurableCapacities();
+    this.maximumAllocation=csContext.getConfiguration().getMaximumAllocationPerQueue(getQueuePath());
+    authorizer=YarnAuthorizationProvider.getInstance(csContext.getConf());
+    this.state=csContext.getConfiguration().getState(getQueuePath());
+    this.acls=csContext.getConfiguration().getAcls(getQueuePath());
+    CSQueueUtils.updateQueueStatistics(resourceCalculator,clusterResource,minimumAllocation,this,labelManager,null);
+    if (parent != null && parent.getParent() != null) {
+      if (parent.getAccessibleNodeLabels() != null && !parent.getAccessibleNodeLabels().contains(RMNodeLabelsManager.ANY)) {
+        if (this.getAccessibleNodeLabels().contains(RMNodeLabelsManager.ANY)) {
+          throw new IOException("Parent's accessible queue is not ANY(*), " + "but child's accessible queue is *");
+        }
  else {
-        Set<String> diff=Sets.difference(this.getAccessibleNodeLabels(),parent.getAccessibleNodeLabels());
-        if (!diff.isEmpty()) {
-          throw new IOException("Some labels of child queue is not a subset " + "of parent queue, these labels=[" + StringUtils.join(diff,",") + "]");
+          Set<String> diff=Sets.difference(this.getAccessibleNodeLabels(),parent.getAccessibleNodeLabels());
+          if (!diff.isEmpty()) {
+            throw new IOException("Some labels of child queue is not a subset " + "of parent queue, these labels=[" + StringUtils.join(diff,",") + "]");
+          }
         }
       }
     }
+    this.reservationsContinueLooking=csContext.getConfiguration().getReservationContinueLook();
+    this.preemptionDisabled=isQueueHierarchyPreemptionDisabled(this);
   }
-  this.reservationsContinueLooking=csContext.getConfiguration().getReservationContinueLook();
-  this.preemptionDisabled=isQueueHierarchyPreemptionDisabled(this);
+  finally {
+    writeLock.unlock();
+  }
 }

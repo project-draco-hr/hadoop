@@ -1,0 +1,26 @@
+{
+  try {
+    writeLock.lock();
+    User user=getUserAndAddIfAbsent(userName);
+    String partitionName=application.getAppAMNodePartitionName();
+    boolean wasActive=orderingPolicy.removeSchedulableEntity(application);
+    if (!wasActive) {
+      pendingOrderingPolicy.removeSchedulableEntity(application);
+    }
+ else {
+      queueUsage.decAMUsed(partitionName,application.getAMResource(partitionName));
+      user.getResourceUsage().decAMUsed(partitionName,application.getAMResource(partitionName));
+      metrics.decAMUsed(application.getUser(),application.getAMResource(partitionName));
+    }
+    applicationAttemptMap.remove(application.getApplicationAttemptId());
+    user.finishApplication(wasActive);
+    if (user.getTotalApplications() == 0) {
+      users.remove(application.getUser());
+    }
+    activateApplications();
+    LOG.info("Application removed -" + " appId: " + application.getApplicationId() + " user: "+ application.getUser()+ " queue: "+ getQueueName()+ " #user-pending-applications: "+ user.getPendingApplications()+ " #user-active-applications: "+ user.getActiveApplications()+ " #queue-pending-applications: "+ getNumPendingApplications()+ " #queue-active-applications: "+ getNumActiveApplications());
+  }
+  finally {
+    writeLock.unlock();
+  }
+}
