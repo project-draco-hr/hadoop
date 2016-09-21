@@ -1,0 +1,22 @@
+{
+  final StripingChunk chunk=alignedStripe.chunks[chunkIndex];
+  if (block == null) {
+    chunk.state=StripingChunk.MISSING;
+    return false;
+  }
+  if (readerInfos[chunkIndex] == null) {
+    if (!dfsStripedInputStream.createBlockReader(block,alignedStripe.getOffsetInBlock(),targetBlocks,readerInfos,chunkIndex)) {
+      chunk.state=StripingChunk.MISSING;
+      return false;
+    }
+  }
+ else   if (readerInfos[chunkIndex].shouldSkip) {
+    chunk.state=StripingChunk.MISSING;
+    return false;
+  }
+  chunk.state=StripingChunk.PENDING;
+  Callable<Void> readCallable=readCells(readerInfos[chunkIndex].reader,readerInfos[chunkIndex].datanode,readerInfos[chunkIndex].blockReaderOffset,alignedStripe.getOffsetInBlock(),getReadStrategies(chunk),block.getBlock());
+  Future<Void> request=service.submit(readCallable);
+  futures.put(request,chunkIndex);
+  return true;
+}
