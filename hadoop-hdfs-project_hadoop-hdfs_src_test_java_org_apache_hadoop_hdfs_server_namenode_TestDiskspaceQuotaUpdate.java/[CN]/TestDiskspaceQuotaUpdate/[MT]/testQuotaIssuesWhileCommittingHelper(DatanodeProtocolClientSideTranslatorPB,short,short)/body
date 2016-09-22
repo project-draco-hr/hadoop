@@ -1,0 +1,22 @@
+{
+  final String logStmt="BUG: Inconsistent storagespace for directory";
+  final Path dir=new Path(getParent(GenericTestUtils.getMethodName()),String.format("%d-%d",initialReplication,finalReplication));
+  final Path file=new Path(dir,"testfile");
+  LogCapturer logs=LogCapturer.captureLogs(NameNode.LOG);
+  Mockito.doAnswer(new Answer<Object>(){
+    @Override public Object answer(    InvocationOnMock invocation) throws Throwable {
+      if (finalReplication != initialReplication) {
+        getDFS().setReplication(file,finalReplication);
+      }
+      getDFS().getContentSummary(dir);
+      invocation.callRealMethod();
+      return null;
+    }
+  }
+).when(nnSpy).blockReceivedAndDeleted(Mockito.<DatanodeRegistration>anyObject(),Mockito.anyString(),Mockito.<StorageReceivedDeletedBlocks[]>anyObject());
+  getDFS().mkdirs(dir);
+  getDFS().setQuota(dir,Long.MAX_VALUE - 1,Long.MAX_VALUE - 1);
+  DFSTestUtil.createFile(getDFS(),file,BLOCKSIZE / 2,initialReplication,1L);
+  getDFS().getContentSummary(dir);
+  assertFalse(logs.getOutput().contains(logStmt));
+}
