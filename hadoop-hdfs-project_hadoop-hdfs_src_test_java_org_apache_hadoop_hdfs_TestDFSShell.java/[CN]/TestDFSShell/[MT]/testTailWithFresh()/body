@@ -1,0 +1,45 @@
+{
+  final int blockSize=1024;
+  final Configuration conf=new Configuration();
+  conf.setInt(DFSConfigKeys.DFS_BLOCK_SIZE_KEY,blockSize);
+  try (MiniDFSCluster cluster=new MiniDFSCluster.Builder(conf).numDataNodes(3).build()){
+    cluster.waitActive();
+    final DistributedFileSystem dfs=cluster.getFileSystem();
+    final Path testFile=new Path("testTailWithFresh","file1");
+    dfs.create(testFile);
+    final ByteArrayOutputStream out=new ByteArrayOutputStream();
+    System.setOut(new PrintStream(out));
+    final Thread tailer=new Thread(){
+      @Override public void run(){
+        final String[] argv=new String[]{"-tail","-f",testFile.toString()};
+        try {
+          ToolRunner.run(new FsShell(conf),argv);
+        }
+ catch (        Exception e) {
+          LOG.error("Client that tails the test file fails",e);
+        }
+ finally {
+          out.reset();
+        }
+      }
+    }
+;
+    tailer.start();
+    GenericTestUtils.waitFor(new Supplier<Boolean>(){
+      @Override public Boolean get(){
+        return tailer.getState() == Thread.State.TIMED_WAITING;
+      }
+    }
+,100,10000);
+    final String text=RandomStringUtils.randomAscii(blockSize / 2);
+    try (OutputStream pout=dfs.create(testFile)){
+      pout.write(text.getBytes());
+    }
+     GenericTestUtils.waitFor(new Supplier<Boolean>(){
+      @Override public Boolean get(){
+        return Arrays.equals(text.getBytes(),out.toByteArray());
+      }
+    }
+,100,10000);
+  }
+ }

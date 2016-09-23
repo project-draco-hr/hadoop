@@ -1,0 +1,23 @@
+{
+  final int blockSize=1024;
+  final int fileLen=5 * blockSize;
+  final Configuration conf=new Configuration();
+  conf.setInt(DFSConfigKeys.DFS_BLOCK_SIZE_KEY,blockSize);
+  try (MiniDFSCluster cluster=new MiniDFSCluster.Builder(conf).numDataNodes(3).build()){
+    cluster.waitActive();
+    final DistributedFileSystem dfs=cluster.getFileSystem();
+    final Path testFile=new Path("testTail","file1");
+    final String text=RandomStringUtils.randomAscii(fileLen);
+    try (OutputStream pout=dfs.create(testFile)){
+      pout.write(text.getBytes());
+    }
+     final ByteArrayOutputStream out=new ByteArrayOutputStream();
+    System.setOut(new PrintStream(out));
+    final String[] argv=new String[]{"-tail",testFile.toString()};
+    final int ret=ToolRunner.run(new FsShell(conf),argv);
+    assertEquals(Arrays.toString(argv) + " returned " + ret,0,ret);
+    assertEquals("-tail returned " + out.size() + " bytes data, expected 1KB",1024,out.size());
+    assertArrayEquals("Tail output doesn't match input",text.substring(fileLen - 1024).getBytes(),out.toByteArray());
+    out.reset();
+  }
+ }

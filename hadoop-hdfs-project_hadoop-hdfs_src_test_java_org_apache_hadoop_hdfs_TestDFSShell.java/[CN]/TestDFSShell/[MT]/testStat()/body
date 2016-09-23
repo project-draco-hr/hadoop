@@ -1,0 +1,39 @@
+{
+  final int blockSize=1024;
+  final Configuration conf=new HdfsConfiguration();
+  conf.setInt(DFSConfigKeys.DFS_BLOCK_SIZE_KEY,blockSize);
+  try (MiniDFSCluster cluster=new MiniDFSCluster.Builder(conf).numDataNodes(3).build()){
+    cluster.waitActive();
+    final DistributedFileSystem dfs=cluster.getFileSystem();
+    final SimpleDateFormat fmt=new SimpleDateFormat("yyyy-MM-dd HH:mm:ss");
+    fmt.setTimeZone(TimeZone.getTimeZone("UTC"));
+    final Path testDir1=new Path("testStat","dir1");
+    dfs.mkdirs(testDir1);
+    final FileStatus status1=dfs.getFileStatus(testDir1);
+    final String mtime1=fmt.format(new Date(status1.getModificationTime()));
+    final Path testFile2=new Path(testDir1,"file2");
+    DFSTestUtil.createFile(dfs,testFile2,2 * blockSize,(short)3,0);
+    final FileStatus status2=dfs.getFileStatus(testDir1);
+    final String mtime2=fmt.format(new Date(status2.getModificationTime()));
+    final ByteArrayOutputStream out=new ByteArrayOutputStream();
+    System.setOut(new PrintStream(out));
+    doFsStat(conf,null);
+    out.reset();
+    doFsStat(conf,null,testDir1);
+    assertEquals("Unexpected -stat output: " + out,out.toString(),String.format("%s%n",mtime1));
+    out.reset();
+    doFsStat(conf,null,testDir1,testFile2);
+    assertEquals("Unexpected -stat output: " + out,out.toString(),String.format("%s%n%s%n",mtime1,mtime2));
+    doFsStat(conf,"%F %u:%g %b %y %n");
+    out.reset();
+    doFsStat(conf,"%F %u:%g %b %y %n",testDir1);
+    assertTrue(out.toString(),out.toString().contains(mtime1));
+    assertTrue(out.toString(),out.toString().contains("directory"));
+    assertTrue(out.toString(),out.toString().contains(status1.getGroup()));
+    out.reset();
+    doFsStat(conf,"%F %u:%g %b %y %n",testDir1,testFile2);
+    assertTrue(out.toString(),out.toString().contains(mtime1));
+    assertTrue(out.toString(),out.toString().contains("regular file"));
+    assertTrue(out.toString(),out.toString().contains(mtime2));
+  }
+ }
