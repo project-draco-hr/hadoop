@@ -1,42 +1,24 @@
 {
-  MiniDFSCluster cluster=null;
+  conf.setInt(HdfsClientConfigKeys.Retry.WINDOW_BASE_KEY,10);
+  writeUnencryptedAndThenRestartEncryptedCluster();
+  DFSClient client=DFSClientAdapter.getDFSClient((DistributedFileSystem)fs);
+  DFSClient spyClient=Mockito.spy(client);
+  Mockito.doReturn(false).when(spyClient).shouldEncryptData();
+  DFSClientAdapter.setDFSClient((DistributedFileSystem)fs,spyClient);
+  LogCapturer logs=GenericTestUtils.LogCapturer.captureLogs(LogFactory.getLog(DataNode.class));
   try {
-    Configuration conf=new Configuration();
-    conf.setInt(HdfsClientConfigKeys.Retry.WINDOW_BASE_KEY,10);
-    cluster=new MiniDFSCluster.Builder(conf).build();
-    FileSystem fs=getFileSystem(conf);
-    writeTestDataToFile(fs);
     assertEquals(PLAIN_TEXT,DFSTestUtil.readFile(fs,TEST_PATH));
-    fs.close();
-    cluster.shutdown();
-    setEncryptionConfigKeys(conf);
-    cluster=new MiniDFSCluster.Builder(conf).manageDataDfsDirs(false).manageNameDfsDirs(false).format(false).startupOption(StartupOption.REGULAR).build();
-    fs=getFileSystem(conf);
-    DFSClient client=DFSClientAdapter.getDFSClient((DistributedFileSystem)fs);
-    DFSClient spyClient=Mockito.spy(client);
-    Mockito.doReturn(false).when(spyClient).shouldEncryptData();
-    DFSClientAdapter.setDFSClient((DistributedFileSystem)fs,spyClient);
-    LogCapturer logs=GenericTestUtils.LogCapturer.captureLogs(LogFactory.getLog(DataNode.class));
-    try {
-      assertEquals(PLAIN_TEXT,DFSTestUtil.readFile(fs,TEST_PATH));
-      if (resolverClazz != null && !resolverClazz.endsWith("TestTrustedChannelResolver")) {
-        fail("Should not have been able to read without encryption enabled.");
-      }
-    }
- catch (    IOException ioe) {
-      GenericTestUtils.assertExceptionContains("Could not obtain block:",ioe);
-    }
- finally {
-      logs.stopCapturing();
-    }
-    fs.close();
-    if (resolverClazz == null) {
-      GenericTestUtils.assertMatches(logs.getOutput(),"Failed to read expected encryption handshake from client at");
+    if (resolverClazz != null && !resolverClazz.endsWith("TestTrustedChannelResolver")) {
+      fail("Should not have been able to read without encryption enabled.");
     }
   }
-  finally {
-    if (cluster != null) {
-      cluster.shutdown();
-    }
+ catch (  IOException ioe) {
+    GenericTestUtils.assertExceptionContains("Could not obtain block:",ioe);
+  }
+ finally {
+    logs.stopCapturing();
+  }
+  if (resolverClazz == null) {
+    GenericTestUtils.assertMatches(logs.getOutput(),"Failed to read expected encryption handshake from client at");
   }
 }

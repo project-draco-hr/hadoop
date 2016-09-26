@@ -1,0 +1,31 @@
+{
+  conf.set(DFSConfigKeys.DFS_DATA_ENCRYPTION_ALGORITHM_KEY,algorithm);
+  conf.set(HdfsClientConfigKeys.DFS_ENCRYPT_DATA_TRANSFER_CIPHER_SUITES_KEY,cipherSuite);
+  FileChecksum checksum=writeUnencryptedAndThenRestartEncryptedCluster();
+  LogCapturer logs=GenericTestUtils.LogCapturer.captureLogs(LogFactory.getLog(SaslDataTransferServer.class));
+  LogCapturer logs1=GenericTestUtils.LogCapturer.captureLogs(LogFactory.getLog(DataTransferSaslUtil.class));
+  try {
+    assertEquals(PLAIN_TEXT,DFSTestUtil.readFile(fs,TEST_PATH));
+    assertEquals(checksum,fs.getFileChecksum(TEST_PATH));
+  }
+  finally {
+    logs.stopCapturing();
+    logs1.stopCapturing();
+  }
+  if (resolverClazz == null) {
+    if (matchLog) {
+      GenericTestUtils.assertMatches(logs.getOutput(),"Server using cipher suite");
+      GenericTestUtils.assertMatches(logs1.getOutput(),"Creating IOStreamPair of CryptoInputStream and CryptoOutputStream.");
+    }
+ else {
+      GenericTestUtils.assertDoesNotMatch(logs.getOutput(),"Server using cipher suite");
+      GenericTestUtils.assertDoesNotMatch(logs1.getOutput(),"Creating IOStreamPair of CryptoInputStream and CryptoOutputStream.");
+    }
+  }
+  if (readAfterRestart) {
+    cluster.restartNameNode();
+    fs=getFileSystem(conf);
+    assertEquals(PLAIN_TEXT,DFSTestUtil.readFile(fs,TEST_PATH));
+    assertEquals(checksum,fs.getFileChecksum(TEST_PATH));
+  }
+}

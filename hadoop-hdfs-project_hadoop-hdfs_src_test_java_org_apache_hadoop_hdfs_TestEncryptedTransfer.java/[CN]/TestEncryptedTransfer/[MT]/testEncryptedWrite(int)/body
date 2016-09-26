@@ -1,29 +1,19 @@
 {
-  MiniDFSCluster cluster=null;
+  setEncryptionConfigKeys();
+  cluster=new MiniDFSCluster.Builder(conf).numDataNodes(numDns).build();
+  fs=getFileSystem(conf);
+  LogCapturer logs=GenericTestUtils.LogCapturer.captureLogs(LogFactory.getLog(SaslDataTransferServer.class));
+  LogCapturer logs1=GenericTestUtils.LogCapturer.captureLogs(LogFactory.getLog(DataTransferSaslUtil.class));
   try {
-    Configuration conf=new Configuration();
-    setEncryptionConfigKeys(conf);
-    cluster=new MiniDFSCluster.Builder(conf).numDataNodes(numDns).build();
-    FileSystem fs=getFileSystem(conf);
-    LogCapturer logs=GenericTestUtils.LogCapturer.captureLogs(LogFactory.getLog(SaslDataTransferServer.class));
-    LogCapturer logs1=GenericTestUtils.LogCapturer.captureLogs(LogFactory.getLog(DataTransferSaslUtil.class));
-    try {
-      writeTestDataToFile(fs);
-    }
-  finally {
-      logs.stopCapturing();
-      logs1.stopCapturing();
-    }
-    assertEquals(PLAIN_TEXT,DFSTestUtil.readFile(fs,TEST_PATH));
-    fs.close();
-    if (resolverClazz == null) {
-      GenericTestUtils.assertDoesNotMatch(logs.getOutput(),"Server using cipher suite");
-      GenericTestUtils.assertDoesNotMatch(logs1.getOutput(),"Creating IOStreamPair of CryptoInputStream and CryptoOutputStream.");
-    }
+    writeTestDataToFile(fs);
   }
   finally {
-    if (cluster != null) {
-      cluster.shutdown();
-    }
+    logs.stopCapturing();
+    logs1.stopCapturing();
+  }
+  assertEquals(PLAIN_TEXT,DFSTestUtil.readFile(fs,TEST_PATH));
+  if (resolverClazz == null) {
+    GenericTestUtils.assertDoesNotMatch(logs.getOutput(),"Server using cipher suite");
+    GenericTestUtils.assertDoesNotMatch(logs1.getOutput(),"Creating IOStreamPair of CryptoInputStream and CryptoOutputStream.");
   }
 }
