@@ -1,0 +1,48 @@
+{
+  File object=file.getAbsoluteFile();
+  long dataLen=object.length();
+  long realPartSize=AliyunOSSUtils.calculatePartSize(dataLen,partSize);
+  int partNum=(int)(dataLen / realPartSize);
+  if (dataLen % realPartSize != 0) {
+    partNum+=1;
+  }
+  InitiateMultipartUploadRequest initiateMultipartUploadRequest=new InitiateMultipartUploadRequest(bucketName,key);
+  ObjectMetadata meta=new ObjectMetadata();
+  if (StringUtils.isNotEmpty(serverSideEncryptionAlgorithm)) {
+    meta.setServerSideEncryption(serverSideEncryptionAlgorithm);
+  }
+  initiateMultipartUploadRequest.setObjectMetadata(meta);
+  InitiateMultipartUploadResult initiateMultipartUploadResult=ossClient.initiateMultipartUpload(initiateMultipartUploadRequest);
+  List<PartETag> partETags=new ArrayList<PartETag>();
+  String uploadId=initiateMultipartUploadResult.getUploadId();
+  try {
+    for (int i=0; i < partNum; i++) {
+      FileInputStream fis=new FileInputStream(object);
+      try {
+        long skipBytes=realPartSize * i;
+        AliyunOSSUtils.skipFully(fis,skipBytes);
+        long size=(realPartSize < dataLen - skipBytes) ? realPartSize : dataLen - skipBytes;
+        UploadPartRequest uploadPartRequest=new UploadPartRequest();
+        uploadPartRequest.setBucketName(bucketName);
+        uploadPartRequest.setKey(key);
+        uploadPartRequest.setUploadId(uploadId);
+        uploadPartRequest.setInputStream(fis);
+        uploadPartRequest.setPartSize(size);
+        uploadPartRequest.setPartNumber(i + 1);
+        UploadPartResult uploadPartResult=ossClient.uploadPart(uploadPartRequest);
+        statistics.incrementWriteOps(1);
+        partETags.add(uploadPartResult.getPartETag());
+      }
+  finally {
+        fis.close();
+      }
+    }
+    CompleteMultipartUploadRequest completeMultipartUploadRequest=new CompleteMultipartUploadRequest(bucketName,key,uploadId,partETags);
+    CompleteMultipartUploadResult completeMultipartUploadResult=ossClient.completeMultipartUpload(completeMultipartUploadRequest);
+    LOG.debug(completeMultipartUploadResult.getETag());
+  }
+ catch (  OSSException|ClientException e) {
+    AbortMultipartUploadRequest abortMultipartUploadRequest=new AbortMultipartUploadRequest(bucketName,key,uploadId);
+    ossClient.abortMultipartUpload(abortMultipartUploadRequest);
+  }
+}

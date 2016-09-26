@@ -1,0 +1,27 @@
+{
+  Path qualifiedPath=path.makeQualified(uri,workingDir);
+  String key=pathToKey(qualifiedPath);
+  if (key.length() == 0) {
+    return new FileStatus(0,true,1,0,0,qualifiedPath);
+  }
+  ObjectMetadata meta=store.getObjectMetadata(key);
+  if (meta == null && !key.endsWith("/")) {
+    key+="/";
+    meta=store.getObjectMetadata(key);
+  }
+  if (meta == null) {
+    ObjectListing listing=store.listObjects(key,1,null,false);
+    if (CollectionUtils.isNotEmpty(listing.getObjectSummaries()) || CollectionUtils.isNotEmpty(listing.getCommonPrefixes())) {
+      return new FileStatus(0,true,1,0,0,qualifiedPath);
+    }
+ else {
+      throw new FileNotFoundException(path + ": No such file or directory!");
+    }
+  }
+ else   if (objectRepresentsDirectory(key,meta.getContentLength())) {
+    return new FileStatus(0,true,1,0,0,qualifiedPath);
+  }
+ else {
+    return new FileStatus(meta.getContentLength(),false,1,getDefaultBlockSize(path),meta.getLastModified().getTime(),qualifiedPath);
+  }
+}

@@ -1,0 +1,28 @@
+{
+  String srcKey=AliyunOSSUtils.maybeAddTrailingSlash(pathToKey(srcPath));
+  String dstKey=AliyunOSSUtils.maybeAddTrailingSlash(pathToKey(dstPath));
+  if (dstKey.startsWith(srcKey)) {
+    if (LOG.isDebugEnabled()) {
+      LOG.debug("Cannot rename a directory to a subdirectory of self");
+    }
+    return false;
+  }
+  store.storeEmptyFile(dstKey);
+  ObjectListing objects=store.listObjects(srcKey,maxKeys,null,true);
+  statistics.incrementReadOps(1);
+  while (true) {
+    for (    OSSObjectSummary objectSummary : objects.getObjectSummaries()) {
+      String newKey=dstKey.concat(objectSummary.getKey().substring(srcKey.length()));
+      store.copyFile(objectSummary.getKey(),newKey);
+    }
+    if (objects.isTruncated()) {
+      String nextMarker=objects.getNextMarker();
+      objects=store.listObjects(srcKey,maxKeys,nextMarker,true);
+      statistics.incrementReadOps(1);
+    }
+ else {
+      break;
+    }
+  }
+  return true;
+}
