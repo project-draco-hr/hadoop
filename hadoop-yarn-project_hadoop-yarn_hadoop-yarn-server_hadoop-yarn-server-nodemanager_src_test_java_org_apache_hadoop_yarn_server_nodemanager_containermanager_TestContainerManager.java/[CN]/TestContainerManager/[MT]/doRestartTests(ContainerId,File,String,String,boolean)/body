@@ -1,0 +1,30 @@
+{
+  int beforeRestart=metrics.getRunningContainers();
+  Container container=containerManager.getContext().getContainers().get(cId);
+  Assert.assertFalse(container.isReInitializing());
+  containerManager.restartContainer(cId);
+  Assert.assertTrue(container.isReInitializing());
+  int timeoutSecs=0;
+  while (DefaultContainerExecutor.containerIsAlive(pid) && (metrics.getRunningContainers() == beforeRestart) && container.isReInitializing()&& timeoutSecs++ < 20) {
+    Thread.sleep(1000);
+    LOG.info("Waiting for Original process to die.." + "and new process to start!!");
+  }
+  Assert.assertFalse("Old Process Still alive!!",DefaultContainerExecutor.containerIsAlive(pid));
+  String newPid=null;
+  timeoutSecs=0;
+  while (timeoutSecs++ < 20) {
+    LOG.info("Waiting for New process file to be created!!");
+    BufferedReader reader=new BufferedReader(new FileReader(oldStartFile));
+    Assert.assertEquals(testString,reader.readLine());
+    newPid=reader.readLine().trim();
+    Assert.assertEquals(null,reader.readLine());
+    reader.close();
+    if (!newPid.equals(pid)) {
+      break;
+    }
+    Thread.sleep(1000);
+  }
+  Assert.assertNotEquals(pid,newPid);
+  Assert.assertEquals(canRollback,container.canRollback());
+  return newPid;
+}
