@@ -1,24 +1,30 @@
 {
   boolean anyResourcesUpdated=false;
-  for (  ResourceRequest request : requests) {
-    SchedulerRequestKey schedulerKey=SchedulerRequestKey.create(request);
-    String resourceName=request.getResourceName();
-    updateNodeLabels(request);
-    Map<String,ResourceRequest> asks=this.resourceRequestMap.get(schedulerKey);
-    if (asks == null) {
-      asks=new ConcurrentHashMap<>();
-      this.resourceRequestMap.put(schedulerKey,asks);
+  try {
+    this.writeLock.lock();
+    for (    ResourceRequest request : requests) {
+      SchedulerRequestKey schedulerKey=SchedulerRequestKey.create(request);
+      String resourceName=request.getResourceName();
+      updateNodeLabels(request);
+      Map<String,ResourceRequest> asks=this.resourceRequestMap.get(schedulerKey);
+      if (asks == null) {
+        asks=new ConcurrentHashMap<>();
+        this.resourceRequestMap.put(schedulerKey,asks);
+      }
+      ResourceRequest lastRequest=asks.get(resourceName);
+      if (recoverPreemptedRequestForAContainer && lastRequest != null) {
+        request.setNumContainers(lastRequest.getNumContainers() + 1);
+      }
+      asks.put(resourceName,request);
+      if (resourceName.equals(ResourceRequest.ANY)) {
+        requestedPartitions.add(request.getNodeLabelExpression() == null ? RMNodeLabelsManager.NO_LABEL : request.getNodeLabelExpression());
+        anyResourcesUpdated=true;
+        updatePendingResources(lastRequest,request,schedulerKey,queue.getMetrics());
+      }
     }
-    ResourceRequest lastRequest=asks.get(resourceName);
-    if (recoverPreemptedRequestForAContainer && lastRequest != null) {
-      request.setNumContainers(lastRequest.getNumContainers() + 1);
-    }
-    asks.put(resourceName,request);
-    if (resourceName.equals(ResourceRequest.ANY)) {
-      requestedPartitions.add(request.getNodeLabelExpression() == null ? RMNodeLabelsManager.NO_LABEL : request.getNodeLabelExpression());
-      anyResourcesUpdated=true;
-      updatePendingResources(lastRequest,request,schedulerKey,queue.getMetrics());
-    }
+    return anyResourcesUpdated;
   }
-  return anyResourcesUpdated;
+  finally {
+    this.writeLock.unlock();
+  }
 }

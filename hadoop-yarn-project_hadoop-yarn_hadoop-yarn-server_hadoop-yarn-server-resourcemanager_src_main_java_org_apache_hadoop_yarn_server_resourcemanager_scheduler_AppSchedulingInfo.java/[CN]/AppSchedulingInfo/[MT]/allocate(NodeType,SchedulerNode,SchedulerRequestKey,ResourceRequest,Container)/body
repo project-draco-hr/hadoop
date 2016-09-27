@@ -1,23 +1,29 @@
 {
   List<ResourceRequest> resourceRequests=new ArrayList<>();
-  if (type == NodeType.NODE_LOCAL) {
-    allocateNodeLocal(node,schedulerKey,request,resourceRequests);
-  }
- else   if (type == NodeType.RACK_LOCAL) {
-    allocateRackLocal(node,schedulerKey,request,resourceRequests);
-  }
+  try {
+    this.writeLock.lock();
+    if (type == NodeType.NODE_LOCAL) {
+      allocateNodeLocal(node,schedulerKey,request,resourceRequests);
+    }
+ else     if (type == NodeType.RACK_LOCAL) {
+      allocateRackLocal(node,schedulerKey,request,resourceRequests);
+    }
  else {
-    allocateOffSwitch(request,resourceRequests,schedulerKey);
+      allocateOffSwitch(request,resourceRequests,schedulerKey);
+    }
+    QueueMetrics metrics=queue.getMetrics();
+    if (pending) {
+      pending=false;
+      metrics.runAppAttempt(applicationId,user);
+    }
+    if (LOG.isDebugEnabled()) {
+      LOG.debug("allocate: applicationId=" + applicationId + " container="+ containerAllocated.getId()+ " host="+ containerAllocated.getNodeId().toString()+ " user="+ user+ " resource="+ request.getCapability()+ " type="+ type);
+    }
+    metrics.allocateResources(user,1,request.getCapability(),true);
+    metrics.incrNodeTypeAggregations(user,type);
+    return resourceRequests;
   }
-  QueueMetrics metrics=queue.getMetrics();
-  if (pending) {
-    pending=false;
-    metrics.runAppAttempt(applicationId,user);
+  finally {
+    this.writeLock.unlock();
   }
-  if (LOG.isDebugEnabled()) {
-    LOG.debug("allocate: applicationId=" + applicationId + " container="+ containerAllocated.getId()+ " host="+ containerAllocated.getNodeId().toString()+ " user="+ user+ " resource="+ request.getCapability()+ " type="+ type);
-  }
-  metrics.allocateResources(user,1,request.getCapability(),true);
-  metrics.incrNodeTypeAggregations(user,type);
-  return resourceRequests;
 }

@@ -1,29 +1,35 @@
 {
-  Map<SchedulerRequestKey,Map<ContainerId,SchedContainerChangeRequest>> requestsOnNode=containerIncreaseRequestMap.get(nodeId);
-  if (null == requestsOnNode) {
-    return false;
+  try {
+    this.writeLock.lock();
+    Map<SchedulerRequestKey,Map<ContainerId,SchedContainerChangeRequest>> requestsOnNode=containerIncreaseRequestMap.get(nodeId);
+    if (null == requestsOnNode) {
+      return false;
+    }
+    Map<ContainerId,SchedContainerChangeRequest> requestsOnNodeWithPriority=requestsOnNode.get(schedulerKey);
+    if (null == requestsOnNodeWithPriority) {
+      return false;
+    }
+    SchedContainerChangeRequest request=requestsOnNodeWithPriority.remove(containerId);
+    if (requestsOnNodeWithPriority.isEmpty()) {
+      requestsOnNode.remove(schedulerKey);
+      decrementSchedulerKeyReference(schedulerKey);
+    }
+    if (requestsOnNode.isEmpty()) {
+      containerIncreaseRequestMap.remove(nodeId);
+    }
+    if (request == null) {
+      return false;
+    }
+    String partition=request.getRMContainer().getNodeLabelExpression();
+    Resource delta=request.getDeltaCapacity();
+    appResourceUsage.decPending(partition,delta);
+    queue.decPendingResource(partition,delta);
+    if (LOG.isDebugEnabled()) {
+      LOG.debug("remove increase request:" + request);
+    }
+    return true;
   }
-  Map<ContainerId,SchedContainerChangeRequest> requestsOnNodeWithPriority=requestsOnNode.get(schedulerKey);
-  if (null == requestsOnNodeWithPriority) {
-    return false;
+  finally {
+    this.writeLock.unlock();
   }
-  SchedContainerChangeRequest request=requestsOnNodeWithPriority.remove(containerId);
-  if (requestsOnNodeWithPriority.isEmpty()) {
-    requestsOnNode.remove(schedulerKey);
-    decrementSchedulerKeyReference(schedulerKey);
-  }
-  if (requestsOnNode.isEmpty()) {
-    containerIncreaseRequestMap.remove(nodeId);
-  }
-  if (request == null) {
-    return false;
-  }
-  String partition=request.getRMContainer().getNodeLabelExpression();
-  Resource delta=request.getDeltaCapacity();
-  appResourceUsage.decPending(partition,delta);
-  queue.decPendingResource(partition,delta);
-  if (LOG.isDebugEnabled()) {
-    LOG.debug("remove increase request:" + request);
-  }
-  return true;
 }

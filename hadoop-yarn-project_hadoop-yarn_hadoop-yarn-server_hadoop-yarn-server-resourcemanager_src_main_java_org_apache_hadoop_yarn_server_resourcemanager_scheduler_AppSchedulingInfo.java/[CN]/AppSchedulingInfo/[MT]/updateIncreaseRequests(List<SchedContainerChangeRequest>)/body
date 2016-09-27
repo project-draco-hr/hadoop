@@ -1,38 +1,44 @@
 {
   boolean resourceUpdated=false;
-  for (  SchedContainerChangeRequest r : increaseRequests) {
-    if (r.getRMContainer().getState() != RMContainerState.RUNNING) {
-      LOG.warn("rmContainer's state is not RUNNING, for increase request with" + " container-id=" + r.getContainerId());
-      continue;
-    }
-    try {
-      RMServerUtils.checkSchedContainerChangeRequest(r,true);
-    }
- catch (    YarnException e) {
-      LOG.warn("Error happens when checking increase request, Ignoring.." + " exception=",e);
-      continue;
-    }
-    NodeId nodeId=r.getRMContainer().getAllocatedNode();
-    Map<SchedulerRequestKey,Map<ContainerId,SchedContainerChangeRequest>> requestsOnNode=containerIncreaseRequestMap.get(nodeId);
-    if (null == requestsOnNode) {
-      requestsOnNode=new TreeMap<>();
-      containerIncreaseRequestMap.put(nodeId,requestsOnNode);
-    }
-    SchedContainerChangeRequest prevChangeRequest=getIncreaseRequest(nodeId,r.getRMContainer().getAllocatedSchedulerKey(),r.getContainerId());
-    if (null != prevChangeRequest) {
-      if (Resources.equals(prevChangeRequest.getTargetCapacity(),r.getTargetCapacity())) {
+  try {
+    this.writeLock.lock();
+    for (    SchedContainerChangeRequest r : increaseRequests) {
+      if (r.getRMContainer().getState() != RMContainerState.RUNNING) {
+        LOG.warn("rmContainer's state is not RUNNING, for increase request" + " with container-id=" + r.getContainerId());
         continue;
       }
-      removeIncreaseRequest(nodeId,prevChangeRequest.getRMContainer().getAllocatedSchedulerKey(),prevChangeRequest.getContainerId());
-    }
-    if (Resources.equals(r.getTargetCapacity(),r.getRMContainer().getAllocatedResource())) {
-      if (LOG.isDebugEnabled()) {
-        LOG.debug("Trying to increase container " + r.getContainerId() + ", target capacity = previous capacity = "+ prevChangeRequest+ ". Will ignore this increase request.");
+      try {
+        RMServerUtils.checkSchedContainerChangeRequest(r,true);
       }
-      continue;
+ catch (      YarnException e) {
+        LOG.warn("Error happens when checking increase request, Ignoring.." + " exception=",e);
+        continue;
+      }
+      NodeId nodeId=r.getRMContainer().getAllocatedNode();
+      Map<SchedulerRequestKey,Map<ContainerId,SchedContainerChangeRequest>> requestsOnNode=containerIncreaseRequestMap.get(nodeId);
+      if (null == requestsOnNode) {
+        requestsOnNode=new TreeMap<>();
+        containerIncreaseRequestMap.put(nodeId,requestsOnNode);
+      }
+      SchedContainerChangeRequest prevChangeRequest=getIncreaseRequest(nodeId,r.getRMContainer().getAllocatedSchedulerKey(),r.getContainerId());
+      if (null != prevChangeRequest) {
+        if (Resources.equals(prevChangeRequest.getTargetCapacity(),r.getTargetCapacity())) {
+          continue;
+        }
+        removeIncreaseRequest(nodeId,prevChangeRequest.getRMContainer().getAllocatedSchedulerKey(),prevChangeRequest.getContainerId());
+      }
+      if (Resources.equals(r.getTargetCapacity(),r.getRMContainer().getAllocatedResource())) {
+        if (LOG.isDebugEnabled()) {
+          LOG.debug("Trying to increase container " + r.getContainerId() + ", target capacity = previous capacity = "+ prevChangeRequest+ ". Will ignore this increase request.");
+        }
+        continue;
+      }
+      resourceUpdated=true;
+      insertIncreaseRequest(r);
     }
-    resourceUpdated=true;
-    insertIncreaseRequest(r);
+    return resourceUpdated;
   }
-  return resourceUpdated;
+  finally {
+    this.writeLock.unlock();
+  }
 }

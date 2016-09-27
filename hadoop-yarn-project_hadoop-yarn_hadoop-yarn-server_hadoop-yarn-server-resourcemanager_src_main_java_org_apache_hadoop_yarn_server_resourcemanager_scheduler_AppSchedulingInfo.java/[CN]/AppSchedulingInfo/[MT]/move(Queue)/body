@@ -1,20 +1,26 @@
 {
-  QueueMetrics oldMetrics=queue.getMetrics();
-  QueueMetrics newMetrics=newQueue.getMetrics();
-  for (  Map<String,ResourceRequest> asks : resourceRequestMap.values()) {
-    ResourceRequest request=asks.get(ResourceRequest.ANY);
-    if (request != null) {
-      oldMetrics.decrPendingResources(user,request.getNumContainers(),request.getCapability());
-      newMetrics.incrPendingResources(user,request.getNumContainers(),request.getCapability());
-      Resource delta=Resources.multiply(request.getCapability(),request.getNumContainers());
-      queue.decPendingResource(request.getNodeLabelExpression(),delta);
-      newQueue.incPendingResource(request.getNodeLabelExpression(),delta);
+  try {
+    this.writeLock.lock();
+    QueueMetrics oldMetrics=queue.getMetrics();
+    QueueMetrics newMetrics=newQueue.getMetrics();
+    for (    Map<String,ResourceRequest> asks : resourceRequestMap.values()) {
+      ResourceRequest request=asks.get(ResourceRequest.ANY);
+      if (request != null) {
+        oldMetrics.decrPendingResources(user,request.getNumContainers(),request.getCapability());
+        newMetrics.incrPendingResources(user,request.getNumContainers(),request.getCapability());
+        Resource delta=Resources.multiply(request.getCapability(),request.getNumContainers());
+        queue.decPendingResource(request.getNodeLabelExpression(),delta);
+        newQueue.incPendingResource(request.getNodeLabelExpression(),delta);
+      }
     }
+    oldMetrics.moveAppFrom(this);
+    newMetrics.moveAppTo(this);
+    activeUsersManager.deactivateApplication(user,applicationId);
+    activeUsersManager=newQueue.getActiveUsersManager();
+    activeUsersManager.activateApplication(user,applicationId);
+    this.queue=newQueue;
   }
-  oldMetrics.moveAppFrom(this);
-  newMetrics.moveAppTo(this);
-  activeUsersManager.deactivateApplication(user,applicationId);
-  activeUsersManager=newQueue.getActiveUsersManager();
-  activeUsersManager.activateApplication(user,applicationId);
-  this.queue=newQueue;
+  finally {
+    this.writeLock.unlock();
+  }
 }
