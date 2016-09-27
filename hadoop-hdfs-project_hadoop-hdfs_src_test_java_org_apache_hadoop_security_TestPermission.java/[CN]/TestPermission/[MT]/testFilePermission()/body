@@ -4,15 +4,8 @@
   MiniDFSCluster cluster=new MiniDFSCluster.Builder(conf).numDataNodes(3).build();
   cluster.waitActive();
   try {
-    FileSystem nnfs=FileSystem.get(conf);
+    nnfs=FileSystem.get(conf);
     assertFalse(nnfs.exists(CHILD_FILE1));
-    try {
-      nnfs.setOwner(CHILD_FILE1,"foo","bar");
-      assertTrue(false);
-    }
- catch (    java.io.FileNotFoundException e) {
-      LOG.info("GOOD: got " + e);
-    }
     try {
       nnfs.setPermission(CHILD_FILE1,new FsPermission((short)0777));
       assertTrue(false);
@@ -55,7 +48,7 @@
     assertTrue(status.getPermission().toString().equals("rwxr--r--"));
     nnfs.setPermission(CHILD_FILE1,new FsPermission("700"));
     UserGroupInformation userGroupInfo=UserGroupInformation.createUserForTesting(USER_NAME,GROUP_NAMES);
-    FileSystem userfs=DFSTestUtil.getFileSystemAs(userGroupInfo,conf);
+    userfs=DFSTestUtil.getFileSystemAs(userGroupInfo,conf);
     userfs.mkdirs(CHILD_DIR1);
     assertTrue(!canMkdirs(userfs,CHILD_DIR2));
     assertTrue(!canCreate(userfs,CHILD_FILE2));
@@ -68,17 +61,20 @@
     assertTrue(canRename(userfs,RENAME_PATH,CHILD_DIR1));
     assertFalse(userfs.exists(CHILD_FILE3));
     try {
-      userfs.setOwner(CHILD_FILE3,"foo","bar");
-      fail("setOwner should fail for non-exist file");
-    }
- catch (    java.io.FileNotFoundException ignored) {
-    }
-    try {
       userfs.setPermission(CHILD_FILE3,new FsPermission((short)0777));
       fail("setPermission should fail for non-exist file");
     }
  catch (    java.io.FileNotFoundException ignored) {
     }
+    nnfs.setPermission(ROOT_PATH,new FsPermission("777"));
+    testSuperCanChangeOwnerGroup();
+    testNonSuperCanChangeToOwnGroup();
+    testNonSuperCannotChangeToOtherGroup();
+    testNonSuperCannotChangeGroupForOtherFile();
+    testNonSuperCannotChangeGroupForNonExistentFile();
+    testNonSuperCannotChangeOwner();
+    testNonSuperCannotChangeOwnerForOtherFile();
+    testNonSuperCannotChangeOwnerForNonExistentFile();
   }
   finally {
     cluster.shutdown();
