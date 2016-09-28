@@ -1,20 +1,23 @@
 {
   Preconditions.checkState(lock.isHeldByCurrentThread());
   workMap.clear();
-  Map<String,FsVolumeSpi> pathMap=getStorageIDToVolumeMap();
+  Map<String,String> storageIDToVolBasePathMap=getStorageIDToVolumeBasePathMap();
   for (  Step step : plan.getVolumeSetPlans()) {
-    String sourceuuid=step.getSourceVolume().getUuid();
-    String destinationuuid=step.getDestinationVolume().getUuid();
-    FsVolumeSpi sourceVol=pathMap.get(sourceuuid);
-    if (sourceVol == null) {
-      LOG.error("Disk Balancer - Unable to find source volume. submitPlan " + "failed.");
-      throw new DiskBalancerException("Unable to find source volume.",DiskBalancerException.Result.INVALID_VOLUME);
+    String sourceVolUuid=step.getSourceVolume().getUuid();
+    String destVolUuid=step.getDestinationVolume().getUuid();
+    String sourceVolBasePath=storageIDToVolBasePathMap.get(sourceVolUuid);
+    if (sourceVolBasePath == null) {
+      final String errMsg="Disk Balancer - Unable to find volume: " + step.getSourceVolume().getPath() + ". SubmitPlan failed.";
+      LOG.error(errMsg);
+      throw new DiskBalancerException(errMsg,DiskBalancerException.Result.INVALID_VOLUME);
     }
-    FsVolumeSpi destVol=pathMap.get(destinationuuid);
-    if (destVol == null) {
-      LOG.error("Disk Balancer - Unable to find destination volume. " + "submitPlan failed.");
-      throw new DiskBalancerException("Unable to find destination volume.",DiskBalancerException.Result.INVALID_VOLUME);
+    String destVolBasePath=storageIDToVolBasePathMap.get(destVolUuid);
+    if (destVolBasePath == null) {
+      final String errMsg="Disk Balancer - Unable to find volume: " + step.getDestinationVolume().getPath() + ". SubmitPlan failed.";
+      LOG.error(errMsg);
+      throw new DiskBalancerException(errMsg,DiskBalancerException.Result.INVALID_VOLUME);
     }
-    createWorkPlan(sourceVol,destVol,step);
+    VolumePair volumePair=new VolumePair(sourceVolUuid,sourceVolBasePath,destVolUuid,destVolBasePath);
+    createWorkPlan(volumePair,step);
   }
 }

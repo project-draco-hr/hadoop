@@ -1,0 +1,25 @@
+{
+  Configuration conf=new HdfsConfiguration();
+  conf.setBoolean(DFSConfigKeys.DFS_DISK_BALANCER_ENABLED,true);
+  final int blockCount=100;
+  final int blockSize=1024;
+  final int diskCount=2;
+  final int dataNodeCount=1;
+  final int dataNodeIndex=0;
+  final int sourceDiskIndex=0;
+  MiniDFSCluster cluster=new ClusterBuilder().setBlockCount(blockCount).setBlockSize(blockSize).setDiskCount(diskCount).setNumDatanodes(dataNodeCount).setConf(conf).build();
+  try {
+    DataMover dataMover=new DataMover(cluster,dataNodeIndex,sourceDiskIndex,conf,blockSize,blockCount);
+    dataMover.moveDataToSourceDisk();
+    NodePlan plan=dataMover.generatePlan();
+    dataMover.executePlanDuringDiskRemove(plan);
+    dataMover.verifyAllVolumesHaveData();
+    dataMover.verifyTolerance(plan,0,sourceDiskIndex,10);
+  }
+ catch (  Exception e) {
+    Assert.fail("Unexpected exception: " + e);
+  }
+ finally {
+    cluster.shutdown();
+  }
+}
