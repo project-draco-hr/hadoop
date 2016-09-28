@@ -2,11 +2,21 @@
   LOG.info("Initializing Existing Jobs...");
   List<FileStatus> timestampedDirList=findTimestampedDirectories();
   Collections.sort(timestampedDirList);
+  LOG.info("Found " + timestampedDirList.size() + " directories to load");
   for (  FileStatus fs : timestampedDirList) {
     addDirectoryToSerialNumberIndex(fs.getPath());
   }
+  final double maxCacheSize=(double)jobListCache.maxSize;
+  int prevCacheSize=jobListCache.size();
   for (int i=timestampedDirList.size() - 1; i >= 0 && !jobListCache.isFull(); i--) {
     FileStatus fs=timestampedDirList.get(i);
     addDirectoryToJobListCache(fs.getPath());
+    int currCacheSize=jobListCache.size();
+    if ((currCacheSize - prevCacheSize) / maxCacheSize >= 0.05) {
+      LOG.info(currCacheSize * 100.0 / maxCacheSize + "% of cache is loaded.");
+    }
+    prevCacheSize=currCacheSize;
   }
+  final double loadedPercent=maxCacheSize == 0.0 ? 100 : prevCacheSize * 100.0 / maxCacheSize;
+  LOG.info("Existing job initialization finished. " + loadedPercent + "% of cache is occupied.");
 }
