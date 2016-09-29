@@ -1,24 +1,22 @@
 {
-  while (true) {
-    String key="";
-    try {
-      key=pathToKey(f);
-      if (key.isEmpty()) {
-        break;
+  List<DeleteObjectsRequest.KeyVersion> keysToRemove=new ArrayList<>();
+  while (!path.isRoot()) {
+    String key=pathToKey(path);
+    key=(key.endsWith("/")) ? key : (key + "/");
+    keysToRemove.add(new DeleteObjectsRequest.KeyVersion(key));
+    path=path.getParent();
+  }
+  try {
+    removeKeys(keysToRemove,false,true);
+  }
+ catch (  AmazonClientException e) {
+    instrumentation.errorIgnored();
+    if (LOG.isDebugEnabled()) {
+      StringBuilder sb=new StringBuilder();
+      for (      DeleteObjectsRequest.KeyVersion kv : keysToRemove) {
+        sb.append(kv.getKey()).append(",");
       }
-      S3AFileStatus status=getFileStatus(f);
-      if (status.isDirectory() && status.isEmptyDirectory()) {
-        LOG.debug("Deleting fake directory {}/",key);
-        deleteObject(key + "/");
-      }
+      LOG.debug("While deleting keys {} ",sb.toString(),e);
     }
- catch (    IOException|AmazonClientException e) {
-      LOG.debug("While deleting key {} ",key,e);
-      instrumentation.errorIgnored();
-    }
-    if (f.isRoot()) {
-      break;
-    }
-    f=f.getParent();
   }
 }
