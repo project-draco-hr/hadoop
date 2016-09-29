@@ -1,3 +1,17 @@
 {
+  final ApplicationAttemptId appAttemptId=getAppAttemptId();
+  SchedulerApplicationAttempt appAttempt=((AbstractYarnScheduler)rmContext.getScheduler()).getApplicationAttempt(appAttemptId);
+  if (appAttempt.getOpportunisticContainerContext() == null) {
+    OpportunisticContainerContext opCtx=new OpportunisticContainerContext();
+    opCtx.setContainerIdGenerator(new OpportunisticContainerAllocator.ContainerIdGenerator(){
+      @Override public long generateContainerId(){
+        return appAttempt.getAppSchedulingInfo().getNewContainerId();
+      }
+    }
+);
+    int tokenExpiryInterval=getConfig().getInt(YarnConfiguration.OPPORTUNISTIC_CONTAINERS_TOKEN_EXPIRY_MS,YarnConfiguration.OPPORTUNISTIC_CONTAINERS_TOKEN_EXPIRY_MS_DEFAULT);
+    opCtx.updateAllocationParams(createMinContainerResource(),createMaxContainerResource(),createIncrContainerResource(),tokenExpiryInterval);
+    appAttempt.setOpportunisticContainerContext(opCtx);
+  }
   return super.registerApplicationMaster(request);
 }

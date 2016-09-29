@@ -1,3 +1,15 @@
 {
-  return super.allocate(request);
+  final ApplicationAttemptId appAttemptId=getAppAttemptId();
+  SchedulerApplicationAttempt appAttempt=((AbstractYarnScheduler)rmContext.getScheduler()).getApplicationAttempt(appAttemptId);
+  OpportunisticContainerContext oppCtx=appAttempt.getOpportunisticContainerContext();
+  oppCtx.updateNodeList(getLeastLoadedNodes());
+  List<Container> oppContainers=oppContainerAllocator.allocateContainers(request,appAttemptId,oppCtx,ResourceManager.getClusterTimeStamp(),appAttempt.getUser());
+  if (!oppContainers.isEmpty()) {
+    handleNewContainers(oppContainers,false);
+    appAttempt.updateNMTokens(oppContainers);
+  }
+  AllocateResponse allocateResp=super.allocate(request);
+  oppCtx.updateCompletedContainers(allocateResp);
+  allocateResp.getAllocatedContainers().addAll(oppContainers);
+  return allocateResp;
 }
