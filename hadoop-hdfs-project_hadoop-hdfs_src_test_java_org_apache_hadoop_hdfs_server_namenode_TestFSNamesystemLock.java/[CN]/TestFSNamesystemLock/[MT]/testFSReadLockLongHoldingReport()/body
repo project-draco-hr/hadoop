@@ -5,50 +5,46 @@
   Configuration conf=new Configuration();
   conf.setLong(DFSConfigKeys.DFS_NAMENODE_READ_LOCK_REPORTING_THRESHOLD_MS_KEY,readLockReportingThreshold);
   conf.setTimeDuration(DFSConfigKeys.DFS_LOCK_SUPPRESS_WARNING_INTERVAL_KEY,readLockSuppressWarningInterval,TimeUnit.MILLISECONDS);
-  FSImage fsImage=Mockito.mock(FSImage.class);
-  FSEditLog fsEditLog=Mockito.mock(FSEditLog.class);
-  Mockito.when(fsImage.getEditLog()).thenReturn(fsEditLog);
-  FSNamesystem fsn=new FSNamesystem(conf,fsImage);
-  FakeTimer timer=new FakeTimer();
-  fsn.setTimer(timer);
+  final FakeTimer timer=new FakeTimer();
+  final FSNamesystemLock fsnLock=new FSNamesystemLock(conf,timer);
   timer.advance(readLockSuppressWarningInterval);
   LogCapturer logs=LogCapturer.captureLogs(FSNamesystem.LOG);
   GenericTestUtils.setLogLevel(FSNamesystem.LOG,Level.INFO);
-  fsn.readLock();
-  fsn.readUnlock();
+  fsnLock.readLock();
+  fsnLock.readUnlock();
   assertFalse(logs.getOutput().contains(GenericTestUtils.getMethodName()) && logs.getOutput().contains(readLockLogStmt));
-  fsn.readLock();
+  fsnLock.readLock();
   timer.advance(readLockReportingThreshold + 10);
   logs.clearOutput();
-  fsn.readUnlock();
+  fsnLock.readUnlock();
   assertTrue(logs.getOutput().contains(GenericTestUtils.getMethodName()) && logs.getOutput().contains(readLockLogStmt));
-  fsn.readLock();
+  fsnLock.readLock();
   timer.advance(readLockReportingThreshold + 10);
   logs.clearOutput();
-  fsn.readUnlock();
+  fsnLock.readUnlock();
   assertFalse(logs.getOutput().contains(GenericTestUtils.getMethodName()) && logs.getOutput().contains(readLockLogStmt));
-  fsn.readLock();
+  fsnLock.readLock();
   timer.advance(readLockReportingThreshold / 2 + 1);
-  fsn.readLock();
+  fsnLock.readLock();
   timer.advance(readLockReportingThreshold / 2 + 1);
   logs.clearOutput();
-  fsn.readUnlock();
+  fsnLock.readUnlock();
   assertFalse(logs.getOutput().contains(GenericTestUtils.getMethodName()) || logs.getOutput().contains(readLockLogStmt));
   logs.clearOutput();
-  fsn.readUnlock();
+  fsnLock.readUnlock();
   assertFalse(logs.getOutput().contains(GenericTestUtils.getMethodName()) && logs.getOutput().contains(readLockLogStmt));
   timer.advance(readLockSuppressWarningInterval);
   logs.clearOutput();
-  CountDownLatch barrier=new CountDownLatch(1);
-  CountDownLatch barrier2=new CountDownLatch(1);
+  final CountDownLatch barrier=new CountDownLatch(1);
+  final CountDownLatch barrier2=new CountDownLatch(1);
   Thread t1=new Thread(){
     @Override public void run(){
       try {
-        fsn.readLock();
+        fsnLock.readLock();
         timer.advance(readLockReportingThreshold + 1);
         barrier.countDown();
         barrier2.await();
-        fsn.readUnlock();
+        fsnLock.readUnlock();
       }
  catch (      InterruptedException e) {
         fail("Interrupted during testing");
@@ -60,9 +56,9 @@
     @Override public void run(){
       try {
         barrier.await();
-        fsn.readLock();
+        fsnLock.readLock();
         barrier2.countDown();
-        fsn.readUnlock();
+        fsnLock.readUnlock();
       }
  catch (      InterruptedException e) {
         fail("Interrupted during testing");
@@ -79,5 +75,5 @@
   assertTrue(t1Pattern.matcher(logs.getOutput()).find());
   Pattern t2Pattern=Pattern.compile(String.format(stackTracePatternString,t2.getClass().getName()));
   assertFalse(t2Pattern.matcher(logs.getOutput()).find());
-  assertTrue(logs.getOutput().contains("Number of suppressed read-lock " + "reports: 2"));
+  assertTrue(logs.getOutput().contains("Number of suppressed read-lock reports: 2"));
 }

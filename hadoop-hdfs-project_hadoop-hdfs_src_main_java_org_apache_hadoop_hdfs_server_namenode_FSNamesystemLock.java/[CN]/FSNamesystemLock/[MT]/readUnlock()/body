@@ -1,0 +1,29 @@
+{
+  final boolean needReport=coarseLock.getReadHoldCount() == 1;
+  final long readLockInterval=timer.monotonicNow() - readLockHeldTimeStamp.get();
+  coarseLock.readLock().unlock();
+  if (needReport) {
+    readLockHeldTimeStamp.remove();
+  }
+  if (needReport && readLockInterval >= this.readLockReportingThreshold) {
+    long localLongestReadLock;
+    do {
+      localLongestReadLock=longestReadLockHeldInterval.get();
+    }
+ while (localLongestReadLock - readLockInterval < 0 && !longestReadLockHeldInterval.compareAndSet(localLongestReadLock,readLockInterval));
+    long localTimeStampOfLastReadLockReport;
+    long now;
+    do {
+      now=timer.monotonicNow();
+      localTimeStampOfLastReadLockReport=timeStampOfLastReadLockReport.get();
+      if (now - localTimeStampOfLastReadLockReport < lockSuppressWarningInterval) {
+        numReadLockWarningsSuppressed.incrementAndGet();
+        return;
+      }
+    }
+ while (!timeStampOfLastReadLockReport.compareAndSet(localTimeStampOfLastReadLockReport,now));
+    int numSuppressedWarnings=numReadLockWarningsSuppressed.getAndSet(0);
+    long longestLockHeldInterval=longestReadLockHeldInterval.getAndSet(0);
+    FSNamesystem.LOG.info("FSNamesystem read lock held for " + readLockInterval + " ms via\n"+ StringUtils.getStackTrace(Thread.currentThread())+ "\tNumber of suppressed read-lock reports: "+ numSuppressedWarnings+ "\n\tLongest read-lock held interval: "+ longestLockHeldInterval);
+  }
+}
