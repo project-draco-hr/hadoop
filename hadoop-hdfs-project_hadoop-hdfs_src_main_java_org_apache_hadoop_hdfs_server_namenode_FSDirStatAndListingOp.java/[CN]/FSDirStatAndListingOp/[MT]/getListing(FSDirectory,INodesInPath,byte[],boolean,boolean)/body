@@ -1,0 +1,45 @@
+{
+  if (FSDirectory.isExactReservedName(iip.getPathComponents())) {
+    return getReservedListing(fsd);
+  }
+  fsd.readLock();
+  try {
+    if (iip.isDotSnapshotDir()) {
+      return getSnapshotsListing(fsd,iip,startAfter);
+    }
+    final int snapshot=iip.getPathSnapshotId();
+    final INode targetNode=iip.getLastINode();
+    if (targetNode == null) {
+      return null;
+    }
+    byte parentStoragePolicy=includeStoragePolicy ? targetNode.getStoragePolicyID() : HdfsConstants.BLOCK_STORAGE_POLICY_ID_UNSPECIFIED;
+    if (!targetNode.isDirectory()) {
+      return new DirectoryListing(new HdfsFileStatus[]{createFileStatus(fsd,iip,null,parentStoragePolicy,needLocation)},0);
+    }
+    final INodeDirectory dirInode=targetNode.asDirectory();
+    final ReadOnlyList<INode> contents=dirInode.getChildrenList(snapshot);
+    int startChild=INodeDirectory.nextChild(contents,startAfter);
+    int totalNumChildren=contents.size();
+    int numOfListing=Math.min(totalNumChildren - startChild,fsd.getLsLimit());
+    int locationBudget=fsd.getLsLimit();
+    int listingCnt=0;
+    HdfsFileStatus listing[]=new HdfsFileStatus[numOfListing];
+    for (int i=0; i < numOfListing && locationBudget > 0; i++) {
+      INode child=contents.get(startChild + i);
+      byte childStoragePolicy=(includeStoragePolicy && !child.isSymlink()) ? getStoragePolicyID(child.getLocalStoragePolicyID(),parentStoragePolicy) : parentStoragePolicy;
+      listing[i]=createFileStatus(fsd,iip,child,childStoragePolicy,needLocation);
+      listingCnt++;
+      if (listing[i] instanceof HdfsLocatedFileStatus) {
+        LocatedBlocks blks=((HdfsLocatedFileStatus)listing[i]).getBlockLocations();
+        locationBudget-=(blks == null) ? 0 : blks.locatedBlockCount() * listing[i].getReplication();
+      }
+    }
+    if (listingCnt < numOfListing) {
+      listing=Arrays.copyOf(listing,listingCnt);
+    }
+    return new DirectoryListing(listing,totalNumChildren - startChild - listingCnt);
+  }
+  finally {
+    fsd.readUnlock();
+  }
+}
