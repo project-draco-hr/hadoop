@@ -1,14 +1,18 @@
 {
+  LOG.trace("Entering generateEncryptedKeys method.");
   UserGroupInformation user=HttpUserGroupInformation.get();
   KMSClientProvider.checkNotEmpty(name,"name");
   KMSClientProvider.checkNotNull(edekOp,"eekOp");
+  LOG.debug("Generating encrypted key with name {}," + " the edek Operation is {}.",name,edekOp);
   Object retJSON;
   if (edekOp.equals(KMSRESTConstants.EEK_GENERATE)) {
+    LOG.debug("edek Operation is Generate.");
     assertAccess(KMSACLs.Type.GENERATE_EEK,user,KMSOp.GENERATE_EEK,name);
     final List<EncryptedKeyVersion> retEdeks=new LinkedList<EncryptedKeyVersion>();
     try {
       user.doAs(new PrivilegedExceptionAction<Void>(){
         @Override public Void run() throws Exception {
+          LOG.debug("Generated Encrypted key for {} number of keys.",numKeys);
           for (int i=0; i < numKeys; i++) {
             retEdeks.add(provider.generateEncryptedKey(name));
           }
@@ -18,6 +22,7 @@
 );
     }
  catch (    Exception e) {
+      LOG.error("Exception in generateEncryptedKeys:",e);
       throw new IOException(e);
     }
     kmsAudit.ok(user,KMSOp.GENERATE_EEK,name,"");
@@ -27,8 +32,17 @@
     }
   }
  else {
-    throw new IllegalArgumentException("Wrong " + KMSRESTConstants.EEK_OP + " value, it must be "+ KMSRESTConstants.EEK_GENERATE+ " or "+ KMSRESTConstants.EEK_DECRYPT);
+    StringBuilder error;
+    error=new StringBuilder("IllegalArgumentException Wrong ");
+    error.append(KMSRESTConstants.EEK_OP);
+    error.append(" value, it must be ");
+    error.append(KMSRESTConstants.EEK_GENERATE);
+    error.append(" or ");
+    error.append(KMSRESTConstants.EEK_DECRYPT);
+    LOG.error(error.toString());
+    throw new IllegalArgumentException(error.toString());
   }
   KMSWebApp.getGenerateEEKCallsMeter().mark();
+  LOG.trace("Exiting generateEncryptedKeys method.");
   return Response.ok().type(MediaType.APPLICATION_JSON).entity(retJSON).build();
 }
