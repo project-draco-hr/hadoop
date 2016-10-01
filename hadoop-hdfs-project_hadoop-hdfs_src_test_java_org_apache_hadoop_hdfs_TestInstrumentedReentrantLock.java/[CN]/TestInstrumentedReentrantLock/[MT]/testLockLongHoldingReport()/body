@@ -1,0 +1,47 @@
+{
+  String testname=name.getMethodName();
+  FakeTimer mclock=new FakeTimer();
+  final int warningThreshold=500;
+  final int minLoggingGap=warningThreshold * 10;
+  final AtomicLong wlogged=new AtomicLong(0);
+  final AtomicLong wsuppresed=new AtomicLong(0);
+  InstrumentedReentrantLock lock=new InstrumentedReentrantLock(testname,LOG,new ReentrantLock(),minLoggingGap,warningThreshold,mclock){
+    @Override void logWarning(    long lockHeldTime,    long suppressed){
+      wlogged.incrementAndGet();
+      wsuppresed.set(suppressed);
+    }
+  }
+;
+  lock.lock();
+  mclock.advance(warningThreshold);
+  lock.unlock();
+  assertEquals(0,wlogged.get());
+  assertEquals(0,wsuppresed.get());
+  lock.lock();
+  mclock.advance(warningThreshold + 1);
+  assertEquals(1,lock.lock.getHoldCount());
+  lock.unlock();
+  assertEquals(1,wlogged.get());
+  assertEquals(0,wsuppresed.get());
+  lock.lock();
+  mclock.advance(warningThreshold + 1);
+  lock.unlock();
+  assertEquals(1,wlogged.get());
+  assertEquals(0,wsuppresed.get());
+  lock.lock();
+  mclock.advance(minLoggingGap + 1);
+  lock.unlock();
+  assertEquals(2,wlogged.get());
+  assertEquals(1,wsuppresed.get());
+  wlogged.set(0);
+  wsuppresed.set(0);
+  lock.lock();
+  lock.lock();
+  mclock.advance(minLoggingGap + 1);
+  lock.unlock();
+  assertEquals(0,wlogged.get());
+  assertEquals(0,wsuppresed.get());
+  lock.unlock();
+  assertEquals(1,wlogged.get());
+  assertEquals(0,wsuppresed.get());
+}
